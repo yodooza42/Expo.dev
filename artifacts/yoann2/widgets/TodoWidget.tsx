@@ -2,114 +2,104 @@ import React from 'react';
 import { FlexWidget, TextWidget } from 'react-native-android-widget';
 import type { ColorProp } from 'react-native-android-widget';
 
-import type { WidgetDayData } from './data';
+import type { WidgetData } from './data';
 
 const BG = '#121212';
-const CARD = '#1E1E1E';
-const CARD_DIM = '#181818';
+const CARD = '#2A2A2A';
 const PRIMARY = '#FFC107';
 const TEXT = '#FFFFFF';
 const MUTED = '#9E9E9E';
 
-export function TodoWidget(props: WidgetDayData) {
-  const { dayLabel, dateLabel, items, moreCount, canPrev } = props;
+export function TodoWidget({ tasks, todayAppts, moreCount }: WidgetData) {
+  const apptLine =
+    todayAppts.length === 0
+      ? "pas de rendez-vous aujourd'hui"
+      : todayAppts
+          .map(a => (a.time ? `${a.time} ${a.title}` : a.title))
+          .join('  ·  ');
 
   return (
     <FlexWidget
+      clickAction="OPEN_APP"
       style={{
         height: 'match_parent',
         width: 'match_parent',
         backgroundColor: BG,
         borderRadius: 16,
-        padding: 12,
+        paddingHorizontal: 12,
+        paddingVertical: 10,
         flexDirection: 'column',
+        justifyContent: 'space-between',
       }}
     >
-      <FlexWidget
-        style={{
-          flexDirection: 'row',
-          width: 'match_parent',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: 8,
-        }}
-      >
-        <FlexWidget clickAction="OPEN_APP" style={{ flexDirection: 'column' }}>
-          <TextWidget text={dayLabel} style={{ fontSize: 16, fontWeight: 'bold', color: PRIMARY }} />
-          <TextWidget text={dateLabel} style={{ fontSize: 11, color: MUTED }} />
-        </FlexWidget>
-
-        <FlexWidget style={{ flexDirection: 'row', alignItems: 'center' }}>
+      <FlexWidget style={{ flexDirection: 'column', width: 'match_parent' }}>
+        {tasks.length === 0 ? (
           <FlexWidget
-            clickAction="PREV"
-            style={{
-              width: 32,
-              height: 32,
-              borderRadius: 16,
-              backgroundColor: canPrev ? CARD : CARD_DIM,
-              justifyContent: 'center',
-              alignItems: 'center',
-              marginRight: 6,
-            }}
+            style={{ width: 'match_parent', justifyContent: 'center', alignItems: 'center', paddingVertical: 8 }}
           >
-            <TextWidget text="‹" style={{ fontSize: 20, fontWeight: 'bold', color: canPrev ? TEXT : '#444444' }} />
+            <TextWidget
+              text="Aucune tâche en cours ✓"
+              style={{ fontSize: 13, color: MUTED }}
+            />
           </FlexWidget>
-          <FlexWidget
-            clickAction="NEXT"
-            style={{
-              width: 32,
-              height: 32,
-              borderRadius: 16,
-              backgroundColor: CARD,
-              justifyContent: 'center',
-              alignItems: 'center',
-            }}
-          >
-            <TextWidget text="›" style={{ fontSize: 20, fontWeight: 'bold', color: TEXT }} />
+        ) : (
+          <FlexWidget style={{ flexDirection: 'column', width: 'match_parent' }}>
+            {tasks.map((t, i) => (
+              <FlexWidget
+                key={`t${i}`}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  width: 'match_parent',
+                  marginBottom: 7,
+                }}
+              >
+                <FlexWidget
+                  style={{
+                    width: 7,
+                    height: 7,
+                    borderRadius: 4,
+                    backgroundColor: t.color as ColorProp,
+                    marginRight: 8,
+                  }}
+                />
+                <TextWidget
+                  text={t.deadline ? `${t.title}  ·  ${t.deadline}` : t.title}
+                  maxLines={1}
+                  truncate="END"
+                  style={{ fontSize: 13, color: TEXT }}
+                />
+              </FlexWidget>
+            ))}
+            {moreCount > 0 && (
+              <TextWidget
+                text={`+ ${moreCount} autre${moreCount > 1 ? 's' : ''}`}
+                style={{ fontSize: 11, color: MUTED }}
+              />
+            )}
           </FlexWidget>
-        </FlexWidget>
+        )}
       </FlexWidget>
 
-      {items.length === 0 ? (
+      <FlexWidget style={{ flexDirection: 'column', width: 'match_parent' }}>
         <FlexWidget
-          clickAction="OPEN_APP"
-          style={{ flex: 1, width: 'match_parent', justifyContent: 'center', alignItems: 'center' }}
-        >
-          <TextWidget text="Rien de prévu ✓" style={{ fontSize: 14, color: MUTED }} />
-        </FlexWidget>
-      ) : (
-        <FlexWidget style={{ flexDirection: 'column', width: 'match_parent' }}>
-          {items.map((it, i) => (
-            <FlexWidget
-              key={`${i}`}
-              clickAction="OPEN_APP"
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                width: 'match_parent',
-                marginBottom: 6,
-              }}
-            >
-              <FlexWidget
-                style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: it.color as ColorProp, marginRight: 8 }}
-              />
-              <TextWidget
-                text={(it.meta ? it.meta + '  ' : '') + it.title}
-                maxLines={1}
-                truncate="END"
-                style={{ fontSize: 13, color: it.done ? MUTED : TEXT }}
-              />
-            </FlexWidget>
-          ))}
-          {moreCount > 0 && (
-            <TextWidget
-              text={'+ ' + moreCount + ' autre' + (moreCount > 1 ? 's' : '')}
-              clickAction="OPEN_APP"
-              style={{ fontSize: 11, color: PRIMARY, marginTop: 2 }}
-            />
-          )}
-        </FlexWidget>
-      )}
+          style={{
+            height: 1,
+            width: 'match_parent',
+            backgroundColor: CARD,
+            marginBottom: 7,
+          }}
+        />
+        <TextWidget
+          text={`Aujourd'hui : ${apptLine}`}
+          maxLines={1}
+          truncate="END"
+          style={{
+            fontSize: 11,
+            color: todayAppts.length > 0 ? PRIMARY : MUTED,
+          }}
+        />
+      </FlexWidget>
     </FlexWidget>
   );
 }

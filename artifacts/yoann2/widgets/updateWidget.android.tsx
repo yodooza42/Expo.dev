@@ -1,12 +1,12 @@
 import React from 'react';
 import { requestWidgetUpdate } from 'react-native-android-widget';
 
-import { buildWidgetData, getOffset, type WidgetDayData } from './data';
+import { buildWidgetData, type WidgetData } from './data';
 import { TodoWidget } from './TodoWidget';
 
 interface RawTaskLike {
   title: string;
-  dueDate: string;
+  dueDate?: string;
   priority: string;
   status: string;
 }
@@ -14,7 +14,7 @@ interface RawTaskLike {
 interface RawApptLike {
   title: string;
   date: string;
-  time: string;
+  time?: string;
 }
 
 export async function updateTodoWidget(
@@ -22,8 +22,7 @@ export async function updateTodoWidget(
   appointments?: RawApptLike[]
 ): Promise<void> {
   try {
-    const offset = await getOffset();
-    const data: WidgetDayData = buildWidgetData(tasks ?? [], appointments ?? [], offset);
+    const data: WidgetData = buildWidgetData(tasks ?? [], appointments ?? []);
     await requestWidgetUpdate({
       widgetName: 'TodoWidget',
       renderWidget: () => <TodoWidget {...data} />,

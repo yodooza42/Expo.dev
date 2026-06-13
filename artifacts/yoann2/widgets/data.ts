@@ -2,7 +2,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const TASKS_KEY = '@yoann2_tasks';
 const APPTS_KEY = '@yoann2_appointments';
-const OFFSET_KEY = '@yoann2_widget_offset';
 
 const PRIORITY_COLORS: Record<string, string> = {
   low: '#4CAF50',
@@ -10,31 +9,33 @@ const PRIORITY_COLORS: Record<string, string> = {
   high: '#F44336',
   critical: '#9C27B0',
 };
-const APPT_COLOR = '#7C3AED';
 
-export const MAX_ITEMS = 6;
+export const MAX_TASKS = 3;
+
+const PRIORITY_ORDER: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
+
+const MONTHS_FR = ['jan', 'fév', 'mar', 'avr', 'mai', 'juin', 'juil', 'août', 'sep', 'oct', 'nov', 'déc'];
 
 export interface WidgetItem {
   title: string;
   color: string;
-  meta: string;
-  done: boolean;
-  isAppt: boolean;
+  deadline: string;
 }
 
-export interface WidgetDayData {
-  dayLabel: string;
-  dateLabel: string;
-  offset: number;
-  canPrev: boolean;
-  items: WidgetItem[];
+export interface WidgetAppt {
+  title: string;
+  time: string;
+}
+
+export interface WidgetData {
+  tasks: WidgetItem[];
+  todayAppts: WidgetAppt[];
   moreCount: number;
-  total: number;
 }
 
 interface RawTask {
   title: string;
-  dueDate: string;
+  dueDate?: string;
   priority: string;
   status: string;
 }
@@ -42,23 +43,16 @@ interface RawTask {
 interface RawAppt {
   title: string;
   date: string;
-  time: string;
+  time?: string;
 }
 
-export async function getOffset(): Promise<number> {
-  try {
-    const v = await AsyncStorage.getItem(OFFSET_KEY);
-    const n = v ? parseInt(v, 10) : 0;
-    return Number.isFinite(n) && n >= 0 ? n : 0;
-  } catch {
-    return 0;
-  }
-}
-
-export async function setOffset(o: number): Promise<void> {
-  try {
-    await AsyncStorage.setItem(OFFSET_KEY, String(o));
-  } catch {}
+function formatDeadline(dateStr: string | undefined): string {
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return '';
+  const now = new Date();
+  const suffix = d.getFullYear() !== now.getFullYear() ? ` ${d.getFullYear()}` : '';
+  return `${d.getDate()} ${MONTHS_FR[d.getMonth()]}${suffix}`;
 }
 
 function sameDay(a: Date, b: Date): boolean {
@@ -69,78 +63,46 @@ function sameDay(a: Date, b: Date): boolean {
   );
 }
 
-function cap(s: string): string {
-  return s.charAt(0).toUpperCase() + s.slice(1);
-}
+export function buildWidgetData(tasks: RawTask[], appointments: RawAppt[]): WidgetData {
+  const today = new Date();
 
-export function buildWidgetData(
-  tasks: RawTask[],
-  appointments: RawAppt[],
-  offset: number
-): WidgetDayData {
-  const target = new Date();
-  target.setDate(target.getDate() + offset);
+  const pending = (tasks ?? []).filter(t => t.status !== 'done');
 
-  const priorityOrder: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
+  pending.sort((a, b) => {
+    const da = a.dueDate ? new Date(a.dueDate) : null;
+    const db = b.dueDate ? new Date(b.dueDate) : null;
+    if (da && db) {
+      const diff = da.getTime() - db.getTime();
+      if (diff !== 0) return diff;
+    } else if (da && !db) return -1;
+    else if (!da && db) return 1;
+    return (PRIORITY_ORDER[a.priority] ?? 4) - (PRIORITY_ORDER[b.priority] ?? 4);
+  });
 
-  const dayTasks = (tasks ?? [])
-    .filter(t => {
-      const d = new Date(t.dueDate);
-      return !isNaN(d.getTime()) && sameDay(d, target);
-    })
-    .sort((a, b) => {
-      const doneDiff = (a.status === 'done' ? 1 : 0) - (b.status === 'done' ? 1 : 0);
-      if (doneDiff !== 0) return doneDiff;
-      return (priorityOrder[a.priority] ?? 9) - (priorityOrder[b.priority] ?? 9);
-    });
-
-  const dayAppts = (appointments ?? [])
-    .filter(a => {
-      const d = new Date(a.date);
-      return !isNaN(d.getTime()) && sameDay(d, target);
-    })
-    .sort((a, b) => (a.time || '').localeCompare(b.time || ''));
-
-  const apptItems: WidgetItem[] = dayAppts.map(a => ({
-    title: a.title,
-    color: APPT_COLOR,
-    meta: a.time || '',
-    done: false,
-    isAppt: true,
-  }));
-
-  const taskItems: WidgetItem[] = dayTasks.map(t => ({
+  const allItems: WidgetItem[] = pending.map(t => ({
     title: t.title,
     color: PRIORITY_COLORS[t.priority] ?? '#9E9E9E',
-    meta: '',
-    done: t.status === 'done',
-    isAppt: false,
+    deadline: formatDeadline(t.dueDate),
   }));
 
-  const all = [...apptItems, ...taskItems];
-  const items = all.slice(0, MAX_ITEMS);
-  const moreCount = Math.max(0, all.length - MAX_ITEMS);
+  const moreCount = Math.max(0, allItems.length - MAX_TASKS);
 
-  let dayLabel: string;
-  if (offset === 0) dayLabel = "Aujourd'hui";
-  else if (offset === 1) dayLabel = 'Demain';
-  else if (offset === 2) dayLabel = 'Après-demain';
-  else dayLabel = cap(target.toLocaleDateString('fr-FR', { weekday: 'long' }));
-
-  const dateLabel = target.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' });
+  const todayAppts: WidgetAppt[] = (appointments ?? [])
+    .filter(a => {
+      const d = new Date(a.date);
+      return !isNaN(d.getTime()) && sameDay(d, today);
+    })
+    .sort((a, b) => (a.time || '').localeCompare(b.time || ''))
+    .map(a => ({ title: a.title, time: a.time || '' }));
 
   return {
-    dayLabel,
-    dateLabel,
-    offset,
-    canPrev: offset > 0,
-    items,
+    tasks: allItems.slice(0, MAX_TASKS),
+    todayAppts,
     moreCount,
-    total: all.length,
   };
 }
 
-export async function getWidgetDataFromStorage(offset: number): Promise<WidgetDayData> {
+export async function getWidgetDataFromStorage(): Promise<WidgetData> {
   let tasks: RawTask[] = [];
   let appts: RawAppt[] = [];
   try {
@@ -148,5 +110,5 @@ export async function getWidgetDataFromStorage(offset: number): Promise<WidgetDa
     if (t[1]) tasks = JSON.parse(t[1]);
     if (a[1]) appts = JSON.parse(a[1]);
   } catch {}
-  return buildWidgetData(tasks, appts, offset);
+  return buildWidgetData(tasks, appts);
 }
