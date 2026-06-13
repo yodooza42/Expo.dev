@@ -1,0 +1,2 @@
+- [Yoann2 EAS APK builds](yoann2-eas-build.md) — how to auth + build the Android APK; token must be a secret, VCS/flags quirks.
+- [Android home-screen widget](yoann2-android-widget.md) — react-native-android-widget data-sharing + entry-point pattern; native rebuild required.
