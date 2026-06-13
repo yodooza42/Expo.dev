@@ -5,6 +5,7 @@ import { buildWidgetData, type WidgetData } from './data';
 import { TodoWidget } from './TodoWidget';
 
 interface RawTaskLike {
+  id?: string;
   title: string;
   dueDate?: string;
   priority: string;
