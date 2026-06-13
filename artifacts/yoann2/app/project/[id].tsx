@@ -77,9 +77,9 @@ export default function ProjectDetailScreen() {
   const doneTasks = tasks.filter(t => t.status === 'done').length;
   const progress = totalTasks > 0 ? (doneTasks / totalTasks) * 100 : 0;
   const totalSpent = expenses.reduce((sum, e) => sum + e.amount, 0);
-  const taskCostSum = tasks.reduce((s, t) => s + (t.cost ?? 0), 0);
-  const totalWithTasks = totalSpent + taskCostSum;
-  const budgetPct = project.budget > 0 ? (totalWithTasks / project.budget) * 100 : 0;
+  const directExpenses = expenses.filter(e => !e.taskId);
+  const taskExpenses = expenses.filter(e => !!e.taskId);
+  const budgetPct = project.budget > 0 ? (totalSpent / project.budget) * 100 : 0;
   const dueDate = new Date(project.dueDate);
   const isOverdue = dueDate < new Date() && project.status !== 'done';
 
@@ -263,16 +263,18 @@ export default function ProjectDetailScreen() {
                 color={budgetPct > 90 ? colors.destructive : colors.priorityMedium}
               />
               <View style={styles.budgetBreakdown}>
-                <Text style={[styles.progressSub, { color: colors.mutedForeground }]}>
-                  Dépenses : {totalSpent}€
-                </Text>
-                {taskCostSum > 0 && (
+                {directExpenses.length > 0 && (
                   <Text style={[styles.progressSub, { color: colors.mutedForeground }]}>
-                    Coût tâches : {taskCostSum}€
+                    Dépenses directes : {directExpenses.reduce((s, e) => s + e.amount, 0)}€
+                  </Text>
+                )}
+                {taskExpenses.length > 0 && (
+                  <Text style={[styles.progressSub, { color: colors.mutedForeground }]}>
+                    Dépenses des tâches : {taskExpenses.reduce((s, e) => s + e.amount, 0)}€
                   </Text>
                 )}
                 <Text style={[styles.progressSub, { color: budgetPct > 90 ? colors.destructive : colors.foreground, fontFamily: 'Inter_600SemiBold' }]}>
-                  Total : {totalWithTasks}€ / {project.budget}€  ·  Reste : {project.budget - totalWithTasks}€
+                  Total : {totalSpent}€ / {project.budget}€  ·  Reste : {project.budget - totalSpent}€
                 </Text>
               </View>
             </View>
@@ -326,39 +328,52 @@ export default function ProjectDetailScreen() {
                 style={[styles.addBtn, { backgroundColor: colors.primary }]}
               >
                 <MaterialCommunityIcons name="plus" size={18} color={colors.primaryForeground} />
-                <Text style={[styles.addBtnLabel, { color: colors.primaryForeground }]}>Ajouter une dépense</Text>
+                <Text style={[styles.addBtnLabel, { color: colors.primaryForeground }]}>Dépense directe du projet</Text>
               </Pressable>
               {expenses.length === 0 ? (
                 <View style={styles.empty}>
                   <MaterialCommunityIcons name="receipt" size={40} color={colors.mutedForeground} />
                   <Text style={[styles.emptyTxt, { color: colors.mutedForeground }]}>Aucune dépense</Text>
+                  <Text style={[styles.emptySubTxt, { color: colors.mutedForeground }]}>
+                    Ajoutez des dépenses ici ou depuis chaque tâche
+                  </Text>
                 </View>
               ) : (
                 <>
-                  {expenses.map(e => (
-                    <View key={e.id} style={[styles.expRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={[styles.expName, { color: colors.foreground }]}>{e.name}</Text>
-                        <Text style={[styles.expMeta, { color: colors.mutedForeground }]}>
-                          {e.category} · {new Date(e.date).toLocaleDateString('fr-FR')}
-                        </Text>
+                  {expenses.map(e => {
+                    const linkedTask = e.taskId ? tasks.find(t => t.id === e.taskId) : null;
+                    return (
+                      <View key={e.id} style={[styles.expRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                        <View style={{ flex: 1 }}>
+                          {linkedTask && (
+                            <View style={[styles.taskBadge, { backgroundColor: colors.primary + '18' }]}>
+                              <MaterialCommunityIcons name="format-list-checks" size={11} color={colors.primary} />
+                              <Text style={[styles.taskBadgeTxt, { color: colors.primary }]} numberOfLines={1}>
+                                {linkedTask.title}
+                              </Text>
+                            </View>
+                          )}
+                          <Text style={[styles.expName, { color: colors.foreground }]}>{e.name}</Text>
+                          {e.category.length > 0 && (
+                            <Text style={[styles.expMeta, { color: colors.mutedForeground }]}>{e.category}</Text>
+                          )}
+                          <Text style={[styles.expMeta, { color: colors.mutedForeground }]}>
+                            {new Date(e.date).toLocaleDateString('fr-FR')}
+                          </Text>
+                        </View>
+                        <Text style={[styles.expAmount, { color: colors.primary }]}>{e.amount}€</Text>
+                        {!linkedTask && (
+                          <Pressable onPress={() => deleteExpense(e.id)} hitSlop={8}>
+                            <MaterialCommunityIcons name="trash-can-outline" size={18} color={colors.mutedForeground} />
+                          </Pressable>
+                        )}
                       </View>
-                      <Text style={[styles.expAmount, { color: colors.primary }]}>{e.amount}€</Text>
-                      <Pressable onPress={() => deleteExpense(e.id)} hitSlop={8}>
-                        <MaterialCommunityIcons name="trash-can-outline" size={18} color={colors.mutedForeground} />
-                      </Pressable>
-                    </View>
-                  ))}
+                    );
+                  })}
                   <View style={[styles.expTotal, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                    <Text style={[styles.expTotalLabel, { color: colors.mutedForeground }]}>Total dépenses</Text>
+                    <Text style={[styles.expTotalLabel, { color: colors.mutedForeground }]}>Total toutes dépenses</Text>
                     <Text style={[styles.expTotalValue, { color: colors.primary }]}>{totalSpent}€</Text>
                   </View>
-                  {taskCostSum > 0 && (
-                    <View style={[styles.expTotal, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                      <Text style={[styles.expTotalLabel, { color: colors.mutedForeground }]}>Coût estimé des tâches</Text>
-                      <Text style={[styles.expTotalValue, { color: colors.primary }]}>{taskCostSum}€</Text>
-                    </View>
-                  )}
                 </>
               )}
             </>
@@ -418,7 +433,7 @@ export default function ProjectDetailScreen() {
             {[
               { label: 'Nom', value: expName, setter: setExpName, placeholder: 'Ex: Visserie', keyboardType: 'default' as const },
               { label: 'Montant (€)', value: expAmount, setter: setExpAmount, placeholder: '0.00', keyboardType: 'numeric' as const },
-              { label: 'Catégorie', value: expCat, setter: setExpCat, placeholder: 'Ex: Matériaux', keyboardType: 'default' as const },
+              { label: 'Détails (optionnel)', value: expCat, setter: setExpCat, placeholder: 'Ex: Matériaux, quincaillerie…', keyboardType: 'default' as const },
             ].map(f => (
               <View key={f.label}>
                 <Text style={[styles.inputLabel, { color: colors.mutedForeground }]}>{f.label}</Text>
@@ -525,6 +540,9 @@ const styles = StyleSheet.create({
   expTotal: { flexDirection: 'row', justifyContent: 'space-between', padding: 14, borderRadius: 12, borderWidth: 1 },
   expTotalLabel: { fontSize: 14, fontFamily: 'Inter_400Regular' },
   expTotalValue: { fontSize: 18, fontFamily: 'Inter_700Bold' },
+  emptySubTxt: { fontSize: 12, fontFamily: 'Inter_400Regular', textAlign: 'center', marginTop: 4 },
+  taskBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10, alignSelf: 'flex-start', marginBottom: 4 },
+  taskBadgeTxt: { fontSize: 11, fontFamily: 'Inter_500Medium', maxWidth: 200 },
   photoSectionLabel: { fontSize: 11, fontFamily: 'Inter_400Regular', marginBottom: 4 },
   photoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   photoThumb: { width: (width - 48) / 3, height: (width - 48) / 3, borderRadius: 10, overflow: 'hidden' },

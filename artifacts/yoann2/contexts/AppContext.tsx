@@ -178,6 +178,7 @@ interface AppContextValue {
   addExpense: (e: Omit<Expense, 'id'>) => void;
   updateExpense: (id: string, updates: Partial<Expense>) => void;
   deleteExpense: (id: string) => void;
+  getTaskExpenses: (taskId: string) => Expense[];
   addCategory: (name: string) => void;
   deleteCategory: (id: string) => void;
   addAppointment: (a: Omit<Appointment, 'id' | 'createdAt'>) => void;
@@ -337,6 +338,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       AsyncStorage.setItem(STORAGE_KEYS.TASKS, JSON.stringify(next));
       return next;
     });
+    setExpenses(prev => {
+      const next = prev.filter(e => e.taskId !== id);
+      AsyncStorage.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(next));
+      return next;
+    });
   }, []);
 
   const addExpense = useCallback((e: Omit<Expense, 'id'>) => {
@@ -346,10 +352,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       AsyncStorage.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(next));
       return next;
     });
-    updateProject(e.projectId, {
-      spent: projects.find(p => p.id === e.projectId)?.spent ?? 0 + e.amount,
-    });
-  }, [projects, updateProject]);
+  }, []);
 
   const updateExpense = useCallback((id: string, updates: Partial<Expense>) => {
     setExpenses(prev => {
@@ -416,6 +419,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const getProjectExpenses = useCallback(
     (projectId: string) => expenses.filter(e => e.projectId === projectId),
+    [expenses]
+  );
+
+  const getTaskExpenses = useCallback(
+    (taskId: string) => expenses.filter(e => e.taskId === taskId),
     [expenses]
   );
 
@@ -497,6 +505,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         addExpense,
         updateExpense,
         deleteExpense,
+        getTaskExpenses,
         addCategory,
         deleteCategory,
         addAppointment,

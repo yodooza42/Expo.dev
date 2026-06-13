@@ -2,7 +2,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Alert,
   Dimensions,
@@ -11,6 +11,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -38,11 +39,21 @@ export default function TaskDetailScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { tasks, projects, updateTask, deleteTask } = useApp();
+  const { tasks, projects, updateTask, deleteTask, addExpense, deleteExpense, getTaskExpenses } = useApp();
 
   const taskMaybe = tasks.find(t => t.id === id);
   const project = taskMaybe ? projects.find(p => p.id === taskMaybe.projectId) : null;
+
   const [photoViewIdx, setPhotoViewIdx] = useState<number | null>(null);
+  const [addExpVisible, setAddExpVisible] = useState(false);
+  const [expName, setExpName] = useState('');
+  const [expAmount, setExpAmount] = useState('');
+  const [expDetails, setExpDetails] = useState('');
+
+  const taskExpenses = useMemo(
+    () => (taskMaybe ? getTaskExpenses(taskMaybe.id) : []),
+    [getTaskExpenses, taskMaybe]
+  );
 
   if (!taskMaybe) {
     return (
@@ -56,9 +67,10 @@ export default function TaskDetailScreen() {
   const dueDate = new Date(task.dueDate);
   const isOverdue = dueDate < new Date() && task.status !== 'done';
   const eisColor = EISENHOWER_COLORS[task.eisenhower];
+  const taskTotal = taskExpenses.reduce((s, e) => s + e.amount, 0);
 
   function handleDelete() {
-    Alert.alert('Supprimer', 'Supprimer cette tâche ?', [
+    Alert.alert('Supprimer', 'Supprimer cette tâche et ses dépenses ?', [
       { text: 'Annuler', style: 'cancel' },
       {
         text: 'Supprimer',
@@ -71,6 +83,25 @@ export default function TaskDetailScreen() {
   function toggleDone() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     updateTask(task.id, { status: task.status === 'done' ? 'todo' : 'done' });
+  }
+
+  function handleAddExpense() {
+    if (!expName.trim() || !expAmount.trim()) return;
+    const amount = parseFloat(expAmount);
+    if (isNaN(amount) || amount <= 0) return;
+    addExpense({
+      projectId: task.projectId,
+      taskId: task.id,
+      name: expName.trim(),
+      amount,
+      date: new Date().toISOString(),
+      category: expDetails.trim() || '',
+    });
+    setExpName('');
+    setExpAmount('');
+    setExpDetails('');
+    setAddExpVisible(false);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   }
 
   return (
@@ -216,6 +247,57 @@ export default function TaskDetailScreen() {
               </View>
             </View>
           )}
+
+          <View>
+            <View style={styles.sectionHeader}>
+              <Text style={[styles.sectionTitle, { color: colors.foreground, marginBottom: 0 }]}>
+                Dépenses {taskExpenses.length > 0 ? `(${taskExpenses.length})` : ''}
+              </Text>
+              {taskTotal > 0 && (
+                <Text style={[styles.expTotalInline, { color: colors.primary }]}>{taskTotal}€</Text>
+              )}
+            </View>
+
+            {taskExpenses.length === 0 ? (
+              <Text style={[styles.emptyExp, { color: colors.mutedForeground }]}>
+                Aucune dépense liée à cette tâche
+              </Text>
+            ) : (
+              taskExpenses.map(e => (
+                <View key={e.id} style={[styles.expRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.expName, { color: colors.foreground }]}>{e.name}</Text>
+                    {e.category.length > 0 && (
+                      <Text style={[styles.expMeta, { color: colors.mutedForeground }]}>{e.category}</Text>
+                    )}
+                    <Text style={[styles.expMeta, { color: colors.mutedForeground }]}>
+                      {new Date(e.date).toLocaleDateString('fr-FR')}
+                    </Text>
+                  </View>
+                  <Text style={[styles.expAmount, { color: colors.primary }]}>{e.amount}€</Text>
+                  <Pressable onPress={() => deleteExpense(e.id)} hitSlop={8}>
+                    <MaterialCommunityIcons name="trash-can-outline" size={18} color={colors.mutedForeground} />
+                  </Pressable>
+                </View>
+              ))
+            )}
+
+            <Pressable
+              onPress={() => setAddExpVisible(true)}
+              style={[styles.addExpBtn, { backgroundColor: colors.primary + '18', borderColor: colors.primary + '40' }]}
+            >
+              <MaterialCommunityIcons name="plus" size={16} color={colors.primary} />
+              <Text style={[styles.addExpLabel, { color: colors.primary }]}>Ajouter une dépense</Text>
+            </Pressable>
+
+            {project && (
+              <Pressable onPress={() => router.push(`/project/${project.id}`)}>
+                <Text style={[styles.viewProjectLink, { color: colors.mutedForeground }]}>
+                  Voir toutes les dépenses du projet →
+                </Text>
+              </Pressable>
+            )}
+          </View>
         </View>
       </ScrollView>
 
@@ -227,6 +309,61 @@ export default function TaskDetailScreen() {
           {photoViewIdx !== null && task.photos[photoViewIdx] && (
             <Image source={{ uri: task.photos[photoViewIdx] }} style={styles.photoFull} contentFit="contain" />
           )}
+        </View>
+      </Modal>
+
+      <Modal visible={addExpVisible} animationType="slide" transparent>
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.7)' }]}>
+          <Pressable style={{ flex: 1 }} onPress={() => setAddExpVisible(false)} />
+          <View style={[styles.sheet, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.sheetTitle, { color: colors.foreground }]}>Nouvelle dépense</Text>
+            <Text style={[styles.sheetSub, { color: colors.mutedForeground }]}>
+              Sera automatiquement ajoutée au projet « {project?.name ?? '...'} »
+            </Text>
+
+            <Text style={[styles.inputLabel, { color: colors.mutedForeground }]}>Nom de la dépense *</Text>
+            <TextInput
+              value={expName}
+              onChangeText={setExpName}
+              placeholder="Ex: Visserie"
+              placeholderTextColor={colors.mutedForeground}
+              style={[styles.input, { backgroundColor: colors.background, color: colors.foreground, borderColor: colors.border }]}
+            />
+
+            <Text style={[styles.inputLabel, { color: colors.mutedForeground }]}>Montant (€) *</Text>
+            <TextInput
+              value={expAmount}
+              onChangeText={setExpAmount}
+              placeholder="0.00"
+              placeholderTextColor={colors.mutedForeground}
+              keyboardType="numeric"
+              style={[styles.input, { backgroundColor: colors.background, color: colors.foreground, borderColor: colors.border }]}
+            />
+
+            <Text style={[styles.inputLabel, { color: colors.mutedForeground }]}>Détails (optionnel)</Text>
+            <TextInput
+              value={expDetails}
+              onChangeText={setExpDetails}
+              placeholder="Ex: Boulons M6, quincaillerie"
+              placeholderTextColor={colors.mutedForeground}
+              style={[styles.input, { backgroundColor: colors.background, color: colors.foreground, borderColor: colors.border }]}
+            />
+
+            <View style={styles.sheetBtns}>
+              <Pressable
+                onPress={() => setAddExpVisible(false)}
+                style={[styles.cancelBtn, { borderColor: colors.border }]}
+              >
+                <Text style={[styles.cancelLabel, { color: colors.mutedForeground }]}>Annuler</Text>
+              </Pressable>
+              <Pressable
+                onPress={handleAddExpense}
+                style={[styles.saveBtn, { backgroundColor: colors.primary }]}
+              >
+                <Text style={[styles.saveBtnLabel, { color: colors.primaryForeground }]}>Ajouter</Text>
+              </Pressable>
+            </View>
+          </View>
         </View>
       </Modal>
     </View>
@@ -259,6 +396,7 @@ const styles = StyleSheet.create({
   scoreDivider: { width: 1 },
   scoreLabel: { fontSize: 12, fontFamily: 'Inter_400Regular' },
   scoreValue: { fontSize: 22, fontFamily: 'Inter_700Bold' },
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
   sectionTitle: { fontSize: 15, fontFamily: 'Inter_600SemiBold', marginBottom: 8 },
   statusRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   statusChip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20 },
@@ -271,4 +409,23 @@ const styles = StyleSheet.create({
   photoModal: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   photoClose: { position: 'absolute', top: 60, right: 20, zIndex: 10 },
   photoFull: { width, height: width * 1.2 },
+  emptyExp: { fontSize: 13, fontFamily: 'Inter_400Regular', fontStyle: 'italic', marginBottom: 10 },
+  expTotalInline: { fontSize: 18, fontFamily: 'Inter_700Bold' },
+  expRow: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 12, borderWidth: 1, marginBottom: 8 },
+  expName: { fontSize: 14, fontFamily: 'Inter_500Medium' },
+  expMeta: { fontSize: 12, fontFamily: 'Inter_400Regular', marginTop: 2 },
+  expAmount: { fontSize: 16, fontFamily: 'Inter_700Bold' },
+  addExpBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, padding: 12, borderRadius: 12, borderWidth: 1, justifyContent: 'center', marginBottom: 8 },
+  addExpLabel: { fontSize: 14, fontFamily: 'Inter_600SemiBold' },
+  viewProjectLink: { fontSize: 12, fontFamily: 'Inter_400Regular', textAlign: 'center', marginTop: 4 },
+  sheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, borderWidth: 1, padding: 24, gap: 10 },
+  sheetTitle: { fontSize: 18, fontFamily: 'Inter_700Bold' },
+  sheetSub: { fontSize: 13, fontFamily: 'Inter_400Regular', marginTop: -4, marginBottom: 4 },
+  inputLabel: { fontSize: 12, fontFamily: 'Inter_500Medium' },
+  input: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, fontSize: 14, fontFamily: 'Inter_400Regular' },
+  sheetBtns: { flexDirection: 'row', gap: 10, marginTop: 4 },
+  cancelBtn: { flex: 1, paddingVertical: 14, borderRadius: 14, borderWidth: 1, alignItems: 'center' },
+  cancelLabel: { fontSize: 15, fontFamily: 'Inter_500Medium' },
+  saveBtn: { flex: 1, paddingVertical: 14, borderRadius: 14, alignItems: 'center' },
+  saveBtnLabel: { fontSize: 15, fontFamily: 'Inter_600SemiBold' },
 });

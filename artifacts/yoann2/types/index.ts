@@ -33,12 +33,12 @@ export interface Task {
   urgency: number;
   status: TaskStatus;
   eisenhower: EisenhowerQuadrant;
-  cost?: number;
 }
 
 export interface Expense {
   id: string;
   projectId: string;
+  taskId?: string;
   name: string;
   amount: number;
   date: string;
