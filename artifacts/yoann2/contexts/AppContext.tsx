@@ -272,7 +272,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const newP: Project = { ...p, id: genId(), createdAt: now, updatedAt: now };
     setProjects(prev => {
       const next = [...prev, newP];
-      persist(next);
+      AsyncStorage.setItem(STORAGE_KEYS.PROJECTS, JSON.stringify(next));
       return next;
     });
   }, []);
@@ -282,7 +282,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const next = prev.map(p =>
         p.id === id ? { ...p, ...updates, updatedAt: new Date().toISOString() } : p
       );
-      persist(next);
+      AsyncStorage.setItem(STORAGE_KEYS.PROJECTS, JSON.stringify(next));
       return next;
     });
   }, []);
@@ -290,7 +290,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const deleteProject = useCallback((id: string) => {
     setProjects(prev => {
       const next = prev.filter(p => p.id !== id);
-      persist(next);
+      AsyncStorage.setItem(STORAGE_KEYS.PROJECTS, JSON.stringify(next));
       return next;
     });
     setTasks(prev => {
