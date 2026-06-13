@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 
 import type { Appointment, AppStats, Category, Expense, Priority, Project, ProjectStatus, Task, TaskStatus } from '@/types';
+import { updateTodoWidget } from '@/widgets/updateWidget';
 
 const STORAGE_KEYS = {
   PROJECTS: '@yoann2_projects',
@@ -203,6 +204,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     loadData();
   }, []);
+
+  useEffect(() => {
+    if (!loading) {
+      updateTodoWidget(tasks, appointments);
+    }
+  }, [tasks, appointments, loading]);
 
   async function loadData() {
     try {
