@@ -32,6 +32,12 @@ const STATUS_LABELS: Record<TaskStatus, string> = {
   idea: 'Idée', todo: 'À faire', inprogress: 'En cours', waiting: 'En attente', done: 'Terminé',
 };
 
+const EISEN_LEVELS = [
+  { value: 1, label: 'Faible' },
+  { value: 2, label: 'Moyen' },
+  { value: 3, label: 'Élevé' },
+];
+
 export default function NewTaskScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -50,8 +56,14 @@ export default function NewTaskScreen() {
   const [projectId, setProjectId] = useState(existing?.projectId ?? defaultProjectId);
   const [priority, setPriority] = useState<Priority>(existing?.priority ?? 'medium');
   const [status, setStatus] = useState<TaskStatus>(existing?.status ?? 'todo');
-  const [importance, setImportance] = useState(existing?.importance ?? 3);
-  const [urgency, setUrgency] = useState(existing?.urgency ?? 3);
+  const [importance, setImportance] = useState(() => {
+    if (existing) return Math.min(3, Math.max(1, Math.round((existing.importance / 5) * 3)));
+    return 2;
+  });
+  const [urgency, setUrgency] = useState(() => {
+    if (existing) return Math.min(3, Math.max(1, Math.round((existing.urgency / 5) * 3)));
+    return 2;
+  });
   const [dueDate, setDueDate] = useState(
     existing ? new Date(existing.dueDate).toLocaleDateString('fr-FR') : ''
   );
@@ -61,8 +73,8 @@ export default function NewTaskScreen() {
   const topPad = Platform.OS === 'web' ? 67 : insets.top;
 
   const eisenhower = useMemo(() => {
-    const isUrgent = urgency >= 3;
-    const isImportant = importance >= 3;
+    const isUrgent = urgency >= 2;
+    const isImportant = importance >= 2;
     if (isUrgent && isImportant) return { label: 'À faire maintenant', color: '#F44336' };
     if (!isUrgent && isImportant) return { label: 'Planifier', color: '#2196F3' };
     if (isUrgent && !isImportant) return { label: 'Déléguer', color: '#FF9800' };
@@ -85,6 +97,8 @@ export default function NewTaskScreen() {
 
   function handleSave() {
     if (!validate()) return;
+    const scaledImportance = Math.round((importance / 3) * 5);
+    const scaledUrgency = Math.round((urgency / 3) * 5);
     const data = {
       projectId,
       title: title.trim(),
@@ -93,8 +107,8 @@ export default function NewTaskScreen() {
       photos,
       dueDate: parseFrDate(dueDate).toISOString(),
       priority,
-      importance,
-      urgency,
+      importance: scaledImportance,
+      urgency: scaledUrgency,
       status,
     };
     if (isEditing && existing) {
@@ -128,23 +142,29 @@ export default function NewTaskScreen() {
     ]);
   }
 
-  function ScoreSlider({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
+  function ScoreSelector({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
     return (
       <View>
-        <View style={styles.sliderHeader}>
-          <Text style={[styles.label, { color: colors.mutedForeground }]}>{label}</Text>
-          <Text style={[styles.sliderValue, { color: colors.primary }]}>{value}/5</Text>
-        </View>
-        <View style={styles.sliderRow}>
-          {[1, 2, 3, 4, 5].map(n => (
+        <Text style={[styles.label, { color: colors.mutedForeground, marginBottom: 8 }]}>{label}</Text>
+        <View style={styles.levelRow}>
+          {EISEN_LEVELS.map(lvl => (
             <Pressable
-              key={n}
-              onPress={() => onChange(n)}
+              key={lvl.value}
+              onPress={() => onChange(lvl.value)}
               style={[
-                styles.sliderDot,
-                n <= value ? { backgroundColor: colors.primary } : { backgroundColor: colors.border },
+                styles.levelBtn,
+                value === lvl.value
+                  ? { backgroundColor: colors.primary, borderColor: colors.primary }
+                  : { backgroundColor: colors.card, borderColor: colors.border },
               ]}
-            />
+            >
+              <Text style={[
+                styles.levelLabel,
+                { color: value === lvl.value ? colors.primaryForeground : colors.mutedForeground },
+              ]}>
+                {lvl.label}
+              </Text>
+            </Pressable>
           ))}
         </View>
       </View>
@@ -193,7 +213,7 @@ export default function NewTaskScreen() {
           <TextInput
             value={title}
             onChangeText={setTitle}
-            placeholder="Ex: Poser l'OSB sur les murs"
+            placeholder="Une couronne n'est rien sans le titre de roi."
             placeholderTextColor={colors.mutedForeground}
             style={[styles.input, { backgroundColor: colors.card, color: colors.foreground, borderColor: errors.title ? colors.destructive : colors.border }]}
           />
@@ -280,8 +300,8 @@ export default function NewTaskScreen() {
 
         <View style={[styles.eisenBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <Text style={[styles.eisenTitle, { color: colors.foreground }]}>Matrice d'Eisenhower</Text>
-          <ScoreSlider label="Importance (1-5)" value={importance} onChange={setImportance} />
-          <ScoreSlider label="Urgence (1-5)" value={urgency} onChange={setUrgency} />
+          <ScoreSelector label="Importance" value={importance} onChange={setImportance} />
+          <ScoreSelector label="Urgence" value={urgency} onChange={setUrgency} />
           <View style={[styles.eisenResult, { backgroundColor: eisenhower.color + '20', borderColor: eisenhower.color }]}>
             <MaterialCommunityIcons name="matrix" size={16} color={eisenhower.color} />
             <Text style={[styles.eisenLabel, { color: eisenhower.color }]}>{eisenhower.label}</Text>
@@ -346,10 +366,15 @@ const styles = StyleSheet.create({
   statusChip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20 },
   eisenBox: { padding: 14, borderRadius: 14, borderWidth: 1, gap: 14 },
   eisenTitle: { fontSize: 15, fontFamily: 'Inter_600SemiBold' },
-  sliderHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  sliderValue: { fontSize: 14, fontFamily: 'Inter_700Bold' },
-  sliderRow: { flexDirection: 'row', gap: 8 },
-  sliderDot: { flex: 1, height: 8, borderRadius: 4 },
+  levelRow: { flexDirection: 'row', gap: 8 },
+  levelBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+  },
+  levelLabel: { fontSize: 13, fontFamily: 'Inter_500Medium' },
   eisenResult: {
     flexDirection: 'row',
     alignItems: 'center',

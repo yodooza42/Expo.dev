@@ -27,7 +27,6 @@ export default function DashboardScreen() {
   const stats = getStats();
 
   const priorityTasks = useMemo(() => {
-    const now = new Date();
     return tasks
       .filter(t => t.status !== 'done')
       .sort((a, b) => {
@@ -62,10 +61,7 @@ export default function DashboardScreen() {
         style={[styles.header, { paddingTop: topPad + 16 }]}
       >
         <View style={styles.headerContent}>
-          <View>
-            <Text style={[styles.greeting, { color: colors.mutedForeground }]}>Bonjour 👋</Text>
-            <Text style={[styles.appName, { color: colors.foreground }]}>Yoann2.0</Text>
-          </View>
+          <Text style={[styles.appName, { color: colors.foreground }]}>Yoann2.0</Text>
           <Pressable
             onPress={() => router.push('/project/new')}
             style={[styles.headerBtn, { backgroundColor: colors.primary }]}
@@ -101,14 +97,6 @@ export default function DashboardScreen() {
             icon="check-circle-outline"
             accent="#4CAF50"
           />
-        </View>
-
-        <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <View style={styles.sectionHeader}>
-            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Progression globale</Text>
-            <Text style={[styles.progressValue, { color: colors.primary }]}>{stats.globalProgress}%</Text>
-          </View>
-          <ProgressBar progress={stats.globalProgress} height={8} />
         </View>
 
         <View style={styles.sectionHeader}>
@@ -173,12 +161,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  greeting: {
-    fontSize: 14,
-    fontFamily: 'Inter_400Regular',
-  },
   appName: {
-    fontSize: 28,
+    fontSize: 32,
     fontFamily: 'Inter_700Bold',
     letterSpacing: -0.5,
   },
@@ -198,24 +182,10 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 10,
   },
-  section: {
-    padding: 16,
-    borderRadius: 16,
-    borderWidth: 1,
-    gap: 10,
-  },
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-  },
-  sectionTitle: {
-    fontSize: 15,
-    fontFamily: 'Inter_600SemiBold',
-  },
-  progressValue: {
-    fontSize: 18,
-    fontFamily: 'Inter_700Bold',
   },
   label: {
     fontSize: 16,

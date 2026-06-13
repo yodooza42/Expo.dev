@@ -1,13 +1,14 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 
-import type { AppStats, Category, Expense, Priority, Project, ProjectStatus, Task, TaskStatus } from '@/types';
+import type { Appointment, AppStats, Category, Expense, Priority, Project, ProjectStatus, Task, TaskStatus } from '@/types';
 
 const STORAGE_KEYS = {
   PROJECTS: '@yoann2_projects',
   TASKS: '@yoann2_tasks',
   EXPENSES: '@yoann2_expenses',
   CATEGORIES: '@yoann2_categories',
+  APPOINTMENTS: '@yoann2_appointments',
   INITIALIZED: '@yoann2_initialized',
 };
 
@@ -28,8 +29,8 @@ function genId(): string {
 }
 
 function computeEisenhower(urgency: number, importance: number): Task['eisenhower'] {
-  const isUrgent = urgency >= 3;
-  const isImportant = importance >= 3;
+  const isUrgent = urgency >= 2;
+  const isImportant = importance >= 2;
   if (isUrgent && isImportant) return 'do_now';
   if (!isUrgent && isImportant) return 'schedule';
   if (isUrgent && !isImportant) return 'delegate';
@@ -45,6 +46,8 @@ function makeTask(
 ): Task {
   const due = new Date();
   due.setDate(due.getDate() + daysOffset);
+  const importance = priority === 'critical' ? 3 : priority === 'high' ? 3 : 2;
+  const urgency = daysOffset < 0 ? 3 : daysOffset < 7 ? 3 : 2;
   return {
     id: genId(),
     projectId,
@@ -55,13 +58,10 @@ function makeTask(
     dueDate: due.toISOString(),
     createdAt: new Date().toISOString(),
     priority,
-    importance: priority === 'critical' ? 5 : priority === 'high' ? 4 : priority === 'medium' ? 3 : 2,
-    urgency: daysOffset < 0 ? 5 : daysOffset < 7 ? 4 : 3,
+    importance,
+    urgency,
     status,
-    eisenhower: computeEisenhower(
-      daysOffset < 0 ? 5 : daysOffset < 7 ? 4 : 3,
-      priority === 'critical' ? 5 : priority === 'high' ? 4 : priority === 'medium' ? 3 : 2
-    ),
+    eisenhower: computeEisenhower(urgency, importance),
   };
 }
 
@@ -109,7 +109,7 @@ function createSampleData(): { projects: Project[]; tasks: Task[]; expenses: Exp
   const p3: Project = {
     id: genId(),
     name: 'Terrasse bois',
-    description: 'Pose d\'une terrasse en bois naturel autour de la maison.',
+    description: "Pose d'une terrasse en bois naturel autour de la maison.",
     category: 'Terrasse',
     photos: [],
     startDate: new Date().toISOString(),
@@ -166,6 +166,7 @@ interface AppContextValue {
   tasks: Task[];
   expenses: Expense[];
   categories: Category[];
+  appointments: Appointment[];
   loading: boolean;
   addProject: (p: Omit<Project, 'id' | 'createdAt' | 'updatedAt'>) => void;
   updateProject: (id: string, updates: Partial<Project>) => void;
@@ -178,6 +179,9 @@ interface AppContextValue {
   deleteExpense: (id: string) => void;
   addCategory: (name: string) => void;
   deleteCategory: (id: string) => void;
+  addAppointment: (a: Omit<Appointment, 'id' | 'createdAt'>) => void;
+  updateAppointment: (id: string, updates: Partial<Appointment>) => void;
+  deleteAppointment: (id: string) => void;
   getProjectTasks: (projectId: string) => Task[];
   getProjectExpenses: (projectId: string) => Expense[];
   getStats: () => AppStats;
@@ -193,6 +197,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [categories, setCategories] = useState<Category[]>(DEFAULT_CATEGORIES);
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -208,24 +213,28 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         setTasks(sample.tasks);
         setExpenses(sample.expenses);
         setCategories(DEFAULT_CATEGORIES);
+        setAppointments([]);
         await AsyncStorage.multiSet([
           [STORAGE_KEYS.PROJECTS, JSON.stringify(sample.projects)],
           [STORAGE_KEYS.TASKS, JSON.stringify(sample.tasks)],
           [STORAGE_KEYS.EXPENSES, JSON.stringify(sample.expenses)],
           [STORAGE_KEYS.CATEGORIES, JSON.stringify(DEFAULT_CATEGORIES)],
+          [STORAGE_KEYS.APPOINTMENTS, JSON.stringify([])],
           [STORAGE_KEYS.INITIALIZED, 'true'],
         ]);
       } else {
-        const [pRaw, tRaw, eRaw, cRaw] = await AsyncStorage.multiGet([
+        const [pRaw, tRaw, eRaw, cRaw, aRaw] = await AsyncStorage.multiGet([
           STORAGE_KEYS.PROJECTS,
           STORAGE_KEYS.TASKS,
           STORAGE_KEYS.EXPENSES,
           STORAGE_KEYS.CATEGORIES,
+          STORAGE_KEYS.APPOINTMENTS,
         ]);
         if (pRaw[1]) setProjects(JSON.parse(pRaw[1]));
         if (tRaw[1]) setTasks(JSON.parse(tRaw[1]));
         if (eRaw[1]) setExpenses(JSON.parse(eRaw[1]));
         if (cRaw[1]) setCategories(JSON.parse(cRaw[1]));
+        if (aRaw[1]) setAppointments(JSON.parse(aRaw[1]));
       }
     } catch (e) {
       console.error('Error loading data', e);
@@ -238,13 +247,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     p: Project[] = projects,
     t: Task[] = tasks,
     e: Expense[] = expenses,
-    c: Category[] = categories
+    c: Category[] = categories,
+    a: Appointment[] = appointments
   ) {
     await AsyncStorage.multiSet([
       [STORAGE_KEYS.PROJECTS, JSON.stringify(p)],
       [STORAGE_KEYS.TASKS, JSON.stringify(t)],
       [STORAGE_KEYS.EXPENSES, JSON.stringify(e)],
       [STORAGE_KEYS.CATEGORIES, JSON.stringify(c)],
+      [STORAGE_KEYS.APPOINTMENTS, JSON.stringify(a)],
     ]);
   }
 
@@ -366,6 +377,31 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  const addAppointment = useCallback((a: Omit<Appointment, 'id' | 'createdAt'>) => {
+    const newA: Appointment = { ...a, id: genId(), createdAt: new Date().toISOString() };
+    setAppointments(prev => {
+      const next = [...prev, newA];
+      AsyncStorage.setItem(STORAGE_KEYS.APPOINTMENTS, JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
+  const updateAppointment = useCallback((id: string, updates: Partial<Appointment>) => {
+    setAppointments(prev => {
+      const next = prev.map(a => (a.id === id ? { ...a, ...updates } : a));
+      AsyncStorage.setItem(STORAGE_KEYS.APPOINTMENTS, JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
+  const deleteAppointment = useCallback((id: string) => {
+    setAppointments(prev => {
+      const next = prev.filter(a => a.id !== id);
+      AsyncStorage.setItem(STORAGE_KEYS.APPOINTMENTS, JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
   const getProjectTasks = useCallback(
     (projectId: string) => tasks.filter(t => t.projectId === projectId),
     [tasks]
@@ -394,8 +430,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [projects, tasks]);
 
   const exportData = useCallback((): string => {
-    return JSON.stringify({ projects, tasks, expenses, categories }, null, 2);
-  }, [projects, tasks, expenses, categories]);
+    return JSON.stringify({ projects, tasks, expenses, categories, appointments }, null, 2);
+  }, [projects, tasks, expenses, categories, appointments]);
 
   const importData = useCallback((json: string): boolean => {
     try {
@@ -405,11 +441,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const t = data.tasks as Task[];
       const e = data.expenses as Expense[] ?? [];
       const c = data.categories as Category[] ?? DEFAULT_CATEGORIES;
+      const a = data.appointments as Appointment[] ?? [];
       setProjects(p);
       setTasks(t);
       setExpenses(e);
       setCategories(c);
-      persist(p, t, e, c);
+      setAppointments(a);
+      persist(p, t, e, c, a);
       AsyncStorage.setItem(STORAGE_KEYS.INITIALIZED, 'true');
       return true;
     } catch {
@@ -423,11 +461,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setTasks(sample.tasks);
     setExpenses(sample.expenses);
     setCategories(DEFAULT_CATEGORIES);
+    setAppointments([]);
     AsyncStorage.multiSet([
       [STORAGE_KEYS.PROJECTS, JSON.stringify(sample.projects)],
       [STORAGE_KEYS.TASKS, JSON.stringify(sample.tasks)],
       [STORAGE_KEYS.EXPENSES, JSON.stringify(sample.expenses)],
       [STORAGE_KEYS.CATEGORIES, JSON.stringify(DEFAULT_CATEGORIES)],
+      [STORAGE_KEYS.APPOINTMENTS, JSON.stringify([])],
       [STORAGE_KEYS.INITIALIZED, 'true'],
     ]);
   }, []);
@@ -439,6 +479,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         tasks,
         expenses,
         categories,
+        appointments,
         loading,
         addProject,
         updateProject,
@@ -451,6 +492,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         deleteExpense,
         addCategory,
         deleteCategory,
+        addAppointment,
+        updateAppointment,
+        deleteAppointment,
         getProjectTasks,
         getProjectExpenses,
         getStats,

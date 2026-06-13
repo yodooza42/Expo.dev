@@ -49,6 +49,17 @@ export interface Category {
   name: string;
 }
 
+export interface Appointment {
+  id: string;
+  title: string;
+  description: string;
+  location: string;
+  date: string;
+  time: string;
+  category: string;
+  createdAt: string;
+}
+
 export interface AppStats {
   totalProjects: number;
   totalTasks: number;

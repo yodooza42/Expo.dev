@@ -112,7 +112,7 @@ export default function NewProjectScreen() {
           <TextInput
             value={name}
             onChangeText={setName}
-            placeholder="Ex: Aménagement garage"
+            placeholder="Encore un plan sur la comète ?"
             placeholderTextColor={colors.mutedForeground}
             style={[styles.input, { backgroundColor: colors.card, color: colors.foreground, borderColor: errors.name ? colors.destructive : colors.border }]}
           />

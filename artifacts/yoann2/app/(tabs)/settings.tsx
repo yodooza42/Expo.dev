@@ -16,7 +16,34 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useApp } from '@/contexts/AppContext';
+import { type ThemeColorKey, useTheme } from '@/contexts/ThemeContext';
 import { useColors } from '@/hooks/useColors';
+
+const COLOR_PALETTE = [
+  '#FFC107', '#FF9800', '#FF5722', '#F44336', '#E91E63',
+  '#9C27B0', '#673AB7', '#3F51B5', '#2196F3', '#03A9F4',
+  '#00BCD4', '#009688', '#4CAF50', '#8BC34A', '#CDDC39',
+  '#795548', '#9E9E9E', '#607D8B', '#FFFFFF', '#444444',
+];
+
+const COLOR_LABELS: Record<ThemeColorKey, string> = {
+  primary: 'Couleur principale',
+  priorityLow: 'Priorité Faible',
+  priorityMedium: 'Priorité Moyenne',
+  priorityHigh: 'Priorité Haute',
+  priorityCritical: 'Priorité Critique',
+  statusIdea: 'Statut Idée',
+  statusTodo: 'Statut À faire',
+  statusInProgress: 'Statut En cours',
+  statusWaiting: 'Statut En attente',
+  statusDone: 'Statut Terminé',
+};
+
+const COLOR_KEYS: ThemeColorKey[] = [
+  'primary',
+  'priorityLow', 'priorityMedium', 'priorityHigh', 'priorityCritical',
+  'statusIdea', 'statusTodo', 'statusInProgress', 'statusWaiting', 'statusDone',
+];
 
 function SettingRow({
   icon,
@@ -57,6 +84,7 @@ function SettingRow({
 
 export default function SettingsScreen() {
   const colors = useColors();
+  const { updateColor, resetColors } = useTheme();
   const insets = useSafeAreaInsets();
   const { exportData, importData, resetData, projects, tasks, categories, addCategory, deleteCategory } = useApp();
 
@@ -64,6 +92,7 @@ export default function SettingsScreen() {
   const [importText, setImportText] = useState('');
   const [catModalVisible, setCatModalVisible] = useState(false);
   const [newCatName, setNewCatName] = useState('');
+  const [colorPickerKey, setColorPickerKey] = useState<ThemeColorKey | null>(null);
 
   const topPad = Platform.OS === 'web' ? 67 : insets.top;
 
@@ -94,7 +123,7 @@ export default function SettingsScreen() {
   function handleReset() {
     Alert.alert(
       'Réinitialiser',
-      'Toutes les données seront supprimées et les données d\'exemple seront restaurées. Continuer ?',
+      "Toutes les données seront supprimées et les données d'exemple seront restaurées. Continuer ?",
       [
         { text: 'Annuler', style: 'cancel' },
         {
@@ -115,6 +144,24 @@ export default function SettingsScreen() {
       setNewCatName('');
     }
   }
+
+  function handlePickColor(key: ThemeColorKey, color: string) {
+    updateColor(key, color);
+    Haptics.selectionAsync();
+  }
+
+  function handleResetColors() {
+    Alert.alert(
+      'Réinitialiser les couleurs',
+      'Restaurer les couleurs par défaut ?',
+      [
+        { text: 'Annuler', style: 'cancel' },
+        { text: 'Réinitialiser', onPress: () => { resetColors(); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); } },
+      ]
+    );
+  }
+
+  const currentColorValue = colorPickerKey ? (colors as Record<string, string>)[colorPickerKey] : null;
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -137,6 +184,34 @@ export default function SettingsScreen() {
             </View>
           ))}
         </View>
+
+        <Text style={[styles.section, { color: colors.mutedForeground }]}>Couleurs</Text>
+        <View style={[styles.colorsBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          {COLOR_KEYS.map((key, i) => {
+            const colorVal = (colors as Record<string, string>)[key] ?? '#888';
+            return (
+              <Pressable
+                key={key}
+                onPress={() => setColorPickerKey(key)}
+                style={({ pressed }) => [
+                  styles.colorRow,
+                  i < COLOR_KEYS.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border },
+                  pressed && { opacity: 0.7 },
+                ]}
+              >
+                <View style={[styles.colorSwatch, { backgroundColor: colorVal }]} />
+                <Text style={[styles.colorLabel, { color: colors.foreground }]}>{COLOR_LABELS[key]}</Text>
+                <MaterialCommunityIcons name="chevron-right" size={18} color={colors.mutedForeground} />
+              </Pressable>
+            );
+          })}
+        </View>
+        <Pressable
+          onPress={handleResetColors}
+          style={[styles.resetColorsBtn, { borderColor: colors.border }]}
+        >
+          <Text style={[styles.resetColorsLabel, { color: colors.mutedForeground }]}>Réinitialiser les couleurs par défaut</Text>
+        </Pressable>
 
         <Text style={[styles.section, { color: colors.mutedForeground }]}>Sauvegarde</Text>
         <SettingRow
@@ -174,9 +249,9 @@ export default function SettingsScreen() {
         />
 
         <View style={[styles.about, { borderColor: colors.border }]}>
-          <Text style={[styles.aboutTitle, { color: colors.foreground }]}>Yoann2.0</Text>
-          <Text style={[styles.aboutSub, { color: colors.mutedForeground }]}>Gestion de projets personnels • v1.0.0</Text>
-          <Text style={[styles.aboutSub, { color: colors.mutedForeground }]}>Fonctionnement 100% hors ligne</Text>
+          <Text style={[styles.aboutTitle, { color: colors.foreground }]}>Yoann2.0 - par et pour Gorge Yoann</Text>
+          <Text style={[styles.aboutSub, { color: colors.mutedForeground }]}>Gestion de mes projets & idées</Text>
+          <Text style={[styles.aboutSub, { color: colors.mutedForeground }]}>v.1.0.1</Text>
         </View>
       </ScrollView>
 
@@ -237,6 +312,40 @@ export default function SettingsScreen() {
             </ScrollView>
             <Pressable onPress={() => setCatModalVisible(false)} style={[styles.cancelBtn, { borderColor: colors.border }]}>
               <Text style={[styles.cancelLabel, { color: colors.mutedForeground }]}>Fermer</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={colorPickerKey !== null} animationType="slide" transparent>
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.7)' }]}>
+          <Pressable style={{ flex: 1 }} onPress={() => setColorPickerKey(null)} />
+          <View style={[styles.modal, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.modalTitle, { color: colors.foreground }]}>
+              {colorPickerKey ? COLOR_LABELS[colorPickerKey] : ''}
+            </Text>
+            <View style={styles.palette}>
+              {COLOR_PALETTE.map(c => (
+                <Pressable
+                  key={c}
+                  onPress={() => {
+                    if (colorPickerKey) handlePickColor(colorPickerKey, c);
+                    setColorPickerKey(null);
+                  }}
+                  style={[
+                    styles.paletteCell,
+                    { backgroundColor: c },
+                    currentColorValue === c && styles.paletteCellSelected,
+                  ]}
+                >
+                  {currentColorValue === c && (
+                    <MaterialCommunityIcons name="check" size={16} color={c === '#FFFFFF' ? '#000' : '#fff'} />
+                  )}
+                </Pressable>
+              ))}
+            </View>
+            <Pressable onPress={() => setColorPickerKey(null)} style={[styles.cancelBtn, { borderColor: colors.border }]}>
+              <Text style={[styles.cancelLabel, { color: colors.mutedForeground }]}>Annuler</Text>
             </Pressable>
           </View>
         </View>
@@ -313,6 +422,41 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: 'Inter_700Bold',
   },
+  colorsBox: {
+    borderRadius: 14,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  colorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  colorSwatch: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+  },
+  colorLabel: {
+    flex: 1,
+    fontSize: 14,
+    fontFamily: 'Inter_400Regular',
+  },
+  resetColorsBtn: {
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  resetColorsLabel: {
+    fontSize: 13,
+    fontFamily: 'Inter_400Regular',
+  },
   about: {
     alignItems: 'center',
     marginTop: 20,
@@ -322,12 +466,14 @@ const styles = StyleSheet.create({
     paddingBottom: 20,
   },
   aboutTitle: {
-    fontSize: 18,
+    fontSize: 15,
     fontFamily: 'Inter_700Bold',
+    textAlign: 'center',
   },
   aboutSub: {
     fontSize: 13,
     fontFamily: 'Inter_400Regular',
+    textAlign: 'center',
   },
   modal: {
     borderTopLeftRadius: 24,
@@ -408,5 +554,24 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     fontFamily: 'Inter_500Medium',
+  },
+  palette: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    justifyContent: 'center',
+    paddingVertical: 8,
+  },
+  paletteCell: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  paletteCellSelected: {
+    borderColor: '#fff',
   },
 });

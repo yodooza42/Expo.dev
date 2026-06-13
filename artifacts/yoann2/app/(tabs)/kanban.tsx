@@ -1,10 +1,9 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import React, { useRef, useState } from 'react';
+import { useRouter } from 'expo-router';
+import React, { useState } from 'react';
 import {
-  Animated,
   Platform,
-  PanResponder,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -19,11 +18,11 @@ import { useColors } from '@/hooks/useColors';
 import type { Task, TaskStatus } from '@/types';
 
 const COLUMNS: { id: TaskStatus; label: string; icon: string }[] = [
-  { id: 'idea', label: 'Idées', icon: 'lightbulb-outline' },
-  { id: 'todo', label: 'À faire', icon: 'format-list-checks' },
   { id: 'inprogress', label: 'En cours', icon: 'progress-clock' },
+  { id: 'todo', label: 'À faire', icon: 'format-list-checks' },
+  { id: 'idea', label: 'Idées', icon: 'lightbulb-outline' },
   { id: 'waiting', label: 'En attente', icon: 'clock-outline' },
-  { id: 'done', label: 'Terminés', icon: 'check-circle-outline' },
+  { id: 'done', label: 'Terminées', icon: 'check-circle-outline' },
 ];
 
 const COLUMN_COLORS: Record<TaskStatus, string> = {
@@ -38,16 +37,19 @@ function KanbanCard({
   task,
   projectName,
   onMoveRequest,
+  onOpen,
 }: {
   task: Task;
   projectName?: string;
   onMoveRequest: (task: Task) => void;
+  onOpen: (task: Task) => void;
 }) {
   const colors = useColors();
   const isDone = task.status === 'done';
 
   return (
     <Pressable
+      onPress={() => onOpen(task)}
       onLongPress={() => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         onMoveRequest(task);
@@ -123,6 +125,7 @@ function MoveModal({
 export default function KanbanScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const { tasks, projects, updateTask } = useApp();
   const [movingTask, setMovingTask] = useState<Task | null>(null);
   const [selectedProject, setSelectedProject] = useState<string>('all');
@@ -138,6 +141,10 @@ export default function KanbanScreen() {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     updateTask(movingTask.id, { status });
     setMovingTask(null);
+  }
+
+  function handleOpen(task: Task) {
+    router.push(`/task/${task.id}`);
   }
 
   return (
@@ -162,6 +169,9 @@ export default function KanbanScreen() {
             </Pressable>
           ))}
         </ScrollView>
+        <Text style={[styles.hint, { color: colors.mutedForeground }]}>
+          Appuie pour ouvrir · Maintiens pour déplacer
+        </Text>
       </View>
 
       <ScrollView
@@ -200,6 +210,7 @@ export default function KanbanScreen() {
                         task={task}
                         projectName={proj?.name}
                         onMoveRequest={setMovingTask}
+                        onOpen={handleOpen}
                       />
                     );
                   })
@@ -226,12 +237,17 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   header: {
     paddingHorizontal: 16,
-    gap: 10,
+    gap: 8,
     paddingBottom: 8,
   },
   title: {
     fontSize: 28,
     fontFamily: 'Inter_700Bold',
+  },
+  hint: {
+    fontSize: 11,
+    fontFamily: 'Inter_400Regular',
+    marginTop: -2,
   },
   projectFilter: { flexShrink: 0 },
   filterChip: {
