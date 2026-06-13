@@ -1,6 +1,7 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
+import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
   Alert,
@@ -93,6 +94,7 @@ export default function SettingsScreen() {
   const [catModalVisible, setCatModalVisible] = useState(false);
   const [newCatName, setNewCatName] = useState('');
   const [colorPickerKey, setColorPickerKey] = useState<ThemeColorKey | null>(null);
+  const router = useRouter();
 
   const topPad = Platform.OS === 'web' ? 67 : insets.top;
 
@@ -161,7 +163,7 @@ export default function SettingsScreen() {
     );
   }
 
-  const currentColorValue = colorPickerKey ? (colors as Record<string, string>)[colorPickerKey] : null;
+  const currentColorValue = colorPickerKey ? (colors as unknown as Record<string, string>)[colorPickerKey] : null;
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -188,7 +190,7 @@ export default function SettingsScreen() {
         <Text style={[styles.section, { color: colors.mutedForeground }]}>Couleurs</Text>
         <View style={[styles.colorsBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
           {COLOR_KEYS.map((key, i) => {
-            const colorVal = (colors as Record<string, string>)[key] ?? '#888';
+            const colorVal = (colors as unknown as Record<string, string>)[key] ?? '#888';
             return (
               <Pressable
                 key={key}
@@ -238,6 +240,15 @@ export default function SettingsScreen() {
           colors={colors}
         />
 
+        <Text style={[styles.section, { color: colors.mutedForeground }]}>Widget Android</Text>
+        <SettingRow
+          icon="widgets-outline"
+          label="Personnaliser le widget"
+          sublabel="Taille du texte, couleurs"
+          onPress={() => router.push('/widget-settings')}
+          colors={colors}
+        />
+
         <Text style={[styles.section, { color: colors.mutedForeground }]}>Danger</Text>
         <SettingRow
           icon="delete-alert-outline"
@@ -251,7 +262,7 @@ export default function SettingsScreen() {
         <View style={[styles.about, { borderColor: colors.border }]}>
           <Text style={[styles.aboutTitle, { color: colors.foreground }]}>Yoann2.0 - par et pour Gorge Yoann</Text>
           <Text style={[styles.aboutSub, { color: colors.mutedForeground }]}>Gestion de mes projets & idées</Text>
-          <Text style={[styles.aboutSub, { color: colors.mutedForeground }]}>v.1.0.1</Text>
+          <Text style={[styles.aboutSub, { color: colors.mutedForeground }]}>v.1.0.5</Text>
         </View>
       </ScrollView>
 

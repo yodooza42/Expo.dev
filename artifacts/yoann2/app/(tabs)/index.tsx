@@ -60,8 +60,13 @@ export default function DashboardScreen() {
         colors={['#1A1500', colors.background]}
         style={[styles.header, { paddingTop: topPad + 16 }]}
       >
-        <View style={styles.headerContent}>
-          <Text style={[styles.appName, { color: colors.foreground }]}>Yoann2.0</Text>
+        <View style={[styles.headerContent, { alignItems: 'flex-end' }]}>
+          <View>
+            <Text style={[styles.appName, { color: colors.foreground }]}>Yoann2.0</Text>
+            <Text style={{ fontSize: 13, fontFamily: 'Inter_400Regular', color: colors.mutedForeground, textTransform: 'capitalize' }}>
+              {new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+            </Text>
+          </View>
           <Pressable
             onPress={() => router.push('/project/new')}
             style={[styles.headerBtn, { backgroundColor: colors.primary }]}

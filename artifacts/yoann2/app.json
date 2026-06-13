@@ -3,7 +3,7 @@
     "name": "Yoann2.0",
     "slug": "yoann2",
     "owner": "yoann42",
-    "version": "1.0.4",
+    "version": "1.0.5",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "yoann2",
@@ -20,7 +20,7 @@
     "android": {
       "backgroundColor": "#121212",
       "package": "com.yoann2.app",
-      "versionCode": 5,
+      "versionCode": 6,
       "permissions": [
         "android.permission.RECORD_AUDIO"
       ]
@@ -54,7 +54,9 @@
               "minWidth": "180dp",
               "minHeight": "110dp",
               "targetCellWidth": 4,
-              "targetCellHeight": 3,
+              "targetCellHeight": 5,
+              "resizeMode": "vertical",
+              "minResizeHeight": "110dp",
               "description": "Tâches et rendez-vous du jour",
               "updatePeriodMillis": 1800000
             }

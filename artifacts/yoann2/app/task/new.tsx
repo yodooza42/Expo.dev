@@ -68,6 +68,7 @@ export default function NewTaskScreen() {
     existing ? new Date(existing.dueDate).toLocaleDateString('fr-FR') : ''
   );
   const [photos, setPhotos] = useState<string[]>(existing?.photos ?? []);
+  const [cost, setCost] = useState(existing?.cost !== undefined ? String(existing.cost) : '');
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const topPad = Platform.OS === 'web' ? 67 : insets.top;
@@ -99,6 +100,7 @@ export default function NewTaskScreen() {
     if (!validate()) return;
     const scaledImportance = Math.round((importance / 3) * 5);
     const scaledUrgency = Math.round((urgency / 3) * 5);
+    const parsedCost = parseFloat(cost);
     const data = {
       projectId,
       title: title.trim(),
@@ -110,6 +112,7 @@ export default function NewTaskScreen() {
       importance: scaledImportance,
       urgency: scaledUrgency,
       status,
+      ...(parsedCost > 0 ? { cost: parsedCost } : {}),
     };
     if (isEditing && existing) {
       updateTask(existing.id, data);
@@ -134,8 +137,8 @@ export default function NewTaskScreen() {
       {
         text: 'Galerie',
         onPress: async () => {
-          const r = await ImagePicker.launchImageLibraryAsync({ quality: 0.7 });
-          if (!r.canceled && r.assets[0]) setPhotos(prev => [...prev, r.assets[0].uri]);
+          const r = await ImagePicker.launchImageLibraryAsync({ quality: 0.7, allowsMultipleSelection: true });
+          if (!r.canceled) setPhotos(prev => [...prev, ...r.assets.map(a => a.uri)]);
         },
       },
       { text: 'Annuler', style: 'cancel' },
@@ -256,6 +259,18 @@ export default function NewTaskScreen() {
             style={[styles.input, { backgroundColor: colors.card, color: colors.foreground, borderColor: errors.dueDate ? colors.destructive : colors.border }]}
           />
           {errors.dueDate && <Text style={[styles.error, { color: colors.destructive }]}>{errors.dueDate}</Text>}
+        </View>
+
+        <View>
+          <Text style={[styles.label, { color: colors.mutedForeground }]}>Coût estimé (€)</Text>
+          <TextInput
+            value={cost}
+            onChangeText={setCost}
+            placeholder="0"
+            placeholderTextColor={colors.mutedForeground}
+            keyboardType="numeric"
+            style={[styles.input, { backgroundColor: colors.card, color: colors.foreground, borderColor: colors.border }]}
+          />
         </View>
 
         <View>

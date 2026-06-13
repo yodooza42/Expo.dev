@@ -1,7 +1,11 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import { DEFAULT_WIDGET_SETTINGS, type WidgetSettings } from './widgetSettings';
+
 const TASKS_KEY = '@yoann2_tasks';
 const APPTS_KEY = '@yoann2_appointments';
+const SETTINGS_KEY = '@yoann2_widget_settings';
+const CONFIRM_KEY = '@yoann2_widget_confirm_id';
 
 const PRIORITY_COLORS: Record<string, string> = {
   low: '#4CAF50',
@@ -13,6 +17,7 @@ const PRIORITY_COLORS: Record<string, string> = {
 const PRIORITY_ORDER: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
 
 const MONTHS_FR = ['jan', 'fév', 'mar', 'avr', 'mai', 'juin', 'juil', 'août', 'sep', 'oct', 'nov', 'déc'];
+const DAYS_FR = ['dim', 'lun', 'mar', 'mer', 'jeu', 'ven', 'sam'];
 
 export interface WidgetItem {
   id: string;
@@ -30,6 +35,9 @@ export interface WidgetData {
   tasks: WidgetItem[];
   todayAppts: WidgetAppt[];
   nextApptLabel: string;
+  confirmTask: WidgetItem | null;
+  settings: WidgetSettings;
+  todayLabel: string;
 }
 
 interface RawTask {
@@ -65,12 +73,17 @@ function sameDay(a: Date, b: Date): boolean {
 
 function formatNextAppt(appt: RawAppt): string {
   const d = new Date(appt.date);
-  const dateStr = `${d.getDate()} ${MONTHS_FR[d.getMonth()]}${d.getFullYear() !== new Date().getFullYear() ? ' ' + d.getFullYear() : ''}`;
-  const timeStr = appt.time ? ` ${appt.time}` : '';
-  return `prochain rendez-vous : ${dateStr}${timeStr} ${appt.title}`;
+  const yr = d.getFullYear() !== new Date().getFullYear() ? ` ${d.getFullYear()}` : '';
+  const ts = appt.time ? ` ${appt.time}` : '';
+  return `prochain RDV : ${d.getDate()} ${MONTHS_FR[d.getMonth()]}${yr}${ts} — ${appt.title}`;
 }
 
-export function buildWidgetData(tasks: RawTask[], appointments: RawAppt[]): WidgetData {
+export function buildWidgetData(
+  tasks: RawTask[],
+  appointments: RawAppt[],
+  settings: WidgetSettings = DEFAULT_WIDGET_SETTINGS,
+  confirmId: string | null = null
+): WidgetData {
   const today = new Date();
 
   const pending = (tasks ?? []).filter(t => t.status !== 'done');
@@ -113,16 +126,44 @@ export function buildWidgetData(tasks: RawTask[], appointments: RawAppt[]): Widg
     }
   }
 
-  return { tasks: taskItems, todayAppts, nextApptLabel };
+  const confirmTask = confirmId ? (taskItems.find(t => t.id === confirmId) ?? null) : null;
+
+  const todayLabel = `${DAYS_FR[today.getDay()]}. ${today.getDate()} ${MONTHS_FR[today.getMonth()]}`;
+
+  return { tasks: taskItems, todayAppts, nextApptLabel, confirmTask, settings, todayLabel };
 }
 
 export async function getWidgetDataFromStorage(): Promise<WidgetData> {
   let tasks: RawTask[] = [];
   let appts: RawAppt[] = [];
+  let settings = DEFAULT_WIDGET_SETTINGS;
+  let confirmId: string | null = null;
   try {
-    const [t, a] = await AsyncStorage.multiGet([TASKS_KEY, APPTS_KEY]);
+    const [t, a, s, c] = await AsyncStorage.multiGet([TASKS_KEY, APPTS_KEY, SETTINGS_KEY, CONFIRM_KEY]);
     if (t[1]) tasks = JSON.parse(t[1]);
     if (a[1]) appts = JSON.parse(a[1]);
+    if (s[1]) settings = { ...DEFAULT_WIDGET_SETTINGS, ...JSON.parse(s[1]) };
+    if (c[1]) confirmId = c[1];
   } catch {}
-  return buildWidgetData(tasks, appts);
+  return buildWidgetData(tasks, appts, settings, confirmId);
+}
+
+export async function setConfirmId(id: string | null): Promise<void> {
+  try {
+    if (id === null) {
+      await AsyncStorage.removeItem(CONFIRM_KEY);
+    } else {
+      await AsyncStorage.setItem(CONFIRM_KEY, id);
+    }
+  } catch {}
+}
+
+export async function markTaskDone(taskId: string): Promise<void> {
+  try {
+    const raw = await AsyncStorage.getItem(TASKS_KEY);
+    if (!raw) return;
+    const tasks: Array<RawTask & { id?: string }> = JSON.parse(raw);
+    const updated = tasks.map(t => (t.id === taskId ? { ...t, status: 'done' } : t));
+    await AsyncStorage.setItem(TASKS_KEY, JSON.stringify(updated));
+  } catch {}
 }

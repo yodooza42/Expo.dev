@@ -33,6 +33,7 @@ export interface Task {
   urgency: number;
   status: TaskStatus;
   eisenhower: EisenhowerQuadrant;
+  cost?: number;
 }
 
 export interface Expense {

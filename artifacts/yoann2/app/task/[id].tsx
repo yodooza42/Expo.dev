@@ -40,17 +40,18 @@ export default function TaskDetailScreen() {
   const router = useRouter();
   const { tasks, projects, updateTask, deleteTask } = useApp();
 
-  const task = tasks.find(t => t.id === id);
-  const project = task ? projects.find(p => p.id === task.projectId) : null;
+  const taskMaybe = tasks.find(t => t.id === id);
+  const project = taskMaybe ? projects.find(p => p.id === taskMaybe.projectId) : null;
   const [photoViewIdx, setPhotoViewIdx] = useState<number | null>(null);
 
-  if (!task) {
+  if (!taskMaybe) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
         <Text style={{ color: colors.foreground, padding: 20 }}>Tâche introuvable.</Text>
       </View>
     );
   }
+  const task = taskMaybe;
 
   const dueDate = new Date(task.dueDate);
   const isOverdue = dueDate < new Date() && task.status !== 'done';

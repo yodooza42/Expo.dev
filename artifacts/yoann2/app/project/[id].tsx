@@ -32,6 +32,12 @@ const STATUS_LABELS: Record<ProjectStatus, string> = {
 };
 const STATUS_LIST: ProjectStatus[] = ['idea', 'todo', 'inprogress', 'waiting', 'done', 'abandoned'];
 
+interface AllPhoto {
+  uri: string;
+  deletable: boolean;
+  source: string;
+}
+
 export default function ProjectDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const colors = useColors();
@@ -39,9 +45,17 @@ export default function ProjectDetailScreen() {
   const router = useRouter();
   const { projects, getProjectTasks, getProjectExpenses, updateProject, deleteProject, addExpense, deleteExpense, deleteTask } = useApp();
 
-  const project = projects.find(p => p.id === id);
+  const projectMaybe = projects.find(p => p.id === id);
   const tasks = useMemo(() => getProjectTasks(id ?? ''), [getProjectTasks, id]);
   const expenses = useMemo(() => getProjectExpenses(id ?? ''), [getProjectExpenses, id]);
+
+  const allPhotos = useMemo<AllPhoto[]>(() => {
+    if (!projectMaybe) return [];
+    return [
+      ...projectMaybe.photos.map(uri => ({ uri, deletable: true, source: 'Projet' })),
+      ...tasks.flatMap(t => (t.photos ?? []).map(uri => ({ uri, deletable: false, source: t.title }))),
+    ];
+  }, [projectMaybe, tasks]);
 
   const [tab, setTab] = useState<'tasks' | 'expenses' | 'photos'>('tasks');
   const [addExpenseVisible, setAddExpenseVisible] = useState(false);
@@ -50,19 +64,22 @@ export default function ProjectDetailScreen() {
   const [expCat, setExpCat] = useState('');
   const [photoViewIdx, setPhotoViewIdx] = useState<number | null>(null);
 
-  if (!project) {
+  if (!projectMaybe) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
         <Text style={{ color: colors.foreground, padding: 20 }}>Projet introuvable.</Text>
       </View>
     );
   }
+  const project = projectMaybe;
 
   const totalTasks = tasks.length;
   const doneTasks = tasks.filter(t => t.status === 'done').length;
   const progress = totalTasks > 0 ? (doneTasks / totalTasks) * 100 : 0;
   const totalSpent = expenses.reduce((sum, e) => sum + e.amount, 0);
-  const budgetPct = project.budget > 0 ? (totalSpent / project.budget) * 100 : 0;
+  const taskCostSum = tasks.reduce((s, t) => s + (t.cost ?? 0), 0);
+  const totalWithTasks = totalSpent + taskCostSum;
+  const budgetPct = project.budget > 0 ? (totalWithTasks / project.budget) * 100 : 0;
   const dueDate = new Date(project.dueDate);
   const isOverdue = dueDate < new Date() && project.status !== 'done';
 
@@ -77,7 +94,7 @@ export default function ProjectDetailScreen() {
       }
       return;
     }
-    Alert.alert('Ajouter une photo', '', [
+    Alert.alert('Ajouter une photo au projet', '', [
       {
         text: 'Appareil photo',
         onPress: async () => {
@@ -86,7 +103,7 @@ export default function ProjectDetailScreen() {
         },
       },
       {
-        text: 'Galerie',
+        text: 'Galerie (multi-sélection)',
         onPress: async () => {
           const r = await ImagePicker.launchImageLibraryAsync({ quality: 0.7, allowsMultipleSelection: true });
           if (!r.canceled) updateProject(project.id, { photos: [...project.photos, ...r.assets.map(a => a.uri)] });
@@ -96,8 +113,10 @@ export default function ProjectDetailScreen() {
     ]);
   }
 
-  function removePhoto(idx: number) {
-    const updated = project.photos.filter((_, i) => i !== idx);
+  function removePhoto(allIdx: number) {
+    const photo = allPhotos[allIdx];
+    if (!photo?.deletable) { setPhotoViewIdx(null); return; }
+    const updated = project.photos.filter(u => u !== photo.uri);
     updateProject(project.id, { photos: updated });
     setPhotoViewIdx(null);
   }
@@ -131,8 +150,10 @@ export default function ProjectDetailScreen() {
   const TABS = [
     { key: 'tasks', label: `Tâches (${totalTasks})`, icon: 'format-list-checks' },
     { key: 'expenses', label: `Dépenses (${expenses.length})`, icon: 'receipt' },
-    { key: 'photos', label: `Photos (${project.photos.length})`, icon: 'image-multiple-outline' },
+    { key: 'photos', label: `Photos (${allPhotos.length})`, icon: 'image-multiple-outline' },
   ] as const;
+
+  const currentPhoto = photoViewIdx !== null ? allPhotos[photoViewIdx] : null;
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -241,9 +262,19 @@ export default function ProjectDetailScreen() {
                 height={8}
                 color={budgetPct > 90 ? colors.destructive : colors.priorityMedium}
               />
-              <Text style={[styles.progressSub, { color: colors.mutedForeground }]}>
-                {totalSpent}€ / {project.budget}€ · Reste: {project.budget - totalSpent}€
-              </Text>
+              <View style={styles.budgetBreakdown}>
+                <Text style={[styles.progressSub, { color: colors.mutedForeground }]}>
+                  Dépenses : {totalSpent}€
+                </Text>
+                {taskCostSum > 0 && (
+                  <Text style={[styles.progressSub, { color: colors.mutedForeground }]}>
+                    Coût tâches : {taskCostSum}€
+                  </Text>
+                )}
+                <Text style={[styles.progressSub, { color: budgetPct > 90 ? colors.destructive : colors.foreground, fontFamily: 'Inter_600SemiBold' }]}>
+                  Total : {totalWithTasks}€ / {project.budget}€  ·  Reste : {project.budget - totalWithTasks}€
+                </Text>
+              </View>
             </View>
           )}
         </View>
@@ -319,9 +350,15 @@ export default function ProjectDetailScreen() {
                     </View>
                   ))}
                   <View style={[styles.expTotal, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                    <Text style={[styles.expTotalLabel, { color: colors.mutedForeground }]}>Total dépensé</Text>
+                    <Text style={[styles.expTotalLabel, { color: colors.mutedForeground }]}>Total dépenses</Text>
                     <Text style={[styles.expTotalValue, { color: colors.primary }]}>{totalSpent}€</Text>
                   </View>
+                  {taskCostSum > 0 && (
+                    <View style={[styles.expTotal, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                      <Text style={[styles.expTotalLabel, { color: colors.mutedForeground }]}>Coût estimé des tâches</Text>
+                      <Text style={[styles.expTotalValue, { color: colors.primary }]}>{taskCostSum}€</Text>
+                    </View>
+                  )}
                 </>
               )}
             </>
@@ -334,21 +371,39 @@ export default function ProjectDetailScreen() {
                 style={[styles.addBtn, { backgroundColor: colors.primary }]}
               >
                 <MaterialCommunityIcons name="camera-plus-outline" size={18} color={colors.primaryForeground} />
-                <Text style={[styles.addBtnLabel, { color: colors.primaryForeground }]}>Ajouter une photo</Text>
+                <Text style={[styles.addBtnLabel, { color: colors.primaryForeground }]}>Ajouter au projet</Text>
               </Pressable>
-              {project.photos.length === 0 ? (
+
+              {allPhotos.length === 0 ? (
                 <View style={styles.empty}>
                   <MaterialCommunityIcons name="image-outline" size={40} color={colors.mutedForeground} />
                   <Text style={[styles.emptyTxt, { color: colors.mutedForeground }]}>Aucune photo</Text>
                 </View>
               ) : (
-                <View style={styles.photoGrid}>
-                  {project.photos.map((uri, idx) => (
-                    <Pressable key={idx} onPress={() => setPhotoViewIdx(idx)} style={styles.photoThumb}>
-                      <Image source={{ uri }} style={styles.photoImg} contentFit="cover" />
-                    </Pressable>
-                  ))}
-                </View>
+                <>
+                  {project.photos.length > 0 && (
+                    <Text style={[styles.photoSectionLabel, { color: colors.mutedForeground }]}>
+                      Photos du projet ({project.photos.length})
+                    </Text>
+                  )}
+                  <View style={styles.photoGrid}>
+                    {allPhotos.map((photo, idx) => (
+                      <Pressable key={idx} onPress={() => setPhotoViewIdx(idx)} style={styles.photoThumb}>
+                        <Image source={{ uri: photo.uri }} style={styles.photoImg} contentFit="cover" />
+                        {!photo.deletable && (
+                          <View style={[styles.taskPhotoBadge, { backgroundColor: colors.card + 'CC' }]}>
+                            <MaterialCommunityIcons name="format-list-checks" size={10} color={colors.primary} />
+                          </View>
+                        )}
+                      </Pressable>
+                    ))}
+                  </View>
+                  {tasks.some(t => (t.photos ?? []).length > 0) && (
+                    <Text style={[styles.photoSectionLabel, { color: colors.mutedForeground, marginTop: 4 }]}>
+                      ■ tâche (badge)   Photos des tâches incluses dans la galerie
+                    </Text>
+                  )}
+                </>
               )}
             </>
           )}
@@ -394,18 +449,28 @@ export default function ProjectDetailScreen() {
           <Pressable onPress={() => setPhotoViewIdx(null)} style={styles.photoClose}>
             <MaterialCommunityIcons name="close" size={26} color="#fff" />
           </Pressable>
-          {photoViewIdx !== null && project.photos[photoViewIdx] && (
-            <Image
-              source={{ uri: project.photos[photoViewIdx] }}
-              style={styles.photoFull}
-              contentFit="contain"
-            />
-          )}
-          {photoViewIdx !== null && (
-            <Pressable onPress={() => removePhoto(photoViewIdx)} style={styles.photoDeleteBtn}>
-              <MaterialCommunityIcons name="trash-can-outline" size={22} color="#fff" />
-              <Text style={styles.photoDeleteTxt}>Supprimer</Text>
-            </Pressable>
+          {currentPhoto && (
+            <>
+              <View style={styles.photoSourceBadge}>
+                <MaterialCommunityIcons
+                  name={currentPhoto.deletable ? 'folder-outline' : 'format-list-checks'}
+                  size={13}
+                  color="rgba(255,255,255,0.7)"
+                />
+                <Text style={styles.photoSourceTxt}>{currentPhoto.source}</Text>
+              </View>
+              <Image
+                source={{ uri: currentPhoto.uri }}
+                style={styles.photoFull}
+                contentFit="contain"
+              />
+              {currentPhoto.deletable && (
+                <Pressable onPress={() => photoViewIdx !== null && removePhoto(photoViewIdx)} style={styles.photoDeleteBtn}>
+                  <MaterialCommunityIcons name="trash-can-outline" size={22} color="#fff" />
+                  <Text style={styles.photoDeleteTxt}>Supprimer</Text>
+                </Pressable>
+              )}
+            </>
           )}
         </View>
       </Modal>
@@ -444,6 +509,7 @@ const styles = StyleSheet.create({
   progressLabel: { fontSize: 14, fontFamily: 'Inter_500Medium' },
   progressPct: { fontSize: 18, fontFamily: 'Inter_700Bold' },
   progressSub: { fontSize: 12, fontFamily: 'Inter_400Regular' },
+  budgetBreakdown: { gap: 3 },
   tabs: { flexDirection: 'row', paddingHorizontal: 16, marginBottom: 8 },
   tab: { flex: 1, alignItems: 'center', paddingVertical: 10 },
   tabLabel: { fontSize: 13, fontFamily: 'Inter_500Medium' },
@@ -459,9 +525,20 @@ const styles = StyleSheet.create({
   expTotal: { flexDirection: 'row', justifyContent: 'space-between', padding: 14, borderRadius: 12, borderWidth: 1 },
   expTotalLabel: { fontSize: 14, fontFamily: 'Inter_400Regular' },
   expTotalValue: { fontSize: 18, fontFamily: 'Inter_700Bold' },
+  photoSectionLabel: { fontSize: 11, fontFamily: 'Inter_400Regular', marginBottom: 4 },
   photoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   photoThumb: { width: (width - 48) / 3, height: (width - 48) / 3, borderRadius: 10, overflow: 'hidden' },
   photoImg: { width: '100%', height: '100%' },
+  taskPhotoBadge: {
+    position: 'absolute',
+    bottom: 4,
+    right: 4,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   sheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, borderWidth: 1, padding: 24, gap: 12 },
   sheetTitle: { fontSize: 18, fontFamily: 'Inter_700Bold' },
   inputLabel: { fontSize: 12, fontFamily: 'Inter_500Medium', marginBottom: 4 },
@@ -473,6 +550,20 @@ const styles = StyleSheet.create({
   saveBtnLabel: { fontSize: 15, fontFamily: 'Inter_600SemiBold' },
   photoModal: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   photoClose: { position: 'absolute', top: 60, right: 20, zIndex: 10 },
+  photoSourceBadge: {
+    position: 'absolute',
+    top: 60,
+    left: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 20,
+    zIndex: 10,
+  },
+  photoSourceTxt: { color: 'rgba(255,255,255,0.8)', fontSize: 12, fontFamily: 'Inter_500Medium' },
   photoFull: { width: width, height: width * 1.2 },
   photoDeleteBtn: { position: 'absolute', bottom: 60, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: 'rgba(239,68,68,0.8)', paddingHorizontal: 20, paddingVertical: 12, borderRadius: 30 },
   photoDeleteTxt: { color: '#fff', fontSize: 14, fontFamily: 'Inter_600SemiBold' },
