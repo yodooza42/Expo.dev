@@ -40,7 +40,20 @@ export function ProjectCard({ project, tasks, onLongPress }: Props) {
   const doneTasks = tasks.filter(t => t.status === 'done').length;
   const progress = totalTasks > 0 ? (doneTasks / totalTasks) * 100 : 0;
   const dueDate = new Date(project.dueDate);
-  const isOverdue = dueDate < new Date() && project.status !== 'done';
+  const now = new Date();
+  const isOverdue = dueDate < now && project.status !== 'done' && project.status !== 'abandoned';
+  const isBudgetOver = project.budget > 0 && project.spent > project.budget;
+  const daysToDue = (dueDate.getTime() - now.getTime()) / 86400000;
+  const isNearDue = !isOverdue && daysToDue <= 7 && project.status !== 'done' && project.status !== 'abandoned';
+  const isBudgetNear = !isBudgetOver && project.budget > 0 && project.spent / project.budget > 0.8;
+
+  const healthColor =
+    project.status === 'done' ? '#4CAF50' :
+    project.status === 'abandoned' ? undefined :
+    (isOverdue || isBudgetOver) ? '#F44336' :
+    (isNearDue || isBudgetNear) ? '#FF9800' :
+    '#4CAF50';
+
   const statusColor = STATUS_COLORS[project.status];
 
   return (
@@ -59,8 +72,13 @@ export function ProjectCard({ project, tasks, onLongPress }: Props) {
           <Text style={[styles.name, { color: colors.foreground }]} numberOfLines={1}>
             {project.name}
           </Text>
-          <View style={[styles.statusBadge, { backgroundColor: statusColor + '25', borderColor: statusColor }]}>
-            <Text style={[styles.statusText, { color: statusColor }]}>{STATUS_LABELS[project.status]}</Text>
+          <View style={styles.titleRight}>
+            {healthColor && (
+              <View style={[styles.healthDot, { backgroundColor: healthColor }]} />
+            )}
+            <View style={[styles.statusBadge, { backgroundColor: statusColor + '25', borderColor: statusColor }]}>
+              <Text style={[styles.statusText, { color: statusColor }]}>{STATUS_LABELS[project.status]}</Text>
+            </View>
           </View>
         </View>
         <View style={styles.meta}>
@@ -115,6 +133,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 8,
+  },
+  titleRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexShrink: 0,
+  },
+  healthDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
   name: {
     fontSize: 16,

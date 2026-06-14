@@ -195,6 +195,22 @@ export default function DashboardScreen() {
     tasks.filter(t => t.status !== 'done' && !t.dueDate),
   [tasks]);
 
+  // Project-level alerts (overdue + over budget)
+  const projectAlerts = useMemo(() => {
+    const out: { project: import('@/types').Project; type: 'overdue' | 'budget' }[] = [];
+    for (const p of projects) {
+      if (p.archived || p.status === 'done' || p.status === 'abandoned') continue;
+      if (new Date(p.dueDate) < todayStart) out.push({ project: p, type: 'overdue' });
+      if (p.budget > 0 && p.spent > p.budget) out.push({ project: p, type: 'budget' });
+    }
+    return out;
+  }, [projects, todayStart]);
+
+  // Critical tasks not done
+  const criticalTasks = useMemo(() =>
+    tasks.filter(t => t.priority === 'critical' && t.status !== 'done'),
+  [tasks]);
+
   // Past done tasks grouped by week (last 8 weeks)
   const pastWeekGroups = useMemo((): WeekGroup[] => {
     const eightWeeksAgo = new Date(todayStart);
@@ -473,6 +489,51 @@ export default function DashboardScreen() {
             </Text>
             <MaterialCommunityIcons name="chevron-right" size={14} color={colors.primary} />
           </Pressable>
+        )}
+
+        {/* ── ALERTES ── */}
+        {(projectAlerts.length > 0 || criticalTasks.length > 0) && (
+          <View style={[styles.alertsCard, { backgroundColor: colors.card, borderColor: '#F4433630' }]}>
+            <View style={styles.alertsHeader}>
+              <MaterialCommunityIcons name="alert-circle" size={13} color="#F44336" />
+              <Text style={[styles.alertsTitle, { color: '#F44336' }]}>
+                Alertes · {projectAlerts.length + (criticalTasks.length > 0 ? 1 : 0)}
+              </Text>
+            </View>
+            {projectAlerts.map((a, i) => {
+              const isOverdue = a.type === 'overdue';
+              const color = isOverdue ? '#F44336' : '#FF9800';
+              const label = isOverdue ? 'En retard' : 'Budget dépassé';
+              return (
+                <Pressable
+                  key={`${a.project.id}_${a.type}`}
+                  onPress={() => router.push(`/project/${a.project.id}` as any)}
+                  style={[
+                    styles.alertRow,
+                    { borderTopColor: colors.border },
+                    i === 0 && { borderTopWidth: StyleSheet.hairlineWidth },
+                  ]}
+                >
+                  <View style={[styles.alertDot, { backgroundColor: color }]} />
+                  <Text style={[styles.alertName, { color: colors.foreground }]} numberOfLines={1}>
+                    {a.project.name}
+                  </Text>
+                  <View style={[styles.alertTag, { backgroundColor: color + '20' }]}>
+                    <Text style={[styles.alertTagTxt, { color }]}>{label}</Text>
+                  </View>
+                  <MaterialCommunityIcons name="chevron-right" size={14} color={colors.mutedForeground} />
+                </Pressable>
+              );
+            })}
+            {criticalTasks.length > 0 && (
+              <View style={[styles.alertRow, { borderTopColor: colors.border, borderTopWidth: StyleSheet.hairlineWidth }]}>
+                <View style={[styles.alertDot, { backgroundColor: '#E91E63' }]} />
+                <Text style={[styles.alertName, { color: colors.foreground }]}>
+                  {criticalTasks.length} tâche{criticalTasks.length > 1 ? 's' : ''} critique{criticalTasks.length > 1 ? 's' : ''} en attente
+                </Text>
+              </View>
+            )}
+          </View>
         )}
 
         {/* ── HISTORIQUE toggle ── */}
@@ -841,4 +902,14 @@ const styles = StyleSheet.create({
   apptMetaTxt: { fontSize: 11, fontFamily: 'Inter_400Regular' },
   apptCatBadge: { borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
   apptCatTxt: { fontSize: 10, fontFamily: 'Inter_500Medium' },
+
+  // Alert card
+  alertsCard:   { marginHorizontal: 16, marginBottom: 10, borderRadius: 14, borderWidth: 1, overflow: 'hidden' },
+  alertsHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 10 },
+  alertsTitle:  { fontSize: 12, fontFamily: 'Inter_700Bold', textTransform: 'uppercase', letterSpacing: 0.6 },
+  alertRow:     { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 10 },
+  alertDot:     { width: 8, height: 8, borderRadius: 4, flexShrink: 0 },
+  alertName:    { flex: 1, fontSize: 13, fontFamily: 'Inter_500Medium' },
+  alertTag:     { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 },
+  alertTagTxt:  { fontSize: 11, fontFamily: 'Inter_600SemiBold' },
 });

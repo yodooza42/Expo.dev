@@ -6,7 +6,8 @@ import {
   useFonts,
 } from '@expo-google-fonts/inter';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { Stack } from 'expo-router';
+import * as Notifications from 'expo-notifications';
+import { useRouter, Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import React, { useEffect } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -22,6 +23,16 @@ SplashScreen.preventAutoHideAsync();
 const queryClient = new QueryClient();
 
 function RootLayoutNav() {
+  const router = useRouter();
+
+  useEffect(() => {
+    const sub = Notifications.addNotificationResponseReceivedListener(response => {
+      const url = response.notification.request.content.data?.url as string | undefined;
+      if (url) router.push(url as any);
+    });
+    return () => sub.remove();
+  }, []);
+
   return (
     <Stack
       screenOptions={{

@@ -227,34 +227,6 @@ export default function SettingsScreen() {
           ))}
         </View>
 
-        <Text style={[styles.section, { color: colors.mutedForeground }]}>Couleurs</Text>
-        <View style={[styles.colorsBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          {COLOR_KEYS.map((key, i) => {
-            const colorVal = (colors as unknown as Record<string, string>)[key] ?? '#888';
-            return (
-              <Pressable
-                key={key}
-                onPress={() => setColorPickerKey(key)}
-                style={({ pressed }) => [
-                  styles.colorRow,
-                  i < COLOR_KEYS.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border },
-                  pressed && { opacity: 0.7 },
-                ]}
-              >
-                <View style={[styles.colorSwatch, { backgroundColor: colorVal }]} />
-                <Text style={[styles.colorLabel, { color: colors.foreground }]}>{COLOR_LABELS[key]}</Text>
-                <MaterialCommunityIcons name="chevron-right" size={18} color={colors.mutedForeground} />
-              </Pressable>
-            );
-          })}
-        </View>
-        <Pressable
-          onPress={handleResetColors}
-          style={[styles.resetColorsBtn, { borderColor: colors.border }]}
-        >
-          <Text style={[styles.resetColorsLabel, { color: colors.mutedForeground }]}>Réinitialiser les couleurs par défaut</Text>
-        </Pressable>
-
         <Text style={[styles.section, { color: colors.mutedForeground }]}>Sauvegarde</Text>
         <SettingRow
           icon="export-variant"
@@ -345,6 +317,34 @@ export default function SettingsScreen() {
             <Text style={[styles.rowSub, { color: colors.mutedForeground }]}>Fichier JSON sauvegardé à la fermeture · 5 archives conservées</Text>
           </View>
         </View>
+
+        <Text style={[styles.section, { color: colors.mutedForeground }]}>Couleurs</Text>
+        <View style={[styles.colorsBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          {COLOR_KEYS.map((key, i) => {
+            const colorVal = (colors as unknown as Record<string, string>)[key] ?? '#888';
+            return (
+              <Pressable
+                key={key}
+                onPress={() => setColorPickerKey(key)}
+                style={({ pressed }) => [
+                  styles.colorRow,
+                  i < COLOR_KEYS.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border },
+                  pressed && { opacity: 0.7 },
+                ]}
+              >
+                <View style={[styles.colorSwatch, { backgroundColor: colorVal }]} />
+                <Text style={[styles.colorLabel, { color: colors.foreground }]}>{COLOR_LABELS[key]}</Text>
+                <MaterialCommunityIcons name="chevron-right" size={18} color={colors.mutedForeground} />
+              </Pressable>
+            );
+          })}
+        </View>
+        <Pressable
+          onPress={handleResetColors}
+          style={[styles.resetColorsBtn, { borderColor: colors.border }]}
+        >
+          <Text style={[styles.resetColorsLabel, { color: colors.mutedForeground }]}>Réinitialiser les couleurs par défaut</Text>
+        </Pressable>
 
         <Text style={[styles.section, { color: colors.mutedForeground }]}>Danger</Text>
         <SettingRow
