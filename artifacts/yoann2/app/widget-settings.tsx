@@ -1,5 +1,6 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import * as ImageManipulator from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
@@ -76,15 +77,43 @@ export default function WidgetSettingsScreen() {
       if (!perm.granted) return;
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
-        allowsEditing: true,
-        aspect: [3, 2],
-        quality: 0.4,
-        base64: true,
+        allowsEditing: false,
+        quality: 1,
       });
       if (!result.canceled && result.assets[0]) {
         const asset = result.assets[0];
-        const mime = asset.mimeType ?? 'image/jpeg';
-        const uri = `data:${mime};base64,${asset.base64}`;
+        const srcW = asset.width;
+        const srcH = asset.height;
+
+        const TARGET_W = 640;
+        const TARGET_H = 320;
+
+        const srcAspect = srcW / srcH;
+        const tgtAspect = TARGET_W / TARGET_H;
+
+        let scaleW: number;
+        let scaleH: number;
+        if (srcAspect > tgtAspect) {
+          scaleH = TARGET_H;
+          scaleW = Math.round(srcW * (TARGET_H / srcH));
+        } else {
+          scaleW = TARGET_W;
+          scaleH = Math.round(srcH * (TARGET_W / srcW));
+        }
+
+        const cropX = Math.round((scaleW - TARGET_W) / 2);
+        const cropY = Math.round((scaleH - TARGET_H) / 2);
+
+        const manipResult = await ImageManipulator.manipulateAsync(
+          asset.uri,
+          [
+            { resize: { width: scaleW, height: scaleH } },
+            { crop: { originX: cropX, originY: cropY, width: TARGET_W, height: TARGET_H } },
+          ],
+          { compress: 0.5, format: ImageManipulator.SaveFormat.JPEG, base64: true }
+        );
+
+        const uri = `data:image/jpeg;base64,${manipResult.base64}`;
         setSettings(s => ({ ...s, bgImageUri: uri }));
       }
     } finally {
