@@ -1,8 +1,8 @@
 {
   "expo": {
     "name": "Yoann2.0",
-    "slug": "yoann2",
-    "owner": "yoann42",
+    "slug": "application-yoann20",
+    "owner": "yoann42s-team",
     "version": "1.0.8",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -78,7 +78,7 @@
     },
     "extra": {
       "eas": {
-        "projectId": "04956cab-7ba6-4daa-b04a-2b498d0cc992"
+        "projectId": "875e84e9-1621-4df5-bc36-3ca7c757f39a"
       }
     }
   }
