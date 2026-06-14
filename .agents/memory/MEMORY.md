@@ -2,3 +2,4 @@
 - [expo-file-system v19 legacy API](expo-file-system-legacy.md) — v19+ breaks documentDirectory/EncodingType; use `expo-file-system/legacy` import instead.
 - [Expo SDK 54 notification triggers](expo-notifications-sdk54.md) — WEEKLY trigger: weekday 1 = Sunday; monthly last-day needs DATE one-shot trigger recomputed on schedule.
 - [ImagePicker URIs are temporary](imagepicker-uri-persist.md) — camera/gallery URIs point to cache; always copy to documentDirectory immediately or images go black after app restart.
+- [Date keys must use local time](date-keys-local-time.md) — isoDate() must use getFullYear/getMonth/getDate (local), never toISOString().slice(0,10) (UTC). UTC shift breaks date matching for UTC+N users (France = UTC+2).
