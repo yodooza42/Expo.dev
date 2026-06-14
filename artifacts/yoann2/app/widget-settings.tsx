@@ -41,11 +41,6 @@ const FONT_SIZES = [
   { label: 'Grand', value: 19 },
 ];
 
-const OPACITY_OPTIONS = [
-  { label: '50 %', value: 50 },
-  { label: '75 %', value: 75 },
-  { label: '100 %', value: 100 },
-];
 
 export default function WidgetSettingsScreen() {
   const colors = useColors();
@@ -187,31 +182,6 @@ export default function WidgetSettingsScreen() {
             palette={BG_PALETTE}
             onChange={c => setSettings(s => ({ ...s, bgColor: c }))}
           />
-        </View>
-
-        <Text style={[styles.section, { color: colors.mutedForeground }]}>Opacité du fond</Text>
-        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <View style={styles.chipRow}>
-            {OPACITY_OPTIONS.map(op => (
-              <Pressable
-                key={op.value}
-                onPress={() => setSettings(s => ({ ...s, bgOpacity: op.value }))}
-                style={[
-                  styles.chip,
-                  settings.bgOpacity === op.value
-                    ? { backgroundColor: colors.primary }
-                    : { backgroundColor: colors.background, borderColor: colors.border, borderWidth: 1 },
-                ]}
-              >
-                <Text style={[
-                  styles.chipTxt,
-                  { color: settings.bgOpacity === op.value ? colors.primaryForeground : colors.mutedForeground },
-                ]}>
-                  {op.label}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
         </View>
 
         <Pressable

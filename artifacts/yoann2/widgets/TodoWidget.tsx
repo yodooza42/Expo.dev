@@ -169,7 +169,7 @@ export function TodoWidget({ tasks, todayAppts, nextApptLabel, confirmTask, sett
           text={apptText}
           maxLines={1}
           truncate="END"
-          style={{ fontSize: 10, color: apptColor, marginBottom: 5 }}
+          style={{ fontSize: 12, color: apptColor, marginBottom: 5 }}
         />
 
         <FlexWidget

@@ -63,7 +63,7 @@ export default function ProjectDetailScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { projects, getProjectTasks, getProjectExpenses, updateProject, deleteProject, addExpense, deleteExpense, deleteTask } = useApp();
+  const { projects, getProjectTasks, getProjectExpenses, updateProject, deleteProject, addExpense, updateExpense, deleteExpense, deleteTask } = useApp();
 
   const projectMaybe = projects.find(p => p.id === id);
   const tasks = useMemo(() => getProjectTasks(id ?? ''), [getProjectTasks, id]);
@@ -79,10 +79,12 @@ export default function ProjectDetailScreen() {
 
   const [tab, setTab] = useState<'tasks' | 'expenses' | 'photos'>('tasks');
   const [addExpenseVisible, setAddExpenseVisible] = useState(false);
+  const [editingExpense, setEditingExpense] = useState<import('@/types').Expense | null>(null);
   const [expName, setExpName] = useState('');
   const [expAmount, setExpAmount] = useState('');
   const [expCat, setExpCat] = useState('');
   const [expDate, setExpDate] = useState(() => new Date().toLocaleDateString('fr-FR'));
+  const [expDescription, setExpDescription] = useState('');
   const [photoViewIdx, setPhotoViewIdx] = useState<number | null>(null);
   const [currentPhotoIdx, setCurrentPhotoIdx] = useState(0);
   const photoListRef = useRef<FlatList<AllPhoto>>(null);
@@ -161,20 +163,41 @@ export default function ProjectDetailScreen() {
     ]);
   }
 
+  function resetExpenseForm() {
+    setExpName(''); setExpAmount(''); setExpCat(''); setExpDescription('');
+    setExpDate(new Date().toLocaleDateString('fr-FR'));
+    setEditingExpense(null);
+  }
+
+  function openEditExpense(e: import('@/types').Expense) {
+    setEditingExpense(e);
+    setExpName(e.name);
+    setExpAmount(String(e.amount));
+    setExpCat(e.category);
+    setExpDate(new Date(e.date).toLocaleDateString('fr-FR'));
+    setExpDescription(e.description ?? '');
+    setAddExpenseVisible(true);
+  }
+
   function handleAddExpense() {
     if (!expName.trim() || !expAmount.trim()) return;
     const amount = parseFloat(expAmount);
     if (isNaN(amount) || amount <= 0) return;
-    addExpense({
-      projectId: project.id,
+    const payload = {
       name: expName.trim(),
       amount,
       date: parseFrDate(expDate),
       category: expCat.trim() || 'Général',
-    });
-    updateProject(project.id, { spent: totalSpent + amount });
-    setExpName(''); setExpAmount(''); setExpCat('');
-    setExpDate(new Date().toLocaleDateString('fr-FR'));
+      description: expDescription.trim() || undefined,
+    };
+    if (editingExpense) {
+      updateExpense(editingExpense.id, payload);
+      updateProject(project.id, { spent: totalSpent - editingExpense.amount + amount });
+    } else {
+      addExpense({ projectId: project.id, ...payload });
+      updateProject(project.id, { spent: totalSpent + amount });
+    }
+    resetExpenseForm();
     setAddExpenseVisible(false);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   }
@@ -652,11 +675,17 @@ export default function ProjectDetailScreen() {
                           {e.category.length > 0 && (
                             <Text style={[styles.expMeta, { color: colors.mutedForeground }]}>{e.category}</Text>
                           )}
+                          {e.description ? (
+                            <Text style={[styles.expMeta, { color: colors.mutedForeground }]} numberOfLines={2}>{e.description}</Text>
+                          ) : null}
                           <Text style={[styles.expMeta, { color: colors.mutedForeground }]}>
                             {new Date(e.date).toLocaleDateString('fr-FR')}
                           </Text>
                         </View>
                         <Text style={[styles.expAmount, { color: colors.primary }]}>{e.amount}€</Text>
+                        <Pressable onPress={() => openEditExpense(e)} hitSlop={8}>
+                          <MaterialCommunityIcons name="pencil-outline" size={18} color={colors.mutedForeground} />
+                        </Pressable>
                         {!linkedTask && (
                           <Pressable onPress={() => deleteExpense(e.id)} hitSlop={8}>
                             <MaterialCommunityIcons name="trash-can-outline" size={18} color={colors.mutedForeground} />
@@ -723,9 +752,11 @@ export default function ProjectDetailScreen() {
       {/* Expense modal */}
       <Modal visible={addExpenseVisible} animationType="slide" transparent>
         <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.7)' }]}>
-          <Pressable style={{ flex: 1 }} onPress={() => setAddExpenseVisible(false)} />
+          <Pressable style={{ flex: 1 }} onPress={() => { setAddExpenseVisible(false); resetExpenseForm(); }} />
           <View style={[styles.sheet, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Text style={[styles.sheetTitle, { color: colors.foreground }]}>Nouvelle dépense</Text>
+            <Text style={[styles.sheetTitle, { color: colors.foreground }]}>
+              {editingExpense ? 'Modifier la dépense' : 'Nouvelle dépense'}
+            </Text>
 
             <Text style={[styles.inputLabel, { color: colors.mutedForeground }]}>Nom</Text>
             <TextInput
@@ -756,7 +787,7 @@ export default function ProjectDetailScreen() {
               style={[styles.input, { backgroundColor: colors.background, color: colors.foreground, borderColor: colors.border }]}
             />
 
-            <Text style={[styles.inputLabel, { color: colors.mutedForeground }]}>Détails (optionnel)</Text>
+            <Text style={[styles.inputLabel, { color: colors.mutedForeground }]}>Catégorie (optionnel)</Text>
             <TextInput
               value={expCat}
               onChangeText={setExpCat}
@@ -765,12 +796,25 @@ export default function ProjectDetailScreen() {
               style={[styles.input, { backgroundColor: colors.background, color: colors.foreground, borderColor: colors.border }]}
             />
 
+            <Text style={[styles.inputLabel, { color: colors.mutedForeground }]}>Description (optionnel)</Text>
+            <TextInput
+              value={expDescription}
+              onChangeText={setExpDescription}
+              placeholder="Notes, détails supplémentaires…"
+              placeholderTextColor={colors.mutedForeground}
+              multiline
+              numberOfLines={3}
+              style={[styles.input, styles.inputMultiline, { backgroundColor: colors.background, color: colors.foreground, borderColor: colors.border }]}
+            />
+
             <View style={styles.sheetBtns}>
-              <Pressable onPress={() => setAddExpenseVisible(false)} style={[styles.cancelBtn, { borderColor: colors.border }]}>
+              <Pressable onPress={() => { setAddExpenseVisible(false); resetExpenseForm(); }} style={[styles.cancelBtn, { borderColor: colors.border }]}>
                 <Text style={[styles.cancelLabel, { color: colors.mutedForeground }]}>Annuler</Text>
               </Pressable>
               <Pressable onPress={handleAddExpense} style={[styles.saveBtn, { backgroundColor: colors.primary }]}>
-                <Text style={[styles.saveBtnLabel, { color: colors.primaryForeground }]}>Ajouter</Text>
+                <Text style={[styles.saveBtnLabel, { color: colors.primaryForeground }]}>
+                  {editingExpense ? 'Enregistrer' : 'Ajouter'}
+                </Text>
               </Pressable>
             </View>
           </View>
@@ -933,6 +977,7 @@ const styles = StyleSheet.create({
   sheetTitle: { fontSize: 18, fontFamily: 'Inter_700Bold' },
   inputLabel: { fontSize: 12, fontFamily: 'Inter_500Medium', marginBottom: 4 },
   input: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, fontSize: 14, fontFamily: 'Inter_400Regular' },
+  inputMultiline: { height: 72, textAlignVertical: 'top' },
   sheetBtns: { flexDirection: 'row', gap: 10, marginTop: 4 },
   cancelBtn: { flex: 1, paddingVertical: 14, borderRadius: 14, borderWidth: 1, alignItems: 'center' },
   cancelLabel: { fontSize: 15, fontFamily: 'Inter_500Medium' },
