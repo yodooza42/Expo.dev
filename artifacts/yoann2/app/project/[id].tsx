@@ -182,79 +182,246 @@ export default function ProjectDetailScreen() {
   async function handleExportPDF() {
     setExporting(true);
     try {
-      const taskRows = tasks.map(t => `
-        <tr>
-          <td>${t.title}</td>
-          <td>${TASK_STATUS_LABELS[t.status] ?? t.status}</td>
-          <td>${PRIORITY_LABELS[t.priority] ?? t.priority}</td>
-          <td>${new Date(t.dueDate).toLocaleDateString('fr-FR')}</td>
-        </tr>
-      `).join('');
+      const STATUS_COLORS: Record<string, string> = {
+        idea: '#9C27B0', todo: '#607D8B', inprogress: '#2196F3',
+        waiting: '#FF9800', done: '#4CAF50', abandoned: '#9E9E9E',
+      };
+      const PRIORITY_COLORS_MAP: Record<string, string> = {
+        low: '#4CAF50', medium: '#FF9800', high: '#F44336', critical: '#9C27B0',
+      };
+      const PRIORITY_LABELS_FR: Record<string, string> = {
+        low: 'Faible', medium: 'Moyenne', high: 'Haute', critical: 'Critique',
+      };
+      const statusColor = STATUS_COLORS[project.status] ?? '#9E9E9E';
+      const priorityColor = PRIORITY_COLORS_MAP[project.priority] ?? '#9E9E9E';
+      const budgetOver = project.budget > 0 && totalSpent > project.budget;
+      const budgetColor = budgetOver ? '#F44336' : '#4CAF50';
 
-      const expRows = expenses.map(e => `
-        <tr>
-          <td>${e.name}</td>
-          <td>${e.category || '—'}</td>
-          <td>${new Date(e.date).toLocaleDateString('fr-FR')}</td>
-          <td style="text-align:right;font-weight:bold">${e.amount.toFixed(2)} €</td>
-        </tr>
-      `).join('');
+      const taskItems = tasks.map(t => {
+        const sc = STATUS_COLORS[t.status] ?? '#9E9E9E';
+        const pc = PRIORITY_COLORS_MAP[t.priority] ?? '#9E9E9E';
+        const isDone = t.status === 'done';
+        return `
+        <div class="task-item${isDone ? ' task-done' : ''}">
+          <div class="task-dot" style="background:${sc}"></div>
+          <div class="task-body">
+            <div class="task-title">${t.title}</div>
+            ${t.description ? `<div class="task-desc">${t.description}</div>` : ''}
+          </div>
+          <div class="task-badges">
+            <span class="mini-badge" style="background:${sc}22;color:${sc}">${TASK_STATUS_LABELS[t.status] ?? t.status}</span>
+            <span class="mini-badge" style="background:${pc}22;color:${pc}">${PRIORITY_LABELS_FR[t.priority] ?? t.priority}</span>
+            <span class="task-date">${new Date(t.dueDate).toLocaleDateString('fr-FR')}</span>
+          </div>
+        </div>`;
+      }).join('');
 
-      const html = `
-<!DOCTYPE html>
+      const expenseRows = expenses.map((e, i) => `
+        <tr class="${i % 2 === 1 ? 'row-alt' : ''}">
+          <td class="exp-name">${e.name}</td>
+          <td class="exp-cat">${e.category || '—'}</td>
+          <td class="exp-date">${new Date(e.date).toLocaleDateString('fr-FR')}</td>
+          <td class="exp-amount">${e.amount.toFixed(2)} €</td>
+        </tr>`).join('');
+
+      const html = `<!DOCTYPE html>
 <html lang="fr">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width">
 <style>
-  body { font-family: Arial, sans-serif; margin: 32px; color: #111; }
-  h1 { font-size: 26px; margin: 0 0 4px; color: #111; }
-  .meta { color: #666; font-size: 12px; margin-bottom: 20px; }
-  .badge { display: inline-block; background: #FFC107; color: #000; border-radius: 12px; padding: 2px 10px; font-size: 11px; font-weight: bold; margin-right: 6px; }
-  .section { font-size: 13px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; color: #888; margin-top: 24px; margin-bottom: 8px; border-bottom: 1px solid #eee; padding-bottom: 4px; }
-  p { font-size: 14px; color: #444; line-height: 1.6; margin: 8px 0; }
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th { background: #f5f5f5; text-align: left; padding: 8px 10px; font-size: 12px; color: #555; }
-  td { padding: 7px 10px; border-bottom: 1px solid #f0f0f0; }
-  .stat-row { display: flex; gap: 20px; margin: 10px 0; }
-  .stat { flex: 1; background: #f9f9f9; border-radius: 10px; padding: 12px 16px; }
-  .stat-label { font-size: 11px; color: #888; }
-  .stat-value { font-size: 20px; font-weight: bold; color: #111; }
-  .total-row { font-weight: bold; background: #fffbea; }
-  .total-row td { color: #b8860b; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, Helvetica, Arial, sans-serif; background: #F4F4F6; color: #111; }
+
+  /* ── HEADER ── */
+  .header {
+    background: #111111;
+    border-left: 6px solid #FFC107;
+    padding: 32px 40px 24px 34px;
+  }
+  .project-name {
+    font-size: 30px; font-weight: 800; color: #fff;
+    letter-spacing: -0.5px; margin-bottom: 12px; line-height: 1.15;
+  }
+  .badge-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .badge {
+    display: inline-block; border-radius: 20px;
+    padding: 4px 12px; font-size: 11px; font-weight: 700; letter-spacing: 0.3px;
+  }
+  .badge-gold { background: #FFC107; color: #000; }
+  .header-dates { color: #777; font-size: 12px; margin-top: 10px; }
+
+  /* ── BODY ── */
+  .body { padding: 28px 40px 40px; }
+
+  /* Description */
+  .description {
+    background: #fff; border-left: 4px solid #FFC107;
+    padding: 14px 18px; border-radius: 0 10px 10px 0;
+    font-size: 13px; color: #555; line-height: 1.65;
+    margin-bottom: 24px;
+  }
+
+  /* Stats */
+  .stats-grid { display: flex; gap: 12px; margin-bottom: 20px; }
+  .stat-card {
+    flex: 1; background: #fff; border-radius: 12px;
+    padding: 16px 14px 14px;
+    border-top: 4px solid #FFC107;
+  }
+  .stat-value { font-size: 24px; font-weight: 800; color: #111; line-height: 1; margin-bottom: 5px; }
+  .stat-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: #AAA; }
+
+  /* Progress card */
+  .prog-card {
+    background: #fff; border-radius: 12px;
+    padding: 18px 20px; margin-bottom: 12px;
+  }
+  .prog-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+  .prog-title { font-size: 13px; font-weight: 700; color: #333; }
+  .prog-pct { font-size: 18px; font-weight: 800; }
+  .prog-track { height: 9px; background: #EBEBEB; border-radius: 5px; overflow: hidden; margin-bottom: 7px; }
+  .prog-fill { height: 9px; border-radius: 5px; }
+  .prog-sub { font-size: 11px; color: #AAA; }
+
+  /* Section header */
+  .section-hdr {
+    font-size: 11px; font-weight: 800; text-transform: uppercase;
+    letter-spacing: 1.2px; color: #AAA;
+    margin: 28px 0 12px;
+    padding-bottom: 8px; border-bottom: 1px solid #E0E0E0;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .section-count {
+    background: #F0F0F0; color: #888; border-radius: 10px;
+    padding: 2px 8px; font-size: 11px; font-weight: 700;
+  }
+
+  /* Tasks */
+  .task-item {
+    background: #fff; border-radius: 10px;
+    padding: 12px 14px; margin-bottom: 7px;
+    display: flex; align-items: flex-start; gap: 12px;
+  }
+  .task-done .task-title { text-decoration: line-through; color: #bbb; }
+  .task-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; margin-top: 3px; }
+  .task-body { flex: 1; min-width: 0; }
+  .task-title { font-size: 13px; font-weight: 700; color: #222; margin-bottom: 2px; }
+  .task-desc { font-size: 11px; color: #999; margin-top: 2px; }
+  .task-badges { display: flex; gap: 5px; align-items: center; flex-shrink: 0; }
+  .mini-badge { border-radius: 8px; padding: 2px 8px; font-size: 10px; font-weight: 700; }
+  .task-date { font-size: 10px; color: #bbb; }
+
+  /* Expenses */
+  .exp-table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 12px; overflow: hidden; }
+  .exp-table th {
+    background: #F8F8F8; font-size: 10px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.5px; color: #AAA;
+    padding: 10px 14px; text-align: left;
+  }
+  .exp-table td { padding: 11px 14px; font-size: 13px; border-bottom: 1px solid #F5F5F5; }
+  .row-alt td { background: #FAFAFA; }
+  .exp-name { font-weight: 600; color: #222; }
+  .exp-cat { color: #AAA; font-size: 12px; }
+  .exp-date { color: #BBB; font-size: 12px; }
+  .exp-amount { text-align: right; font-weight: 700; color: #111; }
+  .exp-total td {
+    border-top: 2px solid #FFC107; border-bottom: none;
+    background: #FFFBEA !important; font-weight: 800; font-size: 14px;
+  }
+  .exp-total .exp-amount { color: #B8860B; font-size: 15px; }
+
+  /* Footer */
+  .footer { margin-top: 48px; text-align: center; font-size: 11px; color: #CCC; padding-top: 14px; border-top: 1px solid #E8E8E8; }
+  .footer b { color: #FFC107; }
 </style>
 </head>
 <body>
-<h1>${project.name}</h1>
-<div class="meta">
-  <span class="badge">${project.category}</span>
-  <span class="badge">${STATUS_LABELS[project.status]}</span>
-  Créé le ${new Date(project.createdAt).toLocaleDateString('fr-FR')} · Échéance ${new Date(project.dueDate).toLocaleDateString('fr-FR')}
+
+<div class="header">
+  <div class="project-name">${project.name}</div>
+  <div class="badge-row">
+    <span class="badge badge-gold">${project.category}</span>
+    <span class="badge" style="background:${statusColor}22;color:${statusColor}">${STATUS_LABELS[project.status]}</span>
+    <span class="badge" style="background:${priorityColor}22;color:${priorityColor}">${PRIORITY_LABELS_FR[project.priority] ?? ''}</span>
+  </div>
+  <div class="header-dates">
+    Créé le ${new Date(project.createdAt).toLocaleDateString('fr-FR')}
+    &nbsp;·&nbsp;
+    Échéance ${new Date(project.dueDate).toLocaleDateString('fr-FR')}
+    ${isOverdue ? '&nbsp;·&nbsp;<span style="color:#F44336;font-weight:700">&#9888; En retard</span>' : ''}
+  </div>
 </div>
-${project.description ? `<p>${project.description}</p>` : ''}
 
-<div class="section">Avancement</div>
-<div class="stat-row">
-  <div class="stat"><div class="stat-label">Tâches terminées</div><div class="stat-value">${doneTasks} / ${totalTasks}</div></div>
-  <div class="stat"><div class="stat-label">Progression</div><div class="stat-value">${Math.round(progress)} %</div></div>
-  ${project.budget > 0 ? `<div class="stat"><div class="stat-label">Budget</div><div class="stat-value">${totalSpent.toFixed(2)} / ${project.budget} €</div></div>` : ''}
+<div class="body">
+
+  ${project.description ? `<div class="description">${project.description}</div>` : ''}
+
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="stat-value">${doneTasks}<span style="font-size:14px;color:#CCC">/${totalTasks}</span></div>
+      <div class="stat-label">Tâches faites</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value">${Math.round(progress)}<span style="font-size:14px;color:#CCC">%</span></div>
+      <div class="stat-label">Progression</div>
+    </div>
+    <div class="stat-card" style="border-top-color:${project.budget > 0 ? budgetColor : '#FFC107'}">
+      <div class="stat-value" style="color:${project.budget > 0 && budgetOver ? '#F44336' : '#111'}">${totalSpent.toFixed(0)}<span style="font-size:14px;color:#CCC"> €</span></div>
+      <div class="stat-label">${project.budget > 0 ? `Budget / ${project.budget} €` : 'Total dépenses'}</div>
+    </div>
+  </div>
+
+  <div class="prog-card">
+    <div class="prog-header">
+      <span class="prog-title">Progression des tâches</span>
+      <span class="prog-pct" style="color:#FFC107">${Math.round(progress)} %</span>
+    </div>
+    <div class="prog-track">
+      <div class="prog-fill" style="width:${Math.max(Math.min(progress, 100), 1)}%;background:${progress >= 100 ? '#4CAF50' : '#FFC107'}"></div>
+    </div>
+    <div class="prog-sub">${doneTasks} terminée${doneTasks !== 1 ? 's' : ''} &nbsp;·&nbsp; ${totalTasks - doneTasks} restante${totalTasks - doneTasks !== 1 ? 's' : ''}</div>
+  </div>
+
+  ${project.budget > 0 ? `
+  <div class="prog-card">
+    <div class="prog-header">
+      <span class="prog-title">Budget consommé</span>
+      <span class="prog-pct" style="color:${budgetColor}">${Math.round(budgetPct)} %</span>
+    </div>
+    <div class="prog-track">
+      <div class="prog-fill" style="width:${Math.min(budgetPct, 100)}%;background:${budgetColor}"></div>
+    </div>
+    <div class="prog-sub">${totalSpent.toFixed(2)} € &nbsp;/&nbsp; ${project.budget} € &nbsp;·&nbsp; Reste ${(project.budget - totalSpent).toFixed(2)} €</div>
+  </div>` : ''}
+
+  ${tasks.length > 0 ? `
+  <div class="section-hdr">
+    Tâches <span class="section-count">${tasks.length}</span>
+  </div>
+  ${taskItems}` : ''}
+
+  ${expenses.length > 0 ? `
+  <div class="section-hdr">
+    Dépenses <span class="section-count">${expenses.length}</span>
+  </div>
+  <table class="exp-table">
+    <tr>
+      <th>Nom</th><th>Catégorie</th><th>Date</th><th style="text-align:right">Montant</th>
+    </tr>
+    ${expenseRows}
+    <tr class="exp-total">
+      <td colspan="3" style="font-weight:800">Total</td>
+      <td class="exp-amount">${totalSpent.toFixed(2)} €</td>
+    </tr>
+  </table>` : ''}
+
+  <div class="footer">
+    Généré par <b>Yoann2.0</b> &nbsp;·&nbsp;
+    ${new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+  </div>
+
 </div>
-
-${tasks.length > 0 ? `
-<div class="section">Tâches (${tasks.length})</div>
-<table>
-  <tr><th>Titre</th><th>Statut</th><th>Priorité</th><th>Échéance</th></tr>
-  ${taskRows}
-</table>` : ''}
-
-${expenses.length > 0 ? `
-<div class="section">Dépenses (${expenses.length})</div>
-<table>
-  <tr><th>Nom</th><th>Catégorie</th><th>Date</th><th style="text-align:right">Montant</th></tr>
-  ${expRows}
-  <tr class="total-row"><td colspan="3">Total</td><td style="text-align:right">${totalSpent.toFixed(2)} €</td></tr>
-</table>` : ''}
-
-<div style="margin-top:40px;color:#aaa;font-size:11px;text-align:center">Généré par Yoann2.0 · ${new Date().toLocaleDateString('fr-FR')}</div>
 </body>
 </html>`;
 
