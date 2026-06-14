@@ -1,7 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { AppState } from 'react-native';
 
 import type { Appointment, AppStats, Category, Expense, Priority, Project, ProjectStatus, Task, TaskStatus } from '@/types';
+import { saveBackup } from '@/utils/backup';
 import { updateTodoWidget } from '@/widgets/updateWidget';
 
 const STORAGE_KEYS = {
@@ -187,6 +189,8 @@ interface AppContextValue {
   addProject: (p: Omit<Project, 'id' | 'createdAt' | 'updatedAt'>) => void;
   updateProject: (id: string, updates: Partial<Project>) => void;
   deleteProject: (id: string) => void;
+  archiveProject: (id: string) => void;
+  unarchiveProject: (id: string) => void;
   addTask: (t: Omit<Task, 'id' | 'createdAt' | 'eisenhower'>) => void;
   updateTask: (id: string, updates: Partial<Task>) => void;
   deleteTask: (id: string) => void;
@@ -221,6 +225,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const dirtyRef = useRef(false);
+  const projectsRef = useRef<Project[]>([]);
+  const tasksRef = useRef<Task[]>([]);
+  const expensesRef = useRef<Expense[]>([]);
+  const categoriesRef = useRef<Category[]>(DEFAULT_CATEGORIES);
+  const expenseCategoriesRef = useRef<Category[]>(DEFAULT_EXPENSE_CATEGORIES);
+  const appointmentsRef = useRef<Appointment[]>([]);
+
+  useEffect(() => { projectsRef.current = projects; }, [projects]);
+  useEffect(() => { tasksRef.current = tasks; }, [tasks]);
+  useEffect(() => { expensesRef.current = expenses; }, [expenses]);
+  useEffect(() => { categoriesRef.current = categories; }, [categories]);
+  useEffect(() => { expenseCategoriesRef.current = expenseCategories; }, [expenseCategories]);
+  useEffect(() => { appointmentsRef.current = appointments; }, [appointments]);
+
   useEffect(() => {
     loadData();
   }, []);
@@ -230,6 +249,29 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       updateTodoWidget(tasks, appointments);
     }
   }, [tasks, appointments, loading]);
+
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', nextState => {
+      if (nextState === 'background' && dirtyRef.current && !loading) {
+        const data = JSON.stringify({
+          projects: projectsRef.current,
+          tasks: tasksRef.current,
+          expenses: expensesRef.current,
+          categories: categoriesRef.current,
+          expenseCategories: expenseCategoriesRef.current,
+          appointments: appointmentsRef.current,
+        }, null, 2);
+        saveBackup(data).then(() => {
+          dirtyRef.current = false;
+        });
+      }
+    });
+    return () => sub.remove();
+  }, [loading]);
+
+  function markDirty() {
+    dirtyRef.current = true;
+  }
 
   async function loadData() {
     try {
@@ -296,6 +338,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setProjects(prev => {
       const next = [...prev, newP];
       AsyncStorage.setItem(STORAGE_KEYS.PROJECTS, JSON.stringify(next));
+      markDirty();
       return next;
     });
   }, []);
@@ -306,6 +349,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         p.id === id ? { ...p, ...updates, updatedAt: new Date().toISOString() } : p
       );
       AsyncStorage.setItem(STORAGE_KEYS.PROJECTS, JSON.stringify(next));
+      markDirty();
       return next;
     });
   }, []);
@@ -313,12 +357,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const reorderProjects = useCallback((newOrder: Project[]) => {
     setProjects(newOrder);
     AsyncStorage.setItem(STORAGE_KEYS.PROJECTS, JSON.stringify(newOrder));
+    markDirty();
   }, []);
 
   const deleteProject = useCallback((id: string) => {
     setProjects(prev => {
       const next = prev.filter(p => p.id !== id);
       AsyncStorage.setItem(STORAGE_KEYS.PROJECTS, JSON.stringify(next));
+      markDirty();
       return next;
     });
     setTasks(prev => {
@@ -333,6 +379,28 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  const archiveProject = useCallback((id: string) => {
+    setProjects(prev => {
+      const next = prev.map(p =>
+        p.id === id ? { ...p, archived: true, updatedAt: new Date().toISOString() } : p
+      );
+      AsyncStorage.setItem(STORAGE_KEYS.PROJECTS, JSON.stringify(next));
+      markDirty();
+      return next;
+    });
+  }, []);
+
+  const unarchiveProject = useCallback((id: string) => {
+    setProjects(prev => {
+      const next = prev.map(p =>
+        p.id === id ? { ...p, archived: false, updatedAt: new Date().toISOString() } : p
+      );
+      AsyncStorage.setItem(STORAGE_KEYS.PROJECTS, JSON.stringify(next));
+      markDirty();
+      return next;
+    });
+  }, []);
+
   const addTask = useCallback((t: Omit<Task, 'id' | 'createdAt' | 'eisenhower'>) => {
     const newT: Task = {
       ...t,
@@ -343,6 +411,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setTasks(prev => {
       const next = [...prev, newT];
       AsyncStorage.setItem(STORAGE_KEYS.TASKS, JSON.stringify(next));
+      markDirty();
       return next;
     });
   }, []);
@@ -356,6 +425,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         return updated;
       });
       AsyncStorage.setItem(STORAGE_KEYS.TASKS, JSON.stringify(next));
+      markDirty();
       return next;
     });
   }, []);
@@ -364,6 +434,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setTasks(prev => {
       const next = prev.filter(t => t.id !== id);
       AsyncStorage.setItem(STORAGE_KEYS.TASKS, JSON.stringify(next));
+      markDirty();
       return next;
     });
     setExpenses(prev => {
@@ -378,6 +449,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setExpenses(prev => {
       const next = [...prev, newE];
       AsyncStorage.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(next));
+      markDirty();
       return next;
     });
   }, []);
@@ -386,6 +458,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setExpenses(prev => {
       const next = prev.map(e => (e.id === id ? { ...e, ...updates } : e));
       AsyncStorage.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(next));
+      markDirty();
       return next;
     });
   }, []);
@@ -394,6 +467,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setExpenses(prev => {
       const next = prev.filter(e => e.id !== id);
       AsyncStorage.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(next));
+      markDirty();
       return next;
     });
   }, []);
@@ -437,6 +511,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setAppointments(prev => {
       const next = [...prev, newA];
       AsyncStorage.setItem(STORAGE_KEYS.APPOINTMENTS, JSON.stringify(next));
+      markDirty();
       return next;
     });
   }, []);
@@ -445,6 +520,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setAppointments(prev => {
       const next = prev.map(a => (a.id === id ? { ...a, ...updates } : a));
       AsyncStorage.setItem(STORAGE_KEYS.APPOINTMENTS, JSON.stringify(next));
+      markDirty();
       return next;
     });
   }, []);
@@ -453,6 +529,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setAppointments(prev => {
       const next = prev.filter(a => a.id !== id);
       AsyncStorage.setItem(STORAGE_KEYS.APPOINTMENTS, JSON.stringify(next));
+      markDirty();
       return next;
     });
   }, []);
@@ -474,6 +551,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const getStats = useCallback((): AppStats => {
     const now = new Date();
+    const activeProjects = projects.filter(p => !p.archived);
     const overdue = tasks.filter(
       t => t.status !== 'done' && new Date(t.dueDate) < now
     ).length;
@@ -481,7 +559,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const progress =
       tasks.length === 0 ? 0 : Math.round((completed / tasks.length) * 100);
     return {
-      totalProjects: projects.length,
+      totalProjects: activeProjects.length,
       totalTasks: tasks.length,
       overdueTasks: overdue,
       completedTasks: completed,
@@ -511,6 +589,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setAppointments(a);
       persist(p, t, e, c, ec, a);
       AsyncStorage.setItem(STORAGE_KEYS.INITIALIZED, 'true');
+      markDirty();
       return true;
     } catch {
       return false;
@@ -534,6 +613,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       [STORAGE_KEYS.APPOINTMENTS, JSON.stringify([])],
       [STORAGE_KEYS.INITIALIZED, 'true'],
     ]);
+    markDirty();
   }, []);
 
   return (
@@ -549,6 +629,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         addProject,
         updateProject,
         deleteProject,
+        archiveProject,
+        unarchiveProject,
         reorderProjects,
         addTask,
         updateTask,

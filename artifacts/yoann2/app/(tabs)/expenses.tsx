@@ -3,6 +3,7 @@ import * as Haptics from 'expo-haptics';
 import { useFocusEffect } from 'expo-router';
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
+  Alert,
   Dimensions,
   Modal,
   Platform,
@@ -18,6 +19,7 @@ import Svg, { Circle, Line, Path, Text as SvgText } from 'react-native-svg';
 
 import { useApp } from '@/contexts/AppContext';
 import { useColors } from '@/hooks/useColors';
+import { exportExpensesCSV, exportExpensesPDF } from '@/utils/expenseExport';
 
 const { width } = Dimensions.get('window');
 const CHART_W = width - 32;
@@ -96,6 +98,7 @@ export default function ExpensesScreen() {
   const [period, setPeriod] = useState<PeriodKey>('6m');
   const [selectedExpenseCat, setSelectedExpenseCat] = useState<string | null>(null);
   const [catSort, setCatSort] = useState<'date-desc' | 'date-asc' | 'price-desc' | 'price-asc' | 'project'>('date-desc');
+  const [exporting, setExporting] = useState(false);
   const [customStart, setCustomStart] = useState(() => {
     const d = new Date();
     d.setMonth(d.getMonth() - 5);
@@ -173,6 +176,31 @@ export default function ExpensesScreen() {
 
   const labelStep = months.length <= 6 ? 1 : months.length <= 12 ? 2 : months.length <= 18 ? 3 : 4;
 
+  async function handleExport() {
+    if (expenses.length === 0) return;
+    Alert.alert('Exporter les dépenses', "Choisir le format d'export :", [
+      { text: 'Annuler', style: 'cancel' },
+      {
+        text: 'CSV',
+        onPress: async () => {
+          setExporting(true);
+          try { await exportExpensesCSV(expenses, projects, 'Toutes dépenses'); }
+          catch { Alert.alert('Erreur', "Impossible d'exporter en CSV"); }
+          finally { setExporting(false); }
+        },
+      },
+      {
+        text: 'PDF',
+        onPress: async () => {
+          setExporting(true);
+          try { await exportExpensesPDF(expenses, projects, 'Toutes dépenses'); }
+          catch { Alert.alert('Erreur', "Impossible d'exporter en PDF"); }
+          finally { setExporting(false); }
+        },
+      },
+    ]);
+  }
+
   function toggleProject(id: string) {
     setSelectedIds(prev => {
       const next = new Set(prev);
@@ -214,10 +242,24 @@ export default function ExpensesScreen() {
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { paddingTop: topPad + 12 }]}>
         <Text style={[styles.title, { color: colors.foreground }]}>Finances</Text>
-        <View style={[styles.totalBadge, { backgroundColor: colors.primary + '18' }]}>
-          <Text style={[styles.totalTxt, { color: colors.primary }]}>
-            {totalAll.toFixed(2)} €
-          </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <Pressable
+            onPress={handleExport}
+            disabled={exporting || expenses.length === 0}
+            hitSlop={8}
+            style={[styles.exportBtn, { backgroundColor: colors.card, borderColor: colors.border, opacity: expenses.length === 0 ? 0.4 : 1 }]}
+          >
+            <MaterialCommunityIcons
+              name={exporting ? 'loading' : 'export-variant'}
+              size={18}
+              color={colors.primary}
+            />
+          </Pressable>
+          <View style={[styles.totalBadge, { backgroundColor: colors.primary + '18' }]}>
+            <Text style={[styles.totalTxt, { color: colors.primary }]}>
+              {totalAll.toFixed(2)} €
+            </Text>
+          </View>
         </View>
       </View>
 
@@ -576,6 +618,7 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
   },
   title: { fontSize: 28, fontFamily: 'Inter_700Bold' },
+  exportBtn: { width: 34, height: 34, borderRadius: 10, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   totalBadge: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20 },
   totalTxt: { fontSize: 16, fontFamily: 'Inter_700Bold' },
   content: { paddingHorizontal: 16, gap: 8 },

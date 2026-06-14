@@ -56,14 +56,26 @@ export default function ProjectsScreen() {
   const [priorityFilter, setPriorityFilter] = useState<Priority | 'all'>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [reorderMode, setReorderMode] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
 
   const topPad = Platform.OS === 'web' ? 67 : insets.top;
 
+  const archivedCount = projects.filter(p => p.archived).length;
+
   const filtered = projects.filter(p => {
+    if (!showArchived && p.archived) return false;
+    if (showArchived && !p.archived) return false;
     if (search && !p.name.toLowerCase().includes(search.toLowerCase())) return false;
     if (statusFilter !== 'all' && p.status !== statusFilter) return false;
     if (priorityFilter !== 'all' && p.priority !== priorityFilter) return false;
     if (categoryFilter !== 'all' && p.category !== categoryFilter) return false;
+    return true;
+  });
+
+  const activeFiltered = !showArchived ? filtered : projects.filter(p => {
+    if (!p.archived) return false;
+    if (search && !p.name.toLowerCase().includes(search.toLowerCase())) return false;
+    if (statusFilter !== 'all' && p.status !== statusFilter) return false;
     return true;
   });
 
@@ -85,26 +97,51 @@ export default function ProjectsScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   }
 
+  const displayList = showArchived ? activeFiltered : filtered;
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { paddingTop: topPad + 12 }]}>
         <View style={styles.headerRow}>
           <Text style={[styles.title, { color: colors.foreground }]}>Projets</Text>
-          {reorderMode ? (
-            <Pressable
-              onPress={exitReorderMode}
-              style={[styles.addBtn, { backgroundColor: colors.primary }]}
-            >
-              <MaterialCommunityIcons name="check" size={22} color={colors.primaryForeground} />
-            </Pressable>
-          ) : (
-            <Pressable
-              onPress={() => router.push('/project/new')}
-              style={[styles.addBtn, { backgroundColor: colors.primary }]}
-            >
-              <MaterialCommunityIcons name="plus" size={22} color={colors.primaryForeground} />
-            </Pressable>
-          )}
+          <View style={styles.headerBtns}>
+            {!reorderMode && archivedCount > 0 && (
+              <Pressable
+                onPress={() => { setShowArchived(v => !v); setReorderMode(false); }}
+                style={[
+                  styles.archiveBtn,
+                  {
+                    backgroundColor: showArchived ? colors.primary + '20' : colors.secondary,
+                    borderColor: showArchived ? colors.primary : colors.border,
+                  },
+                ]}
+              >
+                <MaterialCommunityIcons
+                  name={showArchived ? 'archive' : 'archive-outline'}
+                  size={16}
+                  color={showArchived ? colors.primary : colors.mutedForeground}
+                />
+                <Text style={[styles.archiveBtnLabel, { color: showArchived ? colors.primary : colors.mutedForeground }]}>
+                  {archivedCount}
+                </Text>
+              </Pressable>
+            )}
+            {reorderMode ? (
+              <Pressable
+                onPress={exitReorderMode}
+                style={[styles.addBtn, { backgroundColor: colors.primary }]}
+              >
+                <MaterialCommunityIcons name="check" size={22} color={colors.primaryForeground} />
+              </Pressable>
+            ) : (
+              <Pressable
+                onPress={() => router.push('/project/new')}
+                style={[styles.addBtn, { backgroundColor: colors.primary }]}
+              >
+                <MaterialCommunityIcons name="plus" size={22} color={colors.primaryForeground} />
+              </Pressable>
+            )}
+          </View>
         </View>
 
         {reorderMode ? (
@@ -116,6 +153,14 @@ export default function ProjectsScreen() {
           </View>
         ) : (
           <>
+            {showArchived && (
+              <View style={[styles.archiveBanner, { backgroundColor: colors.primary + '12', borderColor: colors.primary + '30' }]}>
+                <MaterialCommunityIcons name="archive" size={14} color={colors.primary} />
+                <Text style={[styles.archiveBannerTxt, { color: colors.primary }]}>
+                  Projets archivés ({archivedCount})
+                </Text>
+              </View>
+            )}
             <View style={[styles.searchBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <MaterialCommunityIcons name="magnify" size={18} color={colors.mutedForeground} />
               <TextInput
@@ -186,41 +231,46 @@ export default function ProjectsScreen() {
         showsVerticalScrollIndicator={false}
       >
         {reorderMode ? (
-          projects.length === 0 ? (
+          projects.filter(p => !p.archived).length === 0 ? (
             <View style={styles.empty}>
               <Text style={[styles.emptyTitle, { color: colors.mutedForeground }]}>Aucun projet à réorganiser</Text>
             </View>
           ) : (
-            projects.map((p, index) => (
+            projects.filter(p => !p.archived).map((p, index) => (
               <ReorderRow
                 key={p.id}
                 project={p}
                 index={index}
-                total={projects.length}
+                total={projects.filter(q => !q.archived).length}
                 colors={colors}
                 onMove={moveProject}
               />
             ))
           )
-        ) : filtered.length === 0 ? (
+        ) : displayList.length === 0 ? (
           <View style={styles.empty}>
-            <MaterialCommunityIcons name="folder-open-outline" size={48} color={colors.mutedForeground} />
-            <Text style={[styles.emptyTitle, { color: colors.mutedForeground }]}>Aucun projet</Text>
-            <Pressable
-              onPress={() => router.push('/project/new')}
-              style={[styles.emptyBtn, { backgroundColor: colors.primary }]}
-            >
-              <Text style={[styles.emptyBtnLabel, { color: colors.primaryForeground }]}>Créer un projet</Text>
-            </Pressable>
+            <MaterialCommunityIcons name={showArchived ? 'archive-outline' : 'folder-open-outline'} size={48} color={colors.mutedForeground} />
+            <Text style={[styles.emptyTitle, { color: colors.mutedForeground }]}>
+              {showArchived ? 'Aucun projet archivé' : 'Aucun projet'}
+            </Text>
+            {!showArchived && (
+              <Pressable
+                onPress={() => router.push('/project/new')}
+                style={[styles.emptyBtn, { backgroundColor: colors.primary }]}
+              >
+                <Text style={[styles.emptyBtnLabel, { color: colors.primaryForeground }]}>Créer un projet</Text>
+              </Pressable>
+            )}
           </View>
         ) : (
-          filtered.map(p => (
-            <ProjectCard
-              key={p.id}
-              project={p}
-              tasks={getProjectTasks(p.id)}
-              onLongPress={enterReorderMode}
-            />
+          displayList.map(p => (
+            <View key={p.id} style={showArchived ? styles.archivedWrapper : undefined}>
+              <ProjectCard
+                project={p}
+                tasks={getProjectTasks(p.id)}
+                onLongPress={showArchived ? undefined : enterReorderMode}
+              />
+            </View>
           ))
         )}
       </ScrollView>
@@ -289,6 +339,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  headerBtns: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   title: {
     fontSize: 28,
     fontFamily: 'Inter_700Bold',
@@ -299,6 +354,32 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  archiveBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  archiveBtnLabel: {
+    fontSize: 13,
+    fontFamily: 'Inter_600SemiBold',
+  },
+  archiveBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  archiveBannerTxt: {
+    fontSize: 12,
+    fontFamily: 'Inter_500Medium',
   },
   searchBox: {
     flexDirection: 'row',
@@ -390,5 +471,8 @@ const styles = StyleSheet.create({
   },
   arrowBtn: {
     padding: 4,
+  },
+  archivedWrapper: {
+    opacity: 0.6,
   },
 });

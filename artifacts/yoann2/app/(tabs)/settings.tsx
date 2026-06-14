@@ -2,7 +2,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -11,6 +11,7 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   View,
@@ -20,6 +21,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '@/contexts/AppContext';
 import { type ThemeColorKey, useTheme } from '@/contexts/ThemeContext';
 import { useColors } from '@/hooks/useColors';
+import {
+  cancelMonthlyReport,
+  cancelWeeklyReport,
+  getNotifPrefs,
+  scheduleMonthlyReport,
+  scheduleWeeklyReport,
+} from '@/utils/notificationScheduler';
 
 const COLOR_PALETTE = [
   '#FFC107', '#FF9800', '#FF5722', '#F44336', '#E91E63',
@@ -97,7 +105,36 @@ export default function SettingsScreen() {
   const [newCatName, setNewCatName] = useState('');
   const [newExpCatName, setNewExpCatName] = useState('');
   const [colorPickerKey, setColorPickerKey] = useState<ThemeColorKey | null>(null);
+  const [weeklyNotif, setWeeklyNotif] = useState(false);
+  const [monthlyNotif, setMonthlyNotif] = useState(false);
   const router = useRouter();
+
+  useEffect(() => {
+    getNotifPrefs().then(prefs => {
+      setWeeklyNotif(prefs.weekly);
+      setMonthlyNotif(prefs.monthly);
+    });
+  }, []);
+
+  async function handleWeeklyToggle(value: boolean) {
+    setWeeklyNotif(value);
+    if (value) {
+      await scheduleWeeklyReport();
+    } else {
+      await cancelWeeklyReport();
+    }
+    Haptics.selectionAsync();
+  }
+
+  async function handleMonthlyToggle(value: boolean) {
+    setMonthlyNotif(value);
+    if (value) {
+      await scheduleMonthlyReport();
+    } else {
+      await cancelMonthlyReport();
+    }
+    Haptics.selectionAsync();
+  }
 
   const topPad = Platform.OS === 'web' ? 67 : insets.top;
 
@@ -258,6 +295,56 @@ export default function SettingsScreen() {
           onPress={() => router.push('/widget-settings')}
           colors={colors}
         />
+
+        <Text style={[styles.section, { color: colors.mutedForeground }]}>Rapports automatiques</Text>
+        <SettingRow
+          icon="chart-bar"
+          label="Consulter les rapports"
+          sublabel="Résumé hebdo et mensuel"
+          onPress={() => router.push('/rapport' as any)}
+          colors={colors}
+        />
+        <View style={[styles.row, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <View style={[styles.rowIcon, { backgroundColor: colors.primary + '20' }]}>
+            <MaterialCommunityIcons name="bell-ring-outline" size={20} color={colors.primary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.rowLabel, { color: colors.foreground }]}>Rapport hebdomadaire</Text>
+            <Text style={[styles.rowSub, { color: colors.mutedForeground }]}>Dimanche à 16h00</Text>
+          </View>
+          <Switch
+            value={weeklyNotif}
+            onValueChange={handleWeeklyToggle}
+            trackColor={{ false: colors.border, true: colors.primary + '80' }}
+            thumbColor={weeklyNotif ? colors.primary : colors.mutedForeground}
+          />
+        </View>
+        <View style={[styles.row, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <View style={[styles.rowIcon, { backgroundColor: colors.primary + '20' }]}>
+            <MaterialCommunityIcons name="bell-badge-outline" size={20} color={colors.primary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.rowLabel, { color: colors.foreground }]}>Rapport mensuel</Text>
+            <Text style={[styles.rowSub, { color: colors.mutedForeground }]}>Dernier jour du mois à 16h00</Text>
+          </View>
+          <Switch
+            value={monthlyNotif}
+            onValueChange={handleMonthlyToggle}
+            trackColor={{ false: colors.border, true: colors.primary + '80' }}
+            thumbColor={monthlyNotif ? colors.primary : colors.mutedForeground}
+          />
+        </View>
+
+        <Text style={[styles.section, { color: colors.mutedForeground }]}>Sauvegarde locale</Text>
+        <View style={[styles.row, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <View style={[styles.rowIcon, { backgroundColor: '#4CAF5020' }]}>
+            <MaterialCommunityIcons name="shield-check-outline" size={20} color="#4CAF50" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.rowLabel, { color: colors.foreground }]}>Sauvegarde automatique</Text>
+            <Text style={[styles.rowSub, { color: colors.mutedForeground }]}>Fichier JSON sauvegardé à la fermeture · 5 archives conservées</Text>
+          </View>
+        </View>
 
         <Text style={[styles.section, { color: colors.mutedForeground }]}>Danger</Text>
         <SettingRow

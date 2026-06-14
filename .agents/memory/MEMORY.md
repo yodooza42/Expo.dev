@@ -1,1 +1,3 @@
 - [Expo package versions](expo-package-versions.md) — always use `npx expo install <pkg>` for SDK-compatible versions; plain pnpm add picks wrong majors that crash the app.
+- [expo-file-system v19 legacy API](expo-file-system-legacy.md) — v19+ breaks documentDirectory/EncodingType; use `expo-file-system/legacy` import instead.
+- [Expo SDK 54 notification triggers](expo-notifications-sdk54.md) — WEEKLY trigger: weekday 1 = Sunday; monthly last-day needs DATE one-shot trigger recomputed on schedule.

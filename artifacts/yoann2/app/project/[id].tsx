@@ -63,7 +63,7 @@ export default function ProjectDetailScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { projects, getProjectTasks, getProjectExpenses, updateProject, deleteProject, addExpense, updateExpense, deleteExpense, deleteTask, expenseCategories } = useApp();
+  const { projects, getProjectTasks, getProjectExpenses, updateProject, deleteProject, archiveProject, unarchiveProject, addExpense, updateExpense, deleteExpense, deleteTask, expenseCategories } = useApp();
 
   const projectMaybe = projects.find(p => p.id === id);
   const tasks = useMemo(() => getProjectTasks(id ?? ''), [getProjectTasks, id]);
@@ -161,6 +161,20 @@ export default function ProjectDetailScreen() {
         onPress: () => { deleteProject(project.id); router.back(); },
       },
     ]);
+  }
+
+  function handleArchive() {
+    if (project.archived) {
+      Alert.alert('Désarchiver', `Remettre "${project.name}" dans les projets actifs ?`, [
+        { text: 'Annuler', style: 'cancel' },
+        { text: 'Désarchiver', onPress: () => { unarchiveProject(project.id); router.back(); } },
+      ]);
+    } else {
+      Alert.alert('Archiver', `Archiver "${project.name}" ? Il sera masqué de la liste principale.`, [
+        { text: 'Annuler', style: 'cancel' },
+        { text: 'Archiver', onPress: () => { archiveProject(project.id); router.back(); } },
+      ]);
+    }
   }
 
   function resetExpenseForm() {
@@ -483,6 +497,13 @@ export default function ProjectDetailScreen() {
           </Pressable>
           <Pressable onPress={() => router.push(`/project/new?id=${project.id}`)} hitSlop={8}>
             <MaterialCommunityIcons name="pencil-outline" size={22} color={colors.primary} />
+          </Pressable>
+          <Pressable onPress={handleArchive} hitSlop={8}>
+            <MaterialCommunityIcons
+              name={project.archived ? 'archive-arrow-up-outline' : 'archive-arrow-down-outline'}
+              size={22}
+              color="#FF9800"
+            />
           </Pressable>
           <Pressable onPress={handleDelete} hitSlop={8}>
             <MaterialCommunityIcons name="trash-can-outline" size={22} color={colors.destructive} />
