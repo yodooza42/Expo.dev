@@ -157,14 +157,25 @@ export function CustomTabBar({ state, descriptors, navigation }: TabBarProps) {
           })}
         </View>
 
-        <Pressable
-          onPress={toggleFab}
-          style={[styles.fab, { backgroundColor: colors.primary }]}
-        >
-          <Animated.View style={fabIconStyle}>
-            <MaterialCommunityIcons name="plus" size={28} color={colors.primaryForeground} />
-          </Animated.View>
-        </Pressable>
+        <View style={styles.fabRow}>
+          <Pressable
+            onPress={toggleFab}
+            style={[styles.fab, { backgroundColor: colors.primary }]}
+          >
+            <Animated.View style={fabIconStyle}>
+              <MaterialCommunityIcons name="plus" size={28} color={colors.primaryForeground} />
+            </Animated.View>
+          </Pressable>
+
+          {state.index !== 0 && (
+            <Pressable
+              onPress={() => { closeFab(); navigation.navigate('index'); }}
+              style={[styles.homeBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+            >
+              <MaterialCommunityIcons name="home-variant-outline" size={20} color={colors.primary} />
+            </Pressable>
+          )}
+        </View>
       </View>
     </>
   );
@@ -196,21 +207,40 @@ const styles = StyleSheet.create({
     fontSize: 9,
     fontFamily: 'Inter_500Medium',
   },
-  fab: {
+  fabRow: {
     position: 'absolute',
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'center',
+    top: -27,
+    gap: 10,
+    zIndex: 5,
+  },
+  fab: {
     width: 54,
     height: 54,
     borderRadius: 27,
     alignItems: 'center',
     justifyContent: 'center',
-    alignSelf: 'center',
-    top: -27,
     shadowColor: '#FFC107',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.45,
     shadowRadius: 10,
     elevation: 10,
-    zIndex: 5,
+  },
+  homeBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+    marginTop: 16,
   },
   fabMenu: {
     position: 'absolute',
