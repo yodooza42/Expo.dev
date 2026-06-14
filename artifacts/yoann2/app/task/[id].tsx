@@ -49,6 +49,7 @@ export default function TaskDetailScreen() {
   const [expName, setExpName] = useState('');
   const [expAmount, setExpAmount] = useState('');
   const [expDetails, setExpDetails] = useState('');
+  const [expDate, setExpDate] = useState(() => new Date().toLocaleDateString('fr-FR'));
 
   const taskExpenses = useMemo(
     () => (taskMaybe ? getTaskExpenses(taskMaybe.id) : []),
@@ -85,6 +86,16 @@ export default function TaskDetailScreen() {
     updateTask(task.id, { status: task.status === 'done' ? 'todo' : 'done' });
   }
 
+  function parseFrDate(s: string): string {
+    const parts = s.split('/');
+    if (parts.length === 3) {
+      const [d, m, y] = parts;
+      const parsed = new Date(Number(y), Number(m) - 1, Number(d));
+      if (!isNaN(parsed.getTime())) return parsed.toISOString();
+    }
+    return new Date().toISOString();
+  }
+
   function handleAddExpense() {
     if (!expName.trim() || !expAmount.trim()) return;
     const amount = parseFloat(expAmount);
@@ -94,12 +105,13 @@ export default function TaskDetailScreen() {
       taskId: task.id,
       name: expName.trim(),
       amount,
-      date: new Date().toISOString(),
+      date: parseFrDate(expDate),
       category: expDetails.trim() || '',
     });
     setExpName('');
     setExpAmount('');
     setExpDetails('');
+    setExpDate(new Date().toLocaleDateString('fr-FR'));
     setAddExpVisible(false);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   }
@@ -346,6 +358,16 @@ export default function TaskDetailScreen() {
               onChangeText={setExpDetails}
               placeholder="Ex: Boulons M6, quincaillerie"
               placeholderTextColor={colors.mutedForeground}
+              style={[styles.input, { backgroundColor: colors.background, color: colors.foreground, borderColor: colors.border }]}
+            />
+
+            <Text style={[styles.inputLabel, { color: colors.mutedForeground }]}>Date (JJ/MM/AAAA)</Text>
+            <TextInput
+              value={expDate}
+              onChangeText={setExpDate}
+              placeholder="JJ/MM/AAAA"
+              placeholderTextColor={colors.mutedForeground}
+              keyboardType="numeric"
               style={[styles.input, { backgroundColor: colors.background, color: colors.foreground, borderColor: colors.border }]}
             />
 

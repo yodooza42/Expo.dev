@@ -24,6 +24,7 @@ const TAB_ICONS: Record<string, string> = {
   projects: 'folder-multiple-outline',
   kanban: 'view-column-outline',
   calendar: 'calendar-month-outline',
+  expenses: 'chart-line',
   settings: 'cog-outline',
 };
 
@@ -32,6 +33,7 @@ const TAB_LABELS: Record<string, string> = {
   projects: 'Projets',
   kanban: 'Kanban',
   calendar: 'Agenda',
+  expenses: 'Finances',
   settings: 'Réglages',
 };
 
@@ -47,6 +49,8 @@ export function CustomTabBar({ state, descriptors, navigation }: TabBarProps) {
   const bottomPad = isWeb ? 8 : insets.bottom;
   const tabBarHeight = 56 + bottomPad;
   const FAB_OFFSET = 28;
+
+  const totalTabs = state.routes.length;
 
   function toggleFab() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -72,6 +76,8 @@ export function CustomTabBar({ state, descriptors, navigation }: TabBarProps) {
   }
 
   const tabs = state.routes;
+  const midLow = Math.floor((totalTabs - 1) / 2);
+  const midHigh = Math.ceil((totalTabs - 1) / 2);
 
   return (
     <>
@@ -123,7 +129,7 @@ export function CustomTabBar({ state, descriptors, navigation }: TabBarProps) {
         <View style={styles.tabRow}>
           {tabs.map((route: any, index: number) => {
             const isFocused = state.index === index;
-            const isMiddle = index === 2;
+            const isNearFab = index === midLow || index === midHigh;
             const routeName = route.name;
             const iconName = TAB_ICONS[routeName] ?? 'circle';
             const label = TAB_LABELS[routeName] ?? routeName;
@@ -142,7 +148,7 @@ export function CustomTabBar({ state, descriptors, navigation }: TabBarProps) {
                     navigation.navigate(route.name);
                   }
                 }}
-                style={[styles.tabItem, isMiddle && styles.middleTab]}
+                style={[styles.tabItem, isNearFab && styles.nearFabTab]}
               >
                 <MaterialCommunityIcons name={iconName as any} size={22} color={iconColor} />
                 <Text style={[styles.tabLabel, { color: iconColor }]}>{label}</Text>
@@ -183,11 +189,11 @@ const styles = StyleSheet.create({
     gap: 3,
     paddingVertical: 6,
   },
-  middleTab: {
+  nearFabTab: {
     paddingTop: 26,
   },
   tabLabel: {
-    fontSize: 10,
+    fontSize: 9,
     fontFamily: 'Inter_500Medium',
   },
   fab: {

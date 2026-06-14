@@ -1,8 +1,9 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  PanResponder,
   Platform,
   Pressable,
   ScrollView,
@@ -17,6 +18,7 @@ import { useColors } from '@/hooks/useColors';
 import { updateTodoWidget } from '@/widgets/updateWidget';
 import {
   DEFAULT_WIDGET_SETTINGS,
+  getWidgetBgColor,
   getWidgetSettings,
   saveWidgetSettings,
   type WidgetSettings,
@@ -39,6 +41,69 @@ const FONT_SIZES = [
   { label: 'Moyen', value: 16 },
   { label: 'Grand', value: 19 },
 ];
+
+function OpacitySlider({
+  value,
+  onChange,
+  primaryColor,
+}: {
+  value: number;
+  onChange: (v: number) => void;
+  primaryColor: string;
+}) {
+  const [sliderWidth, setSliderWidth] = useState(240);
+  const sliderWidthRef = useRef(240);
+  const onChangeRef = useRef(onChange);
+  useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
+
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: () => true,
+        onPanResponderGrant: evt => {
+          const pct = Math.max(0, Math.min(100, Math.round((evt.nativeEvent.locationX / sliderWidthRef.current) * 100)));
+          onChangeRef.current(pct);
+        },
+        onPanResponderMove: evt => {
+          const pct = Math.max(0, Math.min(100, Math.round((evt.nativeEvent.locationX / sliderWidthRef.current) * 100)));
+          onChangeRef.current(pct);
+        },
+      }),
+    []
+  );
+
+  const thumbLeft = Math.max(0, Math.min(sliderWidth - 24, (sliderWidth * value) / 100 - 12));
+
+  return (
+    <View style={{ gap: 8 }}>
+      <View
+        style={styles.sliderHitArea}
+        onLayout={e => {
+          sliderWidthRef.current = e.nativeEvent.layout.width;
+          setSliderWidth(e.nativeEvent.layout.width);
+        }}
+        {...panResponder.panHandlers}
+      >
+        <View style={[styles.sliderTrack, { backgroundColor: '#333' }]}>
+          <View
+            style={[
+              styles.sliderFill,
+              { width: `${value}%`, backgroundColor: primaryColor },
+            ]}
+          />
+        </View>
+        <View
+          style={[
+            styles.sliderThumb,
+            { left: thumbLeft, backgroundColor: primaryColor },
+          ]}
+        />
+      </View>
+      <Text style={styles.sliderLabel}>{value} %</Text>
+    </View>
+  );
+}
 
 export default function WidgetSettingsScreen() {
   const colors = useColors();
@@ -100,6 +165,8 @@ export default function WidgetSettingsScreen() {
     );
   }
 
+  const previewBgColor = getWidgetBgColor(settings);
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.headerBar, { paddingTop: topPad + 8, borderBottomColor: colors.border }]}>
@@ -122,7 +189,7 @@ export default function WidgetSettingsScreen() {
         contentContainerStyle={[styles.content, { paddingBottom: 120 }]}
         showsVerticalScrollIndicator={false}
       >
-        <View style={[styles.previewBox, { backgroundColor: settings.bgColor + 'EE', borderColor: colors.border }]}>
+        <View style={[styles.previewBox, { backgroundColor: previewBgColor, borderColor: colors.border }]}>
           <Text style={[styles.previewTitle, { color: '#FFFFFF', fontSize: settings.taskFontSize }]}>
             ● Exemple de tâche  ·  15 juin
           </Text>
@@ -131,9 +198,9 @@ export default function WidgetSettingsScreen() {
           </Text>
           <View style={styles.previewBar}>
             {['+ Tâche', '+ Projet', '+ RDV'].map(l => (
-              <Text key={l} style={[styles.previewBarItem, { color: settings.primaryColor }]}>{l}</Text>
+              <Text key={l} style={[styles.previewBarItem, { color: settings.primaryColor, fontSize: Math.round(9 * 1.25) }]}>{l}</Text>
             ))}
-            <Text style={[styles.previewBarItem, { color: '#9E9E9E' }]}>↺</Text>
+            <Text style={[styles.previewBarItem, { color: '#9E9E9E', fontSize: Math.round(13 * 1.25) }]}>↺</Text>
           </View>
         </View>
 
@@ -177,6 +244,15 @@ export default function WidgetSettingsScreen() {
             value={settings.bgColor}
             palette={BG_PALETTE}
             onChange={c => setSettings(s => ({ ...s, bgColor: c }))}
+          />
+        </View>
+
+        <Text style={[styles.section, { color: colors.mutedForeground }]}>Opacité du fond</Text>
+        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <OpacitySlider
+            value={settings.bgOpacity}
+            onChange={v => setSettings(s => ({ ...s, bgOpacity: v }))}
+            primaryColor={settings.primaryColor}
           />
         </View>
 
@@ -226,7 +302,7 @@ const styles = StyleSheet.create({
   previewTitle: { fontFamily: 'Inter_500Medium', color: '#FFFFFF' },
   previewSub: { fontSize: 11, fontFamily: 'Inter_400Regular' },
   previewBar: { flexDirection: 'row', gap: 12, marginTop: 4 },
-  previewBarItem: { fontSize: 9, fontFamily: 'Inter_500Medium' },
+  previewBarItem: { fontFamily: 'Inter_500Medium' },
   chipRow: { flexDirection: 'row', gap: 8 },
   chip: { flex: 1, paddingVertical: 10, borderRadius: 12, alignItems: 'center' },
   chipTxt: { fontSize: 13, fontFamily: 'Inter_500Medium' },
@@ -241,6 +317,38 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
   },
   paletteCellSelected: { borderColor: '#FFFFFF' },
+  sliderHitArea: {
+    height: 40,
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  sliderTrack: {
+    height: 5,
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  sliderFill: {
+    height: 5,
+    borderRadius: 3,
+  },
+  sliderThumb: {
+    position: 'absolute',
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    top: 8,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.4,
+    shadowRadius: 4,
+  },
+  sliderLabel: {
+    color: '#9E9E9E',
+    fontSize: 13,
+    fontFamily: 'Inter_500Medium',
+    textAlign: 'center',
+  },
   resetBtn: {
     paddingVertical: 12,
     borderRadius: 12,

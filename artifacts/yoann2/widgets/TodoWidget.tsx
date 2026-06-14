@@ -3,6 +3,7 @@ import { FlexWidget, TextWidget } from 'react-native-android-widget';
 import type { ColorProp } from 'react-native-android-widget';
 
 import type { WidgetData } from './data';
+import { getWidgetBgColor } from './widgetSettings';
 
 const CARD = '#2A2A2A';
 const TEXT: ColorProp = '#FFFFFF';
@@ -12,8 +13,9 @@ const SCHEME = 'yoann2';
 
 export function TodoWidget({ tasks, todayAppts, nextApptLabel, confirmTask, settings, todayLabel }: WidgetData) {
   const PRIMARY = settings.primaryColor as ColorProp;
-  const BG = settings.bgColor as ColorProp;
+  const BG = getWidgetBgColor(settings) as ColorProp;
   const taskFs = settings.taskFontSize;
+  const btnFs = Math.round(9 * 1.25);
 
   const apptText =
     todayAppts.length > 0
@@ -175,63 +177,63 @@ export function TodoWidget({ tasks, todayAppts, nextApptLabel, confirmTask, sett
         />
 
         <FlexWidget
-          style={{ flexDirection: 'row', width: 'match_parent', alignItems: 'center', height: 24 }}
+          style={{ flexDirection: 'row', width: 'match_parent', alignItems: 'center', height: 28 }}
         >
           <FlexWidget
             clickAction="OPEN_URI"
             clickActionData={{ uri: `${SCHEME}:///task/new` }}
-            style={{ flex: 1, height: 24, justifyContent: 'center', alignItems: 'center' }}
+            style={{ flex: 1, height: 28, justifyContent: 'center', alignItems: 'center' }}
           >
-            <TextWidget text="+ Tâche" style={{ fontSize: 9, color: PRIMARY }} />
+            <TextWidget text="+ Tâche" style={{ fontSize: btnFs, color: PRIMARY }} />
           </FlexWidget>
 
           <FlexWidget
-            style={{ width: 1, height: 14, backgroundColor: CARD as ColorProp }}
+            style={{ width: 1, height: 16, backgroundColor: CARD as ColorProp }}
           />
 
           <FlexWidget
             clickAction="OPEN_URI"
             clickActionData={{ uri: `${SCHEME}:///project/new` }}
-            style={{ flex: 1, height: 24, justifyContent: 'center', alignItems: 'center' }}
+            style={{ flex: 1, height: 28, justifyContent: 'center', alignItems: 'center' }}
           >
-            <TextWidget text="+ Projet" style={{ fontSize: 9, color: PRIMARY }} />
+            <TextWidget text="+ Projet" style={{ fontSize: btnFs, color: PRIMARY }} />
           </FlexWidget>
 
           <FlexWidget
-            style={{ width: 1, height: 14, backgroundColor: CARD as ColorProp }}
+            style={{ width: 1, height: 16, backgroundColor: CARD as ColorProp }}
           />
 
           <FlexWidget
             clickAction="OPEN_URI"
             clickActionData={{ uri: `${SCHEME}:///appointment/new` }}
-            style={{ flex: 1, height: 24, justifyContent: 'center', alignItems: 'center' }}
+            style={{ flex: 1, height: 28, justifyContent: 'center', alignItems: 'center' }}
           >
-            <TextWidget text="+ RDV" style={{ fontSize: 9, color: PRIMARY }} />
+            <TextWidget text="+ RDV" style={{ fontSize: btnFs, color: PRIMARY }} />
           </FlexWidget>
 
           <FlexWidget
-            style={{ width: 1, height: 14, backgroundColor: CARD as ColorProp }}
+            style={{ width: 1, height: 16, backgroundColor: CARD as ColorProp }}
           />
 
           <FlexWidget
-            style={{ flex: 1, height: 24, justifyContent: 'center', alignItems: 'center' }}
+            style={{ flex: 1, height: 28, justifyContent: 'center', alignItems: 'center' }}
           >
-            <TextWidget text={todayLabel} style={{ fontSize: 9, color: MUTED }} />
+            <TextWidget text={todayLabel} style={{ fontSize: btnFs, color: MUTED }} />
           </FlexWidget>
 
           <FlexWidget
             clickAction="REFRESH"
             style={{
-              width: 24,
-              height: 24,
-              borderRadius: 12,
+              width: 28,
+              height: 28,
+              borderRadius: 14,
               backgroundColor: CARD as ColorProp,
               justifyContent: 'center',
               alignItems: 'center',
               marginLeft: 4,
             }}
           >
-            <TextWidget text="↺" style={{ fontSize: 13, color: MUTED }} />
+            <TextWidget text="↺" style={{ fontSize: Math.round(13 * 1.25), color: MUTED }} />
           </FlexWidget>
         </FlexWidget>
       </FlexWidget>

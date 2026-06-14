@@ -17,6 +17,7 @@ export default function TabLayout() {
       <Tabs.Screen name="projects" />
       <Tabs.Screen name="kanban" />
       <Tabs.Screen name="calendar" />
+      <Tabs.Screen name="expenses" />
       <Tabs.Screen name="settings" />
     </Tabs>
   );
