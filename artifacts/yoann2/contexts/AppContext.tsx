@@ -196,6 +196,7 @@ interface AppContextValue {
   getTaskExpenses: (taskId: string) => Expense[];
   addCategory: (name: string) => void;
   deleteCategory: (id: string) => void;
+  reorderProjects: (newOrder: Project[]) => void;
   addExpenseCategory: (name: string) => void;
   deleteExpenseCategory: (id: string) => void;
   addAppointment: (a: Omit<Appointment, 'id' | 'createdAt'>) => void;
@@ -307,6 +308,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       AsyncStorage.setItem(STORAGE_KEYS.PROJECTS, JSON.stringify(next));
       return next;
     });
+  }, []);
+
+  const reorderProjects = useCallback((newOrder: Project[]) => {
+    setProjects(newOrder);
+    AsyncStorage.setItem(STORAGE_KEYS.PROJECTS, JSON.stringify(newOrder));
   }, []);
 
   const deleteProject = useCallback((id: string) => {
@@ -543,6 +549,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         addProject,
         updateProject,
         deleteProject,
+        reorderProjects,
         addTask,
         updateTask,
         deleteTask,

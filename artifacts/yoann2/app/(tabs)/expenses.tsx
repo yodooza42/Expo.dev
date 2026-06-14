@@ -1,8 +1,10 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { useFocusEffect } from 'expo-router';
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   Dimensions,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -92,6 +94,8 @@ export default function ExpensesScreen() {
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [period, setPeriod] = useState<PeriodKey>('6m');
+  const [selectedExpenseCat, setSelectedExpenseCat] = useState<string | null>(null);
+  const [catSort, setCatSort] = useState<'date-desc' | 'date-asc' | 'price-desc' | 'price-asc' | 'project'>('date-desc');
   const [customStart, setCustomStart] = useState(() => {
     const d = new Date();
     d.setMonth(d.getMonth() - 5);
@@ -184,6 +188,28 @@ export default function ExpensesScreen() {
   const totalAll = expenses.reduce((s, e) => s + e.amount, 0);
   const gridTicks = [0, 0.25, 0.5, 0.75, 1];
 
+  const catDetailExpenses = useMemo(() => {
+    if (!selectedExpenseCat) return [];
+    const cat = selectedExpenseCat === 'Non classé' ? '' : selectedExpenseCat;
+    const filtered = expenses.filter(e =>
+      selectedExpenseCat === 'Non classé'
+        ? !e.category?.trim()
+        : (e.category?.trim() || '') === cat
+    );
+    return [...filtered].sort((a, b) => {
+      if (catSort === 'date-desc') return new Date(b.date).getTime() - new Date(a.date).getTime();
+      if (catSort === 'date-asc') return new Date(a.date).getTime() - new Date(b.date).getTime();
+      if (catSort === 'price-desc') return b.amount - a.amount;
+      if (catSort === 'price-asc') return a.amount - b.amount;
+      if (catSort === 'project') {
+        const pa = projects.find(p => p.id === a.projectId)?.name ?? '';
+        const pb = projects.find(p => p.id === b.projectId)?.name ?? '';
+        return pa.localeCompare(pb);
+      }
+      return 0;
+    });
+  }, [selectedExpenseCat, expenses, catSort, projects]);
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { paddingTop: topPad + 12 }]}>
@@ -218,11 +244,13 @@ export default function ExpensesScreen() {
               ) : expenseCategoryTotals.map(([cat, total], i) => {
                 const pct = totalAll > 0 ? (total / totalAll) * 100 : 0;
                 return (
-                  <View
+                  <Pressable
                     key={cat}
-                    style={[
+                    onPress={() => { Haptics.selectionAsync(); setSelectedExpenseCat(cat); }}
+                    style={({ pressed }) => [
                       styles.catBlock,
                       i < expenseCategoryTotals.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border },
+                      pressed && { opacity: 0.75 },
                     ]}
                   >
                     <View style={styles.catRowInner}>
@@ -230,11 +258,12 @@ export default function ExpensesScreen() {
                       <Text style={[styles.catName, { color: colors.foreground }]}>{cat}</Text>
                       <Text style={[styles.catPct, { color: colors.mutedForeground }]}>{pct.toFixed(0)}%</Text>
                       <Text style={[styles.catAmount, { color: colors.primary }]}>{total.toFixed(2)} €</Text>
+                      <MaterialCommunityIcons name="chevron-right" size={16} color={colors.mutedForeground} />
                     </View>
                     <View style={[styles.catTrack, { backgroundColor: colors.border }]}>
-                      <View style={[styles.catFill, { width: `${pct}%`, backgroundColor: colors.primary }]} />
+                      <View style={[styles.catFill, { width: `${pct}%` as any, backgroundColor: colors.primary }]} />
                     </View>
-                  </View>
+                  </Pressable>
                 );
               })}
             </View>
@@ -435,6 +464,104 @@ export default function ExpensesScreen() {
           </>
         )}
       </ScrollView>
+
+      {/* Category detail bottom sheet */}
+      <Modal visible={!!selectedExpenseCat} animationType="slide" transparent>
+        <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.6)' }}>
+          <Pressable style={{ flex: 1 }} onPress={() => setSelectedExpenseCat(null)} />
+          <View style={[styles.catSheet, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            {/* Header */}
+            <View style={styles.catSheetHeader}>
+              <MaterialCommunityIcons name="tag-outline" size={18} color={colors.primary} />
+              <Text style={[styles.catSheetTitle, { color: colors.foreground }]} numberOfLines={1}>
+                {selectedExpenseCat}
+              </Text>
+              <Text style={[styles.catSheetCount, { color: colors.mutedForeground }]}>
+                {catDetailExpenses.length} dépense{catDetailExpenses.length !== 1 ? 's' : ''}
+              </Text>
+              <Pressable onPress={() => setSelectedExpenseCat(null)} hitSlop={8}>
+                <MaterialCommunityIcons name="close" size={20} color={colors.mutedForeground} />
+              </Pressable>
+            </View>
+
+            {/* Sort chips */}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingBottom: 4 }}>
+              {([
+                { key: 'date-desc', label: 'Plus récent' },
+                { key: 'date-asc', label: 'Plus ancien' },
+                { key: 'price-desc', label: 'Prix ↓' },
+                { key: 'price-asc', label: 'Prix ↑' },
+                { key: 'project', label: 'Projet A→Z' },
+              ] as const).map(opt => {
+                const active = catSort === opt.key;
+                return (
+                  <Pressable
+                    key={opt.key}
+                    onPress={() => setCatSort(opt.key)}
+                    style={[
+                      styles.sortChip,
+                      active
+                        ? { backgroundColor: colors.primary, borderColor: colors.primary }
+                        : { backgroundColor: colors.background, borderColor: colors.border },
+                    ]}
+                  >
+                    <Text style={[styles.sortChipTxt, { color: active ? colors.primaryForeground : colors.mutedForeground }]}>
+                      {opt.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+
+            {/* Total for category */}
+            <View style={[styles.catSheetTotal, { backgroundColor: colors.background, borderColor: colors.border }]}>
+              <Text style={[styles.catSheetTotalLbl, { color: colors.mutedForeground }]}>Total</Text>
+              <Text style={[styles.catSheetTotalAmt, { color: colors.primary }]}>
+                {catDetailExpenses.reduce((s, e) => s + e.amount, 0).toFixed(2)} €
+              </Text>
+            </View>
+
+            {/* Expense list */}
+            <ScrollView style={{ maxHeight: 320 }} showsVerticalScrollIndicator={false}>
+              {catDetailExpenses.length === 0 ? (
+                <View style={{ alignItems: 'center', paddingVertical: 24 }}>
+                  <Text style={[styles.catSheetTotalLbl, { color: colors.mutedForeground }]}>Aucune dépense</Text>
+                </View>
+              ) : catDetailExpenses.map((exp, i) => {
+                const proj = projects.find(p => p.id === exp.projectId);
+                return (
+                  <View
+                    key={exp.id}
+                    style={[
+                      styles.catSheetRow,
+                      i < catDetailExpenses.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border },
+                    ]}
+                  >
+                    <View style={{ flex: 1, gap: 2 }}>
+                      <Text style={[styles.catSheetRowName, { color: colors.foreground }]} numberOfLines={1}>
+                        {exp.name}
+                      </Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        {proj && (
+                          <Text style={[styles.catSheetRowSub, { color: colors.primary }]} numberOfLines={1}>
+                            {proj.name}
+                          </Text>
+                        )}
+                        <Text style={[styles.catSheetRowSub, { color: colors.mutedForeground }]}>
+                          {new Date(exp.date).toLocaleDateString('fr-FR')}
+                        </Text>
+                      </View>
+                    </View>
+                    <Text style={[styles.catSheetRowAmt, { color: colors.foreground }]}>
+                      {exp.amount.toFixed(2)} €
+                    </Text>
+                  </View>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -547,4 +674,53 @@ const styles = StyleSheet.create({
   legendTxt: { fontSize: 11, fontFamily: 'Inter_400Regular', maxWidth: 100 },
   empty: { alignItems: 'center', paddingVertical: 60, gap: 12 },
   emptyTxt: { fontSize: 15, fontFamily: 'Inter_400Regular' },
+  catSheet: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    borderWidth: 1,
+    padding: 20,
+    gap: 14,
+    maxHeight: '85%',
+  },
+  catSheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  catSheetTitle: {
+    flex: 1,
+    fontSize: 17,
+    fontFamily: 'Inter_700Bold',
+  },
+  catSheetCount: {
+    fontSize: 12,
+    fontFamily: 'Inter_400Regular',
+  },
+  catSheetTotal: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  catSheetTotalLbl: { fontSize: 13, fontFamily: 'Inter_500Medium' },
+  catSheetTotalAmt: { fontSize: 18, fontFamily: 'Inter_700Bold' },
+  catSheetRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 12,
+  },
+  catSheetRowName: { fontSize: 14, fontFamily: 'Inter_500Medium' },
+  catSheetRowSub: { fontSize: 12, fontFamily: 'Inter_400Regular' },
+  catSheetRowAmt: { fontSize: 15, fontFamily: 'Inter_700Bold', minWidth: 70, textAlign: 'right' },
+  sortChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  sortChipTxt: { fontSize: 12, fontFamily: 'Inter_500Medium' },
 });

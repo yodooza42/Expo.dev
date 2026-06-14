@@ -11,6 +11,7 @@ import { ProgressBar } from './ProgressBar';
 interface Props {
   project: Project;
   tasks: Task[];
+  onLongPress?: () => void;
 }
 
 const STATUS_LABELS: Record<Project['status'], string> = {
@@ -31,7 +32,7 @@ const STATUS_COLORS: Record<Project['status'], string> = {
   abandoned: '#F44336',
 };
 
-export function ProjectCard({ project, tasks }: Props) {
+export function ProjectCard({ project, tasks, onLongPress }: Props) {
   const colors = useColors();
   const router = useRouter();
 
@@ -45,6 +46,8 @@ export function ProjectCard({ project, tasks }: Props) {
   return (
     <Pressable
       onPress={() => router.push(`/project/${project.id}`)}
+      onLongPress={onLongPress}
+      delayLongPress={400}
       style={({ pressed }) => [
         styles.card,
         { backgroundColor: colors.card, borderColor: colors.border },

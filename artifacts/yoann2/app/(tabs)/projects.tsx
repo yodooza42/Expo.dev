@@ -1,4 +1,5 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
@@ -15,7 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ProjectCard } from '@/components/ProjectCard';
 import { useApp } from '@/contexts/AppContext';
 import { useColors } from '@/hooks/useColors';
-import type { Priority, ProjectStatus } from '@/types';
+import type { Priority, Project, ProjectStatus } from '@/types';
 
 const STATUS_FILTERS: { label: string; value: ProjectStatus | 'all' }[] = [
   { label: 'Tous', value: 'all' },
@@ -35,16 +36,26 @@ const PRIORITY_FILTERS: { label: string; value: Priority | 'all' }[] = [
   { label: 'Critique', value: 'critical' },
 ];
 
+const STATUS_COLORS: Record<ProjectStatus, string> = {
+  idea: '#607D8B',
+  todo: '#2196F3',
+  inprogress: '#FF9800',
+  waiting: '#9E9E9E',
+  done: '#4CAF50',
+  abandoned: '#F44336',
+};
+
 export default function ProjectsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { projects, getProjectTasks, categories } = useApp();
+  const { projects, getProjectTasks, categories, reorderProjects } = useApp();
 
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<ProjectStatus | 'all'>('all');
   const [priorityFilter, setPriorityFilter] = useState<Priority | 'all'>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [reorderMode, setReorderMode] = useState(false);
 
   const topPad = Platform.OS === 'web' ? 67 : insets.top;
 
@@ -56,86 +67,142 @@ export default function ProjectsScreen() {
     return true;
   });
 
+  function enterReorderMode() {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setReorderMode(true);
+  }
+
+  function exitReorderMode() {
+    setReorderMode(false);
+  }
+
+  function moveProject(index: number, direction: 'up' | 'down') {
+    const newOrder = [...projects];
+    const target = direction === 'up' ? index - 1 : index + 1;
+    if (target < 0 || target >= newOrder.length) return;
+    [newOrder[index], newOrder[target]] = [newOrder[target], newOrder[index]];
+    reorderProjects(newOrder);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  }
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { paddingTop: topPad + 12 }]}>
         <View style={styles.headerRow}>
           <Text style={[styles.title, { color: colors.foreground }]}>Projets</Text>
-          <Pressable
-            onPress={() => router.push('/project/new')}
-            style={[styles.addBtn, { backgroundColor: colors.primary }]}
-          >
-            <MaterialCommunityIcons name="plus" size={22} color={colors.primaryForeground} />
-          </Pressable>
-        </View>
-        <View style={[styles.searchBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <MaterialCommunityIcons name="magnify" size={18} color={colors.mutedForeground} />
-          <TextInput
-            placeholder="Rechercher un projet…"
-            placeholderTextColor={colors.mutedForeground}
-            value={search}
-            onChangeText={setSearch}
-            style={[styles.searchInput, { color: colors.foreground }]}
-          />
-          {search.length > 0 && (
-            <Pressable onPress={() => setSearch('')}>
-              <MaterialCommunityIcons name="close-circle" size={16} color={colors.mutedForeground} />
+          {reorderMode ? (
+            <Pressable
+              onPress={exitReorderMode}
+              style={[styles.addBtn, { backgroundColor: colors.primary }]}
+            >
+              <MaterialCommunityIcons name="check" size={22} color={colors.primaryForeground} />
+            </Pressable>
+          ) : (
+            <Pressable
+              onPress={() => router.push('/project/new')}
+              style={[styles.addBtn, { backgroundColor: colors.primary }]}
+            >
+              <MaterialCommunityIcons name="plus" size={22} color={colors.primaryForeground} />
             </Pressable>
           )}
         </View>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterRow} contentContainerStyle={{ gap: 6, paddingRight: 16 }}>
-          {STATUS_FILTERS.map(f => (
-            <Pressable
-              key={f.value}
-              onPress={() => setStatusFilter(f.value)}
-              style={[
-                styles.filterChip,
-                statusFilter === f.value
-                  ? { backgroundColor: colors.primary }
-                  : { backgroundColor: colors.secondary, borderColor: colors.border },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.filterLabel,
-                  { color: statusFilter === f.value ? colors.primaryForeground : colors.mutedForeground },
-                ]}
-              >
-                {f.label}
-              </Text>
-            </Pressable>
-          ))}
-        </ScrollView>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterRow} contentContainerStyle={{ gap: 6, paddingRight: 16 }}>
-          {[{ label: 'Toutes catégories', value: 'all' }, ...categories.map(c => ({ label: c.name, value: c.name }))].map(f => (
-            <Pressable
-              key={f.value}
-              onPress={() => setCategoryFilter(f.value)}
-              style={[
-                styles.filterChip,
-                categoryFilter === f.value
-                  ? { backgroundColor: colors.secondary, borderColor: colors.primary }
-                  : { backgroundColor: colors.secondary, borderColor: colors.border },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.filterLabel,
-                  { color: categoryFilter === f.value ? colors.primary : colors.mutedForeground },
-                ]}
-              >
-                {f.label}
-              </Text>
-            </Pressable>
-          ))}
-        </ScrollView>
+
+        {reorderMode ? (
+          <View style={[styles.reorderBanner, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <MaterialCommunityIcons name="swap-vertical" size={16} color={colors.primary} />
+            <Text style={[styles.reorderTxt, { color: colors.mutedForeground }]}>
+              Maintenez et utilisez les flèches pour réorganiser
+            </Text>
+          </View>
+        ) : (
+          <>
+            <View style={[styles.searchBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <MaterialCommunityIcons name="magnify" size={18} color={colors.mutedForeground} />
+              <TextInput
+                placeholder="Rechercher un projet…"
+                placeholderTextColor={colors.mutedForeground}
+                value={search}
+                onChangeText={setSearch}
+                style={[styles.searchInput, { color: colors.foreground }]}
+              />
+              {search.length > 0 && (
+                <Pressable onPress={() => setSearch('')}>
+                  <MaterialCommunityIcons name="close-circle" size={16} color={colors.mutedForeground} />
+                </Pressable>
+              )}
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterRow} contentContainerStyle={{ gap: 6, paddingRight: 16 }}>
+              {STATUS_FILTERS.map(f => (
+                <Pressable
+                  key={f.value}
+                  onPress={() => setStatusFilter(f.value)}
+                  style={[
+                    styles.filterChip,
+                    statusFilter === f.value
+                      ? { backgroundColor: colors.primary }
+                      : { backgroundColor: colors.secondary, borderColor: colors.border },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.filterLabel,
+                      { color: statusFilter === f.value ? colors.primaryForeground : colors.mutedForeground },
+                    ]}
+                  >
+                    {f.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterRow} contentContainerStyle={{ gap: 6, paddingRight: 16 }}>
+              {[{ label: 'Toutes catégories', value: 'all' }, ...categories.map(c => ({ label: c.name, value: c.name }))].map(f => (
+                <Pressable
+                  key={f.value}
+                  onPress={() => setCategoryFilter(f.value)}
+                  style={[
+                    styles.filterChip,
+                    categoryFilter === f.value
+                      ? { backgroundColor: colors.secondary, borderColor: colors.primary }
+                      : { backgroundColor: colors.secondary, borderColor: colors.border },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.filterLabel,
+                      { color: categoryFilter === f.value ? colors.primary : colors.mutedForeground },
+                    ]}
+                  >
+                    {f.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </>
+        )}
       </View>
 
       <ScrollView
         contentContainerStyle={[styles.list, { paddingBottom: 120 }]}
         showsVerticalScrollIndicator={false}
       >
-        {filtered.length === 0 ? (
+        {reorderMode ? (
+          projects.length === 0 ? (
+            <View style={styles.empty}>
+              <Text style={[styles.emptyTitle, { color: colors.mutedForeground }]}>Aucun projet à réorganiser</Text>
+            </View>
+          ) : (
+            projects.map((p, index) => (
+              <ReorderRow
+                key={p.id}
+                project={p}
+                index={index}
+                total={projects.length}
+                colors={colors}
+                onMove={moveProject}
+              />
+            ))
+          )
+        ) : filtered.length === 0 ? (
           <View style={styles.empty}>
             <MaterialCommunityIcons name="folder-open-outline" size={48} color={colors.mutedForeground} />
             <Text style={[styles.emptyTitle, { color: colors.mutedForeground }]}>Aucun projet</Text>
@@ -148,10 +215,64 @@ export default function ProjectsScreen() {
           </View>
         ) : (
           filtered.map(p => (
-            <ProjectCard key={p.id} project={p} tasks={getProjectTasks(p.id)} />
+            <ProjectCard
+              key={p.id}
+              project={p}
+              tasks={getProjectTasks(p.id)}
+              onLongPress={enterReorderMode}
+            />
           ))
         )}
       </ScrollView>
+    </View>
+  );
+}
+
+function ReorderRow({
+  project,
+  index,
+  total,
+  colors,
+  onMove,
+}: {
+  project: Project;
+  index: number;
+  total: number;
+  colors: ReturnType<typeof useColors>;
+  onMove: (index: number, direction: 'up' | 'down') => void;
+}) {
+  const STATUS_COLORS_LOCAL: Record<ProjectStatus, string> = {
+    idea: '#607D8B',
+    todo: '#2196F3',
+    inprogress: '#FF9800',
+    waiting: '#9E9E9E',
+    done: '#4CAF50',
+    abandoned: '#F44336',
+  };
+  const dot = STATUS_COLORS_LOCAL[project.status];
+
+  return (
+    <View style={[styles.reorderRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
+      <View style={[styles.reorderDot, { backgroundColor: dot }]} />
+      <Text style={[styles.reorderName, { color: colors.foreground }]} numberOfLines={1}>{project.name}</Text>
+      <View style={styles.reorderBtns}>
+        <Pressable
+          onPress={() => onMove(index, 'up')}
+          disabled={index === 0}
+          style={[styles.arrowBtn, index === 0 && { opacity: 0.25 }]}
+          hitSlop={6}
+        >
+          <MaterialCommunityIcons name="chevron-up" size={26} color={colors.primary} />
+        </Pressable>
+        <Pressable
+          onPress={() => onMove(index, 'down')}
+          disabled={index === total - 1}
+          style={[styles.arrowBtn, index === total - 1 && { opacity: 0.25 }]}
+          hitSlop={6}
+        >
+          <MaterialCommunityIcons name="chevron-down" size={26} color={colors.primary} />
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -227,5 +348,47 @@ const styles = StyleSheet.create({
   emptyBtnLabel: {
     fontSize: 14,
     fontFamily: 'Inter_600SemiBold',
+  },
+  reorderBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  reorderTxt: {
+    fontSize: 13,
+    fontFamily: 'Inter_400Regular',
+    flex: 1,
+  },
+  reorderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    marginBottom: 8,
+    gap: 12,
+  },
+  reorderDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  reorderName: {
+    flex: 1,
+    fontSize: 15,
+    fontFamily: 'Inter_500Medium',
+  },
+  reorderBtns: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  arrowBtn: {
+    padding: 4,
   },
 });
