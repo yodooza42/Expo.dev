@@ -1,4 +1,5 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import { Image } from 'expo-image';
@@ -120,6 +121,16 @@ export default function NewTaskScreen() {
     router.back();
   }
 
+  async function persistPhoto(tempUri: string): Promise<string> {
+    const dir = FileSystem.documentDirectory + 'task_photos/';
+    const dirInfo = await FileSystem.getInfoAsync(dir);
+    if (!dirInfo.exists) await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
+    const ext = tempUri.split('.').pop()?.split('?')[0] ?? 'jpg';
+    const dest = dir + Date.now() + '_' + Math.random().toString(36).slice(2) + '.' + ext;
+    await FileSystem.copyAsync({ from: tempUri, to: dest });
+    return dest;
+  }
+
   async function pickPhoto() {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted && Platform.OS !== 'web') { Alert.alert('Permission refusée'); return; }
@@ -128,14 +139,20 @@ export default function NewTaskScreen() {
         text: 'Appareil photo',
         onPress: async () => {
           const r = await ImagePicker.launchCameraAsync({ quality: 0.7 });
-          if (!r.canceled && r.assets[0]) setPhotos(prev => [...prev, r.assets[0].uri]);
+          if (!r.canceled && r.assets[0]) {
+            const permanent = await persistPhoto(r.assets[0].uri);
+            setPhotos(prev => [...prev, permanent]);
+          }
         },
       },
       {
         text: 'Galerie',
         onPress: async () => {
           const r = await ImagePicker.launchImageLibraryAsync({ quality: 0.7, allowsMultipleSelection: true });
-          if (!r.canceled) setPhotos(prev => [...prev, ...r.assets.map(a => a.uri)]);
+          if (!r.canceled) {
+            const permanents = await Promise.all(r.assets.map(a => persistPhoto(a.uri)));
+            setPhotos(prev => [...prev, ...permanents]);
+          }
         },
       },
       { text: 'Annuler', style: 'cancel' },
