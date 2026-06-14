@@ -1,8 +1,19 @@
 uploads = []
-outputs = []
 
 [[generated]]
 id = "-GEUASTyfiFaSOi-anujA"
 uri = "file://artifacts/yoann2/assets/images/icon.png"
 type = "image"
-title = "generated_image"
+title = "yoann20 app icon golden Y dark"
+
+[[generated]]
+id = "9l2ilcIu-MKI2eMMsdR2x"
+uri = "file://attached_assets/yoann20_wordmark_preview.png"
+type = "image"
+title = "yoann20 wordmark preview dark golden"
+
+[[outputs]]
+id = "XuhJX-lUqYwl5JK9hSvwv"
+uri = "file://artifacts/yoann2/assets/images/icon.png"
+type = "image"
+title = "Icône app — Y 2.0 golden"

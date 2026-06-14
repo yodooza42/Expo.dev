@@ -373,11 +373,13 @@ export default function DashboardScreen() {
         style={[styles.header, { paddingTop: topPad + 16 }]}
       >
         <View style={styles.headerRow}>
+          {/* ── Wordmark ── */}
           <View>
-            <Text style={[styles.appName, { color: colors.foreground }]}>Yoann2.0</Text>
-            <Text style={[styles.dateStr, { color: colors.mutedForeground }]}>
-              {now.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
-            </Text>
+            <View style={styles.wordmarkRow}>
+              <Text style={[styles.wordmarkMain, { color: colors.foreground }]}>YOANN</Text>
+              <Text style={[styles.wordmarkVersion, { color: colors.primary }]}>2.0</Text>
+            </View>
+            <View style={[styles.wordmarkLine, { backgroundColor: colors.primary }]} />
           </View>
           <View style={styles.headerActions}>
             {/* Settings */}
@@ -819,6 +821,10 @@ const styles = StyleSheet.create({
   },
   historyBadgeTxt: { fontSize: 10, fontFamily: 'Inter_600SemiBold' },
   historyEmpty: { fontSize: 12, fontFamily: 'Inter_400Regular', marginHorizontal: 16, marginBottom: 12, fontStyle: 'italic' },
+  wordmarkRow:    { flexDirection: 'row', alignItems: 'baseline', gap: 4 },
+  wordmarkMain:   { fontSize: 26, fontFamily: 'Inter_700Bold', letterSpacing: 3 },
+  wordmarkVersion:{ fontSize: 13, fontFamily: 'Inter_700Bold', letterSpacing: 1, marginBottom: 2 },
+  wordmarkLine:   { width: 28, height: 2, borderRadius: 1, marginTop: 4 },
   apptEntry: {
     flexDirection: 'row',
     borderRadius: 12,
