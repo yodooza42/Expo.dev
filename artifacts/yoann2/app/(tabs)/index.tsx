@@ -121,7 +121,21 @@ export default function DashboardScreen() {
       .sort((a, b) => parseFrDate(a.dueDate)!.getTime() - parseFrDate(b.dueDate)!.getTime()),
   [tasks]);
 
-  // Future tasks grouped week → day
+  // Appointments indexed by local day key (YYYY-MM-DD) — must come before weekGroups
+  const apptsByDay = useMemo(() => {
+    const map = new Map<string, Appointment[]>();
+    for (const a of appointments) {
+      if (!a.date) continue;
+      const key = isoDate(startOfDay(new Date(a.date)));
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(a);
+    }
+    for (const list of map.values())
+      list.sort((a, b) => (a.time ?? '').localeCompare(b.time ?? ''));
+    return map;
+  }, [appointments]);
+
+  // Future tasks (+ optional appointment days) grouped week → day
   const weekGroups = useMemo((): WeekGroup[] => {
     const future = tasks
       .filter(t => {
@@ -132,15 +146,13 @@ export default function DashboardScreen() {
       .sort((a, b) => parseFrDate(a.dueDate)!.getTime() - parseFrDate(b.dueDate)!.getTime());
 
     const weekMap = new Map<string, WeekGroup>();
-    for (const task of future) {
-      const date   = parseFrDate(task.dueDate)!;
+
+    function ensureDay(date: Date): DayGroup {
       const monday = getMondayOfWeek(date);
       const wKey   = isoDate(monday);
       const dKey   = isoDate(startOfDay(date));
-
       if (!weekMap.has(wKey))
         weekMap.set(wKey, { weekKey: wKey, label: buildWeekLabel(monday), days: [] });
-
       const week = weekMap.get(wKey)!;
       let day = week.days.find(d => d.dateKey === dKey);
       if (!day) {
@@ -152,29 +164,33 @@ export default function DashboardScreen() {
         };
         week.days.push(day);
       }
-      day.tasks.push(task);
+      return day;
     }
-    return Array.from(weekMap.values());
-  }, [tasks]);
+
+    for (const task of future) {
+      ensureDay(parseFrDate(task.dueDate)!).tasks.push(task);
+    }
+
+    // When appointments toggle is ON, also create day slots for appointment-only days
+    if (showAppts) {
+      for (const [dKey, _] of apptsByDay) {
+        if (dKey < todayKey) continue;          // skip past days
+        const date = new Date(dKey + 'T00:00:00');
+        ensureDay(date);                         // creates the slot if missing
+      }
+    }
+
+    // Sort days within each week chronologically
+    for (const week of weekMap.values())
+      week.days.sort((a, b) => a.dateKey.localeCompare(b.dateKey));
+
+    return Array.from(weekMap.values()).sort((a, b) => a.weekKey.localeCompare(b.weekKey));
+  }, [tasks, showAppts, apptsByDay, todayStart, todayKey]);
 
   // Tasks without due date
   const noDateTasks = useMemo(() =>
     tasks.filter(t => t.status !== 'done' && !t.dueDate),
   [tasks]);
-
-  // Appointments indexed by day key (YYYY-MM-DD)
-  const apptsByDay = useMemo(() => {
-    const map = new Map<string, Appointment[]>();
-    for (const a of appointments) {
-      if (!a.date) continue;
-      const key = a.date.slice(0, 10);
-      if (!map.has(key)) map.set(key, []);
-      map.get(key)!.push(a);
-    }
-    for (const list of map.values())
-      list.sort((a, b) => (a.time ?? '').localeCompare(b.time ?? ''));
-    return map;
-  }, [appointments]);
 
   // Past done tasks grouped by week (last 8 weeks)
   const pastWeekGroups = useMemo((): WeekGroup[] => {
