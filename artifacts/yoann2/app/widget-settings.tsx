@@ -1,9 +1,8 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
-  PanResponder,
   Platform,
   Pressable,
   ScrollView,
@@ -18,7 +17,7 @@ import { useColors } from '@/hooks/useColors';
 import { updateTodoWidget } from '@/widgets/updateWidget';
 import {
   DEFAULT_WIDGET_SETTINGS,
-  getWidgetBgColor,
+  getPreviewBgColor,
   getWidgetSettings,
   saveWidgetSettings,
   type WidgetSettings,
@@ -32,8 +31,8 @@ const COLOR_PALETTE = [
 ];
 
 const BG_PALETTE = [
-  '#121212', '#0D0D0D', '#1A1A2E', '#0F1923', '#1C1C1E',
-  '#1E1E2E', '#13111C', '#0A0A0A', '#181818', '#101820',
+  '#FFC107',
+  '#121212',
 ];
 
 const FONT_SIZES = [
@@ -42,68 +41,11 @@ const FONT_SIZES = [
   { label: 'Grand', value: 19 },
 ];
 
-function OpacitySlider({
-  value,
-  onChange,
-  primaryColor,
-}: {
-  value: number;
-  onChange: (v: number) => void;
-  primaryColor: string;
-}) {
-  const [sliderWidth, setSliderWidth] = useState(240);
-  const sliderWidthRef = useRef(240);
-  const onChangeRef = useRef(onChange);
-  useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
-
-  const panResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onStartShouldSetPanResponder: () => true,
-        onMoveShouldSetPanResponder: () => true,
-        onPanResponderGrant: evt => {
-          const pct = Math.max(0, Math.min(100, Math.round((evt.nativeEvent.locationX / sliderWidthRef.current) * 100)));
-          onChangeRef.current(pct);
-        },
-        onPanResponderMove: evt => {
-          const pct = Math.max(0, Math.min(100, Math.round((evt.nativeEvent.locationX / sliderWidthRef.current) * 100)));
-          onChangeRef.current(pct);
-        },
-      }),
-    []
-  );
-
-  const thumbLeft = Math.max(0, Math.min(sliderWidth - 24, (sliderWidth * value) / 100 - 12));
-
-  return (
-    <View style={{ gap: 8 }}>
-      <View
-        style={styles.sliderHitArea}
-        onLayout={e => {
-          sliderWidthRef.current = e.nativeEvent.layout.width;
-          setSliderWidth(e.nativeEvent.layout.width);
-        }}
-        {...panResponder.panHandlers}
-      >
-        <View style={[styles.sliderTrack, { backgroundColor: '#333' }]}>
-          <View
-            style={[
-              styles.sliderFill,
-              { width: `${value}%`, backgroundColor: primaryColor },
-            ]}
-          />
-        </View>
-        <View
-          style={[
-            styles.sliderThumb,
-            { left: thumbLeft, backgroundColor: primaryColor },
-          ]}
-        />
-      </View>
-      <Text style={styles.sliderLabel}>{value} %</Text>
-    </View>
-  );
-}
+const OPACITY_OPTIONS = [
+  { label: '50 %', value: 50 },
+  { label: '75 %', value: 75 },
+  { label: '100 %', value: 100 },
+];
 
 export default function WidgetSettingsScreen() {
   const colors = useColors();
@@ -156,7 +98,7 @@ export default function WidgetSettingsScreen() {
               <MaterialCommunityIcons
                 name="check"
                 size={16}
-                color={c === '#FFFFFF' || c === '#CCAA44' || c === '#8BC34A' ? '#000' : '#fff'}
+                color={c === '#FFFFFF' || c === '#CCAA44' || c === '#8BC34A' || c === '#FFC107' ? '#000' : '#fff'}
               />
             )}
           </Pressable>
@@ -165,7 +107,7 @@ export default function WidgetSettingsScreen() {
     );
   }
 
-  const previewBgColor = getWidgetBgColor(settings);
+  const previewBgColor = getPreviewBgColor(settings);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -249,11 +191,27 @@ export default function WidgetSettingsScreen() {
 
         <Text style={[styles.section, { color: colors.mutedForeground }]}>Opacité du fond</Text>
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <OpacitySlider
-            value={settings.bgOpacity}
-            onChange={v => setSettings(s => ({ ...s, bgOpacity: v }))}
-            primaryColor={settings.primaryColor}
-          />
+          <View style={styles.chipRow}>
+            {OPACITY_OPTIONS.map(op => (
+              <Pressable
+                key={op.value}
+                onPress={() => setSettings(s => ({ ...s, bgOpacity: op.value }))}
+                style={[
+                  styles.chip,
+                  settings.bgOpacity === op.value
+                    ? { backgroundColor: colors.primary }
+                    : { backgroundColor: colors.background, borderColor: colors.border, borderWidth: 1 },
+                ]}
+              >
+                <Text style={[
+                  styles.chipTxt,
+                  { color: settings.bgOpacity === op.value ? colors.primaryForeground : colors.mutedForeground },
+                ]}>
+                  {op.label}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
         </View>
 
         <Pressable
@@ -317,38 +275,6 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
   },
   paletteCellSelected: { borderColor: '#FFFFFF' },
-  sliderHitArea: {
-    height: 40,
-    justifyContent: 'center',
-    position: 'relative',
-  },
-  sliderTrack: {
-    height: 5,
-    borderRadius: 3,
-    overflow: 'hidden',
-  },
-  sliderFill: {
-    height: 5,
-    borderRadius: 3,
-  },
-  sliderThumb: {
-    position: 'absolute',
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    top: 8,
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.4,
-    shadowRadius: 4,
-  },
-  sliderLabel: {
-    color: '#9E9E9E',
-    fontSize: 13,
-    fontFamily: 'Inter_500Medium',
-    textAlign: 'center',
-  },
   resetBtn: {
     paddingVertical: 12,
     borderRadius: 12,

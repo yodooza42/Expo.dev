@@ -36,3 +36,12 @@ export function getWidgetBgColor(settings: WidgetSettings): string {
   const hex = settings.bgColor.startsWith('#') ? settings.bgColor.slice(1) : settings.bgColor;
   return `#${alphaHex}${hex}`;
 }
+
+export function getPreviewBgColor(settings: WidgetSettings): string {
+  const alphaHex = Math.round((settings.bgOpacity / 100) * 255)
+    .toString(16)
+    .padStart(2, '0')
+    .toUpperCase();
+  const hex = settings.bgColor.startsWith('#') ? settings.bgColor.slice(1) : settings.bgColor;
+  return `#${hex}${alphaHex}`;
+}
