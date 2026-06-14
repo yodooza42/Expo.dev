@@ -91,6 +91,7 @@ export default function DashboardScreen() {
   const { projects, tasks, appointments, getStats, updateTask } = useApp();
 
   const [showPhotos,   setShowPhotos]   = useState(false);
+  const [showHistory,  setShowHistory]  = useState(false);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
 
   const stats    = getStats();
@@ -160,6 +161,45 @@ export default function DashboardScreen() {
     tasks.filter(t => t.status !== 'done' && !t.dueDate),
   [tasks]);
 
+  // Past done tasks grouped by week (last 8 weeks)
+  const pastWeekGroups = useMemo((): WeekGroup[] => {
+    const eightWeeksAgo = new Date(todayStart);
+    eightWeeksAgo.setDate(eightWeeksAgo.getDate() - 56);
+
+    const pastDone = tasks
+      .filter(t => {
+        if (t.status !== 'done') return false;
+        const d = parseFrDate(t.dueDate);
+        return d && startOfDay(d) >= eightWeeksAgo && startOfDay(d) < todayStart;
+      })
+      .sort((a, b) => parseFrDate(b.dueDate)!.getTime() - parseFrDate(a.dueDate)!.getTime());
+
+    const weekMap = new Map<string, WeekGroup>();
+    for (const task of pastDone) {
+      const date   = parseFrDate(task.dueDate)!;
+      const monday = getMondayOfWeek(date);
+      const wKey   = isoDate(monday);
+      const dKey   = isoDate(startOfDay(date));
+
+      if (!weekMap.has(wKey))
+        weekMap.set(wKey, { weekKey: wKey, label: buildWeekLabel(monday), days: [] });
+
+      const week = weekMap.get(wKey)!;
+      let day = week.days.find(d => d.dateKey === dKey);
+      if (!day) {
+        day = {
+          dateKey: dKey,
+          date: startOfDay(date),
+          label: startOfDay(date).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'long' }),
+          tasks: [],
+        };
+        week.days.push(day);
+      }
+      day.tasks.push(task);
+    }
+    return Array.from(weekMap.values()).sort((a, b) => a.weekKey.localeCompare(b.weekKey));
+  }, [tasks]);
+
   // ── Interactions ──────────────────────────────────────────────────────
 
   function handleTaskPress(task: Task) {
@@ -180,41 +220,57 @@ export default function DashboardScreen() {
 
   // ── Sub-component ─────────────────────────────────────────────────────
 
-  function TaskEntry({ task, isOverdue = false }: { task: Task; isOverdue?: boolean }) {
+  function TaskEntry({ task, isOverdue = false, isDone = false }: { task: Task; isOverdue?: boolean; isDone?: boolean }) {
     const proj      = projects.find(p => p.id === task.projectId);
     const pColor    = proj ? projectColor(proj.id) : colors.primary;
     const prioColor = PRIORITY_COLORS[task.priority] ?? colors.primary;
     const hasPhotos = task.photos.length > 0;
+    const dimmed    = isDone || isOverdue;
 
     return (
       <Pressable
-        onPress={() => handleTaskPress(task)}
+        onPress={() => !isDone && handleTaskPress(task)}
         style={({ pressed }) => [
           styles.taskEntry,
-          { backgroundColor: colors.card, borderColor: isOverdue ? '#F4433640' : colors.border },
-          pressed && { opacity: 0.75 },
+          {
+            backgroundColor: isDone ? colors.card + '80' : colors.card,
+            borderColor: isOverdue ? '#F4433640' : colors.border,
+            opacity: pressed ? 0.75 : isDone ? 0.55 : 1,
+          },
         ]}
       >
-        <View style={[styles.taskColorBar, { backgroundColor: isOverdue ? '#F44336' : pColor }]} />
+        <View style={[styles.taskColorBar, { backgroundColor: isOverdue ? '#F44336' : isDone ? colors.mutedForeground : pColor }]} />
         <View style={styles.taskContent}>
           <View style={styles.taskTop}>
+            {isDone && (
+              <MaterialCommunityIcons name="check-circle" size={14} color="#4CAF50" style={{ marginRight: -2 }} />
+            )}
             <Text
-              style={[styles.taskTitle, { color: isOverdue ? '#FF5722' : colors.foreground }]}
+              style={[
+                styles.taskTitle,
+                { color: isOverdue ? '#FF5722' : isDone ? colors.mutedForeground : colors.foreground },
+                isDone && { textDecorationLine: 'line-through' },
+              ]}
               numberOfLines={1}
             >
               {task.title}
             </Text>
-            <View style={[styles.prioBadge, { backgroundColor: prioColor + '22' }]}>
-              <View style={[styles.prioDot, { backgroundColor: prioColor }]} />
-              <Text style={[styles.prioTxt, { color: prioColor }]}>{PRIORITY_LABELS[task.priority]}</Text>
-            </View>
+            {!isDone && (
+              <View style={[styles.prioBadge, { backgroundColor: prioColor + '22' }]}>
+                <View style={[styles.prioDot, { backgroundColor: prioColor }]} />
+                <Text style={[styles.prioTxt, { color: prioColor }]}>{PRIORITY_LABELS[task.priority]}</Text>
+              </View>
+            )}
           </View>
           {proj && (
-            <Text style={[styles.taskProj, { color: isOverdue ? '#F4433399' : pColor + 'cc' }]} numberOfLines={1}>
+            <Text
+              style={[styles.taskProj, { color: isOverdue ? '#F4433399' : isDone ? colors.mutedForeground : pColor + 'cc' }]}
+              numberOfLines={1}
+            >
               {proj.name}
             </Text>
           )}
-          {showPhotos && hasPhotos && (
+          {showPhotos && hasPhotos && !isDone && (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.photoStrip}>
               {task.photos.map((uri, i) => (
                 <Image key={i} source={{ uri }} style={styles.photoThumb} contentFit="cover" />
@@ -244,6 +300,14 @@ export default function DashboardScreen() {
             </Text>
           </View>
           <View style={styles.headerActions}>
+            {/* Settings */}
+            <Pressable
+              onPress={() => router.push('/(tabs)/settings' as any)}
+              hitSlop={6}
+              style={[styles.iconBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+            >
+              <MaterialCommunityIcons name="cog-outline" size={18} color={colors.mutedForeground} />
+            </Pressable>
             {/* Photo toggle */}
             <Pressable
               onPress={() => { setShowPhotos(v => !v); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
@@ -261,13 +325,6 @@ export default function DashboardScreen() {
                 size={18}
                 color={showPhotos ? colors.primary : colors.mutedForeground}
               />
-            </Pressable>
-            {/* New project */}
-            <Pressable
-              onPress={() => router.push('/project/new')}
-              style={[styles.addBtn, { backgroundColor: colors.primary }]}
-            >
-              <MaterialCommunityIcons name="plus" size={22} color={colors.primaryForeground} />
             </Pressable>
           </View>
         </View>
@@ -316,6 +373,60 @@ export default function DashboardScreen() {
             </Text>
             <MaterialCommunityIcons name="chevron-right" size={14} color={colors.primary} />
           </Pressable>
+        )}
+
+        {/* ── HISTORIQUE toggle ── */}
+        <Pressable
+          onPress={() => setShowHistory(v => !v)}
+          style={[styles.historyToggle, { borderColor: colors.border }]}
+        >
+          <MaterialCommunityIcons
+            name={showHistory ? 'chevron-up' : 'history'}
+            size={14}
+            color={colors.mutedForeground}
+          />
+          <Text style={[styles.historyTxt, { color: colors.mutedForeground }]}>
+            {showHistory ? 'Masquer l\'historique' : 'Voir les semaines passées'}
+          </Text>
+          {!showHistory && pastWeekGroups.length > 0 && (
+            <View style={[styles.historyBadge, { backgroundColor: colors.border }]}>
+              <Text style={[styles.historyBadgeTxt, { color: colors.mutedForeground }]}>
+                {pastWeekGroups.reduce((s, w) => s + w.days.reduce((ds, d) => ds + d.tasks.length, 0), 0)}
+              </Text>
+            </View>
+          )}
+        </Pressable>
+
+        {/* ── SEMAINES PASSÉES ── */}
+        {showHistory && (
+          pastWeekGroups.length === 0 ? (
+            <Text style={[styles.historyEmpty, { color: colors.mutedForeground }]}>
+              Aucune tâche terminée avec une date dans les 8 dernières semaines
+            </Text>
+          ) : (
+            pastWeekGroups.map(week => (
+              <View key={week.weekKey} style={styles.section}>
+                <View style={styles.weekRow}>
+                  <View style={[styles.weekLineFrag, { backgroundColor: colors.border }]} />
+                  <Text style={[styles.weekHead, { color: colors.mutedForeground }]}>{week.label}</Text>
+                  <View style={[styles.weekLineFrag, { backgroundColor: colors.border }]} />
+                </View>
+                {week.days.map(day => (
+                  <View key={day.dateKey} style={styles.dayGroup}>
+                    <View style={styles.dayHeadRow}>
+                      <View style={[styles.dayDot, { backgroundColor: colors.background, borderColor: colors.border }]} />
+                      <Text style={[styles.dayHead, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                        {day.label}
+                      </Text>
+                    </View>
+                    <View style={[styles.branch, { borderLeftColor: colors.border }]}>
+                      {day.tasks.map(t => <TaskEntry key={t.id} task={t} isDone />)}
+                    </View>
+                  </View>
+                ))}
+              </View>
+            ))
+          )
         )}
 
         {/* ── EN RETARD ── */}
@@ -582,4 +693,26 @@ const styles = StyleSheet.create({
   sheetBtns:   { flexDirection: 'row', gap: 10 },
   sheetBtn:    { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: 14, borderWidth: 1 },
   sheetBtnTxt: { fontSize: 14, fontFamily: 'Inter_600SemiBold' },
+  historyToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginHorizontal: 16,
+    marginBottom: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  historyTxt: { fontSize: 12, fontFamily: 'Inter_500Medium', flex: 1 },
+  historyBadge: {
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 5,
+  },
+  historyBadgeTxt: { fontSize: 10, fontFamily: 'Inter_600SemiBold' },
+  historyEmpty: { fontSize: 12, fontFamily: 'Inter_400Regular', marginHorizontal: 16, marginBottom: 12, fontStyle: 'italic' },
 });

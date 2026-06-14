@@ -16,9 +16,9 @@ export default function TabLayout() {
       <Tabs.Screen name="index" />
       <Tabs.Screen name="projects" />
       <Tabs.Screen name="kanban" />
-      <Tabs.Screen name="calendar" />
       <Tabs.Screen name="expenses" />
-      <Tabs.Screen name="settings" />
+      <Tabs.Screen name="calendar" />
+      <Tabs.Screen name="settings" options={{ href: null }} />
     </Tabs>
   );
 }

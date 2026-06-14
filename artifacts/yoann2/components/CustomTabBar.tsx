@@ -1,14 +1,7 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
-import { Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
-import Animated, {
-  useAnimatedStyle,
-  useSharedValue,
-  withSpring,
-  withTiming,
-} from 'react-native-reanimated';
+import React from 'react';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useColors } from '@/hooks/useColors';
@@ -20,172 +13,91 @@ interface TabBarProps {
 }
 
 const TAB_ICONS: Record<string, string> = {
-  index: 'view-dashboard-outline',
+  index:    'view-dashboard-outline',
   projects: 'folder-multiple-outline',
-  kanban: 'view-column-outline',
-  calendar: 'calendar-month-outline',
+  kanban:   'view-column-outline',
   expenses: 'chart-line',
-  settings: 'cog-outline',
+  calendar: 'calendar-month-outline',
 };
 
 const TAB_LABELS: Record<string, string> = {
-  index: 'Accueil',
+  index:    'Accueil',
   projects: 'Projets',
-  kanban: 'Kanban',
-  calendar: 'Agenda',
+  kanban:   'Kanban',
   expenses: 'Finances',
-  settings: 'Réglages',
+  calendar: 'Agenda',
 };
 
-export function CustomTabBar({ state, descriptors, navigation }: TabBarProps) {
-  const colors = useColors();
-  const insets = useSafeAreaInsets();
-  const router = useRouter();
-  const [fabOpen, setFabOpen] = useState(false);
-  const fabRotation = useSharedValue(0);
-  const overlayOpacity = useSharedValue(0);
-
-  const isWeb = Platform.OS === 'web';
+export function CustomTabBar({ state, navigation }: TabBarProps) {
+  const colors    = useColors();
+  const insets    = useSafeAreaInsets();
+  const isWeb     = Platform.OS === 'web';
   const bottomPad = isWeb ? 8 : insets.bottom;
-  const tabBarHeight = 56 + bottomPad;
-  const FAB_OFFSET = 28;
 
-  const totalTabs = state.routes.length;
-
-  function toggleFab() {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    const opening = !fabOpen;
-    setFabOpen(opening);
-    fabRotation.value = withSpring(opening ? 45 : 0, { damping: 15 });
-    overlayOpacity.value = withTiming(opening ? 1 : 0, { duration: 180 });
-  }
-
-  function closeFab() {
-    setFabOpen(false);
-    fabRotation.value = withSpring(0, { damping: 15 });
-    overlayOpacity.value = withTiming(0, { duration: 180 });
-  }
-
-  const fabIconStyle = useAnimatedStyle(() => ({
-    transform: [{ rotate: `${fabRotation.value}deg` }],
-  }));
-
-  function navigateTo(path: string) {
-    closeFab();
-    setTimeout(() => router.push(path as any), 100);
-  }
-
-  const tabs = state.routes;
-  const midLow = Math.floor((totalTabs - 1) / 2);
-  const midHigh = Math.ceil((totalTabs - 1) / 2);
+  const HIDDEN_TABS = ['settings'];
+  const currentRouteName: string = state.routes[state.index]?.name ?? '';
 
   return (
-    <>
-      {fabOpen && (
-        <Pressable
-          style={[StyleSheet.absoluteFill, { zIndex: 10, backgroundColor: 'rgba(0,0,0,0.65)' }]}
-          onPress={closeFab}
-        />
-      )}
+    <View
+      style={[
+        styles.tabBar,
+        {
+          backgroundColor: colors.card,
+          borderTopColor:  colors.border,
+          paddingBottom:   bottomPad,
+          height:          56 + bottomPad,
+        },
+      ]}
+    >
+      {/* Tab items */}
+      <View style={styles.tabRow}>
+        {state.routes
+          .filter((route: any) => !HIDDEN_TABS.includes(route.name))
+          .map((route: any) => {
+          const isFocused = currentRouteName === route.name;
+          const iconColor = isFocused ? colors.primary : colors.mutedForeground;
+          const iconName  = TAB_ICONS[route.name] ?? 'circle';
+          const label     = TAB_LABELS[route.name] ?? route.name;
 
-      {fabOpen && (
-        <View
-          style={[
-            styles.fabMenu,
-            { bottom: tabBarHeight + FAB_OFFSET + 8 },
-          ]}
-        >
-          {[
-            { label: 'Nouveau projet', icon: 'folder-plus-outline', path: '/project/new' },
-            { label: 'Nouvelle tâche', icon: 'plus-circle-outline', path: '/task/new' },
-          ].map((item, i) => (
+          return (
             <Pressable
-              key={i}
-              onPress={() => navigateTo(item.path)}
-              style={({ pressed }) => [
-                styles.fabMenuItem,
-                { backgroundColor: colors.card, borderColor: colors.border },
-                pressed && { opacity: 0.8 },
-              ]}
+              key={route.key}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                const event = navigation.emit({
+                  type: 'tabPress',
+                  target: route.key,
+                  canPreventDefault: true,
+                });
+                if (!isFocused && !event.defaultPrevented) {
+                  navigation.navigate(route.name);
+                }
+              }}
+              style={styles.tabItem}
             >
-              <MaterialCommunityIcons name={item.icon as any} size={20} color={colors.primary} />
-              <Text style={[styles.fabMenuLabel, { color: colors.foreground }]}>{item.label}</Text>
+              <MaterialCommunityIcons name={iconName as any} size={22} color={iconColor} />
+              <Text style={[styles.tabLabel, { color: iconColor }]}>{label}</Text>
             </Pressable>
-          ))}
-        </View>
-      )}
-
-      <View
-        style={[
-          styles.tabBar,
-          {
-            backgroundColor: colors.card,
-            borderTopColor: colors.border,
-            paddingBottom: bottomPad,
-            height: tabBarHeight + FAB_OFFSET,
-          },
-        ]}
-      >
-        <View style={styles.tabRow}>
-          {tabs.map((route: any, index: number) => {
-            const isFocused = state.index === index;
-            const isNearFab = index === midLow || index === midHigh;
-            const routeName = route.name;
-            const iconName = TAB_ICONS[routeName] ?? 'circle';
-            const label = TAB_LABELS[routeName] ?? routeName;
-            const iconColor = isFocused ? colors.primary : colors.mutedForeground;
-
-            return (
-              <Pressable
-                key={route.key}
-                onPress={() => {
-                  const event = navigation.emit({
-                    type: 'tabPress',
-                    target: route.key,
-                    canPreventDefault: true,
-                  });
-                  if (!isFocused && !event.defaultPrevented) {
-                    navigation.navigate(route.name);
-                  }
-                }}
-                style={[styles.tabItem, isNearFab && styles.nearFabTab]}
-              >
-                <MaterialCommunityIcons name={iconName as any} size={22} color={iconColor} />
-                <Text style={[styles.tabLabel, { color: iconColor }]}>{label}</Text>
-              </Pressable>
-            );
-          })}
-        </View>
-
-        <View style={styles.fabRow}>
-          <Pressable
-            onPress={toggleFab}
-            style={[styles.fab, { backgroundColor: colors.primary }]}
-          >
-            <Animated.View style={fabIconStyle}>
-              <MaterialCommunityIcons name="plus" size={28} color={colors.primaryForeground} />
-            </Animated.View>
-          </Pressable>
-
-          {state.index !== 0 && (
-            <Pressable
-              onPress={() => { closeFab(); navigation.navigate('index'); }}
-              style={[styles.homeBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
-            >
-              <MaterialCommunityIcons name="home-variant-outline" size={20} color={colors.primary} />
-            </Pressable>
-          )}
-        </View>
+          );
+        })}
       </View>
-    </>
+
+      {/* Home button — only visible when not on the home tab */}
+      {state.index !== 0 && (
+        <Pressable
+          onPress={() => navigation.navigate('index')}
+          style={[styles.homeBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+        >
+          <MaterialCommunityIcons name="home-variant-outline" size={20} color={colors.primary} />
+        </Pressable>
+      )}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   tabBar: {
     borderTopWidth: 1,
-    position: 'relative',
-    alignItems: 'stretch',
     justifyContent: 'flex-end',
   },
   tabRow: {
@@ -200,35 +112,15 @@ const styles = StyleSheet.create({
     gap: 3,
     paddingVertical: 6,
   },
-  nearFabTab: {
-    paddingTop: 26,
-  },
   tabLabel: {
     fontSize: 9,
     fontFamily: 'Inter_500Medium',
   },
-  fabRow: {
-    position: 'absolute',
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'center',
-    top: -27,
-    gap: 10,
-    zIndex: 5,
-  },
-  fab: {
-    width: 54,
-    height: 54,
-    borderRadius: 27,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#FFC107',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.45,
-    shadowRadius: 10,
-    elevation: 10,
-  },
   homeBtn: {
+    position: 'absolute',
+    top: -20,
+    alignSelf: 'center',
+    right: 16,
     width: 38,
     height: 38,
     borderRadius: 19,
@@ -240,34 +132,5 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 4,
     elevation: 5,
-    marginTop: 16,
-  },
-  fabMenu: {
-    position: 'absolute',
-    alignSelf: 'center',
-    zIndex: 20,
-    gap: 10,
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-  },
-  fabMenuItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    borderRadius: 16,
-    borderWidth: 1,
-    minWidth: 220,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-  fabMenuLabel: {
-    fontSize: 15,
-    fontFamily: 'Inter_500Medium',
   },
 });
