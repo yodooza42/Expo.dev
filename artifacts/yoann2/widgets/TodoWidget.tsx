@@ -15,7 +15,7 @@ export function TodoWidget({ tasks, todayAppts, nextApptLabel, confirmTask, sett
   const PRIMARY = settings.primaryColor as ColorProp;
   const BG = getWidgetBgColor(settings) as ColorProp;
   const taskFs = settings.taskFontSize;
-  const btnFs = Math.round(9 * 1.25);
+  const btnFs = 12;
 
   const apptText =
     todayAppts.length > 0
@@ -233,7 +233,7 @@ export function TodoWidget({ tasks, todayAppts, nextApptLabel, confirmTask, sett
               marginLeft: 4,
             }}
           >
-            <TextWidget text="↺" style={{ fontSize: Math.round(13 * 1.25), color: MUTED }} />
+            <TextWidget text="↺" style={{ fontSize: 12, color: MUTED }} />
           </FlexWidget>
         </FlexWidget>
       </FlexWidget>

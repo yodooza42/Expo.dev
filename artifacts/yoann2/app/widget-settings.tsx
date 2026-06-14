@@ -198,9 +198,9 @@ export default function WidgetSettingsScreen() {
           </Text>
           <View style={styles.previewBar}>
             {['+ Tâche', '+ Projet', '+ RDV'].map(l => (
-              <Text key={l} style={[styles.previewBarItem, { color: settings.primaryColor, fontSize: Math.round(9 * 1.25) }]}>{l}</Text>
+              <Text key={l} style={[styles.previewBarItem, { color: settings.primaryColor, fontSize: 12 }]}>{l}</Text>
             ))}
-            <Text style={[styles.previewBarItem, { color: '#9E9E9E', fontSize: Math.round(13 * 1.25) }]}>↺</Text>
+            <Text style={[styles.previewBarItem, { color: '#9E9E9E', fontSize: 12 }]}>↺</Text>
           </View>
         </View>
 
