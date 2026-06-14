@@ -358,8 +358,8 @@ export default function SettingsScreen() {
 
         <View style={[styles.about, { borderColor: colors.border }]}>
           <Text style={[styles.aboutTitle, { color: colors.foreground }]}>Yoann2.0 - par et pour Gorge Yoann</Text>
-          <Text style={[styles.aboutSub, { color: colors.mutedForeground }]}>Gestion de mes projets & idées</Text>
-          <Text style={[styles.aboutSub, { color: colors.mutedForeground }]}>v.1.0.6</Text>
+          <Text style={[styles.aboutSub, { color: colors.mutedForeground }]}>Bienvenue dans mon cerveau numérique</Text>
+          <Text style={[styles.aboutSub, { color: colors.mutedForeground }]}>v.1.0.9</Text>
         </View>
       </ScrollView>
 
