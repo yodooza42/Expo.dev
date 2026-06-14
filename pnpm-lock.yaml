@@ -150,6 +150,11 @@ overrides:
   '@esbuild-kit/esm-loader': npm:tsx@^4.21.0
   esbuild: 0.27.3
 
+patchedDependencies:
+  react-native-android-widget:
+    hash: 88e18d000766c212d22199219a4811ada393352039aeb1d2a249ae7a3ea31e90
+    path: patches/react-native-android-widget.patch
+
 importers:
 
   .:
@@ -412,7 +417,7 @@ importers:
         version: 14.0.8(expo@54.0.35)
       react-native-android-widget:
         specifier: ^0.20.3
-        version: 0.20.3(expo@54.0.35)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
+        version: 0.20.3(patch_hash=88e18d000766c212d22199219a4811ada393352039aeb1d2a249ae7a3ea31e90)(expo@54.0.35)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
     devDependencies:
       '@babel/core':
         specifier: ^7.25.2
@@ -11027,7 +11032,7 @@ snapshots:
 
   react-is@19.2.7: {}
 
-  react-native-android-widget@0.20.3(expo@54.0.35)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0):
+  react-native-android-widget@0.20.3(patch_hash=88e18d000766c212d22199219a4811ada393352039aeb1d2a249ae7a3ea31e90)(expo@54.0.35)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0):
     dependencies:
       react: 19.1.0
       react-native: 0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0)

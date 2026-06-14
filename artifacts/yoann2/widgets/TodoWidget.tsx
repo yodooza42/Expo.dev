@@ -37,8 +37,7 @@ export function TodoWidget({ tasks, todayAppts, nextApptLabel, confirmTask, sett
       <OverlapWidget style={{ height: 'match_parent', width: 'match_parent' }}>
         <ImageWidget
           image={bgImage as ImageWidgetSource}
-          imageWidth={400}
-          imageHeight={200}
+          resizeMode="cover"
           radius={16}
           style={{ height: 'match_parent', width: 'match_parent' }}
         />
