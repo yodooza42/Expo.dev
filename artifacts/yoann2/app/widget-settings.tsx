@@ -1,8 +1,10 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
+  Image,
   Platform,
   Pressable,
   ScrollView,
@@ -17,7 +19,6 @@ import { useColors } from '@/hooks/useColors';
 import { updateTodoWidget } from '@/widgets/updateWidget';
 import {
   DEFAULT_WIDGET_SETTINGS,
-  getPreviewBgColor,
   getWidgetSettings,
   saveWidgetSettings,
   type WidgetSettings,
@@ -41,7 +42,6 @@ const FONT_SIZES = [
   { label: 'Grand', value: 19 },
 ];
 
-
 export default function WidgetSettingsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -50,6 +50,7 @@ export default function WidgetSettingsScreen() {
 
   const [settings, setSettings] = useState<WidgetSettings>(DEFAULT_WIDGET_SETTINGS);
   const [saving, setSaving] = useState(false);
+  const [pickingImage, setPickingImage] = useState(false);
 
   const topPad = Platform.OS === 'web' ? 67 : insets.top;
 
@@ -66,6 +67,33 @@ export default function WidgetSettingsScreen() {
     } finally {
       setSaving(false);
     }
+  }
+
+  async function pickBgImage() {
+    setPickingImage(true);
+    try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) return;
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [3, 2],
+        quality: 0.4,
+        base64: true,
+      });
+      if (!result.canceled && result.assets[0]) {
+        const asset = result.assets[0];
+        const mime = asset.mimeType ?? 'image/jpeg';
+        const uri = `data:${mime};base64,${asset.base64}`;
+        setSettings(s => ({ ...s, bgImageUri: uri }));
+      }
+    } finally {
+      setPickingImage(false);
+    }
+  }
+
+  function removeBgImage() {
+    setSettings(s => ({ ...s, bgImageUri: undefined }));
   }
 
   function ColorGrid({
@@ -102,8 +130,6 @@ export default function WidgetSettingsScreen() {
     );
   }
 
-  const previewBgColor = getPreviewBgColor(settings);
-
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.headerBar, { paddingTop: topPad + 8, borderBottomColor: colors.border }]}>
@@ -126,18 +152,37 @@ export default function WidgetSettingsScreen() {
         contentContainerStyle={[styles.content, { paddingBottom: 120 }]}
         showsVerticalScrollIndicator={false}
       >
-        <View style={[styles.previewBox, { backgroundColor: previewBgColor, borderColor: colors.border }]}>
-          <Text style={[styles.previewTitle, { color: '#FFFFFF', fontSize: settings.taskFontSize }]}>
-            ● Exemple de tâche  ·  15 juin
-          </Text>
-          <Text style={[styles.previewSub, { color: settings.primaryColor }]}>
-            Aujourd'hui : 10h Médecin
-          </Text>
-          <View style={styles.previewBar}>
-            {['+ Tâche', '+ Projet', '+ RDV'].map(l => (
-              <Text key={l} style={[styles.previewBarItem, { color: settings.primaryColor, fontSize: 12 }]}>{l}</Text>
-            ))}
-            <Text style={[styles.previewBarItem, { color: '#9E9E9E', fontSize: 12 }]}>↺</Text>
+        {/* Preview */}
+        <View style={[
+          styles.previewBox,
+          { borderColor: colors.border, overflow: 'hidden' },
+          settings.bgImageUri
+            ? {}
+            : { backgroundColor: settings.bgColor },
+        ]}>
+          {settings.bgImageUri ? (
+            <Image
+              source={{ uri: settings.bgImageUri }}
+              style={StyleSheet.absoluteFillObject}
+              resizeMode="cover"
+            />
+          ) : null}
+          <View style={[
+            styles.previewInner,
+            settings.bgImageUri ? { backgroundColor: 'rgba(0,0,0,0.55)' } : {},
+          ]}>
+            <Text style={[styles.previewTitle, { fontSize: settings.taskFontSize }]}>
+              ● Exemple de tâche  ·  15 juin
+            </Text>
+            <Text style={[styles.previewSub, { color: settings.primaryColor }]}>
+              Aujourd'hui : 10h Médecin
+            </Text>
+            <View style={styles.previewBar}>
+              {['+ Tâche', '+ Projet', '+ RDV'].map(l => (
+                <Text key={l} style={[styles.previewBarItem, { color: settings.primaryColor, fontSize: 12 }]}>{l}</Text>
+              ))}
+              <Text style={[styles.previewBarItem, { color: '#9E9E9E', fontSize: 12 }]}>↺</Text>
+            </View>
           </View>
         </View>
 
@@ -184,6 +229,45 @@ export default function WidgetSettingsScreen() {
           />
         </View>
 
+        <Text style={[styles.section, { color: colors.mutedForeground }]}>Image de fond</Text>
+        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border, gap: 12 }]}>
+          {settings.bgImageUri ? (
+            <View style={styles.imgPreviewRow}>
+              <Image
+                source={{ uri: settings.bgImageUri }}
+                style={styles.imgThumb}
+                resizeMode="cover"
+              />
+              <View style={{ flex: 1, gap: 8 }}>
+                <Text style={[styles.imgHint, { color: colors.mutedForeground }]}>
+                  Image sélectionnée — sera utilisée comme fond du widget.
+                </Text>
+                <Pressable
+                  onPress={removeBgImage}
+                  style={[styles.removeBtn, { borderColor: colors.border }]}
+                >
+                  <MaterialCommunityIcons name="trash-can-outline" size={16} color="#F44336" />
+                  <Text style={[styles.removeTxt, { color: '#F44336' }]}>Supprimer l'image</Text>
+                </Pressable>
+              </View>
+            </View>
+          ) : (
+            <Text style={[styles.imgHint, { color: colors.mutedForeground }]}>
+              Aucune image — le widget utilise la couleur de fond ci-dessus.
+            </Text>
+          )}
+          <Pressable
+            onPress={pickBgImage}
+            disabled={pickingImage}
+            style={[styles.pickBtn, { backgroundColor: colors.primary, opacity: pickingImage ? 0.6 : 1 }]}
+          >
+            <MaterialCommunityIcons name="image-plus" size={18} color={colors.primaryForeground} />
+            <Text style={[styles.pickTxt, { color: colors.primaryForeground }]}>
+              {pickingImage ? 'Chargement…' : settings.bgImageUri ? 'Changer l\'image' : 'Choisir une image'}
+            </Text>
+          </Pressable>
+        </View>
+
         <Pressable
           onPress={() => setSettings(DEFAULT_WIDGET_SETTINGS)}
           style={[styles.resetBtn, { borderColor: colors.border }]}
@@ -223,13 +307,19 @@ const styles = StyleSheet.create({
   previewBox: {
     borderRadius: 16,
     borderWidth: 1,
+    marginTop: 16,
+    height: 120,
+  },
+  previewInner: {
+    flex: 1,
     padding: 14,
     gap: 8,
-    marginTop: 16,
+    borderRadius: 16,
+    justifyContent: 'space-between',
   },
   previewTitle: { fontFamily: 'Inter_500Medium', color: '#FFFFFF' },
   previewSub: { fontSize: 11, fontFamily: 'Inter_400Regular' },
-  previewBar: { flexDirection: 'row', gap: 12, marginTop: 4 },
+  previewBar: { flexDirection: 'row', gap: 12 },
   previewBarItem: { fontFamily: 'Inter_500Medium' },
   chipRow: { flexDirection: 'row', gap: 8 },
   chip: { flex: 1, paddingVertical: 10, borderRadius: 12, alignItems: 'center' },
@@ -245,6 +335,29 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
   },
   paletteCellSelected: { borderColor: '#FFFFFF' },
+  imgPreviewRow: { flexDirection: 'row', gap: 12, alignItems: 'flex-start' },
+  imgThumb: { width: 80, height: 54, borderRadius: 8 },
+  imgHint: { fontSize: 12, fontFamily: 'Inter_400Regular', lineHeight: 18 },
+  pickBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    borderRadius: 12,
+  },
+  pickTxt: { fontSize: 14, fontFamily: 'Inter_600SemiBold' },
+  removeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignSelf: 'flex-start',
+  },
+  removeTxt: { fontSize: 12, fontFamily: 'Inter_500Medium' },
   resetBtn: {
     paddingVertical: 12,
     borderRadius: 12,

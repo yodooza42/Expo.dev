@@ -1,19 +1,25 @@
 import React from 'react';
-import { FlexWidget, TextWidget } from 'react-native-android-widget';
-import type { ColorProp } from 'react-native-android-widget';
+import {
+  FlexWidget,
+  ImageWidget,
+  OverlapWidget,
+  TextWidget,
+} from 'react-native-android-widget';
+import type { ColorProp, ImageWidgetSource } from 'react-native-android-widget';
 
 import type { WidgetData } from './data';
-import { getWidgetBgColor } from './widgetSettings';
 
 const CARD = '#2A2A2A';
 const TEXT: ColorProp = '#FFFFFF';
 const MUTED: ColorProp = '#9E9E9E';
 const GREEN: ColorProp = '#4CAF50';
+const OVERLAY: ColorProp = '#BB000000';
 const SCHEME = 'yoann2';
 
 export function TodoWidget({ tasks, todayAppts, nextApptLabel, confirmTask, settings, todayLabel }: WidgetData) {
   const PRIMARY = settings.primaryColor as ColorProp;
-  const BG = getWidgetBgColor(settings) as ColorProp;
+  const BG = settings.bgColor as ColorProp;
+  const bgImage = settings.bgImageUri;
   const taskFs = settings.taskFontSize;
   const btnFs = 12;
 
@@ -23,17 +29,35 @@ export function TodoWidget({ tasks, todayAppts, nextApptLabel, confirmTask, sett
       : nextApptLabel;
   const apptColor: ColorProp = todayAppts.length > 0 ? PRIMARY : MUTED;
 
+  const containerBg: ColorProp = bgImage ? OVERLAY : BG;
+
+  function wrapWithBg(content: React.ReactElement): React.ReactElement {
+    if (!bgImage) return content;
+    return (
+      <OverlapWidget style={{ height: 'match_parent', width: 'match_parent' }}>
+        <ImageWidget
+          image={bgImage as ImageWidgetSource}
+          imageWidth={400}
+          imageHeight={200}
+          radius={16}
+          style={{ height: 'match_parent', width: 'match_parent' }}
+        />
+        {content}
+      </OverlapWidget>
+    );
+  }
+
   if (confirmTask) {
     const label = confirmTask.deadline
       ? `${confirmTask.title}  ·  ${confirmTask.deadline}`
       : confirmTask.title;
 
-    return (
+    return wrapWithBg(
       <FlexWidget
         style={{
           height: 'match_parent',
           width: 'match_parent',
-          backgroundColor: BG,
+          backgroundColor: containerBg,
           borderRadius: 16,
           paddingHorizontal: 16,
           paddingVertical: 12,
@@ -88,13 +112,13 @@ export function TodoWidget({ tasks, todayAppts, nextApptLabel, confirmTask, sett
     );
   }
 
-  return (
+  return wrapWithBg(
     <FlexWidget
       clickAction="OPEN_APP"
       style={{
         height: 'match_parent',
         width: 'match_parent',
-        backgroundColor: BG,
+        backgroundColor: containerBg,
         borderRadius: 16,
         paddingHorizontal: 12,
         paddingTop: 10,
