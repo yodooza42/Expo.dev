@@ -118,7 +118,7 @@ const styles = StyleSheet.create({
   },
   homeBtn: {
     position: 'absolute',
-    top: -20,
+    top: -34,
     alignSelf: 'center',
     right: 16,
     width: 38,
