@@ -17,7 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useApp } from '@/contexts/AppContext';
 import { useColors } from '@/hooks/useColors';
-import type { Task } from '@/types';
+import type { Appointment, Task } from '@/types';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -91,6 +91,7 @@ export default function DashboardScreen() {
   const { projects, tasks, appointments, getStats, updateTask } = useApp();
 
   const [showPhotos,   setShowPhotos]   = useState(false);
+  const [showAppts,    setShowAppts]    = useState(false);
   const [showHistory,  setShowHistory]  = useState(false);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
 
@@ -161,6 +162,20 @@ export default function DashboardScreen() {
     tasks.filter(t => t.status !== 'done' && !t.dueDate),
   [tasks]);
 
+  // Appointments indexed by day key (YYYY-MM-DD)
+  const apptsByDay = useMemo(() => {
+    const map = new Map<string, Appointment[]>();
+    for (const a of appointments) {
+      if (!a.date) continue;
+      const key = a.date.slice(0, 10);
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(a);
+    }
+    for (const list of map.values())
+      list.sort((a, b) => (a.time ?? '').localeCompare(b.time ?? ''));
+    return map;
+  }, [appointments]);
+
   // Past done tasks grouped by week (last 8 weeks)
   const pastWeekGroups = useMemo((): WeekGroup[] => {
     const eightWeeksAgo = new Date(todayStart);
@@ -199,6 +214,52 @@ export default function DashboardScreen() {
     }
     return Array.from(weekMap.values()).sort((a, b) => a.weekKey.localeCompare(b.weekKey));
   }, [tasks]);
+
+  // ── Sub-component: ApptEntry ──────────────────────────────────────────
+
+  function ApptEntry({ appt }: { appt: Appointment }) {
+    const APPT_COLOR = '#7C4DFF';
+    return (
+      <Pressable
+        onPress={() => router.push('/(tabs)/calendar' as any)}
+        style={({ pressed }) => [
+          styles.apptEntry,
+          { backgroundColor: colors.card, borderColor: APPT_COLOR + '40', opacity: pressed ? 0.75 : 1 },
+        ]}
+      >
+        <View style={[styles.apptColorBar, { backgroundColor: APPT_COLOR }]} />
+        <View style={styles.apptContent}>
+          <View style={styles.apptTitleRow}>
+            <MaterialCommunityIcons name="calendar-clock" size={13} color={APPT_COLOR} />
+            <Text style={[styles.apptTitle, { color: colors.foreground }]} numberOfLines={1}>
+              {appt.title}
+            </Text>
+          </View>
+          <View style={styles.apptMeta}>
+            {appt.time ? (
+              <View style={styles.apptMetaItem}>
+                <MaterialCommunityIcons name="clock-outline" size={11} color={colors.mutedForeground} />
+                <Text style={[styles.apptMetaTxt, { color: colors.mutedForeground }]}>{appt.time}</Text>
+              </View>
+            ) : null}
+            {appt.location ? (
+              <View style={styles.apptMetaItem}>
+                <MaterialCommunityIcons name="map-marker-outline" size={11} color={colors.mutedForeground} />
+                <Text style={[styles.apptMetaTxt, { color: colors.mutedForeground }]} numberOfLines={1}>
+                  {appt.location}
+                </Text>
+              </View>
+            ) : null}
+            {appt.category ? (
+              <View style={[styles.apptCatBadge, { backgroundColor: APPT_COLOR + '22' }]}>
+                <Text style={[styles.apptCatTxt, { color: APPT_COLOR }]}>{appt.category}</Text>
+              </View>
+            ) : null}
+          </View>
+        </View>
+      </Pressable>
+    );
+  }
 
   // ── Interactions ──────────────────────────────────────────────────────
 
@@ -307,6 +368,24 @@ export default function DashboardScreen() {
               style={[styles.iconBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
             >
               <MaterialCommunityIcons name="cog-outline" size={18} color={colors.mutedForeground} />
+            </Pressable>
+            {/* Appointments toggle */}
+            <Pressable
+              onPress={() => { setShowAppts(v => !v); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+              hitSlop={6}
+              style={[
+                styles.iconBtn,
+                {
+                  backgroundColor: showAppts ? '#7C4DFF28' : colors.card,
+                  borderColor: showAppts ? '#7C4DFF' : colors.border,
+                },
+              ]}
+            >
+              <MaterialCommunityIcons
+                name={showAppts ? 'calendar-clock' : 'calendar-clock-outline' as any}
+                size={18}
+                color={showAppts ? '#7C4DFF' : colors.mutedForeground}
+              />
             </Pressable>
             {/* Photo toggle */}
             <Pressable
@@ -421,6 +500,9 @@ export default function DashboardScreen() {
                     </View>
                     <View style={[styles.branch, { borderLeftColor: colors.border }]}>
                       {day.tasks.map(t => <TaskEntry key={t.id} task={t} isDone />)}
+                      {showAppts && (apptsByDay.get(day.dateKey) ?? []).map(a => (
+                        <ApptEntry key={a.id} appt={a} />
+                      ))}
                     </View>
                   </View>
                 ))}
@@ -505,9 +587,12 @@ export default function DashboardScreen() {
                     </Text>
                   </View>
 
-                  {/* Tasks branching from the axis */}
+                  {/* Tasks + appointments branching from the axis */}
                   <View style={[styles.branch, { borderLeftColor: isToday ? colors.primary + '60' : colors.border }]}>
                     {day.tasks.map(t => <TaskEntry key={t.id} task={t} />)}
+                    {showAppts && (apptsByDay.get(day.dateKey) ?? []).map(a => (
+                      <ApptEntry key={a.id} appt={a} />
+                    ))}
                   </View>
                 </View>
               );
@@ -715,4 +800,20 @@ const styles = StyleSheet.create({
   },
   historyBadgeTxt: { fontSize: 10, fontFamily: 'Inter_600SemiBold' },
   historyEmpty: { fontSize: 12, fontFamily: 'Inter_400Regular', marginHorizontal: 16, marginBottom: 12, fontStyle: 'italic' },
+  apptEntry: {
+    flexDirection: 'row',
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 6,
+    overflow: 'hidden',
+  },
+  apptColorBar: { width: 3 },
+  apptContent: { flex: 1, padding: 10, gap: 4 },
+  apptTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  apptTitle: { flex: 1, fontSize: 13, fontFamily: 'Inter_600SemiBold' },
+  apptMeta: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8 },
+  apptMetaItem: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  apptMetaTxt: { fontSize: 11, fontFamily: 'Inter_400Regular' },
+  apptCatBadge: { borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
+  apptCatTxt: { fontSize: 10, fontFamily: 'Inter_500Medium' },
 });
