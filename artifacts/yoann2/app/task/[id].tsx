@@ -1,4 +1,5 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -45,6 +46,24 @@ export default function TaskDetailScreen() {
   const project = taskMaybe ? projects.find(p => p.id === taskMaybe.projectId) : null;
 
   const [photoViewIdx, setPhotoViewIdx] = useState<number | null>(null);
+
+  async function handleDeletePhoto(uri: string, idx: number) {
+    Alert.alert('Supprimer la photo', 'Cette photo sera définitivement supprimée.', [
+      { text: 'Annuler', style: 'cancel' },
+      {
+        text: 'Supprimer', style: 'destructive',
+        onPress: async () => {
+          if (photoViewIdx === idx) setPhotoViewIdx(null);
+          const newPhotos = task.photos.filter((_, i) => i !== idx);
+          updateTask(task.id, { photos: newPhotos });
+          try {
+            const info = await FileSystem.getInfoAsync(uri);
+            if (info.exists) await FileSystem.deleteAsync(uri, { idempotent: true });
+          } catch { /* ignore cleanup errors */ }
+        },
+      },
+    ]);
+  }
   const [addExpVisible, setAddExpVisible] = useState(false);
   const [expName, setExpName] = useState('');
   const [expAmount, setExpAmount] = useState('');
@@ -252,9 +271,18 @@ export default function TaskDetailScreen() {
               <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Photos</Text>
               <View style={styles.photoGrid}>
                 {task.photos.map((uri, idx) => (
-                  <Pressable key={idx} onPress={() => setPhotoViewIdx(idx)} style={styles.photoThumb}>
-                    <Image source={{ uri }} style={styles.photoImg} contentFit="cover" />
-                  </Pressable>
+                  <View key={idx} style={styles.photoThumb}>
+                    <Pressable onPress={() => setPhotoViewIdx(idx)} style={{ flex: 1 }}>
+                      <Image source={{ uri }} style={styles.photoImg} contentFit="cover" />
+                    </Pressable>
+                    <Pressable
+                      onPress={() => handleDeletePhoto(uri, idx)}
+                      style={styles.photoRemove}
+                      hitSlop={6}
+                    >
+                      <MaterialCommunityIcons name="close-circle" size={20} color="#fff" />
+                    </Pressable>
+                  </View>
                 ))}
               </View>
             </View>
@@ -426,8 +454,9 @@ const styles = StyleSheet.create({
   body2: { fontSize: 14, fontFamily: 'Inter_400Regular', lineHeight: 22 },
   notesBox: { padding: 14, borderRadius: 12, borderWidth: 1 },
   photoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  photoThumb: { width: THUMB, height: THUMB, borderRadius: 10, overflow: 'hidden' },
+  photoThumb: { width: THUMB, height: THUMB, borderRadius: 10, overflow: 'hidden', position: 'relative' },
   photoImg: { width: '100%', height: '100%' },
+  photoRemove: { position: 'absolute', top: 4, right: 4, zIndex: 10 },
   photoModal: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   photoClose: { position: 'absolute', top: 60, right: 20, zIndex: 10 },
   photoFull: { width, height: width * 1.2 },
