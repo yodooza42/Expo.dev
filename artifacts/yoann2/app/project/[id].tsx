@@ -63,7 +63,7 @@ export default function ProjectDetailScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { projects, getProjectTasks, getProjectExpenses, updateProject, deleteProject, addExpense, updateExpense, deleteExpense, deleteTask } = useApp();
+  const { projects, getProjectTasks, getProjectExpenses, updateProject, deleteProject, addExpense, updateExpense, deleteExpense, deleteTask, expenseCategories } = useApp();
 
   const projectMaybe = projects.find(p => p.id === id);
   const tasks = useMemo(() => getProjectTasks(id ?? ''), [getProjectTasks, id]);
@@ -787,14 +787,28 @@ export default function ProjectDetailScreen() {
               style={[styles.input, { backgroundColor: colors.background, color: colors.foreground, borderColor: colors.border }]}
             />
 
-            <Text style={[styles.inputLabel, { color: colors.mutedForeground }]}>Catégorie (optionnel)</Text>
-            <TextInput
-              value={expCat}
-              onChangeText={setExpCat}
-              placeholder="Ex: Matériaux, quincaillerie…"
-              placeholderTextColor={colors.mutedForeground}
-              style={[styles.input, { backgroundColor: colors.background, color: colors.foreground, borderColor: colors.border }]}
-            />
+            <Text style={[styles.inputLabel, { color: colors.mutedForeground }]}>Catégorie</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 4 }}>
+              {expenseCategories.map(cat => {
+                const active = expCat === cat.name;
+                return (
+                  <Pressable
+                    key={cat.id}
+                    onPress={() => setExpCat(active ? '' : cat.name)}
+                    style={[
+                      styles.expCatChip,
+                      active
+                        ? { backgroundColor: colors.primary, borderColor: colors.primary }
+                        : { backgroundColor: colors.background, borderColor: colors.border },
+                    ]}
+                  >
+                    <Text style={[styles.expCatChipTxt, { color: active ? colors.primaryForeground : colors.mutedForeground }]}>
+                      {cat.name}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
 
             <Text style={[styles.inputLabel, { color: colors.mutedForeground }]}>Description (optionnel)</Text>
             <TextInput
@@ -981,6 +995,8 @@ const styles = StyleSheet.create({
   sheetBtns: { flexDirection: 'row', gap: 10, marginTop: 4 },
   cancelBtn: { flex: 1, paddingVertical: 14, borderRadius: 14, borderWidth: 1, alignItems: 'center' },
   cancelLabel: { fontSize: 15, fontFamily: 'Inter_500Medium' },
+  expCatChip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1 },
+  expCatChipTxt: { fontSize: 13, fontFamily: 'Inter_500Medium' },
   saveBtn: { flex: 1, paddingVertical: 14, borderRadius: 14, alignItems: 'center' },
   saveBtnLabel: { fontSize: 15, fontFamily: 'Inter_600SemiBold' },
   photoModal: { flex: 1, backgroundColor: 'rgba(0,0,0,0.97)', justifyContent: 'center' },

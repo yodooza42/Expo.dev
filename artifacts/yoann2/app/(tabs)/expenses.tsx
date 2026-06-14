@@ -87,7 +87,7 @@ function getMonthsForPeriod(
 export default function ExpensesScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { projects, expenses } = useApp();
+  const { projects, expenses, expenseCategories } = useApp();
   const topPad = Platform.OS === 'web' ? 67 : insets.top;
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -125,14 +125,14 @@ export default function ExpensesScreen() {
       .sort((a, b) => b.total - a.total);
   }, [projects, expenses]);
 
-  const categoryTotals = useMemo(() => {
+  const expenseCategoryTotals = useMemo(() => {
     const map = new Map<string, number>();
-    projectTotals.forEach(({ project, total }) => {
-      const cat = project.category || 'Sans catégorie';
-      map.set(cat, (map.get(cat) ?? 0) + total);
+    expenses.forEach(e => {
+      const cat = e.category?.trim() || 'Non classé';
+      map.set(cat, (map.get(cat) ?? 0) + e.amount);
     });
     return Array.from(map.entries()).sort((a, b) => b[1] - a[1]);
-  }, [projectTotals]);
+  }, [expenses]);
 
   const chartData = useMemo(() => {
     return projects
@@ -208,24 +208,35 @@ export default function ExpensesScreen() {
           </View>
         ) : (
           <>
-            {/* Category totals */}
-            <Text style={[styles.section, { color: colors.mutedForeground }]}>Par catégorie</Text>
+            {/* Expense category totals */}
+            <Text style={[styles.section, { color: colors.mutedForeground }]}>Par catégorie de dépense</Text>
             <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              {categoryTotals.map(([cat, total], i) => (
-                <View
-                  key={cat}
-                  style={[
-                    styles.catRow,
-                    i < categoryTotals.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border },
-                  ]}
-                >
-                  <MaterialCommunityIcons name="tag-outline" size={16} color={colors.primary} />
-                  <Text style={[styles.catName, { color: colors.foreground }]}>{cat}</Text>
-                  <Text style={[styles.catAmount, { color: colors.primary }]}>
-                    {total.toFixed(2)} €
-                  </Text>
+              {expenseCategoryTotals.length === 0 ? (
+                <View style={styles.catRow}>
+                  <Text style={[styles.catName, { color: colors.mutedForeground }]}>Aucune dépense catégorisée</Text>
                 </View>
-              ))}
+              ) : expenseCategoryTotals.map(([cat, total], i) => {
+                const pct = totalAll > 0 ? (total / totalAll) * 100 : 0;
+                return (
+                  <View
+                    key={cat}
+                    style={[
+                      styles.catBlock,
+                      i < expenseCategoryTotals.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border },
+                    ]}
+                  >
+                    <View style={styles.catRowInner}>
+                      <MaterialCommunityIcons name="tag-outline" size={15} color={colors.primary} />
+                      <Text style={[styles.catName, { color: colors.foreground }]}>{cat}</Text>
+                      <Text style={[styles.catPct, { color: colors.mutedForeground }]}>{pct.toFixed(0)}%</Text>
+                      <Text style={[styles.catAmount, { color: colors.primary }]}>{total.toFixed(2)} €</Text>
+                    </View>
+                    <View style={[styles.catTrack, { backgroundColor: colors.border }]}>
+                      <View style={[styles.catFill, { width: `${pct}%`, backgroundColor: colors.primary }]} />
+                    </View>
+                  </View>
+                );
+              })}
             </View>
 
             {/* Per project */}
@@ -457,8 +468,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
   },
+  catBlock: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    gap: 6,
+  },
+  catRowInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   catName: { flex: 1, fontSize: 14, fontFamily: 'Inter_500Medium' },
+  catPct: { fontSize: 12, fontFamily: 'Inter_400Regular' },
   catAmount: { fontSize: 15, fontFamily: 'Inter_700Bold' },
+  catTrack: { height: 4, borderRadius: 2, overflow: 'hidden' },
+  catFill: { height: 4, borderRadius: 2 },
   projRow: {
     flexDirection: 'row',
     alignItems: 'center',

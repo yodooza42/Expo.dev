@@ -88,12 +88,14 @@ export default function SettingsScreen() {
   const colors = useColors();
   const { updateColor, resetColors } = useTheme();
   const insets = useSafeAreaInsets();
-  const { exportData, importData, resetData, projects, tasks, categories, addCategory, deleteCategory } = useApp();
+  const { exportData, importData, resetData, projects, tasks, categories, addCategory, deleteCategory, expenseCategories, addExpenseCategory, deleteExpenseCategory } = useApp();
 
   const [importModalVisible, setImportModalVisible] = useState(false);
   const [importText, setImportText] = useState('');
   const [catModalVisible, setCatModalVisible] = useState(false);
+  const [expCatModalVisible, setExpCatModalVisible] = useState(false);
   const [newCatName, setNewCatName] = useState('');
+  const [newExpCatName, setNewExpCatName] = useState('');
   const [colorPickerKey, setColorPickerKey] = useState<ThemeColorKey | null>(null);
   const router = useRouter();
 
@@ -235,9 +237,16 @@ export default function SettingsScreen() {
         <Text style={[styles.section, { color: colors.mutedForeground }]}>Catégories</Text>
         <SettingRow
           icon="tag-multiple-outline"
-          label="Gérer les catégories"
-          sublabel={`${categories.length} catégories`}
+          label="Gérer les catégories de projets"
+          sublabel={`${categories.length} catégorie${categories.length !== 1 ? 's' : ''}`}
           onPress={() => setCatModalVisible(true)}
+          colors={colors}
+        />
+        <SettingRow
+          icon="cash-multiple"
+          label="Catégories de dépenses"
+          sublabel={`${expenseCategories.length} catégorie${expenseCategories.length !== 1 ? 's' : ''}`}
+          onPress={() => setExpCatModalVisible(true)}
           colors={colors}
         />
 
@@ -327,6 +336,46 @@ export default function SettingsScreen() {
               ))}
             </ScrollView>
             <Pressable onPress={() => setCatModalVisible(false)} style={[styles.cancelBtn, { borderColor: colors.border }]}>
+              <Text style={[styles.cancelLabel, { color: colors.mutedForeground }]}>Fermer</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={expCatModalVisible} animationType="slide" transparent>
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.7)' }]}>
+          <Pressable style={{ flex: 1 }} onPress={() => setExpCatModalVisible(false)} />
+          <View style={[styles.modal, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.modalTitle, { color: colors.foreground }]}>Catégories de dépenses</Text>
+            <View style={[styles.catInput, { backgroundColor: colors.background, borderColor: colors.border }]}>
+              <TextInput
+                value={newExpCatName}
+                onChangeText={setNewExpCatName}
+                placeholder="Nouvelle catégorie…"
+                placeholderTextColor={colors.mutedForeground}
+                style={[styles.catInputField, { color: colors.foreground }]}
+                onSubmitEditing={() => { if (newExpCatName.trim()) { addExpenseCategory(newExpCatName.trim()); setNewExpCatName(''); } }}
+                returnKeyType="done"
+              />
+              <Pressable
+                onPress={() => { if (newExpCatName.trim()) { addExpenseCategory(newExpCatName.trim()); setNewExpCatName(''); } }}
+                style={[styles.catAddBtn, { backgroundColor: colors.primary }]}
+              >
+                <MaterialCommunityIcons name="plus" size={18} color={colors.primaryForeground} />
+              </Pressable>
+            </View>
+            <ScrollView style={{ maxHeight: 240 }}>
+              {expenseCategories.map(c => (
+                <View key={c.id} style={[styles.catRow, { borderBottomColor: colors.border }]}>
+                  <MaterialCommunityIcons name="cash-multiple" size={14} color={colors.primary} />
+                  <Text style={[styles.catName, { color: colors.foreground, flex: 1 }]}>{c.name}</Text>
+                  <Pressable onPress={() => deleteExpenseCategory(c.id)} hitSlop={8}>
+                    <MaterialCommunityIcons name="close" size={16} color={colors.mutedForeground} />
+                  </Pressable>
+                </View>
+              ))}
+            </ScrollView>
+            <Pressable onPress={() => setExpCatModalVisible(false)} style={[styles.cancelBtn, { borderColor: colors.border }]}>
               <Text style={[styles.cancelLabel, { color: colors.mutedForeground }]}>Fermer</Text>
             </Pressable>
           </View>
