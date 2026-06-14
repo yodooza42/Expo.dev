@@ -57,7 +57,7 @@
   },
   "dependencies": {
     "expo-clipboard": "^8.0.8",
-    "expo-image-manipulator": "^56.0.18",
+    "expo-image-manipulator": "~14.0.8",
     "expo-print": "~15.0.8",
     "expo-sharing": "~14.0.8",
     "react-native-android-widget": "^0.20.3"

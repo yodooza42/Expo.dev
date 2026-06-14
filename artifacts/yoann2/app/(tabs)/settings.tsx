@@ -5,6 +5,7 @@ import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
   Alert,
+  KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
@@ -267,9 +268,12 @@ export default function SettingsScreen() {
       </ScrollView>
 
       <Modal visible={importModalVisible} animationType="slide" transparent>
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.7)' }]}>
+        <KeyboardAvoidingView
+          style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.7)' }]}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
           <Pressable style={{ flex: 1 }} onPress={() => setImportModalVisible(false)} />
-          <View style={[styles.modal, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <View style={[styles.modal, { backgroundColor: colors.card, borderColor: colors.border, paddingBottom: 24 + insets.bottom }]}>
             <Text style={[styles.modalTitle, { color: colors.foreground }]}>Importer des données</Text>
             <Text style={[styles.modalSub, { color: colors.mutedForeground }]}>
               Collez votre JSON de sauvegarde ci-dessous.
@@ -280,6 +284,7 @@ export default function SettingsScreen() {
               placeholder="Collez le JSON ici…"
               placeholderTextColor={colors.mutedForeground}
               multiline
+              scrollEnabled
               style={[styles.jsonInput, { backgroundColor: colors.background, color: colors.foreground, borderColor: colors.border }]}
             />
             <View style={styles.modalBtns}>
@@ -291,7 +296,7 @@ export default function SettingsScreen() {
               </Pressable>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       <Modal visible={catModalVisible} animationType="slide" transparent>
@@ -506,6 +511,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     padding: 12,
     minHeight: 120,
+    maxHeight: 220,
     textAlignVertical: 'top',
     fontSize: 12,
     fontFamily: 'Inter_400Regular',
