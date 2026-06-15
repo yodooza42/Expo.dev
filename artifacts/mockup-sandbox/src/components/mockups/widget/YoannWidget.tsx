@@ -115,9 +115,8 @@ export function YoannWidget() {
           justifyContent: 'space-around',
         }}>
           {navItems.map((item, i) => (
-            <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, flex: 1 }}>
+            <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1, padding: '4px 0' }}>
               {item.icon}
-              <span style={{ color: YELLOW, fontSize: 8, fontWeight: 600 }}>{item.label}</span>
             </div>
           ))}
         </div>
@@ -185,14 +184,21 @@ function IconRdv() {
 function IconHome() {
   return (
     <svg width={26} height={26} viewBox="0 0 48 48">
-      {/* Maison avec cerveau simplifié */}
+      {/* Contour maison */}
       <polyline points="4,25 24,5 44,25" {...ST} />
       <polyline points="10,25 10,44 38,44 38,25" {...ST} />
-      {/* Cerveau simplifié = deux lobes arrondis */}
-      <path d="M18 34 Q18 28 24 28 Q30 28 30 34 Q30 38 24 38 Q18 38 18 34 Z" {...ST} />
-      <line x1={24} y1={28} x2={24} y2={38} {...ST} />
-      <path d="M18 31 Q14 29 15 33" {...ST} />
-      <path d="M30 31 Q34 29 33 33" {...ST} />
+      {/* Cerveau — hémisphère gauche avec bosses */}
+      <path d="M12,40 L12,33 Q12,27 15,26 Q17,25 18,27 Q19,25 21,26 Q23,27 23,31 L23,40 Z" {...ST} />
+      {/* Cerveau — hémisphère droit avec bosses */}
+      <path d="M36,40 L36,33 Q36,27 33,26 Q31,25 30,27 Q29,25 27,26 Q25,27 25,31 L25,40 Z" {...ST} />
+      {/* Trait central */}
+      <line x1={24} y1={27} x2={24} y2={40} {...ST} strokeWidth={1.5} />
+      {/* Sillons gauche */}
+      <path d="M14,32 Q17,30 20,32" {...ST} strokeWidth={1.2} />
+      <path d="M13,36 Q16,34 20,36" {...ST} strokeWidth={1.2} />
+      {/* Sillons droit */}
+      <path d="M34,32 Q31,30 28,32" {...ST} strokeWidth={1.2} />
+      <path d="M35,36 Q32,34 28,36" {...ST} strokeWidth={1.2} />
     </svg>
   );
 }
