@@ -131,14 +131,7 @@ const C = '#FFC107';
 const ST = { stroke: C, strokeWidth: 2.5, fill: 'none', strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
 
 function IconReset() {
-  return (
-    <svg width={26} height={26} viewBox="0 0 48 48">
-      {/* Cercle avec tête de serpent */}
-      <path d="M38 10 A18 18 0 1 0 40 30" {...ST} />
-      <circle cx={41} cy={9} r={3} fill={C} />
-      <circle cx={39} cy={7} r={1} fill="#0D1B3E" />
-    </svg>
-  );
+  return <img src='/__mockup/icon-reset-v2.png' alt='Reset' style={{width:28,height:28,objectFit:'contain'}} />;
 }
 
 function IconTask() {
@@ -182,23 +175,5 @@ function IconRdv() {
 }
 
 function IconHome() {
-  return (
-    <svg width={26} height={26} viewBox="0 0 48 48">
-      {/* Contour maison */}
-      <polyline points="4,25 24,5 44,25" {...ST} />
-      <polyline points="10,25 10,44 38,44 38,25" {...ST} />
-      {/* Cerveau — hémisphère gauche avec bosses */}
-      <path d="M12,40 L12,33 Q12,27 15,26 Q17,25 18,27 Q19,25 21,26 Q23,27 23,31 L23,40 Z" {...ST} />
-      {/* Cerveau — hémisphère droit avec bosses */}
-      <path d="M36,40 L36,33 Q36,27 33,26 Q31,25 30,27 Q29,25 27,26 Q25,27 25,31 L25,40 Z" {...ST} />
-      {/* Trait central */}
-      <line x1={24} y1={27} x2={24} y2={40} {...ST} strokeWidth={1.5} />
-      {/* Sillons gauche */}
-      <path d="M14,32 Q17,30 20,32" {...ST} strokeWidth={1.2} />
-      <path d="M13,36 Q16,34 20,36" {...ST} strokeWidth={1.2} />
-      {/* Sillons droit */}
-      <path d="M34,32 Q31,30 28,32" {...ST} strokeWidth={1.2} />
-      <path d="M35,36 Q32,34 28,36" {...ST} strokeWidth={1.2} />
-    </svg>
-  );
+  return <img src='/__mockup/icon-home-v2.png' alt='Accueil' style={{width:28,height:28,objectFit:'contain'}} />;
 }
