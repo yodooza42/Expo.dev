@@ -4,6 +4,15 @@ import { AppState } from 'react-native';
 
 import type { Appointment, AppStats, Category, Expense, Priority, Project, ProjectStatus, Task, TaskStatus } from '@/types';
 import { saveBackup } from '@/utils/backup';
+import {
+  SEED_APPOINTMENTS,
+  SEED_CATEGORIES,
+  SEED_EXPENSE_CATEGORIES,
+  SEED_EXPENSES,
+  SEED_PROJECTS,
+  SEED_TASKS,
+  SEED_VERSION,
+} from '@/utils/seedData';
 import { updateTodoWidget } from '@/widgets/updateWidget';
 
 const STORAGE_KEYS = {
@@ -14,6 +23,7 @@ const STORAGE_KEYS = {
   EXPENSE_CATEGORIES: '@yoann2_expense_categories',
   APPOINTMENTS: '@yoann2_appointments',
   INITIALIZED: '@yoann2_initialized',
+  SEED_VERSION: '@yoann2_seed_version',
 };
 
 const DEFAULT_EXPENSE_CATEGORIES: Category[] = [
@@ -275,21 +285,27 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   async function loadData() {
     try {
-      const initialized = await AsyncStorage.getItem(STORAGE_KEYS.INITIALIZED);
-      if (!initialized) {
-        const sample = createSampleData();
-        setProjects(sample.projects);
-        setTasks(sample.tasks);
-        setExpenses(sample.expenses);
-        setCategories(DEFAULT_CATEGORIES);
-        setAppointments([]);
+      const [initialized, storedSeedVersion] = await Promise.all([
+        AsyncStorage.getItem(STORAGE_KEYS.INITIALIZED),
+        AsyncStorage.getItem(STORAGE_KEYS.SEED_VERSION),
+      ]);
+      const needsSeed = !initialized || storedSeedVersion !== SEED_VERSION;
+      if (needsSeed) {
+        setProjects(SEED_PROJECTS);
+        setTasks(SEED_TASKS);
+        setExpenses(SEED_EXPENSES);
+        setCategories(SEED_CATEGORIES);
+        setExpenseCategories(SEED_EXPENSE_CATEGORIES);
+        setAppointments(SEED_APPOINTMENTS);
         await AsyncStorage.multiSet([
-          [STORAGE_KEYS.PROJECTS, JSON.stringify(sample.projects)],
-          [STORAGE_KEYS.TASKS, JSON.stringify(sample.tasks)],
-          [STORAGE_KEYS.EXPENSES, JSON.stringify(sample.expenses)],
-          [STORAGE_KEYS.CATEGORIES, JSON.stringify(DEFAULT_CATEGORIES)],
-          [STORAGE_KEYS.APPOINTMENTS, JSON.stringify([])],
+          [STORAGE_KEYS.PROJECTS, JSON.stringify(SEED_PROJECTS)],
+          [STORAGE_KEYS.TASKS, JSON.stringify(SEED_TASKS)],
+          [STORAGE_KEYS.EXPENSES, JSON.stringify(SEED_EXPENSES)],
+          [STORAGE_KEYS.CATEGORIES, JSON.stringify(SEED_CATEGORIES)],
+          [STORAGE_KEYS.EXPENSE_CATEGORIES, JSON.stringify(SEED_EXPENSE_CATEGORIES)],
+          [STORAGE_KEYS.APPOINTMENTS, JSON.stringify(SEED_APPOINTMENTS)],
           [STORAGE_KEYS.INITIALIZED, 'true'],
+          [STORAGE_KEYS.SEED_VERSION, SEED_VERSION],
         ]);
       } else {
         const [pRaw, tRaw, eRaw, cRaw, ecRaw, aRaw] = await AsyncStorage.multiGet([
