@@ -22,11 +22,11 @@ export function YoannWidget() {
   ];
 
   const navItems = [
-    { svg: <ResetIcon />, label: 'Reset' },
-    { svg: <TaskIcon />,  label: 'Tâche' },
-    { svg: <IdeaIcon />,  label: 'Idée' },
-    { svg: <RdvIcon />,   label: 'RDV' },
-    { svg: <HomeIcon />,  label: 'Accueil' },
+    { src: '/icon-reset.png', label: 'Reset' },
+    { src: '/icon-task.png',  label: 'Tâche' },
+    { src: '/icon-idea.png',  label: 'Idée' },
+    { src: '/icon-rdv.png',   label: 'RDV' },
+    { src: '/icon-home.png',  label: 'Accueil' },
   ];
 
   return (
@@ -183,7 +183,7 @@ export function YoannWidget() {
               cursor: 'pointer',
               padding: '4px 0',
             }}>
-              {item.svg}
+              <img src={item.src} alt={item.label} style={{ width: 24, height: 24, objectFit: 'contain' }} />
               <span style={{ color: YELLOW, fontSize: 8, fontWeight: 600 }}>{item.label}</span>
             </div>
           ))}
@@ -193,58 +193,3 @@ export function YoannWidget() {
   );
 }
 
-/* ── Icônes SVG jaunes ── */
-const S: React.CSSProperties = { display: 'block' };
-const STROKE = { stroke: '#FFC107', strokeWidth: 2.2, fill: 'none', strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
-
-function ResetIcon() {
-  return (
-    <svg width={22} height={22} viewBox="0 0 48 48" style={S}>
-      <path d="M9 18 A18 18 0 1 1 9 30" {...STROKE} />
-      <polygon points="38,12 47,24 30,21" fill="#FFC107" stroke="none" />
-    </svg>
-  );
-}
-function TaskIcon() {
-  return (
-    <svg width={22} height={22} viewBox="0 0 48 48" style={S}>
-      <polyline points="31,3 41,13 41,45 7,45 7,3 31,3" {...STROKE} />
-      <polyline points="31,3 31,13 41,13" {...STROKE} />
-      <line x1={15} y1={27} x2={33} y2={27} {...STROKE} />
-      <line x1={24} y1={18} x2={24} y2={36} {...STROKE} />
-    </svg>
-  );
-}
-function IdeaIcon() {
-  return (
-    <svg width={22} height={22} viewBox="0 0 48 48" style={S}>
-      <path d="M10 18 A14 14 0 0 1 38 18 L38 28 A4 4 0 0 1 34 32 L14 32 A4 4 0 0 1 10 28 Z" {...STROKE} />
-      <line x1={17} y1={32} x2={17} y2={38} {...STROKE} />
-      <line x1={31} y1={32} x2={31} y2={38} {...STROKE} />
-      <line x1={15} y1={38} x2={33} y2={38} {...STROKE} />
-      <line x1={20} y1={22} x2={28} y2={22} {...STROKE} />
-      <line x1={24} y1={18} x2={24} y2={26} {...STROKE} />
-    </svg>
-  );
-}
-function RdvIcon() {
-  return (
-    <svg width={22} height={22} viewBox="0 0 48 48" style={S}>
-      <rect x={6} y={11} width={36} height={34} rx={3} {...STROKE} />
-      <line x1={6} y1={21} x2={42} y2={21} {...STROKE} />
-      <line x1={16} y1={6} x2={16} y2={16} {...STROKE} />
-      <line x1={32} y1={6} x2={32} y2={16} {...STROKE} />
-      <line x1={22} y1={31} x2={26} y2={31} {...STROKE} />
-      <line x1={24} y1={29} x2={24} y2={33} {...STROKE} />
-    </svg>
-  );
-}
-function HomeIcon() {
-  return (
-    <svg width={22} height={22} viewBox="0 0 48 48" style={S}>
-      <polyline points="4,24 24,4 44,24" {...STROKE} />
-      <polyline points="10,24 10,45 38,45 38,24" {...STROKE} />
-      <rect x={18} y={32} width={12} height={13} {...STROKE} />
-    </svg>
-  );
-}
