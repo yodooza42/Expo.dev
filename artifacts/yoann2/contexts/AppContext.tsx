@@ -421,6 +421,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const next = prev.map(t => {
         if (t.id !== id) return t;
         const updated = { ...t, ...updates };
+        // Auto-stamp completedAt the first time a task reaches 'done'
+        if (updates.status === 'done' && !t.completedAt) {
+          const now = new Date();
+          const dd   = String(now.getDate()).padStart(2, '0');
+          const mm   = String(now.getMonth() + 1).padStart(2, '0');
+          const yyyy = now.getFullYear();
+          updated.completedAt = `${dd}/${mm}/${yyyy}`;
+        }
+        // Clear completedAt if task is moved back out of done
+        if (updates.status && updates.status !== 'done') {
+          updated.completedAt = undefined;
+        }
         updated.eisenhower = computeEisenhower(updated.urgency, updated.importance);
         return updated;
       });

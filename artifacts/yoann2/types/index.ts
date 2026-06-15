@@ -29,6 +29,7 @@ export interface Task {
   photos: string[];
   dueDate: string;
   createdAt: string;
+  completedAt?: string;
   priority: Priority;
   importance: number;
   urgency: number;

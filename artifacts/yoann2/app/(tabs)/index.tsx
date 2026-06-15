@@ -219,14 +219,18 @@ export default function DashboardScreen() {
     const pastDone = tasks
       .filter(t => {
         if (t.status !== 'done') return false;
-        const d = parseFrDate(t.dueDate);
+        const d = parseFrDate(t.completedAt ?? t.dueDate);
         return d && startOfDay(d) >= eightWeeksAgo && startOfDay(d) < todayStart;
       })
-      .sort((a, b) => parseFrDate(b.dueDate)!.getTime() - parseFrDate(a.dueDate)!.getTime());
+      .sort((a, b) => {
+        const da = parseFrDate(a.completedAt ?? a.dueDate)!.getTime();
+        const db = parseFrDate(b.completedAt ?? b.dueDate)!.getTime();
+        return db - da;
+      });
 
     const weekMap = new Map<string, WeekGroup>();
     for (const task of pastDone) {
-      const date   = parseFrDate(task.dueDate)!;
+      const date   = parseFrDate(task.completedAt ?? task.dueDate)!;
       const monday = getMondayOfWeek(date);
       const wKey   = isoDate(monday);
       const dKey   = isoDate(startOfDay(date));
@@ -746,6 +750,17 @@ export default function DashboardScreen() {
                         </Text>
                       </View>
                     )}
+                    {selectedTask.completedAt && (() => {
+                      const cp = parseFrDate(selectedTask.completedAt!);
+                      return cp ? (
+                        <View style={[styles.prioBadge, { backgroundColor: '#4CAF5018', borderWidth: 1, borderColor: '#4CAF5040' }]}>
+                          <MaterialCommunityIcons name="check-circle-outline" size={12} color="#4CAF50" />
+                          <Text style={[styles.prioTxt, { color: '#4CAF50' }]}>
+                            {'Fait le ' + cp.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })}
+                          </Text>
+                        </View>
+                      ) : null;
+                    })()}
                   </View>
 
                   {/* Actions */}
