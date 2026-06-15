@@ -9,9 +9,10 @@ import type { ColorProp, ImageWidgetSource } from 'react-native-android-widget';
 
 import type { WidgetData } from './data';
 
-const CARD: ColorProp = '#2A2A2A';
-const TEXT: ColorProp = '#FFFFFF';
-const MUTED: ColorProp = '#9E9E9E';
+const CARD: ColorProp    = '#2A2A2A';
+const NAVBAR: ColorProp  = '#0D1B3E';
+const TEXT: ColorProp    = '#FFFFFF';
+const MUTED: ColorProp   = '#9E9E9E';
 const OVERLAY: ColorProp = '#BB000000';
 const SCHEME = 'yoann2';
 
@@ -265,7 +266,7 @@ export function TodoWidget({ tasks, widgetAppts, todayWork, settings, todayLabel
           flexDirection: 'row',
           width: 'match_parent',
           alignItems: 'center',
-          backgroundColor: CARD,
+          backgroundColor: NAVBAR,
           borderRadius: 12,
           paddingHorizontal: 2,
           paddingVertical: 2,
