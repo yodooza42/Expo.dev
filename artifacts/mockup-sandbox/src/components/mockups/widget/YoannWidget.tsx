@@ -135,43 +135,15 @@ function IconReset() {
 }
 
 function IconTask() {
-  return (
-    <svg width={26} height={26} viewBox="0 0 48 48">
-      {/* Document avec coin plié + croix */}
-      <polyline points="30,4 42,16 42,44 6,44 6,4 30,4" {...ST} />
-      <polyline points="30,4 30,16 42,16" {...ST} />
-      <line x1={18} y1={30} x2={30} y2={30} {...ST} />
-      <line x1={24} y1={24} x2={24} y2={36} {...ST} />
-    </svg>
-  );
+  return <img src='/__mockup/icon-task-v2.png' alt='Tâche' style={{width:28,height:28,objectFit:'contain'}} />;
 }
 
 function IconIdea() {
-  return (
-    <svg width={26} height={26} viewBox="0 0 48 48">
-      {/* Ampoule + croix */}
-      <path d="M16 30 Q9 24 9 17 A15 15 0 0 1 39 17 Q39 24 32 30 Z" {...ST} />
-      <line x1={16} y1={30} x2={32} y2={30} {...ST} />
-      <line x1={17} y1={35} x2={31} y2={35} {...ST} />
-      <line x1={19} y1={40} x2={29} y2={40} {...ST} />
-      <line x1={20} y1={21} x2={28} y2={21} {...ST} />
-      <line x1={24} y1={17} x2={24} y2={25} {...ST} />
-    </svg>
-  );
+  return <img src='/__mockup/icon-idea-v2.png' alt='Idée' style={{width:28,height:28,objectFit:'contain'}} />;
 }
 
 function IconRdv() {
-  return (
-    <svg width={26} height={26} viewBox="0 0 48 48">
-      {/* Calendrier + croix */}
-      <rect x={6} y={10} width={36} height={34} rx={4} {...ST} />
-      <line x1={6} y1={20} x2={42} y2={20} {...ST} />
-      <line x1={15} y1={5} x2={15} y2={15} {...ST} />
-      <line x1={33} y1={5} x2={33} y2={15} {...ST} />
-      <line x1={20} y1={31} x2={28} y2={31} {...ST} />
-      <line x1={24} y1={27} x2={24} y2={35} {...ST} />
-    </svg>
-  );
+  return <img src='/__mockup/icon-rdv-v2.png' alt='RDV' style={{width:28,height:28,objectFit:'contain'}} />;
 }
 
 function IconHome() {
