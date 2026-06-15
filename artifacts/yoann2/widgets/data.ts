@@ -42,6 +42,7 @@ export interface WidgetData {
   todayAppts: WidgetAppt[];
   nextApptLabel: string;
   nextEvent: WidgetNextEvent | null;
+  widgetAppts: WidgetNextEvent[];
   todayWork: string;
   confirmTask: WidgetItem | null;
   settings: WidgetSettings;
@@ -176,11 +177,35 @@ export function buildWidgetData(
     nextEvent = { title: c.title, when: `${datePart}${timePart}`, color: c.color };
   }
 
+  // RDV à afficher dans le bloc dédié (aujourd'hui + futurs, triés, max 5)
+  const widgetAppts: WidgetNextEvent[] = (appointments ?? [])
+    .filter(a => {
+      const d = new Date(a.date);
+      if (isNaN(d.getTime())) return false;
+      return new Date(d.getFullYear(), d.getMonth(), d.getDate()) >= startToday;
+    })
+    .sort((a, b) => {
+      const da = new Date(a.date);
+      const db = new Date(b.date);
+      if (a.time) { const [h, m] = a.time.split(':').map(Number); da.setHours(h, isNaN(m) ? 0 : m, 0, 0); }
+      if (b.time) { const [h, m] = b.time.split(':').map(Number); db.setHours(h, isNaN(m) ? 0 : m, 0, 0); }
+      return da.getTime() - db.getTime();
+    })
+    .slice(0, 5)
+    .map(a => {
+      const d = new Date(a.date);
+      const isToday = sameDay(d, today);
+      const datePart = isToday ? "Aujourd'hui" : `${DAYS_FR[d.getDay()]}. ${d.getDate()} ${MONTHS_FR[d.getMonth()]}`;
+      const timePart = a.time ? ` · ${a.time.replace(':', 'h')}` : '';
+      return { title: a.title, when: `${datePart}${timePart}`, color: settings.primaryColor };
+    });
+
   return {
     tasks: taskItems,
     todayAppts,
     nextApptLabel,
     nextEvent,
+    widgetAppts,
     todayWork,
     confirmTask,
     settings,

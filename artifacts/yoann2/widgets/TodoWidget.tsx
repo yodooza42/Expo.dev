@@ -15,9 +15,15 @@ const MUTED: ColorProp = '#9E9E9E';
 const OVERLAY: ColorProp = '#BB000000';
 const SCHEME = 'yoann2';
 
-export function TodoWidget({ nextEvent, todayWork, settings, todayLabel }: WidgetData) {
+const IMG_RESET  = require('../assets/icons/icon-reset.png') as ImageWidgetSource;
+const IMG_TASK   = require('../assets/icons/icon-task.png')  as ImageWidgetSource;
+const IMG_IDEA   = require('../assets/icons/icon-idea.png')  as ImageWidgetSource;
+const IMG_RDV    = require('../assets/icons/icon-rdv.png')   as ImageWidgetSource;
+const IMG_HOME   = require('../assets/icons/icon-home.png')  as ImageWidgetSource;
+
+export function TodoWidget({ tasks, widgetAppts, todayWork, settings, todayLabel }: WidgetData) {
   const PRIMARY = settings.primaryColor as ColorProp;
-  const BG = settings.bgColor as ColorProp;
+  const BG      = settings.bgColor as ColorProp;
   const bgImage = settings.bgImageUri;
   const containerBg: ColorProp = bgImage ? OVERLAY : BG;
   const isRepos = todayWork === 'Repos';
@@ -38,12 +44,12 @@ export function TodoWidget({ nextEvent, todayWork, settings, todayLabel }: Widge
   }
 
   function NavItem({
-    emoji,
+    image,
     label,
     clickAction,
     uri,
   }: {
-    emoji: string;
+    image: ImageWidgetSource;
     label: string;
     clickAction: string;
     uri?: string;
@@ -54,21 +60,26 @@ export function TodoWidget({ nextEvent, todayWork, settings, todayLabel }: Widge
         clickActionData={uri ? { uri } : undefined}
         style={{
           flex: 1,
-          height: 36,
+          height: 44,
           flexDirection: 'column',
           justifyContent: 'center',
           alignItems: 'center',
         }}
       >
-        <TextWidget text={emoji} style={{ fontSize: 15 }} />
-        <TextWidget text={label} style={{ fontSize: 9, color: MUTED, marginTop: 1 }} />
+        <ImageWidget image={image} style={{ width: 22, height: 22 }} />
+        <TextWidget text={label} style={{ fontSize: 8, color: MUTED, marginTop: 2 }} />
       </FlexWidget>
     );
   }
 
   const Divider = () => (
-    <FlexWidget style={{ width: 1, height: 18, backgroundColor: CARD }} />
+    <FlexWidget style={{ width: 1, height: 20, backgroundColor: '#3A3A3A' }} />
   );
+
+  const visibleTasks  = tasks.slice(0, 4);
+  const visibleAppts  = widgetAppts.slice(0, 3);
+  const moreTasks     = tasks.length > 4  ? tasks.length - 4   : 0;
+  const moreAppts     = widgetAppts.length > 3 ? widgetAppts.length - 3 : 0;
 
   return wrapWithBg(
     <FlexWidget
@@ -84,7 +95,7 @@ export function TodoWidget({ nextEvent, todayWork, settings, todayLabel }: Widge
         flexDirection: 'column',
       }}
     >
-      {/* Bloc 1 — Heures de travail du jour */}
+      {/* ── Bloc 1 : Heures de travail ── */}
       <FlexWidget
         style={{
           width: 'match_parent',
@@ -92,7 +103,7 @@ export function TodoWidget({ nextEvent, todayWork, settings, todayLabel }: Widge
           borderRadius: 12,
           paddingHorizontal: 12,
           paddingVertical: 9,
-          marginBottom: 8,
+          marginBottom: 6,
           flexDirection: 'column',
         }}
       >
@@ -108,7 +119,7 @@ export function TodoWidget({ nextEvent, todayWork, settings, todayLabel }: Widge
         />
       </FlexWidget>
 
-      {/* Bloc 2 — Prochain événement */}
+      {/* ── Bloc 2 : Tâches ── */}
       <FlexWidget
         style={{
           flex: 1,
@@ -116,43 +127,139 @@ export function TodoWidget({ nextEvent, todayWork, settings, todayLabel }: Widge
           backgroundColor: CARD,
           borderRadius: 12,
           paddingHorizontal: 12,
-          paddingVertical: 9,
-          marginBottom: 8,
+          paddingTop: 8,
+          paddingBottom: 6,
+          marginBottom: 6,
           flexDirection: 'column',
-          justifyContent: 'center',
         }}
       >
-        <FlexWidget style={{ flexDirection: 'row', alignItems: 'center', width: 'match_parent', marginBottom: 5 }}>
-          <TextWidget text="📌" style={{ fontSize: 12, marginRight: 6 }} />
-          <TextWidget text="Prochain événement" style={{ fontSize: 11, color: MUTED }} />
+        <FlexWidget style={{ flexDirection: 'row', alignItems: 'center', width: 'match_parent', marginBottom: 6 }}>
+          <TextWidget text="📋" style={{ fontSize: 11, marginRight: 6 }} />
+          <TextWidget text="Tâches" style={{ fontSize: 11, color: MUTED }} />
+          {tasks.length > 0 && (
+            <TextWidget
+              text={`${tasks.length}`}
+              style={{ fontSize: 10, color: PRIMARY, marginLeft: 5 }}
+            />
+          )}
         </FlexWidget>
-        {nextEvent ? (
-          <FlexWidget style={{ flexDirection: 'column', width: 'match_parent' }}>
-            <FlexWidget style={{ flexDirection: 'row', alignItems: 'center', width: 'match_parent' }}>
+        {visibleTasks.length === 0 ? (
+          <TextWidget text="Aucune tâche en cours ✓" style={{ fontSize: 11, color: MUTED }} />
+        ) : (
+          visibleTasks.map((task, i) => (
+            <FlexWidget
+              key={i}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                width: 'match_parent',
+                marginBottom: i < visibleTasks.length - 1 ? 5 : 0,
+              }}
+            >
               <FlexWidget
                 style={{
-                  width: 8,
-                  height: 8,
+                  width: 7,
+                  height: 7,
                   borderRadius: 4,
-                  backgroundColor: nextEvent.color as ColorProp,
+                  backgroundColor: task.color as ColorProp,
                   marginRight: 7,
                 }}
               />
-              <TextWidget
-                text={nextEvent.title}
-                maxLines={1}
-                truncate="END"
-                style={{ fontSize: 15, color: TEXT, fontWeight: 'bold' }}
-              />
+              <FlexWidget style={{ flex: 1 }}>
+                <TextWidget
+                  text={task.title}
+                  maxLines={1}
+                  truncate="END"
+                  style={{ fontSize: 12, color: TEXT }}
+                />
+              </FlexWidget>
+              {task.deadline ? (
+                <TextWidget
+                  text={task.deadline}
+                  style={{ fontSize: 9, color: MUTED, marginLeft: 4 }}
+                />
+              ) : null}
             </FlexWidget>
-            <TextWidget text={nextEvent.when} style={{ fontSize: 12, color: PRIMARY, marginTop: 3 }} />
-          </FlexWidget>
-        ) : (
-          <TextWidget text="Rien de prévu ✓" style={{ fontSize: 14, color: MUTED }} />
+          ))
+        )}
+        {moreTasks > 0 && (
+          <TextWidget
+            text={`+${moreTasks} tâche${moreTasks > 1 ? 's' : ''}…`}
+            style={{ fontSize: 9, color: MUTED, marginTop: 3 }}
+          />
         )}
       </FlexWidget>
 
-      {/* Barre de navigation */}
+      {/* ── Bloc 3 : Rendez-vous ── */}
+      <FlexWidget
+        style={{
+          flex: 1,
+          width: 'match_parent',
+          backgroundColor: CARD,
+          borderRadius: 12,
+          paddingHorizontal: 12,
+          paddingTop: 8,
+          paddingBottom: 6,
+          marginBottom: 6,
+          flexDirection: 'column',
+        }}
+      >
+        <FlexWidget style={{ flexDirection: 'row', alignItems: 'center', width: 'match_parent', marginBottom: 6 }}>
+          <TextWidget text="📅" style={{ fontSize: 11, marginRight: 6 }} />
+          <TextWidget text="Rendez-vous" style={{ fontSize: 11, color: MUTED }} />
+          {widgetAppts.length > 0 && (
+            <TextWidget
+              text={`${widgetAppts.length}`}
+              style={{ fontSize: 10, color: PRIMARY, marginLeft: 5 }}
+            />
+          )}
+        </FlexWidget>
+        {visibleAppts.length === 0 ? (
+          <TextWidget text="Aucun RDV prévu" style={{ fontSize: 11, color: MUTED }} />
+        ) : (
+          visibleAppts.map((appt, i) => (
+            <FlexWidget
+              key={i}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                width: 'match_parent',
+                marginBottom: i < visibleAppts.length - 1 ? 5 : 0,
+              }}
+            >
+              <FlexWidget
+                style={{
+                  width: 7,
+                  height: 7,
+                  borderRadius: 4,
+                  backgroundColor: PRIMARY,
+                  marginRight: 7,
+                }}
+              />
+              <FlexWidget style={{ flex: 1 }}>
+                <TextWidget
+                  text={appt.title}
+                  maxLines={1}
+                  truncate="END"
+                  style={{ fontSize: 12, color: TEXT }}
+                />
+              </FlexWidget>
+              <TextWidget
+                text={appt.when}
+                style={{ fontSize: 9, color: PRIMARY, marginLeft: 4 }}
+              />
+            </FlexWidget>
+          ))
+        )}
+        {moreAppts > 0 && (
+          <TextWidget
+            text={`+${moreAppts} RDV…`}
+            style={{ fontSize: 9, color: MUTED, marginTop: 3 }}
+          />
+        )}
+      </FlexWidget>
+
+      {/* ── Bloc 4 : Barre de navigation ── */}
       <FlexWidget
         style={{
           flexDirection: 'row',
@@ -161,18 +268,18 @@ export function TodoWidget({ nextEvent, todayWork, settings, todayLabel }: Widge
           backgroundColor: CARD,
           borderRadius: 12,
           paddingHorizontal: 2,
-          paddingVertical: 1,
+          paddingVertical: 2,
         }}
       >
-        <NavItem emoji="↺" label="Reset" clickAction="REFRESH" />
+        <NavItem image={IMG_RESET} label="Reset"   clickAction="REFRESH" />
         <Divider />
-        <NavItem emoji="📝" label="Tâche" clickAction="OPEN_URI" uri={`${SCHEME}:///task/new`} />
+        <NavItem image={IMG_TASK}  label="Tâche"   clickAction="OPEN_URI" uri={`${SCHEME}:///task/new`} />
         <Divider />
-        <NavItem emoji="💡" label="Idée" clickAction="OPEN_URI" uri={`${SCHEME}:///task/new?idea=1`} />
+        <NavItem image={IMG_IDEA}  label="Idée"    clickAction="OPEN_URI" uri={`${SCHEME}:///task/new?idea=1`} />
         <Divider />
-        <NavItem emoji="📅" label="RDV" clickAction="OPEN_URI" uri={`${SCHEME}:///appointment/new`} />
+        <NavItem image={IMG_RDV}   label="RDV"     clickAction="OPEN_URI" uri={`${SCHEME}:///appointment/new`} />
         <Divider />
-        <NavItem emoji="🏠" label="Accueil" clickAction="OPEN_APP" />
+        <NavItem image={IMG_HOME}  label="Accueil" clickAction="OPEN_APP" />
       </FlexWidget>
     </FlexWidget>
   );
