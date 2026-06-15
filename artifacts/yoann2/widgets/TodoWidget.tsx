@@ -22,7 +22,7 @@ const IMG_IDEA   = require('../assets/icons/icon-idea.png')  as ImageWidgetSourc
 const IMG_RDV    = require('../assets/icons/icon-rdv.png')   as ImageWidgetSource;
 const IMG_HOME   = require('../assets/icons/icon-home.png')  as ImageWidgetSource;
 
-export function TodoWidget({ tasks, widgetAppts, todayWork, settings, todayLabel }: WidgetData) {
+export function TodoWidget({ tasks, widgetAppts, todayWork, settings, todayLabel, pauseActive, pauseElapsedLabel }: WidgetData) {
   const PRIMARY = settings.primaryColor as ColorProp;
   const BG      = settings.bgColor as ColorProp;
   const bgImage = settings.bgImageUri;
@@ -114,10 +114,31 @@ export function TodoWidget({ tasks, widgetAppts, todayWork, settings, todayLabel
           <FlexWidget style={{ flex: 1 }} />
           <TextWidget text={todayLabel} style={{ fontSize: 10, color: MUTED }} />
         </FlexWidget>
-        <TextWidget
-          text={todayWork}
-          style={{ fontSize: 19, color: isRepos ? MUTED : PRIMARY, fontWeight: 'bold', marginTop: 3 }}
-        />
+        <FlexWidget style={{ flexDirection: 'row', alignItems: 'center', width: 'match_parent', marginTop: 4 }}>
+          <TextWidget
+            text={todayWork}
+            style={{ fontSize: 17, color: isRepos ? MUTED : PRIMARY, fontWeight: 'bold' }}
+          />
+          <FlexWidget style={{ flex: 1 }} />
+          {/* Bouton pause */}
+          <FlexWidget
+            clickAction="OPEN_URI"
+            clickActionData={{ uri: `${SCHEME}:///pause-toggle` }}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              backgroundColor: pauseActive ? '#1B2E1B' : '#2A2A2A',
+              borderRadius: 10,
+              paddingHorizontal: 10,
+              paddingVertical: 5,
+            }}
+          >
+            <TextWidget
+              text={pauseActive ? `⏸ ${pauseElapsedLabel}` : '☕'}
+              style={{ fontSize: 11, color: pauseActive ? '#4CAF50' : MUTED }}
+            />
+          </FlexWidget>
+        </FlexWidget>
       </FlexWidget>
 
       {/* ── Bloc 2 : Tâches ── */}

@@ -2,10 +2,20 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { DEFAULT_WIDGET_SETTINGS, formatScheduleLabel, type WidgetSettings } from './widgetSettings';
 
-const TASKS_KEY = '@yoann2_tasks';
-const APPTS_KEY = '@yoann2_appointments';
+const TASKS_KEY    = '@yoann2_tasks';
+const APPTS_KEY    = '@yoann2_appointments';
 const SETTINGS_KEY = '@yoann2_widget_settings';
-const CONFIRM_KEY = '@yoann2_widget_confirm_id';
+const CONFIRM_KEY  = '@yoann2_widget_confirm_id';
+const PAUSE_KEY    = '@yoann2_active_pause';
+
+function formatPauseElapsed(startTs: number): string {
+  const secs = Math.max(0, Math.floor((Date.now() - startTs) / 1000));
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  if (h > 0) return `${h}h${String(m).padStart(2, '0')}`;
+  if (m > 0) return `${m}min`;
+  return '<1min';
+}
 
 const PRIORITY_COLORS: Record<string, string> = {
   low: '#4CAF50',
@@ -47,6 +57,8 @@ export interface WidgetData {
   confirmTask: WidgetItem | null;
   settings: WidgetSettings;
   todayLabel: string;
+  pauseActive: boolean;
+  pauseElapsedLabel: string;
 }
 
 interface RawTask {
@@ -210,6 +222,8 @@ export function buildWidgetData(
     confirmTask,
     settings,
     todayLabel,
+    pauseActive: false,
+    pauseElapsedLabel: '',
   };
 }
 
@@ -218,14 +232,26 @@ export async function getWidgetDataFromStorage(): Promise<WidgetData> {
   let appts: RawAppt[] = [];
   let settings = DEFAULT_WIDGET_SETTINGS;
   let confirmId: string | null = null;
+  let pauseActive = false;
+  let pauseElapsedLabel = '';
   try {
-    const [t, a, s, c] = await AsyncStorage.multiGet([TASKS_KEY, APPTS_KEY, SETTINGS_KEY, CONFIRM_KEY]);
+    const [t, a, s, c, p] = await AsyncStorage.multiGet([
+      TASKS_KEY, APPTS_KEY, SETTINGS_KEY, CONFIRM_KEY, PAUSE_KEY,
+    ]);
     if (t[1]) tasks = JSON.parse(t[1]);
     if (a[1]) appts = JSON.parse(a[1]);
     if (s[1]) settings = { ...DEFAULT_WIDGET_SETTINGS, ...JSON.parse(s[1]) };
     if (c[1]) confirmId = c[1];
+    if (p[1]) {
+      const ap = JSON.parse(p[1]) as { startTs: number };
+      if (ap?.startTs) {
+        pauseActive = true;
+        pauseElapsedLabel = formatPauseElapsed(ap.startTs);
+      }
+    }
   } catch {}
-  return buildWidgetData(tasks, appts, settings, confirmId);
+  const data = buildWidgetData(tasks, appts, settings, confirmId);
+  return { ...data, pauseActive, pauseElapsedLabel };
 }
 
 export async function setConfirmId(id: string | null): Promise<void> {
