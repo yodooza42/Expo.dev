@@ -4,6 +4,10 @@ import React from 'react';
 import { CustomTabBar } from '@/components/CustomTabBar';
 import { useColors } from '@/hooks/useColors';
 
+export const unstable_settings = {
+  initialRouteName: 'index',
+};
+
 export default function TabLayout() {
   const colors = useColors();
   return (
@@ -13,11 +17,11 @@ export default function TabLayout() {
         headerShown: false,
       }}
     >
-      <Tabs.Screen name="index" />
+      <Tabs.Screen name="calendar" />
       <Tabs.Screen name="projects" />
       <Tabs.Screen name="kanban" />
       <Tabs.Screen name="expenses" />
-      <Tabs.Screen name="calendar" />
+      <Tabs.Screen name="index" />
       <Tabs.Screen name="settings" options={{ href: null }} />
     </Tabs>
   );

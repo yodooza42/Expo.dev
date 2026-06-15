@@ -211,16 +211,15 @@ export default function DashboardScreen() {
     tasks.filter(t => t.priority === 'critical' && t.status !== 'done'),
   [tasks]);
 
-  // Past done tasks grouped by week (last 8 weeks)
+  // Past done tasks grouped by week (since start of current year)
   const pastWeekGroups = useMemo((): WeekGroup[] => {
-    const eightWeeksAgo = new Date(todayStart);
-    eightWeeksAgo.setDate(eightWeeksAgo.getDate() - 56);
+    const startOfYear = new Date(todayStart.getFullYear(), 0, 1);
 
     const pastDone = tasks
       .filter(t => {
         if (t.status !== 'done') return false;
         const d = parseFrDate(t.completedAt ?? t.dueDate);
-        return d && startOfDay(d) >= eightWeeksAgo && startOfDay(d) < todayStart;
+        return d && startOfDay(d) >= startOfYear && startOfDay(d) < todayStart;
       })
       .sort((a, b) => {
         const da = parseFrDate(a.completedAt ?? a.dueDate)!.getTime();

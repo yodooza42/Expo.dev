@@ -5,25 +5,41 @@ import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
+  Alert,
   Image,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useApp } from '@/contexts/AppContext';
 import { useColors } from '@/hooks/useColors';
+import { cancelShiftNotifications, scheduleShiftNotifications } from '@/utils/notificationScheduler';
 import { updateTodoWidget } from '@/widgets/updateWidget';
 import {
   DEFAULT_WIDGET_SETTINGS,
   getWidgetSettings,
   saveWidgetSettings,
+  type DaySchedule,
   type WidgetSettings,
 } from '@/widgets/widgetSettings';
+
+// Ordre d'affichage Lun..Dim ; valeur = index dans workSchedule (0=Dim..6=Sam)
+const DAY_ROWS: { label: string; idx: number }[] = [
+  { label: 'Lundi', idx: 1 },
+  { label: 'Mardi', idx: 2 },
+  { label: 'Mercredi', idx: 3 },
+  { label: 'Jeudi', idx: 4 },
+  { label: 'Vendredi', idx: 5 },
+  { label: 'Samedi', idx: 6 },
+  { label: 'Dimanche', idx: 0 },
+];
 
 const COLOR_PALETTE = [
   '#FFC107', '#FF9800', '#FF5722', '#F44336', '#E91E63',
@@ -64,10 +80,41 @@ export default function WidgetSettingsScreen() {
     try {
       await saveWidgetSettings(settings);
       await updateTodoWidget(tasks, appointments);
+      try {
+        if (settings.shiftNotif) {
+          await scheduleShiftNotifications(settings.workSchedule);
+        } else {
+          await cancelShiftNotifications();
+        }
+      } catch {
+        // La planification des notifs ne doit pas bloquer l'enregistrement
+      }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch {
+      Alert.alert('Erreur', "Impossible d'enregistrer les paramètres du widget.");
     } finally {
       setSaving(false);
     }
+  }
+
+  function updateDay(idx: number, patch: Partial<DaySchedule>) {
+    setSettings(s => ({
+      ...s,
+      workSchedule: s.workSchedule.map((d, i) => (i === idx ? { ...d, ...patch } : d)),
+    }));
+  }
+
+  // Normalise une saisie d'heure vers "HH:MM" valide, sinon renvoie un fallback.
+  function normalizeTime(raw: string, fallback: string): string {
+    const m = raw.trim().match(/^(\d{1,2})[:hH]?(\d{2})$/);
+    if (m) {
+      const h = parseInt(m[1], 10);
+      const mi = parseInt(m[2], 10);
+      if (h >= 0 && h <= 23 && mi >= 0 && mi <= 59) {
+        return `${String(h).padStart(2, '0')}:${String(mi).padStart(2, '0')}`;
+      }
+    }
+    return fallback;
   }
 
   async function pickBgImage() {
@@ -200,18 +247,85 @@ export default function WidgetSettingsScreen() {
             styles.previewInner,
             settings.bgImageUri ? { backgroundColor: 'rgba(0,0,0,0.55)' } : {},
           ]}>
-            <Text style={[styles.previewTitle, { fontSize: settings.taskFontSize }]}>
-              ● Exemple de tâche  ·  15 juin
+            <Text style={[styles.previewSub, { color: '#9E9E9E' }]}>💼 Travail aujourd'hui</Text>
+            <Text style={[styles.previewTitle, { color: settings.primaryColor, fontSize: settings.taskFontSize }]}>
+              15h00 - 01h00
             </Text>
             <Text style={[styles.previewSub, { color: settings.primaryColor }]}>
-              Aujourd'hui : 10h Médecin
+              📌 Prochain : Médecin · 10h
             </Text>
             <View style={styles.previewBar}>
-              {['+ Tâche', '+ Projet', '+ RDV'].map(l => (
-                <Text key={l} style={[styles.previewBarItem, { color: settings.primaryColor, fontSize: 12 }]}>{l}</Text>
+              {['↺', '📝', '💡', '📅', '🏠'].map((l, i) => (
+                <Text key={i} style={[styles.previewBarItem, { color: '#9E9E9E', fontSize: 14 }]}>{l}</Text>
               ))}
-              <Text style={[styles.previewBarItem, { color: '#9E9E9E', fontSize: 12 }]}>↺</Text>
             </View>
+          </View>
+        </View>
+
+        <Text style={[styles.section, { color: colors.mutedForeground }]}>Heures de travail</Text>
+        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border, gap: 6 }]}>
+          {DAY_ROWS.map(({ label, idx }) => {
+            const day = settings.workSchedule[idx];
+            if (!day) return null;
+            return (
+              <View key={idx} style={styles.dayRow}>
+                <Text style={[styles.dayLabel, { color: colors.foreground }]}>{label}</Text>
+                {day.off ? (
+                  <Text style={[styles.reposTxt, { color: colors.mutedForeground }]}>Repos</Text>
+                ) : (
+                  <View style={styles.timeGroup}>
+                    <TextInput
+                      value={day.start}
+                      onChangeText={t => updateDay(idx, { start: t })}
+                      onBlur={() => updateDay(idx, { start: normalizeTime(day.start, '09:00') })}
+                      placeholder="HH:MM"
+                      placeholderTextColor={colors.mutedForeground}
+                      keyboardType="numbers-and-punctuation"
+                      maxLength={5}
+                      style={[styles.timeInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]}
+                    />
+                    <Text style={[styles.timeSep, { color: colors.mutedForeground }]}>→</Text>
+                    <TextInput
+                      value={day.end}
+                      onChangeText={t => updateDay(idx, { end: t })}
+                      onBlur={() => updateDay(idx, { end: normalizeTime(day.end, '17:00') })}
+                      placeholder="HH:MM"
+                      placeholderTextColor={colors.mutedForeground}
+                      keyboardType="numbers-and-punctuation"
+                      maxLength={5}
+                      style={[styles.timeInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]}
+                    />
+                  </View>
+                )}
+                <Pressable
+                  onPress={() => updateDay(idx, { off: !day.off })}
+                  style={[
+                    styles.reposToggle,
+                    day.off
+                      ? { backgroundColor: colors.primary }
+                      : { backgroundColor: colors.background, borderColor: colors.border, borderWidth: 1 },
+                  ]}
+                >
+                  <Text style={[styles.reposToggleTxt, { color: day.off ? colors.primaryForeground : colors.mutedForeground }]}>
+                    Repos
+                  </Text>
+                </Pressable>
+              </View>
+            );
+          })}
+
+          <View style={[styles.notifRow, { borderTopColor: colors.border }]}>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.notifTitle, { color: colors.foreground }]}>Rappel 1h avant l'embauche</Text>
+              <Text style={[styles.notifHint, { color: colors.mutedForeground }]}>
+                Notification les jours travaillés
+              </Text>
+            </View>
+            <Switch
+              value={settings.shiftNotif}
+              onValueChange={v => setSettings(s => ({ ...s, shiftNotif: v }))}
+              trackColor={{ true: colors.primary, false: colors.border }}
+            />
           </View>
         </View>
 
@@ -353,6 +467,33 @@ const styles = StyleSheet.create({
   chipRow: { flexDirection: 'row', gap: 8 },
   chip: { flex: 1, paddingVertical: 10, borderRadius: 12, alignItems: 'center' },
   chipTxt: { fontSize: 13, fontFamily: 'Inter_500Medium' },
+  dayRow: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 38 },
+  dayLabel: { width: 78, fontSize: 13, fontFamily: 'Inter_500Medium' },
+  reposTxt: { flex: 1, fontSize: 13, fontFamily: 'Inter_400Regular' },
+  timeGroup: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  timeInput: {
+    flex: 1,
+    height: 34,
+    borderWidth: 1,
+    borderRadius: 8,
+    textAlign: 'center',
+    fontSize: 13,
+    fontFamily: 'Inter_500Medium',
+    paddingVertical: 0,
+  },
+  timeSep: { fontSize: 13 },
+  reposToggle: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
+  reposToggleTxt: { fontSize: 11, fontFamily: 'Inter_500Medium' },
+  notifRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderTopWidth: 1,
+    paddingTop: 12,
+    marginTop: 6,
+  },
+  notifTitle: { fontSize: 14, fontFamily: 'Inter_500Medium' },
+  notifHint: { fontSize: 12, fontFamily: 'Inter_400Regular', marginTop: 2 },
   palette: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   paletteCell: {
     width: 40,

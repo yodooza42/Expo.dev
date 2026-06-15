@@ -15,7 +15,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { Circle, Line, Path, Text as SvgText } from 'react-native-svg';
+import Svg, { Line, Rect, Text as SvgText } from 'react-native-svg';
 
 import { useApp } from '@/contexts/AppContext';
 import { useColors } from '@/hooks/useColors';
@@ -166,13 +166,6 @@ export default function ExpensesScreen() {
 
   const innerW = CHART_W - PAD.left - PAD.right;
   const innerH = CHART_H - PAD.top - PAD.bottom;
-
-  function getX(i: number) {
-    return PAD.left + (months.length <= 1 ? innerW / 2 : (i / (months.length - 1)) * innerW);
-  }
-  function getY(v: number) {
-    return PAD.top + innerH - (v / maxVal) * innerH;
-  }
 
   const labelStep = months.length <= 6 ? 1 : months.length <= 12 ? 2 : months.length <= 18 ? 3 : 4;
 
@@ -464,27 +457,39 @@ export default function ExpensesScreen() {
                           if (i % labelStep !== 0 && i !== months.length - 1) return null;
                           const shortLabel = m.label.replace('.', '');
                           const showYear = m.month === 0 || i === 0;
+                          const slotW = innerW / months.length;
+                          const cx = PAD.left + slotW * i + slotW / 2;
                           return (
-                            <SvgText key={i} x={getX(i)} y={CHART_H - 6} fontSize={8} fill={colors.mutedForeground} textAnchor="middle">
+                            <SvgText key={i} x={cx} y={CHART_H - 6} fontSize={8} fill={colors.mutedForeground} textAnchor="middle">
                               {showYear ? `${shortLabel} ${String(m.year).slice(2)}` : shortLabel}
                             </SvgText>
                           );
                         })}
 
-                        {chartData.map(({ project, data, color }) => {
-                          const pathD = data.reduce((acc, v, i) => {
-                            const x = getX(i);
-                            const y = getY(v);
-                            return acc + (i === 0 ? `M ${x} ${y}` : ` L ${x} ${y}`);
-                          }, '');
-                          return (
-                            <React.Fragment key={project.id}>
-                              <Path d={pathD} stroke={color} strokeWidth={2.5} fill="none" strokeLinejoin="round" strokeLinecap="round" />
-                              {data.map((v, i) =>
-                                v > 0 ? <Circle key={i} cx={getX(i)} cy={getY(v)} r={months.length > 12 ? 2.5 : 4} fill={color} /> : null
-                              )}
-                            </React.Fragment>
-                          );
+                        {months.map((_, i) => {
+                          const slotW = innerW / months.length;
+                          const n = chartData.length || 1;
+                          const groupW = Math.min(slotW * 0.72, n * 22);
+                          const barW = groupW / n;
+                          const groupStart = PAD.left + slotW * i + (slotW - groupW) / 2;
+                          return chartData.map(({ project, data, color }, j) => {
+                            const v = data[i] ?? 0;
+                            if (v <= 0) return null;
+                            const h = (v / maxVal) * innerH;
+                            const x = groupStart + j * barW;
+                            const y = PAD.top + innerH - h;
+                            return (
+                              <Rect
+                                key={`${project.id}-${i}`}
+                                x={x + barW * 0.12}
+                                y={y}
+                                width={barW * 0.76}
+                                height={h}
+                                rx={2}
+                                fill={color}
+                              />
+                            );
+                          });
                         })}
                       </Svg>
 

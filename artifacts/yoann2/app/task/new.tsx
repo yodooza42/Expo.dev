@@ -43,11 +43,12 @@ export default function NewTaskScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const params = useLocalSearchParams<{ id?: string; projectId?: string }>();
+  const params = useLocalSearchParams<{ id?: string; projectId?: string; idea?: string }>();
   const { tasks, projects, addTask, updateTask } = useApp();
 
   const existing = params.id ? tasks.find(t => t.id === params.id) : null;
   const isEditing = !!existing;
+  const isIdea = params.idea === '1';
 
   const defaultProjectId = params.projectId ?? projects[0]?.id ?? '';
 
@@ -55,19 +56,25 @@ export default function NewTaskScreen() {
   const [desc, setDesc] = useState(existing?.description ?? '');
   const [notes, setNotes] = useState(existing?.notes ?? '');
   const [projectId, setProjectId] = useState(existing?.projectId ?? defaultProjectId);
-  const [priority, setPriority] = useState<Priority>(existing?.priority ?? 'medium');
-  const [status, setStatus] = useState<TaskStatus>(existing?.status ?? 'todo');
+  const [priority, setPriority] = useState<Priority>(existing?.priority ?? (isIdea ? 'low' : 'medium'));
+  const [status, setStatus] = useState<TaskStatus>(existing?.status ?? (isIdea ? 'idea' : 'todo'));
   const [importance, setImportance] = useState(() => {
     if (existing) return Math.min(3, Math.max(1, Math.round((existing.importance / 5) * 3)));
-    return 2;
+    return isIdea ? 1 : 2;
   });
   const [urgency, setUrgency] = useState(() => {
     if (existing) return Math.min(3, Math.max(1, Math.round((existing.urgency / 5) * 3)));
-    return 2;
+    return isIdea ? 1 : 2;
   });
-  const [dueDate, setDueDate] = useState(
-    existing ? new Date(existing.dueDate).toLocaleDateString('fr-FR') : ''
-  );
+  const [dueDate, setDueDate] = useState(() => {
+    if (existing) return new Date(existing.dueDate).toLocaleDateString('fr-FR');
+    if (isIdea) {
+      const d = new Date();
+      d.setDate(d.getDate() + 7);
+      return d.toLocaleDateString('fr-FR');
+    }
+    return '';
+  });
   const [photos, setPhotos] = useState<string[]>(existing?.photos ?? []);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -195,7 +202,7 @@ export default function NewTaskScreen() {
           <MaterialCommunityIcons name="arrow-left" size={24} color={colors.foreground} />
         </Pressable>
         <Text style={[styles.headerTitle, { color: colors.foreground }]}>
-          {isEditing ? 'Modifier la tâche' : 'Nouvelle tâche'}
+          {isEditing ? 'Modifier la tâche' : isIdea ? 'Nouvelle idée' : 'Nouvelle tâche'}
         </Text>
         <Pressable onPress={handleSave} style={[styles.saveBtn, { backgroundColor: colors.primary }]}>
           <Text style={[styles.saveBtnTxt, { color: colors.primaryForeground }]}>Enregistrer</Text>

@@ -81,16 +81,6 @@ export function CustomTabBar({ state, navigation }: TabBarProps) {
           );
         })}
       </View>
-
-      {/* Home button — only visible when not on the home tab */}
-      {state.index !== 0 && (
-        <Pressable
-          onPress={() => navigation.navigate('index')}
-          style={[styles.homeBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
-        >
-          <MaterialCommunityIcons name="home-variant-outline" size={20} color={colors.primary} />
-        </Pressable>
-      )}
     </View>
   );
 }
@@ -115,22 +105,5 @@ const styles = StyleSheet.create({
   tabLabel: {
     fontSize: 9,
     fontFamily: 'Inter_500Medium',
-  },
-  homeBtn: {
-    position: 'absolute',
-    top: -34,
-    alignSelf: 'center',
-    right: 16,
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 5,
   },
 });

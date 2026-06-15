@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { DEFAULT_WIDGET_SETTINGS, type WidgetSettings } from './widgetSettings';
+import { DEFAULT_WIDGET_SETTINGS, formatScheduleLabel, type WidgetSettings } from './widgetSettings';
 
 const TASKS_KEY = '@yoann2_tasks';
 const APPTS_KEY = '@yoann2_appointments';
@@ -31,10 +31,18 @@ export interface WidgetAppt {
   time: string;
 }
 
+export interface WidgetNextEvent {
+  title: string;
+  when: string;
+  color: string;
+}
+
 export interface WidgetData {
   tasks: WidgetItem[];
   todayAppts: WidgetAppt[];
   nextApptLabel: string;
+  nextEvent: WidgetNextEvent | null;
+  todayWork: string;
   confirmTask: WidgetItem | null;
   settings: WidgetSettings;
   todayLabel: string;
@@ -130,7 +138,54 @@ export function buildWidgetData(
 
   const todayLabel = `${DAYS_FR[today.getDay()]}. ${today.getDate()} ${MONTHS_FR[today.getMonth()]}`;
 
-  return { tasks: taskItems, todayAppts, nextApptLabel, confirmTask, settings, todayLabel };
+  // Horaires de travail du jour
+  const todaySched = settings.workSchedule?.[today.getDay()];
+  const todayWork = todaySched ? formatScheduleLabel(todaySched) : 'Repos';
+
+  // Prochain événement : tâches (avec échéance) + RDV, du plus proche
+  const startToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  type Candidate = { date: Date; title: string; color: string; time?: string };
+  const candidates: Candidate[] = [];
+
+  for (const t of pending) {
+    if (!t.dueDate) continue;
+    const d = new Date(t.dueDate);
+    if (isNaN(d.getTime()) || d < startToday) continue;
+    candidates.push({ date: d, title: t.title, color: PRIORITY_COLORS[t.priority] ?? '#9E9E9E' });
+  }
+  for (const a of appointments ?? []) {
+    const d = new Date(a.date);
+    if (isNaN(d.getTime())) continue;
+    if (a.time) {
+      const [hh, mm] = a.time.split(':').map(Number);
+      if (!isNaN(hh)) d.setHours(hh, mm || 0, 0, 0);
+    }
+    if (d < startToday) continue;
+    candidates.push({ date: d, title: a.title, color: settings.primaryColor, time: a.time });
+  }
+  candidates.sort((a, b) => a.date.getTime() - b.date.getTime());
+
+  let nextEvent: WidgetNextEvent | null = null;
+  if (candidates.length > 0) {
+    const c = candidates[0];
+    const isToday = sameDay(c.date, today);
+    const datePart = isToday
+      ? "Aujourd'hui"
+      : `${DAYS_FR[c.date.getDay()]}. ${c.date.getDate()} ${MONTHS_FR[c.date.getMonth()]}`;
+    const timePart = c.time ? ` · ${c.time.replace(':', 'h')}` : '';
+    nextEvent = { title: c.title, when: `${datePart}${timePart}`, color: c.color };
+  }
+
+  return {
+    tasks: taskItems,
+    todayAppts,
+    nextApptLabel,
+    nextEvent,
+    todayWork,
+    confirmTask,
+    settings,
+    todayLabel,
+  };
 }
 
 export async function getWidgetDataFromStorage(): Promise<WidgetData> {
