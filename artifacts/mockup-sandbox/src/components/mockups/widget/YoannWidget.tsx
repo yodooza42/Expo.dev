@@ -21,12 +21,13 @@ export function YoannWidget() {
     { title: 'RDV notaire contrat', when: '20/06 10:00' },
   ];
 
+  const BASE = import.meta.env.BASE_URL; // '/__mockup/'
   const navItems = [
-    { src: '/icon-reset.png', label: 'Reset' },
-    { src: '/icon-task.png',  label: 'Tâche' },
-    { src: '/icon-idea.png',  label: 'Idée' },
-    { src: '/icon-rdv.png',   label: 'RDV' },
-    { src: '/icon-home.png',  label: 'Accueil' },
+    { src: `${BASE}icon-reset.png`, label: 'Reset' },
+    { src: `${BASE}icon-task.png`,  label: 'Tâche' },
+    { src: `${BASE}icon-idea.png`,  label: 'Idée' },
+    { src: `${BASE}icon-rdv.png`,   label: 'RDV' },
+    { src: `${BASE}icon-home.png`,  label: 'Accueil' },
   ];
 
   return (
