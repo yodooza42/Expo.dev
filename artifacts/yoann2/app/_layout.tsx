@@ -16,6 +16,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { AppProvider } from '@/contexts/AppContext';
+import { PauseProvider } from '@/contexts/PauseContext';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 
 SplashScreen.preventAutoHideAsync();
@@ -112,7 +113,9 @@ export default function RootLayout() {
             <KeyboardProvider>
               <ThemeProvider>
                 <AppProvider>
-                  <RootLayoutNav />
+                  <PauseProvider>
+                    <RootLayoutNav />
+                  </PauseProvider>
                 </AppProvider>
               </ThemeProvider>
             </KeyboardProvider>

@@ -19,7 +19,9 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useApp } from '@/contexts/AppContext';
+import { usePause } from '@/contexts/PauseContext';
 import { useColors } from '@/hooks/useColors';
+import { formatDuration, shortDate } from '@/utils/pauseStorage';
 import { cancelShiftNotifications, scheduleShiftNotifications } from '@/utils/notificationScheduler';
 import { updateTodoWidget } from '@/widgets/updateWidget';
 import {
@@ -64,6 +66,7 @@ export default function WidgetSettingsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { tasks, appointments } = useApp();
+  const { stats, activePause, startPause, stopPause, clearAllPauseSessions } = usePause();
 
   const [settings, setSettings] = useState<WidgetSettings>(DEFAULT_WIDGET_SETTINGS);
   const [saving, setSaving] = useState(false);
@@ -329,6 +332,106 @@ export default function WidgetSettingsScreen() {
           </View>
         </View>
 
+        {/* ── Suivi des pauses ── */}
+        <Text style={[styles.section, { color: colors.mutedForeground }]}>Suivi des pauses ☕</Text>
+        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border, gap: 14 }]}>
+
+          {/* Bouton démarrer / arrêter */}
+          <Pressable
+            onPress={activePause ? stopPause : startPause}
+            style={[
+              styles.pauseBtn,
+              { backgroundColor: activePause ? '#F44336' : colors.primary },
+            ]}
+          >
+            <MaterialCommunityIcons
+              name={activePause ? 'stop-circle-outline' : 'play-circle-outline'}
+              size={20}
+              color={colors.primaryForeground}
+            />
+            <Text style={[styles.pauseBtnTxt, { color: colors.primaryForeground }]}>
+              {activePause
+                ? `⏸ Pause en cours — ${formatDuration(Math.floor((Date.now() - activePause.startTs) / 1000))}`
+                : '▶ Démarrer une pause'}
+            </Text>
+          </Pressable>
+
+          {/* Chiffres clés */}
+          <View style={styles.statsRow}>
+            <View style={styles.statBox}>
+              <Text style={[styles.statValue, { color: colors.primary }]}>{formatDuration(stats.todaySecs)}</Text>
+              <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>Aujourd'hui</Text>
+            </View>
+            <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
+            <View style={styles.statBox}>
+              <Text style={[styles.statValue, { color: colors.primary }]}>{formatDuration(stats.weekSecs)}</Text>
+              <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>Cette semaine</Text>
+            </View>
+            <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
+            <View style={styles.statBox}>
+              <Text style={[styles.statValue, { color: colors.primary }]}>{formatDuration(stats.dailyAvgSecs)}</Text>
+              <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>Moy./jour</Text>
+            </View>
+          </View>
+
+          {/* Mini graphique 7 jours */}
+          {stats.last7.some(d => d.secs > 0) ? (
+            <View style={{ gap: 6 }}>
+              <Text style={[styles.chartTitle, { color: colors.mutedForeground }]}>7 derniers jours</Text>
+              <View style={styles.barChart}>
+                {(() => {
+                  const max = Math.max(...stats.last7.map(d => d.secs), 1);
+                  return stats.last7.map(d => (
+                    <View key={d.date} style={styles.barCol}>
+                      <View style={styles.barTrack}>
+                        <View
+                          style={[
+                            styles.barFill,
+                            {
+                              height: `${Math.max(4, Math.round((d.secs / max) * 100))}%`,
+                              backgroundColor: d.secs > 0 ? colors.primary : colors.border,
+                            },
+                          ]}
+                        />
+                      </View>
+                      <Text style={[styles.barLabel, { color: colors.mutedForeground }]}>
+                        {shortDate(d.date).slice(0, 5)}
+                      </Text>
+                    </View>
+                  ));
+                })()}
+              </View>
+            </View>
+          ) : (
+            <Text style={[styles.pauseHint, { color: colors.mutedForeground }]}>
+              Aucune pause enregistrée cette semaine. Appuie sur ▶ pour démarrer un chrono.
+            </Text>
+          )}
+
+          {/* Effacer l'historique */}
+          {stats.last7.some(d => d.secs > 0) && (
+            <Pressable
+              onPress={() =>
+                Alert.alert(
+                  "Effacer l\u2019historique ?",
+                  "Toutes les sessions de pause seront supprim\u00E9es.",
+                  [
+                    { text: 'Annuler', style: 'cancel' },
+                    {
+                      text: 'Effacer', style: 'destructive',
+                      onPress: clearAllPauseSessions,
+                    },
+                  ]
+                )
+              }
+              style={[styles.removeBtn, { borderColor: colors.border, alignSelf: 'flex-start' }]}
+            >
+              <MaterialCommunityIcons name="trash-can-outline" size={16} color="#F44336" />
+              <Text style={[styles.removeTxt, { color: '#F44336' }]}>Effacer l'historique</Text>
+            </Pressable>
+          )}
+        </View>
+
         <Text style={[styles.section, { color: colors.mutedForeground }]}>Taille du texte des tâches</Text>
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <View style={styles.chipRow}>
@@ -536,4 +639,32 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   resetTxt: { fontSize: 13, fontFamily: 'Inter_400Regular' },
+  pauseBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    borderRadius: 12,
+  },
+  pauseBtnTxt: { fontSize: 14, fontFamily: 'Inter_600SemiBold' },
+  statsRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+  },
+  statBox: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 4,
+  },
+  statValue: { fontSize: 20, fontFamily: 'Inter_600SemiBold' },
+  statLabel: { fontSize: 11, fontFamily: 'Inter_400Regular', textAlign: 'center' },
+  statDivider: { width: 1, marginHorizontal: 4 },
+  chartTitle: { fontSize: 11, fontFamily: 'Inter_600SemiBold', textTransform: 'uppercase', letterSpacing: 0.6 },
+  barChart: { flexDirection: 'row', alignItems: 'flex-end', height: 80, gap: 4 },
+  barCol: { flex: 1, alignItems: 'center', gap: 4, height: '100%' },
+  barTrack: { flex: 1, width: '100%', justifyContent: 'flex-end' },
+  barFill: { width: '100%', borderRadius: 4, minHeight: 4 },
+  barLabel: { fontSize: 9, fontFamily: 'Inter_400Regular' },
+  pauseHint: { fontSize: 12, fontFamily: 'Inter_400Regular', lineHeight: 18, textAlign: 'center' },
 });
