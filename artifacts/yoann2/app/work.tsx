@@ -331,8 +331,15 @@ export default function WorkScreen() {
 
     await importSessionsBatch(HISTORY);
 
-    // Génère les rapports pour chaque mois concerné
+    // Recharge en mémoire pour mettre à jour l'état React
     const all = await loadWorkSessions();
+    setWorkSessions(all);
+    const inputs: Record<string, { start: string; end: string }> = {};
+    for (const [date, s] of Object.entries(all))
+      inputs[date] = { start: s.startTime, end: s.endTime };
+    setSessionInputs(inputs);
+
+    // Génère les rapports pour chaque mois concerné
     const months = ['2026-01', '2026-02', '2026-03', '2026-04', '2026-05'];
     const newReports: MonthlyReport[] = [];
     for (const month of months) {
