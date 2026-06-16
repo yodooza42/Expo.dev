@@ -243,23 +243,23 @@ export default function KanbanScreen() {
           <View style={[styles.todayLine, { backgroundColor: colors.primary }]} />
         </View>
 
-        {/* Single row — RDV en premier, puis tâches stats */}
+        {/* Single row — icon + number only */}
         <View style={styles.statsRow}>
           <View style={[styles.statPill, { backgroundColor: '#7C4DFF18' }]}>
             <MaterialCommunityIcons name="calendar-clock-outline" size={12} color="#7C4DFF" />
-            <Text style={[styles.statPillTxt, { color: colors.mutedForeground }]}>{upcomingAppts} rdv</Text>
+            <Text style={[styles.statPillTxt, { color: '#7C4DFF' }]}>{upcomingAppts}</Text>
           </View>
-          <View style={styles.statPill}>
+          <View style={[styles.statPill, { backgroundColor: colors.primary + '18' }]}>
             <MaterialCommunityIcons name="folder-multiple-outline" size={12} color={colors.primary} />
-            <Text style={[styles.statPillTxt, { color: colors.mutedForeground }]}>{stats.totalProjects} projets</Text>
+            <Text style={[styles.statPillTxt, { color: colors.primary }]}>{stats.totalProjects}</Text>
           </View>
-          <View style={styles.statPill}>
+          <View style={[styles.statPill, { backgroundColor: '#2196F318' }]}>
             <MaterialCommunityIcons name="format-list-checks" size={12} color="#2196F3" />
-            <Text style={[styles.statPillTxt, { color: colors.mutedForeground }]}>{stats.totalTasks} tâches</Text>
+            <Text style={[styles.statPillTxt, { color: '#2196F3' }]}>{stats.totalTasks}</Text>
           </View>
-          <View style={styles.statPill}>
+          <View style={[styles.statPill, { backgroundColor: '#4CAF5018' }]}>
             <MaterialCommunityIcons name="check-circle-outline" size={12} color="#4CAF50" />
-            <Text style={[styles.statPillTxt, { color: colors.mutedForeground }]}>{stats.completedTasks} terminées</Text>
+            <Text style={[styles.statPillTxt, { color: '#4CAF50' }]}>{stats.completedTasks}</Text>
           </View>
         </View>
       </View>
@@ -338,15 +338,15 @@ const styles = StyleSheet.create({
   statPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 3,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 16,
+    gap: 2,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    borderRadius: 12,
     backgroundColor: '#ffffff0c',
   },
   statPillTxt: {
     fontSize: 11,
-    fontFamily: 'Inter_500Medium',
+    fontFamily: 'Inter_600SemiBold',
   },
   column: {
     width: 200,
