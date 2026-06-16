@@ -126,11 +126,19 @@ export default function KanbanScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { tasks, projects, updateTask } = useApp();
+  const { tasks, projects, appointments, getStats, updateTask } = useApp();
   const [movingTask, setMovingTask] = useState<Task | null>(null);
   const [selectedProject, setSelectedProject] = useState<string>('all');
 
   const topPad = Platform.OS === 'web' ? 67 : insets.top;
+  const now    = new Date();
+  const stats  = getStats();
+
+  const upcomingAppts = appointments.filter(a => {
+    if (!a.date) return false;
+    const d = new Date(a.date + 'T' + (a.time ?? '00:00'));
+    return d >= now;
+  }).length;
 
   const filteredTasks = selectedProject === 'all'
     ? tasks
@@ -221,6 +229,48 @@ export default function KanbanScreen() {
         })}
       </ScrollView>
 
+      {/* ── STATS FOOTER ── */}
+      <View style={[styles.statsFooter, { backgroundColor: colors.background }]}>
+        {/* Date divider */}
+        <View style={styles.todayRow}>
+          <View style={[styles.todayLine, { backgroundColor: colors.primary }]} />
+          <View style={[styles.todayPill, { backgroundColor: colors.primary }]}>
+            <Text style={[styles.todayTxt, { color: colors.primaryForeground }]}>
+              Aujourd'hui  ·  {now.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })}
+            </Text>
+          </View>
+          <View style={[styles.todayLine, { backgroundColor: colors.primary }]} />
+        </View>
+
+        {/* Tâches stats */}
+        <View style={styles.statsRow}>
+          <View style={styles.statPill}>
+            <MaterialCommunityIcons name="folder-multiple-outline" size={13} color={colors.primary} />
+            <Text style={[styles.statPillTxt, { color: colors.mutedForeground }]}>{stats.totalProjects} projets</Text>
+          </View>
+          <View style={styles.statPill}>
+            <MaterialCommunityIcons name="format-list-checks" size={13} color="#2196F3" />
+            <Text style={[styles.statPillTxt, { color: colors.mutedForeground }]}>{stats.totalTasks} tâches</Text>
+          </View>
+          {stats.completedTasks > 0 && (
+            <View style={styles.statPill}>
+              <MaterialCommunityIcons name="check-circle-outline" size={13} color="#4CAF50" />
+              <Text style={[styles.statPillTxt, { color: colors.mutedForeground }]}>{stats.completedTasks} terminées</Text>
+            </View>
+          )}
+        </View>
+
+        {/* RDV stats (à venir) */}
+        <View style={styles.statsRow}>
+          <View style={[styles.statPill, { backgroundColor: '#7C4DFF18' }]}>
+            <MaterialCommunityIcons name="calendar-clock-outline" size={13} color="#7C4DFF" />
+            <Text style={[styles.statPillTxt, { color: colors.mutedForeground }]}>
+              {upcomingAppts} rendez-vous
+            </Text>
+          </View>
+        </View>
+      </View>
+
       {movingTask && (
         <MoveModal
           task={movingTask}
@@ -262,8 +312,48 @@ const styles = StyleSheet.create({
   },
   board: {
     paddingHorizontal: 16,
-    paddingBottom: 100,
+    paddingBottom: 16,
     gap: 10,
+  },
+  statsFooter: {
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 8,
+  },
+  todayRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 10,
+  },
+  todayLine: { flex: 1, height: 1 },
+  todayPill: {
+    paddingHorizontal: 14,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  todayTxt: {
+    fontSize: 11,
+    fontFamily: 'Inter_600SemiBold',
+  },
+  statsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginBottom: 6,
+  },
+  statPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 20,
+    backgroundColor: '#ffffff0c',
+  },
+  statPillTxt: {
+    fontSize: 12,
+    fontFamily: 'Inter_500Medium',
   },
   column: {
     width: 200,
