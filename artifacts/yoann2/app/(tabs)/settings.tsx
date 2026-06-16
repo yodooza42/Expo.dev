@@ -22,11 +22,15 @@ import { useApp } from '@/contexts/AppContext';
 import { type ThemeColorKey, useTheme } from '@/contexts/ThemeContext';
 import { useColors } from '@/hooks/useColors';
 import {
+  cancelAppointmentReminders,
   cancelMonthlyReport,
   cancelWeeklyReport,
+  getApptReminderPref,
   getNotifPrefs,
+  scheduleAppointmentReminders,
   scheduleMonthlyReport,
   scheduleWeeklyReport,
+  setApptReminderPref,
 } from '@/utils/notificationScheduler';
 
 const COLOR_PALETTE = [
@@ -107,6 +111,7 @@ export default function SettingsScreen() {
   const [colorPickerKey, setColorPickerKey] = useState<ThemeColorKey | null>(null);
   const [weeklyNotif, setWeeklyNotif] = useState(false);
   const [monthlyNotif, setMonthlyNotif] = useState(false);
+  const [apptReminder, setApptReminder] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -114,6 +119,7 @@ export default function SettingsScreen() {
       setWeeklyNotif(prefs.weekly);
       setMonthlyNotif(prefs.monthly);
     });
+    getApptReminderPref().then(setApptReminder);
   }, []);
 
   async function handleWeeklyToggle(value: boolean) {
@@ -134,6 +140,18 @@ export default function SettingsScreen() {
       await cancelMonthlyReport();
     }
     Haptics.selectionAsync();
+  }
+
+  async function handleApptReminderToggle(value: boolean) {
+    setApptReminder(value);
+    await setApptReminderPref(value);
+    if (value) {
+      // reschedule will happen via AppContext effect
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } else {
+      await cancelAppointmentReminders();
+      Haptics.selectionAsync();
+    }
   }
 
   const topPad = Platform.OS === 'web' ? 67 : insets.top;
@@ -267,6 +285,23 @@ export default function SettingsScreen() {
           onPress={() => router.push('/widget-settings')}
           colors={colors}
         />
+
+        <Text style={[styles.section, { color: colors.mutedForeground }]}>Notifications</Text>
+        <View style={[styles.row, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <View style={[styles.rowIcon, { backgroundColor: colors.primary + '20' }]}>
+            <MaterialCommunityIcons name="calendar-alert" size={20} color={colors.primary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.rowLabel, { color: colors.foreground }]}>Rappels de rendez-vous</Text>
+            <Text style={[styles.rowSub, { color: colors.mutedForeground }]}>24h avant + jour J à 8h00</Text>
+          </View>
+          <Switch
+            value={apptReminder}
+            onValueChange={handleApptReminderToggle}
+            trackColor={{ false: colors.border, true: colors.primary + '80' }}
+            thumbColor={apptReminder ? colors.primary : colors.mutedForeground}
+          />
+        </View>
 
         <Text style={[styles.section, { color: colors.mutedForeground }]}>Rapports automatiques</Text>
         <SettingRow

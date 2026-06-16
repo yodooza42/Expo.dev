@@ -9,6 +9,8 @@ const KEY_MONTHLY = '@yoann2_notif_monthly';
 const KEY_WEEKLY_ID = '@yoann2_notif_weekly_id';
 const KEY_MONTHLY_ID = '@yoann2_notif_monthly_id';
 const KEY_SHIFT_IDS = '@yoann2_notif_shift_ids';
+const KEY_APPT_REMINDER = '@yoann2_notif_appt_reminder';
+const KEY_APPT_IDS = '@yoann2_notif_appt_ids';
 
 const DAY_NAMES_FR = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
 
@@ -172,4 +174,92 @@ export async function scheduleShiftNotifications(schedule: DaySchedule[]): Promi
   }
 
   await AsyncStorage.setItem(KEY_SHIFT_IDS, JSON.stringify(ids));
+}
+
+// ── Notifications RDV (rappel 24h avant + jour J à 8h) ──
+
+interface ApptInput {
+  id: string;
+  title: string;
+  date: string;
+  time: string;
+}
+
+export async function getApptReminderPref(): Promise<boolean> {
+  const raw = await AsyncStorage.getItem(KEY_APPT_REMINDER);
+  return raw === 'true';
+}
+
+export async function setApptReminderPref(enabled: boolean): Promise<void> {
+  await AsyncStorage.setItem(KEY_APPT_REMINDER, String(enabled));
+}
+
+export async function cancelAppointmentReminders(): Promise<void> {
+  const raw = await AsyncStorage.getItem(KEY_APPT_IDS);
+  if (raw) {
+    try {
+      const ids: string[] = JSON.parse(raw);
+      for (const id of ids) {
+        await Notifications.cancelScheduledNotificationAsync(id).catch(() => {});
+      }
+    } catch {}
+  }
+  await AsyncStorage.removeItem(KEY_APPT_IDS);
+}
+
+export async function scheduleAppointmentReminders(appointments: ApptInput[]): Promise<void> {
+  if (Platform.OS === 'web') return;
+  await cancelAppointmentReminders();
+  const enabled = await getApptReminderPref();
+  if (!enabled) return;
+  const granted = await requestNotifPermission();
+  if (!granted) return;
+
+  const now = new Date();
+  const ids: string[] = [];
+
+  for (const a of appointments) {
+    if (!a.date) continue;
+    const apptDate = new Date(a.date);
+    if (isNaN(apptDate.getTime()) || apptDate < now) continue;
+
+    // 1) Rappel 24h avant
+    const reminder24 = new Date(apptDate);
+    reminder24.setDate(reminder24.getDate() - 1);
+    reminder24.setHours(8, 0, 0, 0);
+    if (reminder24 > now) {
+      const id = await Notifications.scheduleNotificationAsync({
+        content: {
+          title: '📅 Rappel RDV demain',
+          body: `${a.title} ${a.time ? `à ${a.time.replace(':', 'h')}` : ''}`,
+          data: { type: 'appointment', apptId: a.id, url: '/calendar' },
+        },
+        trigger: {
+          type: Notifications.SchedulableTriggerInputTypes.DATE,
+          date: reminder24,
+        },
+      });
+      ids.push(id);
+    }
+
+    // 2) Jour J à 8h
+    const morning = new Date(apptDate);
+    morning.setHours(8, 0, 0, 0);
+    if (morning > now) {
+      const id2 = await Notifications.scheduleNotificationAsync({
+        content: {
+          title: '📅 RDV aujourd\'hui',
+          body: `${a.title} ${a.time ? `à ${a.time.replace(':', 'h')}` : ''}`,
+          data: { type: 'appointment', apptId: a.id, url: '/calendar' },
+        },
+        trigger: {
+          type: Notifications.SchedulableTriggerInputTypes.DATE,
+          date: morning,
+        },
+      });
+      ids.push(id2);
+    }
+  }
+
+  await AsyncStorage.setItem(KEY_APPT_IDS, JSON.stringify(ids));
 }

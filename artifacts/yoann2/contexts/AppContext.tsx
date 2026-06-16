@@ -13,6 +13,10 @@ import {
   SEED_TASKS,
   SEED_VERSION,
 } from '@/utils/seedData';
+import {
+  getApptReminderPref,
+  scheduleAppointmentReminders,
+} from '@/utils/notificationScheduler';
 import { updateTodoWidget } from '@/widgets/updateWidget';
 
 const STORAGE_KEYS = {
@@ -259,6 +263,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       updateTodoWidget(tasks, appointments);
     }
   }, [tasks, appointments, loading]);
+
+  // Reschedule appointment reminder notifications when appointments change
+  useEffect(() => {
+    if (loading) return;
+    getApptReminderPref().then(enabled => {
+      if (enabled && appointments.length > 0) {
+        scheduleAppointmentReminders(
+          appointments.map(a => ({
+            id: a.id,
+            title: a.title,
+            date: a.date,
+            time: a.time,
+          }))
+        );
+      }
+    });
+  }, [appointments, loading]);
 
   useEffect(() => {
     const sub = AppState.addEventListener('change', nextState => {
