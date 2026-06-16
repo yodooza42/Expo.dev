@@ -21,7 +21,15 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '@/contexts/AppContext';
 import { usePause } from '@/contexts/PauseContext';
 import { useColors } from '@/hooks/useColors';
-import { formatDuration, shortDate } from '@/utils/pauseStorage';
+import {
+  type ShiftClockouts,
+  formatDuration,
+  formatHHMM,
+  getShiftWindow,
+  loadClockouts,
+  longShiftDate,
+  saveClockout,
+} from '@/utils/pauseStorage';
 import { cancelShiftNotifications, scheduleShiftNotifications } from '@/utils/notificationScheduler';
 import { updateTodoWidget } from '@/widgets/updateWidget';
 import {
@@ -66,17 +74,27 @@ export default function WidgetSettingsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { tasks, appointments } = useApp();
-  const { stats, activePause, startPause, stopPause, clearAllPauseSessions } = usePause();
+  const { activePause, sessions, startPause, stopPause, clearAllPauseSessions, workSchedule: pauseSchedule, todayShiftDate } = usePause();
 
   const [settings, setSettings] = useState<WidgetSettings>(DEFAULT_WIDGET_SETTINGS);
   const [saving, setSaving] = useState(false);
   const [pickingImage, setPickingImage] = useState(false);
+  const [clockoutInputs, setClockoutInputs] = useState<ShiftClockouts>({});
+  const [expandedShifts, setExpandedShifts] = useState<Set<string>>(new Set());
 
   const topPad = Platform.OS === 'web' ? 67 : insets.top;
 
   useEffect(() => {
     getWidgetSettings().then(s => setSettings(s));
   }, []);
+
+  useEffect(() => {
+    loadClockouts().then(co => setClockoutInputs(co));
+  }, []);
+
+  useEffect(() => {
+    setExpandedShifts(s => new Set([...s, todayShiftDate]));
+  }, [todayShiftDate]);
 
   async function handleSave() {
     setSaving(true);
@@ -118,6 +136,31 @@ export default function WidgetSettingsScreen() {
       }
     }
     return fallback;
+  }
+
+  function getScheduledStart(shiftDate: string): string {
+    const dayIdx = new Date(shiftDate + 'T12:00:00').getDay();
+    const sched = settings.workSchedule[dayIdx];
+    return !sched || sched.off ? '' : sched.start;
+  }
+
+  function getScheduledEnd(shiftDate: string): string {
+    const dayIdx = new Date(shiftDate + 'T12:00:00').getDay();
+    const sched = settings.workSchedule[dayIdx];
+    return !sched || sched.off ? '' : sched.end;
+  }
+
+  async function handleClockoutBlur(shiftDate: string) {
+    const raw = clockoutInputs[shiftDate]?.trim() ?? '';
+    if (!raw) {
+      await saveClockout(shiftDate, null);
+      setClockoutInputs(c => { const n = { ...c }; delete n[shiftDate]; return n; });
+      return;
+    }
+    const fallback = getScheduledEnd(shiftDate) || '23:59';
+    const normalized = normalizeTime(raw, fallback);
+    setClockoutInputs(c => ({ ...c, [shiftDate]: normalized }));
+    await saveClockout(shiftDate, normalized);
   }
 
   async function pickBgImage() {
@@ -334,103 +377,243 @@ export default function WidgetSettingsScreen() {
 
         {/* ── Suivi des pauses ── */}
         <Text style={[styles.section, { color: colors.mutedForeground }]}>Suivi des pauses ☕</Text>
-        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border, gap: 14 }]}>
 
-          {/* Bouton démarrer / arrêter */}
-          <Pressable
-            onPress={activePause ? stopPause : startPause}
-            style={[
-              styles.pauseBtn,
-              { backgroundColor: activePause ? '#F44336' : colors.primary },
-            ]}
-          >
-            <MaterialCommunityIcons
-              name={activePause ? 'stop-circle-outline' : 'play-circle-outline'}
-              size={20}
-              color={colors.primaryForeground}
-            />
-            <Text style={[styles.pauseBtnTxt, { color: colors.primaryForeground }]}>
-              {activePause
-                ? `⏸ Pause en cours — ${formatDuration(Math.floor((Date.now() - activePause.startTs) / 1000))}`
-                : '▶ Démarrer une pause'}
-            </Text>
-          </Pressable>
+        {/* Bouton démarrer / arrêter */}
+        <Pressable
+          onPress={activePause ? stopPause : startPause}
+          style={[styles.pauseBtn, { backgroundColor: activePause ? '#C62828' : colors.primary }]}
+        >
+          <MaterialCommunityIcons
+            name={activePause ? 'stop-circle-outline' : 'play-circle-outline'}
+            size={20}
+            color={colors.primaryForeground}
+          />
+          <Text style={[styles.pauseBtnTxt, { color: colors.primaryForeground }]}>
+            {activePause
+              ? `⏸ En cours — ${formatDuration(Math.floor((Date.now() - activePause.startTs) / 1000))}`
+              : '☕  Démarrer une pause'}
+          </Text>
+        </Pressable>
 
-          {/* Chiffres clés */}
-          <View style={styles.statsRow}>
-            <View style={styles.statBox}>
-              <Text style={[styles.statValue, { color: colors.primary }]}>{formatDuration(stats.todaySecs)}</Text>
-              <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>Aujourd'hui</Text>
-            </View>
-            <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
-            <View style={styles.statBox}>
-              <Text style={[styles.statValue, { color: colors.primary }]}>{formatDuration(stats.weekSecs)}</Text>
-              <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>Cette semaine</Text>
-            </View>
-            <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
-            <View style={styles.statBox}>
-              <Text style={[styles.statValue, { color: colors.primary }]}>{formatDuration(stats.dailyAvgSecs)}</Text>
-              <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>Moy./jour</Text>
-            </View>
-          </View>
+        {/* Journée en cours */}
+        {(() => {
+          const todaySessions = sessions.filter(s => s.shiftDate === todayShiftDate);
+          const activeSecs    = activePause ? Math.floor((Date.now() - activePause.startTs) / 1000) : 0;
+          const totalSecs     = todaySessions.reduce((a, s) => a + s.durationSecs, 0) + activeSecs;
+          const nbPauses      = todaySessions.length + (activePause ? 1 : 0);
+          const win           = getShiftWindow(todayShiftDate, settings.workSchedule, clockoutInputs[todayShiftDate]);
+          const schedEnd      = getScheduledEnd(todayShiftDate);
 
-          {/* Mini graphique 7 jours */}
-          {stats.last7.some(d => d.secs > 0) ? (
-            <View style={{ gap: 6 }}>
-              <Text style={[styles.chartTitle, { color: colors.mutedForeground }]}>7 derniers jours</Text>
-              <View style={styles.barChart}>
-                {(() => {
-                  const max = Math.max(...stats.last7.map(d => d.secs), 1);
-                  return stats.last7.map(d => (
-                    <View key={d.date} style={styles.barCol}>
-                      <View style={styles.barTrack}>
-                        <View
-                          style={[
-                            styles.barFill,
-                            {
-                              height: `${Math.max(4, Math.round((d.secs / max) * 100))}%`,
-                              backgroundColor: d.secs > 0 ? colors.primary : colors.border,
-                            },
-                          ]}
-                        />
-                      </View>
-                      <Text style={[styles.barLabel, { color: colors.mutedForeground }]}>
-                        {shortDate(d.date).slice(0, 5)}
+          return (
+            <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border, gap: 12 }]}>
+              {/* En-tête : date + saisie heure de fin réelle */}
+              <View style={styles.shiftHeader}>
+                <Text style={[styles.shiftDateLabel, { color: colors.foreground }]}>
+                  {longShiftDate(todayShiftDate)}
+                </Text>
+                <View style={styles.shiftHoursRow}>
+                  <Text style={[styles.shiftHoursText, { color: colors.mutedForeground }]}>
+                    {getScheduledStart(todayShiftDate)} →
+                  </Text>
+                  <TextInput
+                    value={clockoutInputs[todayShiftDate] ?? ''}
+                    onChangeText={t => setClockoutInputs(c => ({ ...c, [todayShiftDate]: t }))}
+                    onBlur={() => handleClockoutBlur(todayShiftDate)}
+                    placeholder={schedEnd || 'fin'}
+                    placeholderTextColor={colors.mutedForeground}
+                    keyboardType="numbers-and-punctuation"
+                    maxLength={5}
+                    style={[styles.clockoutInput, {
+                      color: colors.foreground,
+                      borderColor: colors.border,
+                      backgroundColor: colors.background,
+                    }]}
+                  />
+                  <Text style={[styles.clockoutLabel, { color: colors.mutedForeground }]}>réel</Text>
+                </View>
+              </View>
+
+              {/* Cumul du jour */}
+              {nbPauses > 0 && (
+                <Text style={[styles.shiftTotal, { color: colors.primary }]}>
+                  ⏸ {formatDuration(totalSecs)} · {nbPauses} pause{nbPauses > 1 ? 's' : ''}
+                </Text>
+              )}
+
+              {/* Timeline */}
+              {win && nbPauses > 0 && (() => {
+                const total = win.endTs - win.startTs;
+                const blocks = [
+                  ...todaySessions.map(s => ({ start: s.startTs, end: s.endTs, active: false })),
+                  ...(activePause ? [{ start: activePause.startTs, end: Date.now(), active: true }] : []),
+                ];
+                return (
+                  <View>
+                    <View style={[styles.timelineBar, { backgroundColor: colors.border }]}>
+                      {blocks.map((b, i) => {
+                        const pLeft  = Math.max(0, (b.start - win.startTs) / total * 100);
+                        const pWidth = Math.min(100 - pLeft, Math.max(1.5, (b.end - b.start) / total * 100));
+                        return (
+                          <View key={i} style={[styles.timelineBlock, {
+                            left: `${pLeft}%`,
+                            width: `${pWidth}%`,
+                            backgroundColor: colors.primary,
+                            opacity: b.active ? 0.6 : 1,
+                          }]} />
+                        );
+                      })}
+                    </View>
+                    <View style={styles.timelineLabels}>
+                      <Text style={[styles.timelineLabelTxt, { color: colors.mutedForeground }]}>{win.startLabel}</Text>
+                      <Text style={[styles.timelineLabelTxt, { color: colors.mutedForeground }]}>
+                        {clockoutInputs[todayShiftDate] ?? schedEnd}
                       </Text>
                     </View>
-                  ));
-                })()}
-              </View>
-            </View>
-          ) : (
-            <Text style={[styles.pauseHint, { color: colors.mutedForeground }]}>
-              Aucune pause enregistrée cette semaine. Appuie sur ▶ pour démarrer un chrono.
-            </Text>
-          )}
+                  </View>
+                );
+              })()}
 
-          {/* Effacer l'historique */}
-          {stats.last7.some(d => d.secs > 0) && (
-            <Pressable
-              onPress={() =>
-                Alert.alert(
-                  "Effacer l\u2019historique ?",
-                  "Toutes les sessions de pause seront supprim\u00E9es.",
-                  [
-                    { text: 'Annuler', style: 'cancel' },
-                    {
-                      text: 'Effacer', style: 'destructive',
-                      onPress: clearAllPauseSessions,
-                    },
-                  ]
-                )
-              }
-              style={[styles.removeBtn, { borderColor: colors.border, alignSelf: 'flex-start' }]}
-            >
-              <MaterialCommunityIcons name="trash-can-outline" size={16} color="#F44336" />
-              <Text style={[styles.removeTxt, { color: '#F44336' }]}>Effacer l'historique</Text>
-            </Pressable>
-          )}
-        </View>
+              {/* Liste des pauses */}
+              {nbPauses === 0 ? (
+                <Text style={[styles.pauseHint, { color: colors.mutedForeground }]}>
+                  Aucune pause aujourd'hui — appuie sur ☕ pour démarrer.
+                </Text>
+              ) : (
+                <View style={styles.pauseList}>
+                  {todaySessions.map(s => (
+                    <View key={s.id} style={styles.pauseListRow}>
+                      <Text style={[styles.pauseListTime, { color: colors.mutedForeground }]}>
+                        ☕  {formatHHMM(s.startTs)}
+                      </Text>
+                      <Text style={[styles.pauseListDuration, { color: colors.foreground }]}>
+                        {formatDuration(s.durationSecs)}
+                      </Text>
+                    </View>
+                  ))}
+                  {activePause && (
+                    <View style={styles.pauseListRow}>
+                      <Text style={[styles.pauseListTime, { color: colors.primary }]}>
+                        ▶  {formatHHMM(activePause.startTs)} (en cours)
+                      </Text>
+                      <Text style={[styles.pauseListDuration, { color: colors.primary }]}>
+                        {formatDuration(Math.floor((Date.now() - activePause.startTs) / 1000))}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              )}
+            </View>
+          );
+        })()}
+
+        {/* Historique des shifts précédents */}
+        {(() => {
+          const historyDates = Array.from(
+            new Set(sessions.filter(s => s.shiftDate !== todayShiftDate).map(s => s.shiftDate))
+          ).sort().reverse().slice(0, 20);
+          if (historyDates.length === 0) return null;
+
+          return (
+            <>
+              <Text style={[styles.section, { color: colors.mutedForeground }]}>Historique</Text>
+              <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border, gap: 0 }]}>
+                {historyDates.map((shiftDate, idx) => {
+                  const shiftSessions = sessions.filter(s => s.shiftDate === shiftDate);
+                  const total    = shiftSessions.reduce((a, s) => a + s.durationSecs, 0);
+                  const win      = getShiftWindow(shiftDate, settings.workSchedule, clockoutInputs[shiftDate]);
+                  const expanded = expandedShifts.has(shiftDate);
+                  const sEnd     = getScheduledEnd(shiftDate);
+
+                  return (
+                    <View key={shiftDate}>
+                      {idx > 0 && <View style={[styles.separator, { backgroundColor: colors.border }]} />}
+                      <Pressable
+                        onPress={() => setExpandedShifts(prev => {
+                          const n = new Set(prev);
+                          n.has(shiftDate) ? n.delete(shiftDate) : n.add(shiftDate);
+                          return n;
+                        })}
+                        style={styles.historyRow}
+                      >
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.historyDateLabel, { color: colors.foreground }]}>
+                            {longShiftDate(shiftDate)}
+                          </Text>
+                          <Text style={[styles.historyMeta, { color: colors.mutedForeground }]}>
+                            ⏸ {formatDuration(total)} · {shiftSessions.length} pause{shiftSessions.length !== 1 ? 's' : ''}
+                          </Text>
+                        </View>
+                        <MaterialCommunityIcons
+                          name={expanded ? 'chevron-up' : 'chevron-down'}
+                          size={18}
+                          color={colors.mutedForeground}
+                        />
+                      </Pressable>
+
+                      {expanded && (
+                        <View style={styles.historyDetail}>
+                          {win && (() => {
+                            const tot = win.endTs - win.startTs;
+                            return (
+                              <View style={{ marginBottom: 8 }}>
+                                <View style={[styles.timelineBar, { backgroundColor: colors.border }]}>
+                                  {shiftSessions.map((s, i) => {
+                                    const pL = Math.max(0, (s.startTs - win.startTs) / tot * 100);
+                                    const pW = Math.min(100 - pL, Math.max(1.5, s.durationSecs * 1000 / tot * 100));
+                                    return (
+                                      <View key={i} style={[styles.timelineBlock, {
+                                        left: `${pL}%`,
+                                        width: `${pW}%`,
+                                        backgroundColor: colors.primary,
+                                      }]} />
+                                    );
+                                  })}
+                                </View>
+                                <View style={styles.timelineLabels}>
+                                  <Text style={[styles.timelineLabelTxt, { color: colors.mutedForeground }]}>{win.startLabel}</Text>
+                                  <Text style={[styles.timelineLabelTxt, { color: colors.mutedForeground }]}>
+                                    {clockoutInputs[shiftDate] ?? sEnd}
+                                  </Text>
+                                </View>
+                              </View>
+                            );
+                          })()}
+                          {shiftSessions.map(s => (
+                            <View key={s.id} style={styles.pauseListRow}>
+                              <Text style={[styles.pauseListTime, { color: colors.mutedForeground }]}>
+                                ☕  {formatHHMM(s.startTs)}
+                              </Text>
+                              <Text style={[styles.pauseListDuration, { color: colors.foreground }]}>
+                                {formatDuration(s.durationSecs)}
+                              </Text>
+                            </View>
+                          ))}
+                        </View>
+                      )}
+                    </View>
+                  );
+                })}
+              </View>
+            </>
+          );
+        })()}
+
+        {/* Effacer tout l'historique */}
+        {(sessions.length > 0 || !!activePause) && (
+          <Pressable
+            onPress={() => Alert.alert(
+              "Effacer l\u2019historique ?",
+              "Toutes les sessions de pause seront supprim\u00E9es.",
+              [
+                { text: 'Annuler', style: 'cancel' },
+                { text: 'Effacer', style: 'destructive', onPress: clearAllPauseSessions },
+              ]
+            )}
+            style={[styles.resetBtn, { borderColor: '#F4433655', marginTop: 0 }]}
+          >
+            <Text style={[styles.resetTxt, { color: '#F44336' }]}>Effacer tout l'historique des pauses</Text>
+          </Pressable>
+        )}
 
         <Text style={[styles.section, { color: colors.mutedForeground }]}>Taille du texte des tâches</Text>
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -648,23 +831,34 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   pauseBtnTxt: { fontSize: 14, fontFamily: 'Inter_600SemiBold' },
-  statsRow: {
-    flexDirection: 'row',
-    alignItems: 'stretch',
-  },
-  statBox: {
-    flex: 1,
-    alignItems: 'center',
-    gap: 4,
-  },
-  statValue: { fontSize: 20, fontFamily: 'Inter_600SemiBold' },
-  statLabel: { fontSize: 11, fontFamily: 'Inter_400Regular', textAlign: 'center' },
-  statDivider: { width: 1, marginHorizontal: 4 },
-  chartTitle: { fontSize: 11, fontFamily: 'Inter_600SemiBold', textTransform: 'uppercase', letterSpacing: 0.6 },
-  barChart: { flexDirection: 'row', alignItems: 'flex-end', height: 80, gap: 4 },
-  barCol: { flex: 1, alignItems: 'center', gap: 4, height: '100%' },
-  barTrack: { flex: 1, width: '100%', justifyContent: 'flex-end' },
-  barFill: { width: '100%', borderRadius: 4, minHeight: 4 },
-  barLabel: { fontSize: 9, fontFamily: 'Inter_400Regular' },
   pauseHint: { fontSize: 12, fontFamily: 'Inter_400Regular', lineHeight: 18, textAlign: 'center' },
+  shiftHeader: { gap: 6 },
+  shiftDateLabel: { fontSize: 15, fontFamily: 'Inter_600SemiBold' },
+  shiftHoursRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  shiftHoursText: { fontSize: 13, fontFamily: 'Inter_400Regular' },
+  clockoutInput: {
+    width: 58,
+    height: 30,
+    borderWidth: 1,
+    borderRadius: 8,
+    textAlign: 'center',
+    fontSize: 13,
+    fontFamily: 'Inter_500Medium',
+    paddingVertical: 0,
+  },
+  clockoutLabel: { fontSize: 10, fontFamily: 'Inter_400Regular' },
+  shiftTotal: { fontSize: 14, fontFamily: 'Inter_600SemiBold' },
+  timelineBar: { height: 14, borderRadius: 7, overflow: 'hidden', position: 'relative' },
+  timelineBlock: { position: 'absolute', top: 0, bottom: 0, borderRadius: 4 },
+  timelineLabels: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 },
+  timelineLabelTxt: { fontSize: 10, fontFamily: 'Inter_400Regular' },
+  pauseList: { gap: 6 },
+  pauseListRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  pauseListTime: { fontSize: 13, fontFamily: 'Inter_400Regular' },
+  pauseListDuration: { fontSize: 13, fontFamily: 'Inter_500Medium' },
+  separator: { height: 1, marginVertical: 2 },
+  historyRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, gap: 8 },
+  historyDateLabel: { fontSize: 14, fontFamily: 'Inter_500Medium' },
+  historyMeta: { fontSize: 12, fontFamily: 'Inter_400Regular', marginTop: 2 },
+  historyDetail: { paddingBottom: 10, gap: 6 },
 });
