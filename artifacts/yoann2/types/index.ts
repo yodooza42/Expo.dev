@@ -20,6 +20,8 @@ export interface Project {
   updatedAt: string;
 }
 
+export type RecurrenceType = 'daily' | 'weekly' | 'monthly' | null;
+
 export interface Task {
   id: string;
   projectId: string;
@@ -35,6 +37,8 @@ export interface Task {
   urgency: number;
   status: TaskStatus;
   eisenhower: EisenhowerQuadrant;
+  recurrence?: RecurrenceType;
+  recurrenceFromId?: string; // id of the original task this was spawned from
 }
 
 export interface Expense {

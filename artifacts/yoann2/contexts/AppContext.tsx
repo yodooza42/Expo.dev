@@ -434,7 +434,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const updateTask = useCallback((id: string, updates: Partial<Task>) => {
     setTasks(prev => {
-      const next = prev.map(t => {
+      let next = prev.map(t => {
         if (t.id !== id) return t;
         const updated = { ...t, ...updates };
         // Auto-stamp completedAt the first time a task reaches 'done'
@@ -452,6 +452,28 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         updated.eisenhower = computeEisenhower(updated.urgency, updated.importance);
         return updated;
       });
+      // ── Recurrence: spawn next instance when a recurring task is marked done ──
+      const task = prev.find(t => t.id === id);
+      if (task && task.recurrence && updates.status === 'done' && !task.completedAt) {
+        const due = new Date(task.dueDate);
+        if (!isNaN(due.getTime())) {
+          const nextDue = new Date(due);
+          if (task.recurrence === 'daily') nextDue.setDate(nextDue.getDate() + 1);
+          else if (task.recurrence === 'weekly') nextDue.setDate(nextDue.getDate() + 7);
+          else if (task.recurrence === 'monthly') nextDue.setMonth(nextDue.getMonth() + 1);
+          const clone: Task = {
+            ...task,
+            id: genId(),
+            createdAt: new Date().toISOString(),
+            completedAt: undefined,
+            dueDate: nextDue.toISOString(),
+            status: 'todo',
+            eisenhower: computeEisenhower(task.urgency, task.importance),
+            recurrenceFromId: task.id,
+          };
+          next = [...next, clone];
+        }
+      }
       AsyncStorage.setItem(STORAGE_KEYS.TASKS, JSON.stringify(next));
       markDirty();
       return next;

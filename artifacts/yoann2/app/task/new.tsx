@@ -20,7 +20,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useApp } from '@/contexts/AppContext';
 import { useColors } from '@/hooks/useColors';
-import type { Priority, TaskStatus } from '@/types';
+import type { Priority, RecurrenceType, TaskStatus } from '@/types';
 
 const { width } = Dimensions.get('window');
 
