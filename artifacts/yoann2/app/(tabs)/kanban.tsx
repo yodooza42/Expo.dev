@@ -316,6 +316,7 @@ const styles = StyleSheet.create({
   todayRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 8,
     marginBottom: 6,
   },
@@ -334,6 +335,7 @@ const styles = StyleSheet.create({
     flexWrap: 'nowrap',
     gap: 5,
     marginBottom: 0,
+    justifyContent: 'center',
   },
   statPill: {
     flexDirection: 'row',
