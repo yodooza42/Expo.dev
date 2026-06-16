@@ -356,10 +356,18 @@ export default function SettingsScreen() {
           colors={colors}
         />
 
+        <Text style={[styles.section, { color: colors.mutedForeground }]}>À propos</Text>
+        <SettingRow
+          icon="update"
+          label="Recap MàJ"
+          sublabel="Historique des versions et nouveautés"
+          onPress={() => router.push('/changelog')}
+          colors={colors}
+        />
         <View style={[styles.about, { borderColor: colors.border }]}>
           <Text style={[styles.aboutTitle, { color: colors.foreground }]}>Yoann2.0 - par et pour Gorge Yoann</Text>
           <Text style={[styles.aboutSub, { color: colors.mutedForeground }]}>Bienvenue dans mon cerveau numérique</Text>
-          <Text style={[styles.aboutSub, { color: colors.mutedForeground }]}>v.1.0.9</Text>
+          <Text style={[styles.aboutSub, { color: colors.mutedForeground }]}>v.2.0.0</Text>
         </View>
       </ScrollView>
 
