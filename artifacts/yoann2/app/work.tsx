@@ -134,9 +134,9 @@ export default function WorkScreen() {
   const fullWeekDates = getFullWeekDates();            // Mon→Sun for 35h calc
   const todayStr     = new Date().toISOString().slice(0, 10);
 
-  // ── Check if May 2026 import is needed ──
+  // ── Check if historical import is needed ──
   useEffect(() => {
-    isMonthImported('2026-05').then(done => setMayImportDone(done));
+    isMonthImported('history_v1').then(done => setMayImportDone(done));
   }, []);
 
   // ── Load on mount ──
@@ -245,9 +245,71 @@ export default function WorkScreen() {
     }
   }
 
-  // ── Import mai 2026 ──
+  // ── Import historique Jan–Mai 2026 (one-shot) ──
   async function handleImportMay() {
-    const MAY_SESSIONS: WorkSession[] = [
+    const HISTORY: WorkSession[] = [
+      // ── Janvier 2026 ──
+      { date: '2026-01-19', startTime: '15:00', endTime: '01:00' },
+      { date: '2026-01-20', startTime: '16:00', endTime: '00:00' },
+      { date: '2026-01-21', startTime: '16:00', endTime: '01:00' },
+      { date: '2026-01-22', startTime: '17:00', endTime: '01:00' },
+      { date: '2026-01-25', startTime: '20:00', endTime: '00:00' },
+      { date: '2026-01-26', startTime: '16:00', endTime: '01:45' },
+      { date: '2026-01-27', startTime: '15:00', endTime: '01:45' },
+      { date: '2026-01-28', startTime: '16:00', endTime: '01:00' },
+      { date: '2026-01-29', startTime: '17:00', endTime: '00:45' },
+      // ── Février 2026 ──
+      { date: '2026-02-01', startTime: '20:00', endTime: '00:30' },
+      { date: '2026-02-02', startTime: '15:00', endTime: '01:45' },
+      { date: '2026-02-03', startTime: '16:00', endTime: '00:36' },
+      { date: '2026-02-04', startTime: '16:00', endTime: '00:00' },
+      { date: '2026-02-05', startTime: '17:00', endTime: '00:00' },
+      { date: '2026-02-08', startTime: '20:00', endTime: '00:00' },
+      { date: '2026-02-09', startTime: '15:00', endTime: '00:21' },
+      { date: '2026-02-10', startTime: '17:00', endTime: '00:50' },
+      { date: '2026-02-11', startTime: '17:00', endTime: '01:00' },
+      { date: '2026-02-12', startTime: '17:00', endTime: '02:00' },
+      { date: '2026-02-15', startTime: '20:00', endTime: '00:00' },
+      { date: '2026-02-16', startTime: '15:00', endTime: '02:00' },
+      { date: '2026-02-17', startTime: '17:00', endTime: '03:00' },
+      { date: '2026-02-18', startTime: '17:00', endTime: '03:00' },
+      { date: '2026-02-19', startTime: '17:00', endTime: '01:15' },
+      { date: '2026-02-22', startTime: '20:00', endTime: '00:00' },
+      { date: '2026-02-23', startTime: '15:00', endTime: '03:00' },
+      { date: '2026-02-24', startTime: '17:00', endTime: '02:20' },
+      { date: '2026-02-25', startTime: '16:00', endTime: '00:20' },
+      { date: '2026-02-26', startTime: '17:00', endTime: '01:00' },
+      // ── Mars 2026 ──
+      { date: '2026-03-01', startTime: '19:30', endTime: '00:00' },
+      { date: '2026-03-02', startTime: '15:00', endTime: '07:22' },
+      { date: '2026-03-03', startTime: '18:00', endTime: '00:20' },
+      { date: '2026-03-04', startTime: '16:00', endTime: '01:00' },
+      { date: '2026-03-05', startTime: '17:00', endTime: '03:00' },
+      { date: '2026-03-23', startTime: '15:00', endTime: '02:25' },
+      { date: '2026-03-24', startTime: '17:00', endTime: '02:00' },
+      { date: '2026-03-25', startTime: '16:00', endTime: '01:00' },
+      { date: '2026-03-26', startTime: '17:00', endTime: '01:00' },
+      { date: '2026-03-29', startTime: '20:00', endTime: '23:30' },
+      { date: '2026-03-30', startTime: '15:00', endTime: '02:45' },
+      { date: '2026-03-31', startTime: '00:00', endTime: '00:00' },
+      // ── Avril 2026 ──
+      { date: '2026-04-01', startTime: '16:00', endTime: '01:20' },
+      { date: '2026-04-02', startTime: '17:00', endTime: '01:44' },
+      { date: '2026-04-06', startTime: '20:00', endTime: '00:45' },
+      { date: '2026-04-07', startTime: '15:00', endTime: '02:30' },
+      { date: '2026-04-08', startTime: '16:00', endTime: '01:30' },
+      { date: '2026-04-09', startTime: '17:00', endTime: '02:30' },
+      { date: '2026-04-19', startTime: '20:00', endTime: '01:45' },
+      { date: '2026-04-20', startTime: '15:00', endTime: '02:10' },
+      { date: '2026-04-21', startTime: '17:00', endTime: '00:30' },
+      { date: '2026-04-22', startTime: '16:15', endTime: '01:00' },
+      { date: '2026-04-23', startTime: '17:00', endTime: '00:42' },
+      { date: '2026-04-24', startTime: '18:00', endTime: '01:00' },
+      { date: '2026-04-27', startTime: '15:00', endTime: '01:45' },
+      { date: '2026-04-28', startTime: '17:00', endTime: '01:15' },
+      { date: '2026-04-29', startTime: '16:00', endTime: '03:30' },
+      { date: '2026-04-30', startTime: '18:00', endTime: '00:00' },
+      // ── Mai 2026 ──
       { date: '2026-05-03', startTime: '20:00', endTime: '00:15' },
       { date: '2026-05-04', startTime: '15:00', endTime: '02:00' },
       { date: '2026-05-05', startTime: '17:00', endTime: '02:00' },
@@ -265,15 +327,24 @@ export default function WorkScreen() {
       { date: '2026-05-25', startTime: '20:00', endTime: '02:00' },
       { date: '2026-05-26', startTime: '15:00', endTime: '02:30' },
     ];
-    await importSessionsBatch(MAY_SESSIONS);
-    // Génère le rapport mensuel mai
+
+    await importSessionsBatch(HISTORY);
+
+    // Génère les rapports pour chaque mois concerné
     const all = await loadWorkSessions();
-    const report = generateMonthlyReport('2026-05', all);
-    await saveMonthlyReport(report);
-    setReports(prev =>
-      [report, ...prev.filter(r => r.month !== '2026-05')].sort((a, b) => b.month.localeCompare(a.month))
-    );
-    await markMonthImported('2026-05');
+    const months = ['2026-01', '2026-02', '2026-03', '2026-04', '2026-05'];
+    const newReports: MonthlyReport[] = [];
+    for (const month of months) {
+      const report = generateMonthlyReport(month, all);
+      await saveMonthlyReport(report);
+      newReports.push(report);
+    }
+    setReports(prev => {
+      const filtered = prev.filter(r => !months.includes(r.month));
+      return [...newReports, ...filtered].sort((a, b) => b.month.localeCompare(a.month));
+    });
+
+    await markMonthImported('history_v1');
     setMayImportDone(true);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   }
@@ -443,10 +514,10 @@ export default function WorkScreen() {
             <MaterialCommunityIcons name="database-import" size={18} color="#4CAF50" />
             <View style={{ flex: 1 }}>
               <Text style={{ color: '#4CAF50', fontWeight: '700', fontSize: 13 }}>
-                Importer l'historique — Mai 2026
+                Importer l'historique — Jan → Mai 2026
               </Text>
               <Text style={{ color: '#4CAF5099', fontSize: 11, marginTop: 2 }}>
-                16 sessions · appuie pour importer et générer le rapport
+                75 sessions · 5 mois · appuie pour importer et générer les rapports
               </Text>
             </View>
             <MaterialCommunityIcons name="chevron-right" size={18} color="#4CAF50" />
