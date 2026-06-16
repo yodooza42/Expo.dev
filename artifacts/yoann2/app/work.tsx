@@ -62,25 +62,27 @@ const DAY_ROWS: { label: string; idx: number }[] = [
   { label: 'Dimanche', idx: 0 },
 ];
 
-/** Lun→Dim de la semaine courante (aujourd'hui en premier, futures en dernier) */
+/** 3 jours affichés : demain (gris) · aujourd'hui (jaune) · hier (blanc) */
 function getCurrentWeekDates(): string[] {
+  const today     = new Date();
+  const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
+  const tomorrow  = new Date(today); tomorrow.setDate(today.getDate() + 1);
+  return [
+    tomorrow.toISOString().slice(0, 10),   // index 0 — futur / gris
+    today.toISOString().slice(0, 10),      // index 1 — aujourd'hui / jaune
+    yesterday.toISOString().slice(0, 10),  // index 2 — hier / blanc
+  ];
+}
+
+/** Lundi→Dim complet pour le calcul du total semaine */
+function getFullWeekDates(): string[] {
   const today = new Date();
   const dow   = today.getDay();
   const mon   = new Date(today);
   mon.setDate(today.getDate() - (dow === 0 ? 6 : dow - 1));
-  const todayStr = today.toISOString().slice(0, 10);
-  const out: string[] = [];
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date(mon);
-    d.setDate(mon.getDate() + i);
-    out.push(d.toISOString().slice(0, 10));
-  }
-  // today first, future days at bottom
-  return out.sort((a, b) => {
-    const aFuture = a > todayStr;
-    const bFuture = b > todayStr;
-    if (aFuture !== bFuture) return aFuture ? 1 : -1;
-    return b.localeCompare(a);
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(mon); d.setDate(mon.getDate() + i);
+    return d.toISOString().slice(0, 10);
   });
 }
 
@@ -123,9 +125,10 @@ export default function WorkScreen() {
   const [expandedReports,  setExpandedReports]  = useState<Set<string>>(new Set());
   const [generatingReport, setGeneratingReport] = useState(false);
 
-  // ── Current week ──
-  const weekDates = getCurrentWeekDates();
-  const todayStr  = new Date().toISOString().slice(0, 10);
+  // ── Displayed days (tomorrow / today / yesterday) + full-week for totals ──
+  const weekDates    = getCurrentWeekDates();          // [tomorrow, today, yesterday]
+  const fullWeekDates = getFullWeekDates();            // Mon→Sun for 35h calc
+  const todayStr     = new Date().toISOString().slice(0, 10);
 
   // ── Load on mount ──
   useEffect(() => { getWidgetSettings().then(s => setSettings(s)); }, []);
@@ -257,8 +260,8 @@ export default function WorkScreen() {
     await saveClockout(shiftDate, normalized);
   }
 
-  // ── Weekly total for display ──
-  const weekTotalMins = weekDates.reduce((acc, d) => {
+  // ── Weekly total (full Mon→Sun, not just the 3 displayed rows) ──
+  const weekTotalMins = fullWeekDates.reduce((acc, d) => {
     const s = workSessions[d];
     return acc + (s ? calcSessionMinutes(s.startTime, s.endTime) : 0);
   }, 0);
@@ -411,14 +414,22 @@ export default function WorkScreen() {
 
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border, gap: 0, padding: 0, overflow: 'hidden' }]}>
           {weekDates.map((date, di) => {
+            // di=0 → demain (gris), di=1 → aujourd'hui (jaune), di=2 → hier (blanc)
+            const isTomorrow = di === 0;
+            const isToday    = di === 1;
+            // isYesterday = di === 2  (normal blanc)
+
             const sched      = getScheduledForDay(date);
             const isOff      = isDayOff(date);
-            const isFuture   = date > todayStr;
             const session    = workSessions[date];
             const input      = sessionInputs[date] ?? { start: '', end: '' };
             const workedMins = session ? calcSessionMinutes(session.startTime, session.endTime) : 0;
             const nightMins  = session ? calcNightMinutes(session.startTime,  session.endTime)  : 0;
-            const isToday    = date === todayStr;
+
+            const rowBg   = isToday ? colors.primary + '0A' : 'transparent';
+            const dateColor = isTomorrow ? colors.mutedForeground
+                            : isToday   ? colors.primary
+                            :              colors.foreground;
 
             return (
               <View
@@ -426,13 +437,13 @@ export default function WorkScreen() {
                 style={[
                   styles.sessionRow,
                   di > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
-                  isFuture && { opacity: 0.35 },
-                  isToday  && { backgroundColor: colors.primary + '0A' },
+                  isTomorrow && { opacity: 0.38 },
+                  { backgroundColor: rowBg },
                 ]}
               >
                 {/* Date label */}
                 <View style={styles.sessionDateCol}>
-                  <Text style={[styles.sessionDate, { color: isToday ? colors.primary : colors.foreground }]}>
+                  <Text style={[styles.sessionDate, { color: dateColor }]}>
                     {formatShortDate(date)}
                   </Text>
                   {isOff && !session && (
@@ -449,7 +460,7 @@ export default function WorkScreen() {
                   placeholderTextColor={colors.mutedForeground + '66'}
                   keyboardType="numbers-and-punctuation"
                   maxLength={5}
-                  editable={!isFuture}
+                  editable={!isTomorrow}
                   style={[
                     styles.sessionInput,
                     {
@@ -468,7 +479,7 @@ export default function WorkScreen() {
                   placeholderTextColor={colors.mutedForeground + '66'}
                   keyboardType="numbers-and-punctuation"
                   maxLength={5}
-                  editable={!isFuture}
+                  editable={!isTomorrow}
                   style={[
                     styles.sessionInput,
                     {
