@@ -7,6 +7,32 @@ const APPTS_KEY    = '@yoann2_appointments';
 const SETTINGS_KEY = '@yoann2_widget_settings';
 const CONFIRM_KEY  = '@yoann2_widget_confirm_id';
 const PAUSE_KEY    = '@yoann2_active_pause';
+const MARIE_KEY    = '@marie_planning_v1';
+const ANNA_KEY     = '@anna_badges_v1';
+
+// ── Nanny calculation helpers ───────────────────────────────────────────────
+
+const MARIE_WINDOWS: Record<'PB' | 'PD', [number, number]> = {
+  PB: [6 * 60 + 30, 15 * 60],  // 06:30 → 15:00
+  PD: [12 * 60,     20 * 60],   // 12:00 → 20:00
+};
+
+function _toMins(t: string): number {
+  const [h, m] = t.split(':').map(Number);
+  return h * 60 + m;
+}
+
+function _fromMins(mins: number): string {
+  const h = Math.floor(mins / 60) % 24;
+  const m = mins % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+function _durationLabel(diffMins: number): string {
+  const h = Math.floor(diffMins / 60);
+  const m = diffMins % 60;
+  return h > 0 ? (m > 0 ? `${h}h${String(m).padStart(2, '0')}` : `${h}h`) : `${m}min`;
+}
 
 function formatPauseElapsed(startTs: number): string {
   const secs = Math.max(0, Math.floor((Date.now() - startTs) / 1000));
@@ -59,6 +85,13 @@ export interface WidgetData {
   todayLabel: string;
   pauseActive: boolean;
   pauseElapsedLabel: string;
+  // Marie + nanny
+  todayDayNum: number;
+  marieCircleColor: string;
+  nounouName: string;
+  nounouColor: string;
+  nounouPeriod: string;
+  nounouDuration: string;
 }
 
 interface RawTask {
@@ -103,7 +136,9 @@ export function buildWidgetData(
   tasks: RawTask[],
   appointments: RawAppt[],
   settings: WidgetSettings = DEFAULT_WIDGET_SETTINGS,
-  confirmId: string | null = null
+  confirmId: string | null = null,
+  mariePlanning: Record<string, 'PB' | 'PD'> = {},
+  annaBadges: Record<string, 'Isabelle' | 'Evelyne'> = {},
 ): WidgetData {
   const today = new Date();
 
@@ -212,6 +247,35 @@ export function buildWidgetData(
       return { title: a.title, when: `${datePart}${timePart}`, color: settings.primaryColor };
     });
 
+  // ── Marie circle color ────────────────────────────────────────────────────
+  const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  const marieShift = mariePlanning[todayKey] as 'PB' | 'PD' | undefined;
+  const marieCircleColor = marieShift === 'PB' ? '#2196F3' : marieShift === 'PD' ? '#FF9800' : '#3A3A3A';
+
+  // ── Nanny period (nobody home intersection) ───────────────────────────────
+  let nounouName     = '';
+  let nounouColor    = '';
+  let nounouPeriod   = '';
+  let nounouDuration = '';
+
+  const todaySchedForNanny = settings.workSchedule?.[today.getDay()];
+  if (todaySchedForNanny && !todaySchedForNanny.off && marieShift) {
+    let yStart = _toMins(todaySchedForNanny.start) - 30;
+    let yEnd   = _toMins(todaySchedForNanny.end);
+    if (yEnd <= _toMins(todaySchedForNanny.start)) yEnd += 24 * 60;
+    if (yStart < 0) yStart = 0;
+    const mWin = MARIE_WINDOWS[marieShift];
+    const iStart = Math.max(yStart, mWin[0]);
+    const iEnd   = Math.min(yEnd, mWin[1]);
+    if (iStart < iEnd) {
+      const badge = (annaBadges[todayKey] as 'Isabelle' | 'Evelyne' | undefined) ?? 'Isabelle';
+      nounouName     = badge;
+      nounouColor    = badge === 'Isabelle' ? '#00BCD4' : '#9C27B0';
+      nounouPeriod   = `${_fromMins(iStart)} → ${_fromMins(iEnd)}`;
+      nounouDuration = _durationLabel(iEnd - iStart);
+    }
+  }
+
   return {
     tasks: taskItems,
     todayAppts,
@@ -224,6 +288,12 @@ export function buildWidgetData(
     todayLabel,
     pauseActive: false,
     pauseElapsedLabel: '',
+    todayDayNum: today.getDate(),
+    marieCircleColor,
+    nounouName,
+    nounouColor,
+    nounouPeriod,
+    nounouDuration,
   };
 }
 
@@ -234,23 +304,27 @@ export async function getWidgetDataFromStorage(): Promise<WidgetData> {
   let confirmId: string | null = null;
   let pauseActive = false;
   let pauseElapsedLabel = '';
+  let mariePlanning: Record<string, 'PB' | 'PD'> = {};
+  let annaBadges: Record<string, 'Isabelle' | 'Evelyne'>  = {};
   try {
-    const [t, a, s, c, p] = await AsyncStorage.multiGet([
-      TASKS_KEY, APPTS_KEY, SETTINGS_KEY, CONFIRM_KEY, PAUSE_KEY,
+    const [t, a, s, c, p, mr, ab] = await AsyncStorage.multiGet([
+      TASKS_KEY, APPTS_KEY, SETTINGS_KEY, CONFIRM_KEY, PAUSE_KEY, MARIE_KEY, ANNA_KEY,
     ]);
-    if (t[1]) tasks = JSON.parse(t[1]);
-    if (a[1]) appts = JSON.parse(a[1]);
-    if (s[1]) settings = { ...DEFAULT_WIDGET_SETTINGS, ...JSON.parse(s[1]) };
-    if (c[1]) confirmId = c[1];
+    if (t[1])  tasks          = JSON.parse(t[1]);
+    if (a[1])  appts          = JSON.parse(a[1]);
+    if (s[1])  settings       = { ...DEFAULT_WIDGET_SETTINGS, ...JSON.parse(s[1]) };
+    if (c[1])  confirmId      = c[1];
     if (p[1]) {
       const ap = JSON.parse(p[1]) as { startTs: number };
       if (ap?.startTs) {
-        pauseActive = true;
+        pauseActive       = true;
         pauseElapsedLabel = formatPauseElapsed(ap.startTs);
       }
     }
+    if (mr[1]) mariePlanning  = JSON.parse(mr[1]);
+    if (ab[1]) annaBadges     = JSON.parse(ab[1]);
   } catch {}
-  const data = buildWidgetData(tasks, appts, settings, confirmId);
+  const data = buildWidgetData(tasks, appts, settings, confirmId, mariePlanning, annaBadges);
   return { ...data, pauseActive, pauseElapsedLabel };
 }
 

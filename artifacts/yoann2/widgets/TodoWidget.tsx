@@ -22,7 +22,12 @@ const IMG_IDEA   = require('../assets/icons/icon-idea.png')  as ImageWidgetSourc
 const IMG_RDV    = require('../assets/icons/icon-rdv.png')   as ImageWidgetSource;
 const IMG_HOME   = require('../assets/icons/icon-home.png')  as ImageWidgetSource;
 
-export function TodoWidget({ tasks, widgetAppts, todayWork, settings, todayLabel, pauseActive, pauseElapsedLabel }: WidgetData) {
+export function TodoWidget({
+  tasks, widgetAppts, todayWork, settings, todayLabel,
+  pauseActive, pauseElapsedLabel,
+  todayDayNum, marieCircleColor,
+  nounouName, nounouColor, nounouPeriod, nounouDuration,
+}: WidgetData) {
   const PRIMARY = settings.primaryColor as ColorProp;
   const BG      = settings.bgColor as ColorProp;
   const bgImage = settings.bgImageUri;
@@ -95,48 +100,140 @@ export function TodoWidget({ tasks, widgetAppts, todayWork, settings, todayLabel
         flexDirection: 'column',
       }}
     >
-      {/* ── Bloc 1 : Heures de travail ── */}
+      {/* ── Bloc 1 : Marie · Nounou · Travail · Pause ── */}
       <FlexWidget
         style={{
           width: 'match_parent',
           backgroundColor: CARD,
           borderRadius: 12,
-          paddingHorizontal: 12,
-          paddingVertical: 9,
+          paddingHorizontal: 10,
+          paddingVertical: 10,
           marginBottom: 6,
-          flexDirection: 'column',
+          flexDirection: 'row',
+          alignItems: 'center',
         }}
       >
-        <FlexWidget style={{ flexDirection: 'row', alignItems: 'center', width: 'match_parent' }}>
-          <TextWidget text="💼" style={{ fontSize: 12, marginRight: 6 }} />
-          <TextWidget text="Travail aujourd'hui" style={{ fontSize: 11, color: MUTED }} />
-          <FlexWidget style={{ flex: 1 }} />
-          <TextWidget text={todayLabel} style={{ fontSize: 10, color: MUTED }} />
-        </FlexWidget>
-        <FlexWidget style={{ flexDirection: 'row', alignItems: 'center', width: 'match_parent', marginTop: 4 }}>
+        {/* ① Cercle coloré jour (Marie PB/PD) → ouvre le planning */}
+        <FlexWidget
+          clickAction="OPEN_URI"
+          clickActionData={{ uri: `${SCHEME}:///marie` }}
+          style={{
+            width: 52,
+            height: 52,
+            borderRadius: 26,
+            backgroundColor: marieCircleColor as ColorProp,
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginRight: 8,
+          }}
+        >
           <TextWidget
-            text={todayWork}
-            style={{ fontSize: 17, color: isRepos ? MUTED : PRIMARY, fontWeight: 'bold' }}
+            text={String(todayDayNum)}
+            style={{ fontSize: 22, fontWeight: 'bold', color: '#FFFFFF' }}
           />
-          <FlexWidget style={{ flex: 1 }} />
-          {/* Bouton pause */}
+        </FlexWidget>
+
+        {/* ② Infos nounou (uniquement si période personne-à-maison calculée) */}
+        {nounouName ? (
           <FlexWidget
-            clickAction="OPEN_URI"
-            clickActionData={{ uri: `${SCHEME}:///pause-toggle` }}
             style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              backgroundColor: pauseActive ? '#1B2E1B' : '#2A2A2A',
-              borderRadius: 10,
-              paddingHorizontal: 10,
-              paddingVertical: 5,
+              flexDirection: 'column',
+              alignItems: 'flex-start',
+              marginRight: 8,
             }}
           >
+            <FlexWidget
+              style={{
+                backgroundColor: (nounouColor + '33') as ColorProp,
+                borderRadius: 8,
+                paddingHorizontal: 7,
+                paddingVertical: 2,
+                marginBottom: 3,
+              }}
+            >
+              <TextWidget
+                text={nounouName}
+                style={{ fontSize: 10, color: nounouColor as ColorProp, fontWeight: 'bold' }}
+              />
+            </FlexWidget>
             <TextWidget
-              text={pauseActive ? `⏸ ${pauseElapsedLabel}` : '☕'}
-              style={{ fontSize: 11, color: pauseActive ? '#4CAF50' : MUTED }}
+              text={nounouPeriod}
+              style={{ fontSize: 10, color: TEXT }}
+            />
+            <TextWidget
+              text={nounouDuration}
+              style={{ fontSize: 9, color: MUTED }}
             />
           </FlexWidget>
+        ) : null}
+
+        {/* ③ Infos travail (flex:1 → prend l'espace disponible) */}
+        <FlexWidget
+          style={{
+            flex: 1,
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <FlexWidget style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 3 }}>
+            <TextWidget text="💼 " style={{ fontSize: 10 }} />
+            <TextWidget
+              text="Travail aujourd'hui"
+              style={{ fontSize: 10, color: MUTED }}
+            />
+          </FlexWidget>
+          <TextWidget
+            text={todayWork}
+            style={{ fontSize: 16, color: isRepos ? MUTED : PRIMARY, fontWeight: 'bold' }}
+          />
+        </FlexWidget>
+
+        {/* ④ Cercle play/pause (anneau jaune, fond sombre) */}
+        <FlexWidget
+          clickAction="OPEN_URI"
+          clickActionData={{ uri: `${SCHEME}:///pause-toggle` }}
+          style={{ marginLeft: 8, width: 52, height: 52 }}
+        >
+          <OverlapWidget style={{ width: 52, height: 52 }}>
+            {/* Anneau extérieur */}
+            <FlexWidget
+              style={{
+                width: 52,
+                height: 52,
+                borderRadius: 26,
+                backgroundColor: (pauseActive ? '#4CAF50' : PRIMARY) as ColorProp,
+              }}
+            />
+            {/* Fond intérieur sombre */}
+            <FlexWidget
+              style={{
+                width: 42,
+                height: 42,
+                borderRadius: 21,
+                backgroundColor: '#1A1500' as ColorProp,
+                marginTop: 5,
+                marginLeft: 5,
+              }}
+            />
+            {/* Icône centrée */}
+            <FlexWidget
+              style={{
+                width: 52,
+                height: 52,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <TextWidget
+                text={pauseActive ? '⏸' : '▶'}
+                style={{
+                  fontSize: 18,
+                  color: (pauseActive ? '#4CAF50' : PRIMARY) as ColorProp,
+                }}
+              />
+            </FlexWidget>
+          </OverlapWidget>
         </FlexWidget>
       </FlexWidget>
 
