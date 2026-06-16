@@ -134,10 +134,11 @@ export default function KanbanScreen() {
   const now    = new Date();
   const stats  = getStats();
 
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const upcomingAppts = appointments.filter(a => {
     if (!a.date) return false;
-    const d = new Date(a.date + 'T' + (a.time ?? '00:00'));
-    return d >= now;
+    const d = new Date(a.date);
+    return !isNaN(d.getTime()) && d >= todayStart;
   }).length;
 
   const filteredTasks = selectedProject === 'all'
@@ -242,31 +243,23 @@ export default function KanbanScreen() {
           <View style={[styles.todayLine, { backgroundColor: colors.primary }]} />
         </View>
 
-        {/* Tâches stats */}
+        {/* Single row — RDV en premier, puis tâches stats */}
         <View style={styles.statsRow}>
+          <View style={[styles.statPill, { backgroundColor: '#7C4DFF18' }]}>
+            <MaterialCommunityIcons name="calendar-clock-outline" size={12} color="#7C4DFF" />
+            <Text style={[styles.statPillTxt, { color: colors.mutedForeground }]}>{upcomingAppts} rdv</Text>
+          </View>
           <View style={styles.statPill}>
-            <MaterialCommunityIcons name="folder-multiple-outline" size={13} color={colors.primary} />
+            <MaterialCommunityIcons name="folder-multiple-outline" size={12} color={colors.primary} />
             <Text style={[styles.statPillTxt, { color: colors.mutedForeground }]}>{stats.totalProjects} projets</Text>
           </View>
           <View style={styles.statPill}>
-            <MaterialCommunityIcons name="format-list-checks" size={13} color="#2196F3" />
+            <MaterialCommunityIcons name="format-list-checks" size={12} color="#2196F3" />
             <Text style={[styles.statPillTxt, { color: colors.mutedForeground }]}>{stats.totalTasks} tâches</Text>
           </View>
-          {stats.completedTasks > 0 && (
-            <View style={styles.statPill}>
-              <MaterialCommunityIcons name="check-circle-outline" size={13} color="#4CAF50" />
-              <Text style={[styles.statPillTxt, { color: colors.mutedForeground }]}>{stats.completedTasks} terminées</Text>
-            </View>
-          )}
-        </View>
-
-        {/* RDV stats (à venir) */}
-        <View style={styles.statsRow}>
-          <View style={[styles.statPill, { backgroundColor: '#7C4DFF18' }]}>
-            <MaterialCommunityIcons name="calendar-clock-outline" size={13} color="#7C4DFF" />
-            <Text style={[styles.statPillTxt, { color: colors.mutedForeground }]}>
-              {upcomingAppts} rendez-vous
-            </Text>
+          <View style={styles.statPill}>
+            <MaterialCommunityIcons name="check-circle-outline" size={12} color="#4CAF50" />
+            <Text style={[styles.statPillTxt, { color: colors.mutedForeground }]}>{stats.completedTasks} terminées</Text>
           </View>
         </View>
       </View>
@@ -317,42 +310,42 @@ const styles = StyleSheet.create({
   },
   statsFooter: {
     paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 8,
+    paddingTop: 6,
+    paddingBottom: 2,
   },
   todayRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    marginBottom: 10,
+    marginBottom: 6,
   },
   todayLine: { flex: 1, height: 1 },
   todayPill: {
-    paddingHorizontal: 14,
-    paddingVertical: 4,
-    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 3,
+    borderRadius: 10,
   },
   todayTxt: {
-    fontSize: 11,
+    fontSize: 10,
     fontFamily: 'Inter_600SemiBold',
   },
   statsRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-    marginBottom: 6,
+    flexWrap: 'nowrap',
+    gap: 5,
+    marginBottom: 0,
   },
   statPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 20,
+    gap: 3,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 16,
     backgroundColor: '#ffffff0c',
   },
   statPillTxt: {
-    fontSize: 12,
+    fontSize: 11,
     fontFamily: 'Inter_500Medium',
   },
   column: {
