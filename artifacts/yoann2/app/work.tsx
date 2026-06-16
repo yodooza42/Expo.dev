@@ -120,9 +120,18 @@ function getSessionColor(dateStr: string, fallback: string): string {
   return fallback;
 }
 
-/** Retourne les périodes qui chevauchent une semaine donnée. */
-function getWeekPeriods(weekStart: string, weekEnd: string) {
-  return DATE_PERIODS.filter(p => weekStart <= p.end && weekEnd >= p.start);
+/** Retourne les périodes auxquelles appartient au moins un jour travaillé. */
+function getWeekPeriods(workedDays: string[]) {
+  const seen = new Set<string>();
+  return DATE_PERIODS.filter(p => {
+    const key = p.label + p.start;
+    if (seen.has(key)) return false;
+    if (workedDays.some(d => d >= p.start && d <= p.end)) {
+      seen.add(key);
+      return true;
+    }
+    return false;
+  });
 }
 
 export default function WorkScreen() {
@@ -793,7 +802,7 @@ export default function WorkScreen() {
                                 <Text style={[styles.weekBreakLabel, { color: colors.foreground }]}>
                                   Sem. du {new Date(w.weekStart + 'T12:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
                                 </Text>
-                                {getWeekPeriods(w.weekStart, w.weekEnd).map(p => (
+                                {getWeekPeriods(w.days).map(p => (
                                   <View key={p.label + p.start} style={[styles.periodBadge, { backgroundColor: p.color + '22' }]}>
                                     <Text style={[styles.periodBadgeTxt, { color: p.color }]}>{p.label}</Text>
                                   </View>
