@@ -98,6 +98,33 @@ function weekRangeLabel(): string {
   return `${mon.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })} – ${sun.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}`;
 }
 
+// ── Périodes spéciales (annotations + couleurs) ──────────────────────────────
+const DATE_PERIODS: { label: string; start: string; end: string; color: string }[] = [
+  { label: 'AT',          start: '2026-01-01', end: '2026-01-18', color: '#F44336' },
+  { label: 'Visite méd.', start: '2026-01-19', end: '2026-01-25', color: '#7C4DFF' },
+  { label: 'CPat',        start: '2026-03-08', end: '2026-03-22', color: '#2196F3' },
+  { label: 'CPat',        start: '2026-04-12', end: '2026-04-17', color: '#2196F3' },
+  { label: 'MàP',         start: '2026-05-27', end: '2026-06-14', color: '#7C4DFF' },
+];
+const FERIE_DATES = new Set(['2026-05-14', '2026-05-25']);
+
+function getDatePeriod(dateStr: string) {
+  return DATE_PERIODS.find(p => dateStr >= p.start && dateStr <= p.end) ?? null;
+}
+
+/** Retourne la couleur d'affichage des heures pour une date donnée. */
+function getSessionColor(dateStr: string, fallback: string): string {
+  if (FERIE_DATES.has(dateStr)) return '#4CAF50';         // vert — jour férié
+  const p = getDatePeriod(dateStr);
+  if (p && (p.label === 'Visite méd.' || p.label === 'MàP')) return '#7C4DFF'; // violet
+  return fallback;
+}
+
+/** Retourne les périodes qui chevauchent une semaine donnée. */
+function getWeekPeriods(weekStart: string, weekEnd: string) {
+  return DATE_PERIODS.filter(p => weekStart <= p.end && weekEnd >= p.start);
+}
+
 export default function WorkScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -137,7 +164,7 @@ export default function WorkScreen() {
 
   // ── Check if historical import is needed ──
   useEffect(() => {
-    isMonthImported('history_v1').then(done => setMayImportDone(done));
+    isMonthImported('history_v2').then(done => setMayImportDone(done));
   }, []);
 
   // ── Load on mount ──
@@ -327,6 +354,21 @@ export default function WorkScreen() {
       { date: '2026-05-21', startTime: '17:00', endTime: '01:00' },
       { date: '2026-05-25', startTime: '20:00', endTime: '02:00' },
       { date: '2026-05-26', startTime: '15:00', endTime: '02:30' },
+      // ── MàP 27/05 → 14/06 (semaine type : 19-25 janv) ──
+      // Lun 15:00→01:00 · Mar 16:00→00:00 · Mer 16:00→01:00 · Jeu 17:00→01:00 · Dim 20:00→00:00
+      { date: '2026-05-27', startTime: '16:00', endTime: '01:00' }, // mer
+      { date: '2026-05-28', startTime: '17:00', endTime: '01:00' }, // jeu
+      { date: '2026-05-31', startTime: '20:00', endTime: '00:00' }, // dim
+      { date: '2026-06-01', startTime: '15:00', endTime: '01:00' }, // lun
+      { date: '2026-06-02', startTime: '16:00', endTime: '00:00' }, // mar
+      { date: '2026-06-03', startTime: '16:00', endTime: '01:00' }, // mer
+      { date: '2026-06-04', startTime: '17:00', endTime: '01:00' }, // jeu
+      { date: '2026-06-07', startTime: '20:00', endTime: '00:00' }, // dim
+      { date: '2026-06-08', startTime: '15:00', endTime: '01:00' }, // lun
+      { date: '2026-06-09', startTime: '16:00', endTime: '00:00' }, // mar
+      { date: '2026-06-10', startTime: '16:00', endTime: '01:00' }, // mer
+      { date: '2026-06-11', startTime: '17:00', endTime: '01:00' }, // jeu
+      { date: '2026-06-14', startTime: '20:00', endTime: '00:00' }, // dim
     ];
 
     await importSessionsBatch(HISTORY);
@@ -339,8 +381,8 @@ export default function WorkScreen() {
       inputs[date] = { start: s.startTime, end: s.endTime };
     setSessionInputs(inputs);
 
-    // Génère les rapports pour chaque mois concerné
-    const months = ['2026-01', '2026-02', '2026-03', '2026-04', '2026-05'];
+    // Génère les rapports pour chaque mois concerné (juin inclus)
+    const months = ['2026-01', '2026-02', '2026-03', '2026-04', '2026-05', '2026-06'];
     const newReports: MonthlyReport[] = [];
     for (const month of months) {
       const report = generateMonthlyReport(month, all);
@@ -352,7 +394,7 @@ export default function WorkScreen() {
       return [...newReports, ...filtered].sort((a, b) => b.month.localeCompare(a.month));
     });
 
-    await markMonthImported('history_v1');
+    await markMonthImported('history_v2');
     setMayImportDone(true);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   }
@@ -522,10 +564,10 @@ export default function WorkScreen() {
             <MaterialCommunityIcons name="database-import" size={18} color="#4CAF50" />
             <View style={{ flex: 1 }}>
               <Text style={{ color: '#4CAF50', fontWeight: '700', fontSize: 13 }}>
-                Importer l'historique — Jan → Mai 2026
+                Importer l'historique — Jan → Juin 2026
               </Text>
               <Text style={{ color: '#4CAF5099', fontSize: 11, marginTop: 2 }}>
-                75 sessions · 5 mois · appuie pour importer et générer les rapports
+                88 sessions · 6 mois · AT · CPat · MàP · Fériés
               </Text>
             </View>
             <MaterialCommunityIcons name="chevron-right" size={18} color="#4CAF50" />
@@ -747,9 +789,16 @@ export default function WorkScreen() {
                           {/* ── En-tête semaine (cliquable) ── */}
                           <Pressable onPress={toggleWeek} style={styles.weekBreakRow}>
                             <View style={{ flex: 1 }}>
-                              <Text style={[styles.weekBreakLabel, { color: colors.foreground }]}>
-                                Sem. du {new Date(w.weekStart + 'T12:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
-                              </Text>
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                                <Text style={[styles.weekBreakLabel, { color: colors.foreground }]}>
+                                  Sem. du {new Date(w.weekStart + 'T12:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
+                                </Text>
+                                {getWeekPeriods(w.weekStart, w.weekEnd).map(p => (
+                                  <View key={p.label + p.start} style={[styles.periodBadge, { backgroundColor: p.color + '22' }]}>
+                                    <Text style={[styles.periodBadgeTxt, { color: p.color }]}>{p.label}</Text>
+                                  </View>
+                                ))}
+                              </View>
                               <Text style={[styles.weekBreakSub, { color: colors.mutedForeground }]}>
                                 {w.days.length} jour{w.days.length !== 1 ? 's' : ''} travaillé{w.days.length !== 1 ? 's' : ''}
                               </Text>
@@ -771,20 +820,29 @@ export default function WorkScreen() {
                           {isWeekOpen && (
                             <View style={[styles.dayBreakList, { borderTopColor: colors.border, backgroundColor: colors.background + 'CC' }]}>
                               {w.days.sort().map(date => {
-                                const sess     = workSessions[date];
-                                const mins     = sess ? calcSessionMinutes(sess.startTime, sess.endTime) : 0;
-                                const night    = sess ? calcNightMinutes(sess.startTime,  sess.endTime)  : 0;
-                                const dayLabel = new Date(date + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
+                                const sess      = workSessions[date];
+                                const mins      = sess ? calcSessionMinutes(sess.startTime, sess.endTime) : 0;
+                                const night     = sess ? calcNightMinutes(sess.startTime,  sess.endTime)  : 0;
+                                const dayLabel  = new Date(date + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
+                                const sessColor = getSessionColor(date, colors.primary);
+                                const isFerie   = FERIE_DATES.has(date);
                                 return (
                                   <View key={date} style={[styles.dayBreakRow, { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }]}>
-                                    <Text style={[styles.dayBreakDate, { color: colors.mutedForeground }]}>{dayLabel}</Text>
+                                    <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                      <Text style={[styles.dayBreakDate, { color: colors.mutedForeground }]}>{dayLabel}</Text>
+                                      {isFerie && (
+                                        <View style={[styles.periodBadge, { backgroundColor: '#4CAF5022' }]}>
+                                          <Text style={[styles.periodBadgeTxt, { color: '#4CAF50' }]}>Férié</Text>
+                                        </View>
+                                      )}
+                                    </View>
                                     <View style={styles.dayBreakTimes}>
                                       {sess ? (
                                         <>
-                                          <Text style={[styles.dayBreakHours, { color: colors.foreground }]}>
+                                          <Text style={[styles.dayBreakHours, { color: sessColor }]}>
                                             {sess.startTime} → {sess.endTime}
                                           </Text>
-                                          <Text style={[styles.dayBreakDuration, { color: colors.primary }]}>
+                                          <Text style={[styles.dayBreakDuration, { color: sessColor }]}>
                                             {formatMinutes(mins)}
                                           </Text>
                                           {night > 0 && (
@@ -1134,6 +1192,8 @@ const styles = StyleSheet.create({
   dayBreakHours:    { fontSize: 12, fontFamily: 'Inter_400Regular' },
   dayBreakDuration: { fontSize: 12, fontFamily: 'Inter_600SemiBold' },
   dayBreakNight:    { fontSize: 11, fontFamily: 'Inter_400Regular' },
+  periodBadge:      { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 5 },
+  periodBadgeTxt:   { fontSize: 10, fontFamily: 'Inter_600SemiBold' },
   weekBreakLabel: { fontSize: 13, fontFamily: 'Inter_500Medium' },
   weekBreakSub:   { fontSize: 11, fontFamily: 'Inter_400Regular', marginTop: 1 },
   weekBreakRight: { alignItems: 'flex-end', gap: 2 },
