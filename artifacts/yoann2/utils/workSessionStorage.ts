@@ -184,6 +184,30 @@ export function generateMonthlyReport(
   };
 }
 
+// ── Import historique ─────────────────────────────────────────────────────────
+
+const IMPORT_FLAG_PREFIX = '@import_done_';
+
+/** Importe un lot de sessions sans écraser les sessions existantes (merge). */
+export async function importSessionsBatch(sessions: WorkSession[]): Promise<void> {
+  const all = await loadWorkSessions();
+  for (const s of sessions) {
+    all[s.date] = s;
+  }
+  await AsyncStorage.setItem(SESSIONS_KEY, JSON.stringify(all));
+}
+
+/** Vérifie si un import pour un mois donné a déjà été fait. */
+export async function isMonthImported(month: string): Promise<boolean> {
+  const v = await AsyncStorage.getItem(IMPORT_FLAG_PREFIX + month);
+  return v === '1';
+}
+
+/** Marque un mois comme importé. */
+export async function markMonthImported(month: string): Promise<void> {
+  await AsyncStorage.setItem(IMPORT_FLAG_PREFIX + month, '1');
+}
+
 // ── Helpers date ──────────────────────────────────────────────────────────────
 
 /** "2026-06" → "Juin 2026" */

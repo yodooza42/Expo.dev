@@ -39,8 +39,11 @@ import {
   getCurrentMonth,
   getDayIndex,
   getPreviousMonth,
+  importSessionsBatch,
+  isMonthImported,
   loadMonthlyReports,
   loadWorkSessions,
+  markMonthImported,
   saveMonthlyReport,
   saveWorkSession,
 } from '@/utils/workSessionStorage';
@@ -124,11 +127,17 @@ export default function WorkScreen() {
   const [reports,          setReports]          = useState<MonthlyReport[]>([]);
   const [expandedReports,  setExpandedReports]  = useState<Set<string>>(new Set());
   const [generatingReport, setGeneratingReport] = useState(false);
+  const [mayImportDone,    setMayImportDone]    = useState(true); // true = caché par défaut
 
   // ── Displayed days (tomorrow / today / yesterday) + full-week for totals ──
   const weekDates    = getCurrentWeekDates();          // [tomorrow, today, yesterday]
   const fullWeekDates = getFullWeekDates();            // Mon→Sun for 35h calc
   const todayStr     = new Date().toISOString().slice(0, 10);
+
+  // ── Check if May 2026 import is needed ──
+  useEffect(() => {
+    isMonthImported('2026-05').then(done => setMayImportDone(done));
+  }, []);
 
   // ── Load on mount ──
   useEffect(() => { getWidgetSettings().then(s => setSettings(s)); }, []);
@@ -234,6 +243,39 @@ export default function WorkScreen() {
     } finally {
       setGeneratingReport(false);
     }
+  }
+
+  // ── Import mai 2026 ──
+  async function handleImportMay() {
+    const MAY_SESSIONS: WorkSession[] = [
+      { date: '2026-05-03', startTime: '20:00', endTime: '00:15' },
+      { date: '2026-05-04', startTime: '15:00', endTime: '02:00' },
+      { date: '2026-05-05', startTime: '17:00', endTime: '02:00' },
+      { date: '2026-05-06', startTime: '16:00', endTime: '02:00' },
+      { date: '2026-05-10', startTime: '20:00', endTime: '01:30' },
+      { date: '2026-05-11', startTime: '15:00', endTime: '05:30' },
+      { date: '2026-05-12', startTime: '18:00', endTime: '02:30' },
+      { date: '2026-05-13', startTime: '16:00', endTime: '03:30' },
+      { date: '2026-05-14', startTime: '20:00', endTime: '23:30' },
+      { date: '2026-05-17', startTime: '20:00', endTime: '01:30' },
+      { date: '2026-05-18', startTime: '15:00', endTime: '02:30' },
+      { date: '2026-05-19', startTime: '17:00', endTime: '01:30' },
+      { date: '2026-05-20', startTime: '16:00', endTime: '01:30' },
+      { date: '2026-05-21', startTime: '17:00', endTime: '01:00' },
+      { date: '2026-05-25', startTime: '20:00', endTime: '02:00' },
+      { date: '2026-05-26', startTime: '15:00', endTime: '02:30' },
+    ];
+    await importSessionsBatch(MAY_SESSIONS);
+    // Génère le rapport mensuel mai
+    const all = await loadWorkSessions();
+    const report = generateMonthlyReport('2026-05', all);
+    await saveMonthlyReport(report);
+    setReports(prev =>
+      [report, ...prev.filter(r => r.month !== '2026-05')].sort((a, b) => b.month.localeCompare(a.month))
+    );
+    await markMonthImported('2026-05');
+    setMayImportDone(true);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   }
 
   // ── Pause helpers ──
