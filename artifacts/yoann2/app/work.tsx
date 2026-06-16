@@ -126,6 +126,7 @@ export default function WorkScreen() {
   // ── Monthly reports ──
   const [reports,          setReports]          = useState<MonthlyReport[]>([]);
   const [expandedReports,  setExpandedReports]  = useState<Set<string>>(new Set());
+  const [expandedWeeks,    setExpandedWeeks]    = useState<Set<string>>(new Set());
   const [generatingReport, setGeneratingReport] = useState(false);
   const [mayImportDone,    setMayImportDone]    = useState(true); // true = caché par défaut
 
@@ -291,7 +292,7 @@ export default function WorkScreen() {
       { date: '2026-03-26', startTime: '17:00', endTime: '01:00' },
       { date: '2026-03-29', startTime: '20:00', endTime: '23:30' },
       { date: '2026-03-30', startTime: '15:00', endTime: '02:45' },
-      { date: '2026-03-31', startTime: '00:00', endTime: '00:00' },
+      { date: '2026-03-31', startTime: '17:00', endTime: '00:00' },
       // ── Avril 2026 ──
       { date: '2026-04-01', startTime: '16:00', endTime: '01:20' },
       { date: '2026-04-02', startTime: '17:00', endTime: '01:44' },
@@ -718,29 +719,85 @@ export default function WorkScreen() {
 
                 {isExpanded && (
                   <View style={[styles.reportWeeks, { borderTopColor: colors.border }]}>
-                    {report.weeks.map((w, wi) => (
-                      <View
-                        key={w.weekStart}
-                        style={[
-                          styles.weekBreakRow,
-                          wi > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
-                        ]}
-                      >
-                        <View style={{ flex: 1 }}>
-                          <Text style={[styles.weekBreakLabel, { color: colors.foreground }]}>
-                            Sem. du {new Date(w.weekStart + 'T12:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
-                          </Text>
-                          <Text style={[styles.weekBreakSub, { color: colors.mutedForeground }]}>
-                            {w.days.length} jour{w.days.length !== 1 ? 's' : ''}
-                          </Text>
+                    {report.weeks.map((w, wi) => {
+                      const weekKey      = `${report.month}_${w.weekStart}`;
+                      const isWeekOpen   = expandedWeeks.has(weekKey);
+                      const toggleWeek   = () => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        setExpandedWeeks(prev => {
+                          const n = new Set(prev);
+                          n.has(weekKey) ? n.delete(weekKey) : n.add(weekKey);
+                          return n;
+                        });
+                      };
+                      return (
+                        <View
+                          key={w.weekStart}
+                          style={[
+                            wi > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
+                          ]}
+                        >
+                          {/* ── En-tête semaine (cliquable) ── */}
+                          <Pressable onPress={toggleWeek} style={styles.weekBreakRow}>
+                            <View style={{ flex: 1 }}>
+                              <Text style={[styles.weekBreakLabel, { color: colors.foreground }]}>
+                                Sem. du {new Date(w.weekStart + 'T12:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
+                              </Text>
+                              <Text style={[styles.weekBreakSub, { color: colors.mutedForeground }]}>
+                                {w.days.length} jour{w.days.length !== 1 ? 's' : ''} travaillé{w.days.length !== 1 ? 's' : ''}
+                              </Text>
+                            </View>
+                            <View style={styles.weekBreakRight}>
+                              <Text style={[styles.weekBreakTotal, { color: colors.foreground }]}>{formatMinutes(w.totalMinutes)}</Text>
+                              {w.overtimeMinutes > 0 && <Text style={[styles.weekBreakOver,  { color: '#FF9800' }]}>+{formatMinutes(w.overtimeMinutes)}</Text>}
+                              {w.nightMinutes    > 0 && <Text style={[styles.weekBreakNight, { color: '#7C4DFF' }]}>🌙 {formatMinutes(w.nightMinutes)}</Text>}
+                            </View>
+                            <MaterialCommunityIcons
+                              name={isWeekOpen ? 'chevron-up' : 'chevron-down'}
+                              size={15}
+                              color={colors.mutedForeground}
+                              style={{ marginLeft: 6 }}
+                            />
+                          </Pressable>
+
+                          {/* ── Détail par jour ── */}
+                          {isWeekOpen && (
+                            <View style={[styles.dayBreakList, { borderTopColor: colors.border, backgroundColor: colors.background + 'CC' }]}>
+                              {w.days.sort().map(date => {
+                                const sess     = workSessions[date];
+                                const mins     = sess ? calcSessionMinutes(sess.startTime, sess.endTime) : 0;
+                                const night    = sess ? calcNightMinutes(sess.startTime,  sess.endTime)  : 0;
+                                const dayLabel = new Date(date + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
+                                return (
+                                  <View key={date} style={[styles.dayBreakRow, { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }]}>
+                                    <Text style={[styles.dayBreakDate, { color: colors.mutedForeground }]}>{dayLabel}</Text>
+                                    <View style={styles.dayBreakTimes}>
+                                      {sess ? (
+                                        <>
+                                          <Text style={[styles.dayBreakHours, { color: colors.foreground }]}>
+                                            {sess.startTime} → {sess.endTime}
+                                          </Text>
+                                          <Text style={[styles.dayBreakDuration, { color: colors.primary }]}>
+                                            {formatMinutes(mins)}
+                                          </Text>
+                                          {night > 0 && (
+                                            <Text style={[styles.dayBreakNight, { color: '#7C4DFF' }]}>
+                                              🌙{formatMinutes(night)}
+                                            </Text>
+                                          )}
+                                        </>
+                                      ) : (
+                                        <Text style={[styles.dayBreakHours, { color: colors.border }]}>—</Text>
+                                      )}
+                                    </View>
+                                  </View>
+                                );
+                              })}
+                            </View>
+                          )}
                         </View>
-                        <View style={styles.weekBreakRight}>
-                          <Text style={[styles.weekBreakTotal, { color: colors.foreground }]}>{formatMinutes(w.totalMinutes)}</Text>
-                          {w.overtimeMinutes > 0 && <Text style={[styles.weekBreakOver,  { color: '#FF9800' }]}>+{formatMinutes(w.overtimeMinutes)}</Text>}
-                          {w.nightMinutes    > 0 && <Text style={[styles.weekBreakNight, { color: '#7C4DFF' }]}>🌙 {formatMinutes(w.nightMinutes)}</Text>}
-                        </View>
-                      </View>
-                    ))}
+                      );
+                    })}
                     <Pressable
                       onPress={() => handleGenerateReport(report.month)}
                       disabled={generatingReport}
@@ -1060,7 +1117,16 @@ const styles = StyleSheet.create({
   reportMeta:   { fontSize: 11, fontFamily: 'Inter_400Regular', marginTop: 2 },
   reportPills:  { flexDirection: 'row', gap: 6, padding: 12, borderTopWidth: StyleSheet.hairlineWidth },
   reportWeeks:  { borderTopWidth: StyleSheet.hairlineWidth, paddingHorizontal: 14, paddingVertical: 8, gap: 0 },
-  weekBreakRow:   { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, gap: 8 },
+  weekBreakRow:   { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, gap: 8, paddingHorizontal: 16 },
+
+  // Détail jours dans une semaine
+  dayBreakList:     { paddingBottom: 4 },
+  dayBreakRow:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 7, paddingHorizontal: 20 },
+  dayBreakDate:     { fontSize: 12, fontFamily: 'Inter_400Regular', flex: 1 },
+  dayBreakTimes:    { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  dayBreakHours:    { fontSize: 12, fontFamily: 'Inter_400Regular' },
+  dayBreakDuration: { fontSize: 12, fontFamily: 'Inter_600SemiBold' },
+  dayBreakNight:    { fontSize: 11, fontFamily: 'Inter_400Regular' },
   weekBreakLabel: { fontSize: 13, fontFamily: 'Inter_500Medium' },
   weekBreakSub:   { fontSize: 11, fontFamily: 'Inter_400Regular', marginTop: 1 },
   weekBreakRight: { alignItems: 'flex-end', gap: 2 },
