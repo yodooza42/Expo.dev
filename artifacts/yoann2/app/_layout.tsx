@@ -85,6 +85,14 @@ function RootLayoutNav() {
           presentation: 'modal',
         }}
       />
+      <Stack.Screen
+        name="marie"
+        options={{ headerShown: false, presentation: 'card' }}
+      />
+      <Stack.Screen
+        name="anna"
+        options={{ headerShown: false, presentation: 'card' }}
+      />
     </Stack>
   );
 }

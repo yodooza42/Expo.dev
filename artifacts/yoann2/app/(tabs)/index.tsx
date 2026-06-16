@@ -401,26 +401,6 @@ export default function DashboardScreen() {
             <View style={[styles.wordmarkLine, { backgroundColor: colors.primary }]} />
           </View>
           <View style={styles.headerActions}>
-            {/* Travail */}
-            <Pressable
-              onPress={() => router.push('/work' as any)}
-              hitSlop={6}
-              style={[styles.iconBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
-            >
-              <Image
-                source={require('@/assets/images/icon_work.png')}
-                style={{ width: 20, height: 20 }}
-                contentFit="contain"
-              />
-            </Pressable>
-            {/* Settings */}
-            <Pressable
-              onPress={() => router.push('/(tabs)/settings' as any)}
-              hitSlop={6}
-              style={[styles.iconBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
-            >
-              <MaterialCommunityIcons name="cog-outline" size={18} color={colors.mutedForeground} />
-            </Pressable>
             {/* Appointments toggle */}
             <Pressable
               onPress={() => { setShowAppts(v => !v); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
