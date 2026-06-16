@@ -16,9 +16,22 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { loadAnnaBadges, NOUNOU_COLORS, saveAnnaBadges, type AnnaBadges, type Nounou } from '@/utils/annaStorage';
 import { loadMariePlanning, SHIFT_TIMES, type MariePlanning, type Shift } from '@/utils/marieStorage';
-import { loadWorkSessions, type WorkSession } from '@/utils/workSessionStorage';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
+
+/**
+ * Yoann's fixed weekly schedule (index 0 = Monday … 6 = Sunday).
+ * null = repos.
+ */
+const YOANN_SCHEDULE: Record<number, { start: string; end: string } | null> = {
+  0: { start: '15:00', end: '01:00' }, // Lundi
+  1: { start: '17:00', end: '00:00' }, // Mardi
+  2: { start: '16:00', end: '01:00' }, // Mercredi
+  3: { start: '17:00', end: '01:00' }, // Jeudi
+  4: null,                              // Vendredi
+  5: null,                              // Samedi
+  6: { start: '20:00', end: '00:00' }, // Dimanche
+};
 
 const FR_MONTHS = [
   'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
@@ -51,22 +64,21 @@ function intersect(a: [number, number], b: [number, number]): [number, number] |
   return start < end ? [start, end] : null;
 }
 
-/** Returns [startMins, endMins] | null — both in "extended" minutes (can exceed 1440). */
-function nobodyHome(
-  session: WorkSession | undefined,
-  shift: Shift | undefined,
-): [number, number] | null {
-  if (!session || !shift) return null;
+/**
+ * Returns [startMins, endMins] | null.
+ * Uses Yoann's fixed schedule (weekdayIdx 0=Mon…6=Sun) and Marie's shift.
+ */
+function nobodyHome(weekdayIdx: number, shift: Shift | undefined): [number, number] | null {
+  const yoann = YOANN_SCHEDULE[weekdayIdx];
+  if (!yoann || !shift) return null;
 
-  // Yoann: 30min before start → end (or end + 24h if crosses midnight)
-  let yStart = toMins(session.startTime) - 30;
-  let yEnd   = toMins(session.endTime);
-  if (yEnd <= toMins(session.startTime)) yEnd += 24 * 60; // crosses midnight
+  // Yoann: 30min before start → end (extended hours if crosses midnight)
+  let yStart = toMins(yoann.start) - 30;
+  let yEnd   = toMins(yoann.end);
+  if (yEnd <= toMins(yoann.start)) yEnd += 24 * 60;
   if (yStart < 0) yStart = 0;
 
-  const mWindow = MARIE_WINDOWS[shift];
-
-  return intersect([yStart, yEnd], mWindow);
+  return intersect([yStart, yEnd], MARIE_WINDOWS[shift]);
 }
 
 function toDateKey(year: number, month: number, day: number): string {
@@ -125,13 +137,11 @@ export default function AnnaScreen() {
   const router  = useRouter();
   const topPad  = Platform.OS === 'web' ? 67 : insets.top;
 
-  const [monthStr,  setMonthStr]  = useState(currentMonthStr);
-  const [sessions,  setSessions]  = useState<Record<string, WorkSession>>({});
-  const [marie,     setMarie]     = useState<MariePlanning>({});
-  const [badges,    setBadges]    = useState<AnnaBadges>({});
+  const [monthStr, setMonthStr] = useState(currentMonthStr);
+  const [marie,    setMarie]    = useState<MariePlanning>({});
+  const [badges,   setBadges]   = useState<AnnaBadges>({});
 
   useEffect(() => {
-    loadWorkSessions().then(setSessions);
     loadMariePlanning().then(setMarie);
     loadAnnaBadges().then(setBadges);
   }, []);
@@ -139,15 +149,15 @@ export default function AnnaScreen() {
   const { year, month } = parseMonth(monthStr);
   const monthLabel = `${FR_MONTHS[month - 1]} ${year}`;
 
-  // Compute "nobody home" days for this month
+  // Compute "nobody home" days for this month using fixed Yoann schedule
   const entries: DayEntry[] = useMemo(() => {
     const result: DayEntry[] = [];
     const total = daysInMonth(year, month);
     for (let d = 1; d <= total; d++) {
       const dateKey = toDateKey(year, month, d);
-      const session = sessions[dateKey];
+      const wdIdx   = weekdayIndex(dateKey);
       const shift   = marie[dateKey];
-      const window  = nobodyHome(session, shift);
+      const window  = nobodyHome(wdIdx, shift);
       if (window) {
         result.push({
           dateKey,
@@ -158,7 +168,7 @@ export default function AnnaScreen() {
       }
     }
     return result;
-  }, [year, month, sessions, marie, badges]);
+  }, [year, month, marie, badges]);
 
   const handleToggleNounou = useCallback(async (dateKey: string) => {
     const current = badges[dateKey] ?? 'Isabelle';
@@ -303,13 +313,17 @@ export default function AnnaScreen() {
                   </Text>
                   {/* Source chips */}
                   <View style={styles.sourceRow}>
-                    {sessions[e.dateKey] && (
-                      <View style={[styles.sourceChip, { backgroundColor: '#FFC10722' }]}>
-                        <Text style={[styles.sourceChipTxt, { color: '#FFC107' }]}>
-                          Yoann {sessions[e.dateKey]!.startTime}
-                        </Text>
-                      </View>
-                    )}
+                    {(() => {
+                      const wdIdx = weekdayIndex(e.dateKey);
+                      const y = YOANN_SCHEDULE[wdIdx];
+                      return y ? (
+                        <View style={[styles.sourceChip, { backgroundColor: '#FFC10722' }]}>
+                          <Text style={[styles.sourceChipTxt, { color: '#FFC107' }]}>
+                            Yoann {y.start}
+                          </Text>
+                        </View>
+                      ) : null;
+                    })()}
                     {marie[e.dateKey] && (
                       <View style={[styles.sourceChip, { backgroundColor: SHIFT_TIMES[marie[e.dateKey]!].color + '22' }]}>
                         <Text style={[styles.sourceChipTxt, { color: SHIFT_TIMES[marie[e.dateKey]!].color }]}>
