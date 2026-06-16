@@ -434,6 +434,25 @@ export default function WorkScreen() {
           </>
         )}
 
+        {/* ══ IMPORT HISTORIQUE (one-shot, disparaît après) ══ */}
+        {!mayImportDone && (
+          <Pressable
+            onPress={handleImportMay}
+            style={[styles.importBanner, { backgroundColor: '#1A3A1A', borderColor: '#4CAF50' }]}
+          >
+            <MaterialCommunityIcons name="database-import" size={18} color="#4CAF50" />
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: '#4CAF50', fontWeight: '700', fontSize: 13 }}>
+                Importer l'historique — Mai 2026
+              </Text>
+              <Text style={{ color: '#4CAF5099', fontSize: 11, marginTop: 2 }}>
+                16 sessions · appuie pour importer et générer le rapport
+              </Text>
+            </View>
+            <MaterialCommunityIcons name="chevron-right" size={18} color="#4CAF50" />
+          </Pressable>
+        )}
+
         {/* ══════════════════════════════════════════════
             2. TEMPS RÉALISÉ — semaine en cours seulement
         ══════════════════════════════════════════════ */}
@@ -926,6 +945,7 @@ const styles = StyleSheet.create({
 
   // Apply button
   applyBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 13, borderRadius: 14 },
+  importBanner: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, borderRadius: 14, borderWidth: 1 },
   applyTxt: { fontSize: 14, fontFamily: 'Inter_600SemiBold' },
 
   // Temps réalisé
