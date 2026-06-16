@@ -67,8 +67,7 @@ export function TodoWidget({ tasks, widgetAppts, todayWork, settings, todayLabel
           alignItems: 'center',
         }}
       >
-        <ImageWidget image={image} style={{ width: 22, height: 22 }} />
-        <TextWidget text={label} style={{ fontSize: 8, color: MUTED, marginTop: 2 }} />
+        <ImageWidget image={image} style={{ width: 26, height: 26 }} />
       </FlexWidget>
     );
   }
