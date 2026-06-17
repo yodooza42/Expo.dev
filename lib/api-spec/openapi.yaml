@@ -10,6 +10,8 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: garmin
+    description: Garmin Connect health data
 paths:
   /healthz:
     get:
@@ -24,6 +26,38 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /garmin/today:
+    get:
+      operationId: getGarminToday
+      tags: [garmin]
+      summary: Get today's Garmin health data
+      description: Returns the latest synced Garmin health metrics for today
+      responses:
+        "200":
+          description: Today's health data (may be null if not yet synced)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GarminTodayResponse"
+  /garmin/sync:
+    post:
+      operationId: syncGarmin
+      tags: [garmin]
+      summary: Trigger a manual Garmin sync
+      description: Fetches fresh data from Garmin Connect and upserts into the database
+      responses:
+        "200":
+          description: Sync completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GarminSyncResponse"
+        "503":
+          description: Sync failed (Garmin unreachable or credentials missing)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GarminSyncResponse"
 components:
   schemas:
     HealthStatus:
@@ -33,4 +67,69 @@ components:
           type: string
       required:
         - status
-
+    GarminHealthData:
+      type: object
+      properties:
+        date:
+          type: string
+          description: Date in YYYY-MM-DD format
+        sleepScore:
+          type: integer
+          nullable: true
+        sleepDurationMin:
+          type: integer
+          nullable: true
+        sleepDeepMin:
+          type: integer
+          nullable: true
+        sleepLightMin:
+          type: integer
+          nullable: true
+        sleepRemMin:
+          type: integer
+          nullable: true
+        bodyBatteryMin:
+          type: integer
+          nullable: true
+        bodyBatteryMax:
+          type: integer
+          nullable: true
+        bodyBatteryCurrent:
+          type: integer
+          nullable: true
+        hrvStatus:
+          type: string
+          nullable: true
+        stressAvg:
+          type: integer
+          nullable: true
+        steps:
+          type: integer
+          nullable: true
+        syncedAt:
+          type: string
+      required:
+        - date
+        - syncedAt
+    GarminTodayResponse:
+      type: object
+      properties:
+        today:
+          $ref: "#/components/schemas/GarminHealthData"
+          nullable: true
+        yesterday:
+          $ref: "#/components/schemas/GarminHealthData"
+          nullable: true
+      required:
+        - today
+        - yesterday
+    GarminSyncResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        message:
+          type: string
+      required:
+        - ok
+        - message

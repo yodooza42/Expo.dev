@@ -9,6 +9,7 @@ const CONFIRM_KEY  = '@yoann2_widget_confirm_id';
 const PAUSE_KEY    = '@yoann2_active_pause';
 const MARIE_KEY    = '@marie_planning_v1';
 const ANNA_KEY     = '@anna_badges_v1';
+const GARMIN_KEY   = '@yoann2_garmin_health';
 
 // ── Nanny calculation helpers ───────────────────────────────────────────────
 
@@ -92,6 +93,9 @@ export interface WidgetData {
   nounouColor: string;
   nounouPeriod: string;
   nounouDuration: string;
+  // Garmin health
+  garminBattery: number | null;
+  garminSleep: number | null;
 }
 
 interface RawTask {
@@ -106,6 +110,16 @@ interface RawAppt {
   title: string;
   date: string;
   time?: string;
+}
+
+interface GarminStoredData {
+  today: {
+    bodyBatteryCurrent?: number | null;
+    sleepScore?: number | null;
+  } | null;
+  yesterday: {
+    sleepScore?: number | null;
+  } | null;
 }
 
 function formatDeadline(dateStr: string | undefined): string {
@@ -139,6 +153,7 @@ export function buildWidgetData(
   confirmId: string | null = null,
   mariePlanning: Record<string, 'PB' | 'PD'> = {},
   annaBadges: Record<string, 'Isabelle' | 'Evelyne'> = {},
+  garminData: GarminStoredData | null = null,
 ): WidgetData {
   const today = new Date();
 
@@ -276,6 +291,10 @@ export function buildWidgetData(
     }
   }
 
+  // ── Garmin health ──────────────────────────────────────────────────────────
+  const garminBattery = garminData?.today?.bodyBatteryCurrent ?? null;
+  const garminSleep   = garminData?.yesterday?.sleepScore ?? garminData?.today?.sleepScore ?? null;
+
   return {
     tasks: taskItems,
     todayAppts,
@@ -294,6 +313,8 @@ export function buildWidgetData(
     nounouColor,
     nounouPeriod,
     nounouDuration,
+    garminBattery,
+    garminSleep,
   };
 }
 
@@ -306,9 +327,11 @@ export async function getWidgetDataFromStorage(): Promise<WidgetData> {
   let pauseElapsedLabel = '';
   let mariePlanning: Record<string, 'PB' | 'PD'> = {};
   let annaBadges: Record<string, 'Isabelle' | 'Evelyne'>  = {};
+  let garminData: GarminStoredData | null = null;
+
   try {
-    const [t, a, s, c, p, mr, ab] = await AsyncStorage.multiGet([
-      TASKS_KEY, APPTS_KEY, SETTINGS_KEY, CONFIRM_KEY, PAUSE_KEY, MARIE_KEY, ANNA_KEY,
+    const [t, a, s, c, p, mr, ab, g] = await AsyncStorage.multiGet([
+      TASKS_KEY, APPTS_KEY, SETTINGS_KEY, CONFIRM_KEY, PAUSE_KEY, MARIE_KEY, ANNA_KEY, GARMIN_KEY,
     ]);
     if (t[1])  tasks          = JSON.parse(t[1]);
     if (a[1])  appts          = JSON.parse(a[1]);
@@ -323,8 +346,10 @@ export async function getWidgetDataFromStorage(): Promise<WidgetData> {
     }
     if (mr[1]) mariePlanning  = JSON.parse(mr[1]);
     if (ab[1]) annaBadges     = JSON.parse(ab[1]);
+    if (g[1])  garminData     = JSON.parse(g[1]);
   } catch {}
-  const data = buildWidgetData(tasks, appts, settings, confirmId, mariePlanning, annaBadges);
+
+  const data = buildWidgetData(tasks, appts, settings, confirmId, mariePlanning, annaBadges, garminData);
   return { ...data, pauseActive, pauseElapsedLabel };
 }
 

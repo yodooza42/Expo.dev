@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useApp } from '@/contexts/AppContext';
 import { useColors } from '@/hooks/useColors';
+import { useGarminHealth, bodyBatteryColor, stressColor, formatSleepDuration } from '@/hooks/useGarminHealth';
 import type { Appointment, Task } from '@/types';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -97,6 +98,8 @@ export default function DashboardScreen() {
   const [showAppts,    setShowAppts]    = useState(false);
   const [showHistory,  setShowHistory]  = useState(false);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+
+  const { data: garminData } = useGarminHealth();
 
   const stats    = getStats();
   const now      = new Date();
@@ -485,6 +488,77 @@ export default function DashboardScreen() {
             <MaterialCommunityIcons name="chevron-right" size={14} color={colors.primary} />
           </Pressable>
         )}
+
+        {/* ── SANTÉ (Garmin) ── */}
+        {garminData && (garminData.today || garminData.yesterday) && (() => {
+          const today     = garminData.today;
+          const yesterday = garminData.yesterday;
+          const battery   = today?.bodyBatteryCurrent ?? null;
+          const sleep     = yesterday?.sleepScore ?? today?.sleepScore ?? null;
+          const hrv       = today?.hrvStatus ?? yesterday?.hrvStatus ?? null;
+          const stress    = today?.stressAvg ?? null;
+          const steps     = today?.steps ?? null;
+          const sleepDur  = yesterday?.sleepDurationMin ?? today?.sleepDurationMin ?? null;
+          const bbColor   = bodyBatteryColor(battery);
+          const sColor    = stressColor(stress);
+          return (
+            <View style={[styles.healthCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <View style={styles.healthHeader}>
+                <MaterialCommunityIcons name="heart-pulse" size={13} color="#E91E63" />
+                <Text style={[styles.healthTitle, { color: colors.mutedForeground }]}>Santé</Text>
+              </View>
+              <View style={styles.healthMetrics}>
+                {battery != null && (
+                  <View style={[styles.healthMetric, { backgroundColor: bbColor + '18', borderColor: bbColor + '40' }]}>
+                    <MaterialCommunityIcons name="battery-charging" size={16} color={bbColor} />
+                    <View>
+                      <Text style={[styles.healthMetricVal, { color: bbColor }]}>{battery}%</Text>
+                      <Text style={[styles.healthMetricLabel, { color: colors.mutedForeground }]}>Body Battery</Text>
+                    </View>
+                  </View>
+                )}
+                {sleep != null && (
+                  <View style={[styles.healthMetric, { backgroundColor: '#7C4DFF18', borderColor: '#7C4DFF40' }]}>
+                    <MaterialCommunityIcons name="sleep" size={16} color="#7C4DFF" />
+                    <View>
+                      <Text style={[styles.healthMetricVal, { color: '#7C4DFF' }]}>{sleep}/100</Text>
+                      <Text style={[styles.healthMetricLabel, { color: colors.mutedForeground }]}>
+                        Sommeil{sleepDur != null ? ` · ${formatSleepDuration(sleepDur)}` : ''}
+                      </Text>
+                    </View>
+                  </View>
+                )}
+                {hrv && (
+                  <View style={[styles.healthMetric, { backgroundColor: '#00BCD418', borderColor: '#00BCD440' }]}>
+                    <MaterialCommunityIcons name="wave" size={16} color="#00BCD4" />
+                    <View>
+                      <Text style={[styles.healthMetricVal, { color: '#00BCD4' }]}>{hrv}</Text>
+                      <Text style={[styles.healthMetricLabel, { color: colors.mutedForeground }]}>HRV</Text>
+                    </View>
+                  </View>
+                )}
+                {stress != null && (
+                  <View style={[styles.healthMetric, { backgroundColor: sColor + '18', borderColor: sColor + '40' }]}>
+                    <MaterialCommunityIcons name="head-lightbulb-outline" size={16} color={sColor} />
+                    <View>
+                      <Text style={[styles.healthMetricVal, { color: sColor }]}>{stress}</Text>
+                      <Text style={[styles.healthMetricLabel, { color: colors.mutedForeground }]}>Stress</Text>
+                    </View>
+                  </View>
+                )}
+                {steps != null && (
+                  <View style={[styles.healthMetric, { backgroundColor: '#FF980018', borderColor: '#FF980040' }]}>
+                    <MaterialCommunityIcons name="shoe-print" size={16} color="#FF9800" />
+                    <View>
+                      <Text style={[styles.healthMetricVal, { color: '#FF9800' }]}>{steps.toLocaleString('fr-FR')}</Text>
+                      <Text style={[styles.healthMetricLabel, { color: colors.mutedForeground }]}>Pas</Text>
+                    </View>
+                  </View>
+                )}
+              </View>
+            </View>
+          );
+        })()}
 
         {/* ── ALERTES ── */}
         {(projectAlerts.length > 0 || criticalTasks.length > 0) && (
@@ -908,6 +982,15 @@ const styles = StyleSheet.create({
   apptMetaTxt: { fontSize: 11, fontFamily: 'Inter_400Regular' },
   apptCatBadge: { borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
   apptCatTxt: { fontSize: 10, fontFamily: 'Inter_500Medium' },
+
+  // Health card (Garmin)
+  healthCard:    { marginBottom: 10, borderRadius: 14, borderWidth: 1, overflow: 'hidden', padding: 12 },
+  healthHeader:  { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 },
+  healthTitle:   { fontSize: 11, fontFamily: 'Inter_700Bold', textTransform: 'uppercase', letterSpacing: 0.6 },
+  healthMetrics: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  healthMetric:  { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, borderWidth: 1, minWidth: 120 },
+  healthMetricVal:   { fontSize: 14, fontFamily: 'Inter_700Bold' },
+  healthMetricLabel: { fontSize: 10, fontFamily: 'Inter_400Regular', marginTop: 1 },
 
   // Alert card
   alertsCard:   { marginHorizontal: 16, marginBottom: 10, borderRadius: 14, borderWidth: 1, overflow: 'hidden' },
