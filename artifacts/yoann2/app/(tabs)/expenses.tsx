@@ -99,6 +99,7 @@ export default function ExpensesScreen() {
   const [selectedExpenseCat, setSelectedExpenseCat] = useState<string | null>(null);
   const [catSort, setCatSort] = useState<'date-desc' | 'date-asc' | 'price-desc' | 'price-asc' | 'project'>('date-desc');
   const [exporting, setExporting] = useState(false);
+  const [showAmounts, setShowAmounts] = useState(false);
   const [customStart, setCustomStart] = useState(() => {
     const d = new Date();
     d.setMonth(d.getMonth() - 5);
@@ -248,9 +249,20 @@ export default function ExpensesScreen() {
               color={colors.primary}
             />
           </Pressable>
+          <Pressable
+            onPress={() => { Haptics.selectionAsync(); setShowAmounts(v => !v); }}
+            hitSlop={8}
+            style={[styles.exportBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+          >
+            <MaterialCommunityIcons
+              name={showAmounts ? 'eye-outline' : 'eye-off-outline'}
+              size={18}
+              color={colors.mutedForeground}
+            />
+          </Pressable>
           <View style={[styles.totalBadge, { backgroundColor: colors.primary + '18' }]}>
             <Text style={[styles.totalTxt, { color: colors.primary }]}>
-              {totalAll.toFixed(2)} €
+              {showAmounts ? `${totalAll.toFixed(2)} €` : '••••'}
             </Text>
           </View>
         </View>
@@ -292,7 +304,7 @@ export default function ExpensesScreen() {
                       <MaterialCommunityIcons name="tag-outline" size={15} color={colors.primary} />
                       <Text style={[styles.catName, { color: colors.foreground }]}>{cat}</Text>
                       <Text style={[styles.catPct, { color: colors.mutedForeground }]}>{pct.toFixed(0)}%</Text>
-                      <Text style={[styles.catAmount, { color: colors.primary }]}>{total.toFixed(2)} €</Text>
+                      <Text style={[styles.catAmount, { color: colors.primary }]}>{showAmounts ? `${total.toFixed(2)} €` : '••••'}</Text>
                       <MaterialCommunityIcons name="chevron-right" size={16} color={colors.mutedForeground} />
                     </View>
                     <View style={[styles.catTrack, { backgroundColor: colors.border }]}>
@@ -326,13 +338,13 @@ export default function ExpensesScreen() {
                           }]} />
                         </View>
                         <Text style={[styles.budgetLbl, { color: over ? colors.destructive : colors.mutedForeground }]}>
-                          {total.toFixed(2)} € / {budget} €
+                          {showAmounts ? `${total.toFixed(2)} € / ${budget} €` : '••••'}
                         </Text>
                       </>
                     )}
                   </View>
                   <Text style={[styles.projAmount, { color: over ? colors.destructive : colors.primary }]}>
-                    {total.toFixed(2)} €
+                    {showAmounts ? `${total.toFixed(2)} €` : '••••'}
                   </Text>
                 </View>
               );
