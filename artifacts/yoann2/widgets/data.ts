@@ -116,6 +116,7 @@ interface GarminStoredData {
   today: {
     bodyBatteryCurrent?: number | null;
     sleepScore?: number | null;
+    steps?: number | null;
   } | null;
   yesterday: {
     sleepScore?: number | null;
@@ -292,7 +293,7 @@ export function buildWidgetData(
   }
 
   // ── Garmin health ──────────────────────────────────────────────────────────
-  const garminBattery = garminData?.today?.bodyBatteryCurrent ?? null;
+  const garminBattery = garminData?.today?.steps ?? null;
   const garminSleep   = garminData?.yesterday?.sleepScore ?? garminData?.today?.sleepScore ?? null;
 
   return {

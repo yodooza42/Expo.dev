@@ -44,7 +44,6 @@ export function TodoWidget({
   const isRepos = todayWork === 'Repos';
 
   const hasGarmin = garminBattery != null || garminSleep != null;
-  const bbColor   = batteryColor(garminBattery);
 
   function wrapWithBg(content: React.ReactElement): React.ReactElement {
     if (!bgImage) return content;
@@ -271,10 +270,10 @@ export function TodoWidget({
           >
             {garminBattery != null && (
               <FlexWidget style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <TextWidget text="⚡" style={{ fontSize: 10 }} />
+                <TextWidget text="👟" style={{ fontSize: 10 }} />
                 <TextWidget
-                  text={`${garminBattery}%`}
-                  style={{ fontSize: 11, color: bbColor, fontWeight: 'bold', marginLeft: 3 }}
+                  text={garminBattery.toLocaleString('fr-FR')}
+                  style={{ fontSize: 11, color: '#FF9800', fontWeight: 'bold', marginLeft: 3 }}
                 />
               </FlexWidget>
             )}

@@ -62,6 +62,7 @@
     "expo-sharing": "~14.0.8",
     "react": "19.1.0",
     "react-native": "0.81.5",
-    "react-native-android-widget": "^0.20.3"
+    "react-native-android-widget": "^0.20.3",
+    "react-native-health-connect": "3.5.3"
   }
 }

@@ -1,5 +1,6 @@
-import { useQuery } from '@tanstack/react-query';
+import { useState, useEffect, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
 
 export const GARMIN_STORAGE_KEY = '@yoann2_garmin_health';
 
@@ -24,23 +25,204 @@ export interface GarminTodayResponse {
   yesterday: GarminHealthData | null;
 }
 
-const API_BASE = process.env['EXPO_PUBLIC_API_BASE_URL'] ?? '/api';
+const STAGE_LIGHT = 4;
+const STAGE_DEEP  = 5;
+const STAGE_REM   = 6;
 
-async function fetchGarminToday(): Promise<GarminTodayResponse> {
-  const res = await fetch(`${API_BASE}/garmin/today`);
-  if (!res.ok) throw new Error(`Garmin API error: ${res.status}`);
-  const data = (await res.json()) as GarminTodayResponse;
-  await AsyncStorage.setItem(GARMIN_STORAGE_KEY, JSON.stringify(data)).catch(() => {});
-  return data;
+function isoDate(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+function startOfDayISO(d: Date): string {
+  const r = new Date(d);
+  r.setHours(0, 0, 0, 0);
+  return r.toISOString();
+}
+
+function endOfDayISO(d: Date): string {
+  const r = new Date(d);
+  r.setHours(23, 59, 59, 999);
+  return r.toISOString();
+}
+
+function hrvRmssdToStatus(rmssd: number): string {
+  if (rmssd < 20) return 'Faible';
+  if (rmssd < 50) return 'Moyen';
+  if (rmssd < 80) return 'Équilibré';
+  return 'Optimal';
+}
+
+async function readHealthConnectData(): Promise<GarminTodayResponse> {
+  const hc = await import('react-native-health-connect');
+
+  const initialized = await hc.initialize();
+  if (!initialized) throw new Error('Health Connect non disponible');
+
+  await hc.requestPermission([
+    { accessType: 'read', recordType: 'SleepSession' },
+    { accessType: 'read', recordType: 'Steps' },
+    { accessType: 'read', recordType: 'HeartRate' },
+    { accessType: 'read', recordType: 'HeartRateVariabilityRmssd' },
+  ]);
+
+  const now       = new Date();
+  const today     = new Date(now);
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+
+  let stepsToday: number | null = null;
+  try {
+    const { records } = await hc.readRecords('Steps', {
+      timeRangeFilter: {
+        operator: 'between',
+        startTime: startOfDayISO(today),
+        endTime:   endOfDayISO(today),
+      },
+    });
+    const total = (records as Array<{ count: number }>).reduce(
+      (s, r) => s + (r.count ?? 0), 0,
+    );
+    if (total > 0) stepsToday = total;
+  } catch {}
+
+  let sleepDurationMin: number | null = null;
+  let sleepDeepMin:     number | null = null;
+  let sleepLightMin:    number | null = null;
+  let sleepRemMin:      number | null = null;
+  let sleepScore:       number | null = null;
+  let sleepDate: string = isoDate(yesterday);
+
+  try {
+    const sleepStart = new Date(yesterday);
+    sleepStart.setHours(18, 0, 0, 0);
+
+    const { records } = await hc.readRecords('SleepSession', {
+      timeRangeFilter: {
+        operator: 'between',
+        startTime: sleepStart.toISOString(),
+        endTime:   endOfDayISO(today),
+      },
+    });
+
+    type SleepStage = { startTime: string; endTime: string; stage: number };
+    type SleepSession = { startTime: string; endTime: string; stages?: SleepStage[] };
+
+    if ((records as unknown[]).length > 0) {
+      const session = (records as SleepSession[]).reduce((best, r) => {
+        const dur     = new Date(r.endTime).getTime() - new Date(r.startTime).getTime();
+        const bestDur = new Date(best.endTime).getTime() - new Date(best.startTime).getTime();
+        return dur > bestDur ? r : best;
+      });
+
+      const durationMs = new Date(session.endTime).getTime() - new Date(session.startTime).getTime();
+      sleepDurationMin = Math.round(durationMs / 60000);
+      sleepDate        = isoDate(new Date(session.startTime));
+
+      if (Array.isArray(session.stages)) {
+        for (const stage of session.stages) {
+          const stageDurMin = Math.round(
+            (new Date(stage.endTime).getTime() - new Date(stage.startTime).getTime()) / 60000,
+          );
+          if (stage.stage === STAGE_DEEP)       sleepDeepMin  = (sleepDeepMin  ?? 0) + stageDurMin;
+          else if (stage.stage === STAGE_LIGHT) sleepLightMin = (sleepLightMin ?? 0) + stageDurMin;
+          else if (stage.stage === STAGE_REM)   sleepRemMin   = (sleepRemMin   ?? 0) + stageDurMin;
+        }
+      }
+
+      sleepScore = Math.min(100, Math.round((sleepDurationMin / 480) * 100));
+    }
+  } catch {}
+
+  let hrvStatus: string | null = null;
+  try {
+    const { records } = await hc.readRecords('HeartRateVariabilityRmssd', {
+      timeRangeFilter: {
+        operator: 'between',
+        startTime: startOfDayISO(today),
+        endTime:   endOfDayISO(today),
+      },
+    });
+    if ((records as unknown[]).length > 0) {
+      const latest = (records as Array<{ heartRateVariabilityMillis?: number }>)[records.length - 1];
+      const rmssd  = latest?.heartRateVariabilityMillis ?? null;
+      if (rmssd != null) hrvStatus = hrvRmssdToStatus(rmssd);
+    }
+  } catch {}
+
+  const todayData: GarminHealthData = {
+    date:               isoDate(today),
+    sleepScore:         null,
+    sleepDurationMin:   null,
+    sleepDeepMin:       null,
+    sleepLightMin:      null,
+    sleepRemMin:        null,
+    bodyBatteryMin:     null,
+    bodyBatteryMax:     null,
+    bodyBatteryCurrent: null,
+    hrvStatus,
+    stressAvg:          null,
+    steps:              stepsToday,
+    syncedAt:           now.toISOString(),
+  };
+
+  const yesterdayData: GarminHealthData | null = sleepDurationMin != null
+    ? {
+        date:               sleepDate,
+        sleepScore,
+        sleepDurationMin,
+        sleepDeepMin,
+        sleepLightMin,
+        sleepRemMin,
+        bodyBatteryMin:     null,
+        bodyBatteryMax:     null,
+        bodyBatteryCurrent: null,
+        hrvStatus:          null,
+        stressAvg:          null,
+        steps:              null,
+        syncedAt:           now.toISOString(),
+      }
+    : null;
+
+  return { today: todayData, yesterday: yesterdayData };
 }
 
 export function useGarminHealth() {
-  return useQuery<GarminTodayResponse, Error>({
-    queryKey: ['garmin', 'today'],
-    queryFn: fetchGarminToday,
-    staleTime: 30 * 60 * 1000,
-    retry: 1,
-  });
+  const [data,      setData]      = useState<GarminTodayResponse | undefined>(undefined);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error,     setError]     = useState<Error | null>(null);
+
+  const refetch = useCallback(async () => {
+    if (Platform.OS !== 'android') return;
+    setIsLoading(true);
+    setError(null);
+    try {
+      const result = await readHealthConnectData();
+      setData(result);
+      await AsyncStorage.setItem(GARMIN_STORAGE_KEY, JSON.stringify(result)).catch(() => {});
+    } catch (e) {
+      const err = e instanceof Error ? e : new Error(String(e));
+      setError(err);
+      try {
+        const cached = await AsyncStorage.getItem(GARMIN_STORAGE_KEY);
+        if (cached) setData(JSON.parse(cached) as GarminTodayResponse);
+      } catch {}
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    AsyncStorage.getItem(GARMIN_STORAGE_KEY)
+      .then(cached => {
+        if (cached) {
+          try { setData(JSON.parse(cached) as GarminTodayResponse); } catch {}
+        }
+      })
+      .catch(() => {});
+    void refetch();
+  }, [refetch]);
+
+  return { data, isLoading, error, refetch };
 }
 
 export function bodyBatteryColor(value: number | null | undefined): string {
