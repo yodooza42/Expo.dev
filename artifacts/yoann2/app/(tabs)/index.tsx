@@ -5,6 +5,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import React, { useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   Modal,
   Platform,
   Pressable,
@@ -99,7 +100,7 @@ export default function DashboardScreen() {
   const [showHistory,  setShowHistory]  = useState(false);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
 
-  const { data: garminData } = useGarminHealth();
+  const { data: garminData, isLoading: garminLoading, refetch: refetchGarmin } = useGarminHealth();
 
   const stats    = getStats();
   const now      = new Date();
@@ -507,6 +508,17 @@ export default function DashboardScreen() {
               <View style={styles.healthHeader}>
                 <MaterialCommunityIcons name="heart-pulse" size={13} color="#E91E63" />
                 <Text style={[styles.healthTitle, { color: colors.mutedForeground }]}>Santé</Text>
+                <Pressable
+                  onPress={() => void refetchGarmin()}
+                  disabled={garminLoading}
+                  style={{ marginLeft: 'auto', padding: 4 }}
+                  hitSlop={8}
+                >
+                  {garminLoading
+                    ? <ActivityIndicator size={13} color={colors.mutedForeground} />
+                    : <MaterialCommunityIcons name="refresh" size={15} color={colors.mutedForeground} />
+                  }
+                </Pressable>
               </View>
               <View style={styles.healthMetrics}>
                 {sleep != null && (
