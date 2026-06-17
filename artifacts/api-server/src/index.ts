@@ -22,5 +22,4 @@ app.listen(port, (err) => {
   }
 
   logger.info({ port }, "Server listening");
-  logger.info("Garmin auto-sync disabled — health data is now read locally via Health Connect on the device");
 });

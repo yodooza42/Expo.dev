@@ -18,7 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useApp } from '@/contexts/AppContext';
 import { useColors } from '@/hooks/useColors';
-import { useGarminHealth, bodyBatteryColor, stressColor, formatSleepDuration } from '@/hooks/useGarminHealth';
+import { useHealthConnect, bodyBatteryColor, stressColor, formatSleepDuration } from '@/hooks/useHealthConnect';
 import type { Appointment, Task } from '@/types';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -100,7 +100,7 @@ export default function DashboardScreen() {
   const [showHistory,  setShowHistory]  = useState(false);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
 
-  const { data: garminData, isLoading: garminLoading, refetch: refetchGarmin } = useGarminHealth();
+  const { data: healthData, isLoading: healthLoading, refetch: refetchHealth } = useHealthConnect();
 
   const stats    = getStats();
   const now      = new Date();
@@ -491,9 +491,9 @@ export default function DashboardScreen() {
         )}
 
         {/* ── SANTÉ (Health Connect) ── */}
-        {garminData && (garminData.today || garminData.yesterday) && (() => {
-          const today     = garminData.today;
-          const yesterday = garminData.yesterday;
+        {healthData && (healthData.today || healthData.yesterday) && (() => {
+          const today     = healthData.today;
+          const yesterday = healthData.yesterday;
           const sleep     = yesterday?.sleepScore ?? today?.sleepScore ?? null;
           const hrv       = today?.hrvStatus ?? yesterday?.hrvStatus ?? null;
           const steps     = today?.steps ?? null;
@@ -509,12 +509,12 @@ export default function DashboardScreen() {
                 <MaterialCommunityIcons name="heart-pulse" size={13} color="#E91E63" />
                 <Text style={[styles.healthTitle, { color: colors.mutedForeground }]}>Santé</Text>
                 <Pressable
-                  onPress={() => void refetchGarmin()}
-                  disabled={garminLoading}
+                  onPress={() => void refetchHealth()}
+                  disabled={healthLoading}
                   style={{ marginLeft: 'auto', padding: 4 }}
                   hitSlop={8}
                 >
-                  {garminLoading
+                  {healthLoading
                     ? <ActivityIndicator size={13} color={colors.mutedForeground} />
                     : <MaterialCommunityIcons name="refresh" size={15} color={colors.mutedForeground} />
                   }
@@ -1015,7 +1015,7 @@ const styles = StyleSheet.create({
   apptCatBadge: { borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
   apptCatTxt: { fontSize: 10, fontFamily: 'Inter_500Medium' },
 
-  // Health card (Garmin)
+  // Health card
   healthCard:    { marginBottom: 10, borderRadius: 14, borderWidth: 1, overflow: 'hidden', padding: 12 },
   healthHeader:  { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 },
   healthTitle:   { fontSize: 11, fontFamily: 'Inter_700Bold', textTransform: 'uppercase', letterSpacing: 0.6 },

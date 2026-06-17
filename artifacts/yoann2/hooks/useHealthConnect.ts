@@ -2,9 +2,10 @@ import { useState, useEffect, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 
-export const GARMIN_STORAGE_KEY = '@yoann2_garmin_health';
+export const HEALTH_CONNECT_STORAGE_KEY = '@yoann2_health_connect';
+const LEGACY_HEALTH_KEY = '@yoann2_garmin_health';
 
-export interface GarminHealthData {
+export interface HealthConnectData {
   date: string;
   sleepScore: number | null;
   sleepDurationMin: number | null;
@@ -21,9 +22,9 @@ export interface GarminHealthData {
   syncedAt: string;
 }
 
-export interface GarminTodayResponse {
-  today: GarminHealthData | null;
-  yesterday: GarminHealthData | null;
+export interface HealthConnectResponse {
+  today: HealthConnectData | null;
+  yesterday: HealthConnectData | null;
 }
 
 const STAGE_LIGHT = 4;
@@ -53,7 +54,7 @@ function hrvRmssdToStatus(rmssd: number): string {
   return 'Optimal';
 }
 
-async function readHealthConnectData(): Promise<GarminTodayResponse> {
+async function readHealthConnectData(): Promise<HealthConnectResponse> {
   const hc = await import('react-native-health-connect');
 
   const initialized = await hc.initialize();
@@ -167,7 +168,7 @@ async function readHealthConnectData(): Promise<GarminTodayResponse> {
     }
   } catch {}
 
-  const todayData: GarminHealthData = {
+  const todayData: HealthConnectData = {
     date:               isoDate(today),
     sleepScore:         null,
     sleepDurationMin:   null,
@@ -184,7 +185,7 @@ async function readHealthConnectData(): Promise<GarminTodayResponse> {
     syncedAt:           now.toISOString(),
   };
 
-  const yesterdayData: GarminHealthData | null = sleepDurationMin != null
+  const yesterdayData: HealthConnectData | null = sleepDurationMin != null
     ? {
         date:               sleepDate,
         sleepScore,
@@ -206,8 +207,8 @@ async function readHealthConnectData(): Promise<GarminTodayResponse> {
   return { today: todayData, yesterday: yesterdayData };
 }
 
-export function useGarminHealth() {
-  const [data,      setData]      = useState<GarminTodayResponse | undefined>(undefined);
+export function useHealthConnect() {
+  const [data,      setData]      = useState<HealthConnectResponse | undefined>(undefined);
   const [isLoading, setIsLoading] = useState(false);
   const [error,     setError]     = useState<Error | null>(null);
 
@@ -218,13 +219,13 @@ export function useGarminHealth() {
     try {
       const result = await readHealthConnectData();
       setData(result);
-      await AsyncStorage.setItem(GARMIN_STORAGE_KEY, JSON.stringify(result)).catch(() => {});
+      await AsyncStorage.setItem(HEALTH_CONNECT_STORAGE_KEY, JSON.stringify(result)).catch(() => {});
     } catch (e) {
       const err = e instanceof Error ? e : new Error(String(e));
       setError(err);
       try {
-        const cached = await AsyncStorage.getItem(GARMIN_STORAGE_KEY);
-        if (cached) setData(JSON.parse(cached) as GarminTodayResponse);
+        const cached = await AsyncStorage.getItem(HEALTH_CONNECT_STORAGE_KEY);
+        if (cached) setData(JSON.parse(cached) as HealthConnectResponse);
       } catch {}
     } finally {
       setIsLoading(false);
@@ -232,13 +233,23 @@ export function useGarminHealth() {
   }, []);
 
   useEffect(() => {
-    AsyncStorage.getItem(GARMIN_STORAGE_KEY)
-      .then(cached => {
-        if (cached) {
-          try { setData(JSON.parse(cached) as GarminTodayResponse); } catch {}
+    async function loadCached() {
+      try {
+        let cached = await AsyncStorage.getItem(HEALTH_CONNECT_STORAGE_KEY);
+        if (!cached) {
+          const legacy = await AsyncStorage.getItem(LEGACY_HEALTH_KEY);
+          if (legacy) {
+            cached = legacy;
+            await AsyncStorage.setItem(HEALTH_CONNECT_STORAGE_KEY, legacy).catch(() => {});
+            await AsyncStorage.removeItem(LEGACY_HEALTH_KEY).catch(() => {});
+          }
         }
-      })
-      .catch(() => {});
+        if (cached) {
+          try { setData(JSON.parse(cached) as HealthConnectResponse); } catch {}
+        }
+      } catch {}
+    }
+    void loadCached();
     void refetch();
   }, [refetch]);
 

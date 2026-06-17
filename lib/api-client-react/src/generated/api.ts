@@ -6,22 +6,16 @@
  * OpenAPI spec version: 0.1.0
  */
 import {
-  useMutation,
   useQuery
 } from '@tanstack/react-query';
 import type {
-  MutationFunction,
   QueryFunction,
   QueryKey,
-  UseMutationOptions,
-  UseMutationResult,
   UseQueryOptions,
   UseQueryResult
 } from '@tanstack/react-query';
 
 import type {
-  GarminSyncResponse,
-  GarminTodayResponse,
   HealthStatus
 } from './api.schemas';
 
@@ -114,153 +108,4 @@ export function useHealthCheck<TData = Awaited<ReturnType<typeof healthCheck>>, 
 
 
 
-
-export const getGetGarminTodayUrl = () => {
-
-
-
-
-  return `/api/garmin/today`
-}
-
-/**
- * Returns the latest synced Garmin health metrics for today
- * @summary Get today's Garmin health data
- */
-export const getGarminToday = async ( options?: RequestInit): Promise<GarminTodayResponse> => {
-
-  return customFetch<GarminTodayResponse>(getGetGarminTodayUrl(),
-  {
-    ...options,
-    method: 'GET'
-
-
-  }
-);}
-
-
-
-
-
-export const getGetGarminTodayQueryKey = () => {
-    return [
-    `/api/garmin/today`
-    ] as const;
-    }
-
-
-export const getGetGarminTodayQueryOptions = <TData = Awaited<ReturnType<typeof getGarminToday>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getGarminToday>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
-) => {
-
-const {query: queryOptions, request: requestOptions} = options ?? {};
-
-  const queryKey =  queryOptions?.queryKey ?? getGetGarminTodayQueryKey();
-
-
-
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getGarminToday>>> = ({ signal }) => getGarminToday({ signal, ...requestOptions });
-
-
-
-
-
-   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getGarminToday>>, TError, TData> & { queryKey: QueryKey }
-}
-
-export type GetGarminTodayQueryResult = NonNullable<Awaited<ReturnType<typeof getGarminToday>>>
-export type GetGarminTodayQueryError = ErrorType<unknown>
-
-
-/**
- * @summary Get today's Garmin health data
- */
-
-export function useGetGarminToday<TData = Awaited<ReturnType<typeof getGarminToday>>, TError = ErrorType<unknown>>(
-  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getGarminToday>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
-
- ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-
-  const queryOptions = getGetGarminTodayQueryOptions(options)
-
-  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
-
-  return { ...query, queryKey: queryOptions.queryKey };
-}
-
-
-
-
-
-
-
-export const getSyncGarminUrl = () => {
-
-
-
-
-  return `/api/garmin/sync`
-}
-
-/**
- * Fetches fresh data from Garmin Connect and upserts into the database
- * @summary Trigger a manual Garmin sync
- */
-export const syncGarmin = async ( options?: RequestInit): Promise<GarminSyncResponse> => {
-
-  return customFetch<GarminSyncResponse>(getSyncGarminUrl(),
-  {
-    ...options,
-    method: 'POST'
-
-
-  }
-);}
-
-
-
-
-export const getSyncGarminMutationOptions = <TError = ErrorType<GarminSyncResponse>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof syncGarmin>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof syncGarmin>>, TError,void, TContext> => {
-
-const mutationKey = ['syncGarmin'];
-const {mutation: mutationOptions, request: requestOptions} = options ?
-      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
-      options
-      : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }, request: undefined};
-
-
-
-
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof syncGarmin>>, void> = () => {
-
-
-          return  syncGarmin(requestOptions)
-        }
-
-
-
-
-
-
-  return  { mutationFn, ...mutationOptions }}
-
-    export type SyncGarminMutationResult = NonNullable<Awaited<ReturnType<typeof syncGarmin>>>
-
-    export type SyncGarminMutationError = ErrorType<GarminSyncResponse>
-
-    /**
- * @summary Trigger a manual Garmin sync
- */
-export const useSyncGarmin = <TError = ErrorType<GarminSyncResponse>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof syncGarmin>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
- ): UseMutationResult<
-        Awaited<ReturnType<typeof syncGarmin>>,
-        TError,
-        void,
-        TContext
-      > => {
-      return useMutation(getSyncGarminMutationOptions(options));
-    }
 

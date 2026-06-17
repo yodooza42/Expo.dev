@@ -6,7 +6,4 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export * from './garminHealthData';
-export * from './garminSyncResponse';
-export * from './garminTodayResponse';
 export * from './healthStatus';

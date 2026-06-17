@@ -9,30 +9,3 @@ export interface HealthStatus {
   status: string;
 }
 
-export interface GarminHealthData {
-  /** Date in YYYY-MM-DD format */
-  date: string;
-  sleepScore?: number | null;
-  sleepDurationMin?: number | null;
-  sleepDeepMin?: number | null;
-  sleepLightMin?: number | null;
-  sleepRemMin?: number | null;
-  bodyBatteryMin?: number | null;
-  bodyBatteryMax?: number | null;
-  bodyBatteryCurrent?: number | null;
-  hrvStatus?: string | null;
-  stressAvg?: number | null;
-  steps?: number | null;
-  syncedAt: string;
-}
-
-export interface GarminTodayResponse {
-  today: GarminHealthData | null;
-  yesterday: GarminHealthData | null;
-}
-
-export interface GarminSyncResponse {
-  ok: boolean;
-  message: string;
-}
-
