@@ -489,18 +489,19 @@ export default function DashboardScreen() {
           </Pressable>
         )}
 
-        {/* ── SANTÉ (Garmin) ── */}
+        {/* ── SANTÉ (Health Connect) ── */}
         {garminData && (garminData.today || garminData.yesterday) && (() => {
           const today     = garminData.today;
           const yesterday = garminData.yesterday;
-          const battery   = today?.bodyBatteryCurrent ?? null;
           const sleep     = yesterday?.sleepScore ?? today?.sleepScore ?? null;
           const hrv       = today?.hrvStatus ?? yesterday?.hrvStatus ?? null;
-          const stress    = today?.stressAvg ?? null;
           const steps     = today?.steps ?? null;
+          const heartRate = today?.heartRateAvg ?? null;
           const sleepDur  = yesterday?.sleepDurationMin ?? today?.sleepDurationMin ?? null;
-          const bbColor   = bodyBatteryColor(battery);
-          const sColor    = stressColor(stress);
+          const sleepDeep = yesterday?.sleepDeepMin ?? null;
+          const sleepLight = yesterday?.sleepLightMin ?? null;
+          const sleepRem  = yesterday?.sleepRemMin ?? null;
+          const hasPhases = sleepDeep != null || sleepLight != null || sleepRem != null;
           return (
             <View style={[styles.healthCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <View style={styles.healthHeader}>
@@ -508,23 +509,23 @@ export default function DashboardScreen() {
                 <Text style={[styles.healthTitle, { color: colors.mutedForeground }]}>Santé</Text>
               </View>
               <View style={styles.healthMetrics}>
-                {battery != null && (
-                  <View style={[styles.healthMetric, { backgroundColor: bbColor + '18', borderColor: bbColor + '40' }]}>
-                    <MaterialCommunityIcons name="battery-charging" size={16} color={bbColor} />
-                    <View>
-                      <Text style={[styles.healthMetricVal, { color: bbColor }]}>{battery}%</Text>
-                      <Text style={[styles.healthMetricLabel, { color: colors.mutedForeground }]}>Body Battery</Text>
-                    </View>
-                  </View>
-                )}
                 {sleep != null && (
                   <View style={[styles.healthMetric, { backgroundColor: '#7C4DFF18', borderColor: '#7C4DFF40' }]}>
                     <MaterialCommunityIcons name="sleep" size={16} color="#7C4DFF" />
                     <View>
-                      <Text style={[styles.healthMetricVal, { color: '#7C4DFF' }]}>{sleep}/100</Text>
-                      <Text style={[styles.healthMetricLabel, { color: colors.mutedForeground }]}>
-                        Sommeil{sleepDur != null ? ` · ${formatSleepDuration(sleepDur)}` : ''}
+                      <Text style={[styles.healthMetricVal, { color: '#7C4DFF' }]}>
+                        {sleepDur != null ? formatSleepDuration(sleepDur) : `${sleep}/100`}
                       </Text>
+                      <Text style={[styles.healthMetricLabel, { color: colors.mutedForeground }]}>Sommeil</Text>
+                    </View>
+                  </View>
+                )}
+                {heartRate != null && (
+                  <View style={[styles.healthMetric, { backgroundColor: '#E91E6318', borderColor: '#E91E6340' }]}>
+                    <MaterialCommunityIcons name="heart-pulse" size={16} color="#E91E63" />
+                    <View>
+                      <Text style={[styles.healthMetricVal, { color: '#E91E63' }]}>{heartRate} bpm</Text>
+                      <Text style={[styles.healthMetricLabel, { color: colors.mutedForeground }]}>FC moy.</Text>
                     </View>
                   </View>
                 )}
@@ -534,15 +535,6 @@ export default function DashboardScreen() {
                     <View>
                       <Text style={[styles.healthMetricVal, { color: '#00BCD4' }]}>{hrv}</Text>
                       <Text style={[styles.healthMetricLabel, { color: colors.mutedForeground }]}>HRV</Text>
-                    </View>
-                  </View>
-                )}
-                {stress != null && (
-                  <View style={[styles.healthMetric, { backgroundColor: sColor + '18', borderColor: sColor + '40' }]}>
-                    <MaterialCommunityIcons name="head-lightbulb-outline" size={16} color={sColor} />
-                    <View>
-                      <Text style={[styles.healthMetricVal, { color: sColor }]}>{stress}</Text>
-                      <Text style={[styles.healthMetricLabel, { color: colors.mutedForeground }]}>Stress</Text>
                     </View>
                   </View>
                 )}
@@ -556,6 +548,34 @@ export default function DashboardScreen() {
                   </View>
                 )}
               </View>
+              {hasPhases && (
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                  {sleepDeep != null && (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#1A237E22', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4 }}>
+                      <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#3F51B5' }} />
+                      <Text style={{ fontSize: 10, color: colors.mutedForeground }}>
+                        Profond · {formatSleepDuration(sleepDeep)}
+                      </Text>
+                    </View>
+                  )}
+                  {sleepRem != null && (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#4A148C22', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4 }}>
+                      <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#9C27B0' }} />
+                      <Text style={{ fontSize: 10, color: colors.mutedForeground }}>
+                        REM · {formatSleepDuration(sleepRem)}
+                      </Text>
+                    </View>
+                  )}
+                  {sleepLight != null && (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#1B5E2022', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4 }}>
+                      <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#4CAF50' }} />
+                      <Text style={{ fontSize: 10, color: colors.mutedForeground }}>
+                        Léger · {formatSleepDuration(sleepLight)}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              )}
             </View>
           );
         })()}

@@ -17,6 +17,7 @@ export interface GarminHealthData {
   hrvStatus: string | null;
   stressAvg: number | null;
   steps: number | null;
+  heartRateAvg: number | null;
   syncedAt: string;
 }
 
@@ -149,6 +150,23 @@ async function readHealthConnectData(): Promise<GarminTodayResponse> {
     }
   } catch {}
 
+  let heartRateAvg: number | null = null;
+  try {
+    const { records } = await hc.readRecords('HeartRate', {
+      timeRangeFilter: {
+        operator: 'between',
+        startTime: startOfDayISO(today),
+        endTime:   endOfDayISO(today),
+      },
+    });
+    type HRRecord = { samples: Array<{ beatsPerMinute: number }> };
+    const allSamples = (records as HRRecord[]).flatMap(r => r.samples ?? []);
+    if (allSamples.length > 0) {
+      const sum = allSamples.reduce((s, sample) => s + sample.beatsPerMinute, 0);
+      heartRateAvg = Math.round(sum / allSamples.length);
+    }
+  } catch {}
+
   const todayData: GarminHealthData = {
     date:               isoDate(today),
     sleepScore:         null,
@@ -162,6 +180,7 @@ async function readHealthConnectData(): Promise<GarminTodayResponse> {
     hrvStatus,
     stressAvg:          null,
     steps:              stepsToday,
+    heartRateAvg,
     syncedAt:           now.toISOString(),
   };
 
@@ -179,6 +198,7 @@ async function readHealthConnectData(): Promise<GarminTodayResponse> {
         hrvStatus:          null,
         stressAvg:          null,
         steps:              null,
+        heartRateAvg:       null,
         syncedAt:           now.toISOString(),
       }
     : null;
