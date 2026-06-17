@@ -2,7 +2,7 @@
   "expo": {
     "name": "Yoann2.0",
     "slug": "application-yoann20",
-    "owner": "yoann42s-team",
+    "owner": "yoann42-team",
     "version": "2.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -94,7 +94,10 @@
     },
     "extra": {
       "eas": {
-        "projectId": "875e84e9-1621-4df5-bc36-3ca7c757f39a"
+        "projectId": "b36ede97-9750-48d2-bd92-e8d60927b948"
+      },
+      "router": {
+        "origin": "https://replit.com/"
       }
     }
   }
