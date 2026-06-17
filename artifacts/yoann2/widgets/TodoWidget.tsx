@@ -22,20 +22,13 @@ const IMG_IDEA   = require('../assets/icons/icon-idea.png')  as ImageWidgetSourc
 const IMG_RDV    = require('../assets/icons/icon-rdv.png')   as ImageWidgetSource;
 const IMG_HOME   = require('../assets/icons/icon-home.png')  as ImageWidgetSource;
 
-function batteryColor(value: number | null): ColorProp {
-  if (value == null) return MUTED;
-  if (value >= 75) return '#4CAF50';
-  if (value >= 50) return '#8BC34A';
-  if (value >= 25) return '#FF9800';
-  return '#F44336';
-}
 
 export function TodoWidget({
   tasks, widgetAppts, todayWork, settings, todayLabel,
   pauseActive, pauseElapsedLabel,
   todayDayNum, marieCircleColor,
   nounouName, nounouColor, nounouPeriod, nounouDuration,
-  garminBattery, garminSleep,
+  healthSteps, healthSleepMin,
 }: WidgetData) {
   const PRIMARY = settings.primaryColor as ColorProp;
   const BG      = settings.bgColor as ColorProp;
@@ -43,7 +36,13 @@ export function TodoWidget({
   const containerBg: ColorProp = bgImage ? OVERLAY : BG;
   const isRepos = todayWork === 'Repos';
 
-  const hasGarmin = garminBattery != null || garminSleep != null;
+  const hasHealth = healthSteps != null || healthSleepMin != null;
+
+  function formatSleep(minutes: number): string {
+    const h = Math.floor(minutes / 60);
+    const m = minutes % 60;
+    return m > 0 ? `${h}h${String(m).padStart(2, '0')}` : `${h}h`;
+  }
 
   function wrapWithBg(content: React.ReactElement): React.ReactElement {
     if (!bgImage) return content;
@@ -123,7 +122,7 @@ export function TodoWidget({
           flexDirection: 'column',
         }}
       >
-        {/* Row principale */}
+        {/* Row principale : [Gauche: Cercle+Nounou] [Centre: Santé] [Droite: Travail+Pause] */}
         <FlexWidget
           style={{
             width: 'match_parent',
@@ -131,61 +130,55 @@ export function TodoWidget({
             alignItems: 'center',
           }}
         >
-          {/* ① Cercle coloré jour (Marie PB/PD) → ouvre le planning */}
-          <FlexWidget
-            clickAction="OPEN_URI"
-            clickActionData={{ uri: `${SCHEME}:///marie` }}
-            style={{
-              width: 52,
-              height: 52,
-              borderRadius: 26,
-              backgroundColor: marieCircleColor as ColorProp,
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginRight: 8,
-            }}
-          >
-            <TextWidget
-              text={String(todayDayNum)}
-              style={{ fontSize: 22, fontWeight: 'bold', color: '#FFFFFF' }}
-            />
-          </FlexWidget>
-
-          {/* ② Infos nounou (uniquement si période personne-à-maison calculée) */}
-          {nounouName ? (
+          {/* ① Gauche : cercle Marie + infos nounou */}
+          <FlexWidget style={{ flexDirection: 'row', alignItems: 'center' }}>
             <FlexWidget
+              clickAction="OPEN_URI"
+              clickActionData={{ uri: `${SCHEME}:///marie` }}
               style={{
-                flexDirection: 'column',
-                alignItems: 'flex-start',
-                marginRight: 8,
+                width: 52,
+                height: 52,
+                borderRadius: 26,
+                backgroundColor: marieCircleColor as ColorProp,
+                alignItems: 'center',
+                justifyContent: 'center',
               }}
             >
-              <FlexWidget
-                style={{
-                  backgroundColor: (nounouColor + '33') as ColorProp,
-                  borderRadius: 8,
-                  paddingHorizontal: 7,
-                  paddingVertical: 2,
-                  marginBottom: 3,
-                }}
-              >
-                <TextWidget
-                  text={nounouName}
-                  style={{ fontSize: 10, color: nounouColor as ColorProp, fontWeight: 'bold' }}
-                />
-              </FlexWidget>
               <TextWidget
-                text={nounouPeriod}
-                style={{ fontSize: 10, color: TEXT }}
-              />
-              <TextWidget
-                text={nounouDuration}
-                style={{ fontSize: 9, color: MUTED }}
+                text={String(todayDayNum)}
+                style={{ fontSize: 22, fontWeight: 'bold', color: '#FFFFFF' }}
               />
             </FlexWidget>
-          ) : null}
 
-          {/* ③ Infos travail (flex:1 → prend l'espace disponible) */}
+            {nounouName ? (
+              <FlexWidget
+                style={{
+                  flexDirection: 'column',
+                  alignItems: 'flex-start',
+                  marginLeft: 8,
+                }}
+              >
+                <FlexWidget
+                  style={{
+                    backgroundColor: (nounouColor + '33') as ColorProp,
+                    borderRadius: 8,
+                    paddingHorizontal: 7,
+                    paddingVertical: 2,
+                    marginBottom: 3,
+                  }}
+                >
+                  <TextWidget
+                    text={nounouName}
+                    style={{ fontSize: 10, color: nounouColor as ColorProp, fontWeight: 'bold' }}
+                  />
+                </FlexWidget>
+                <TextWidget text={nounouPeriod} style={{ fontSize: 10, color: TEXT }} />
+                <TextWidget text={nounouDuration} style={{ fontSize: 9, color: MUTED }} />
+              </FlexWidget>
+            ) : null}
+          </FlexWidget>
+
+          {/* ② Centre : pas + sommeil (flex:1, visible si données disponibles) */}
           <FlexWidget
             style={{
               flex: 1,
@@ -194,100 +187,94 @@ export function TodoWidget({
               justifyContent: 'center',
             }}
           >
-            <FlexWidget style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 3 }}>
-              <TextWidget text="💼 " style={{ fontSize: 10 }} />
+            {hasHealth && (
+              <>
+                {healthSteps != null && (
+                  <FlexWidget style={{ flexDirection: 'row', alignItems: 'center', marginBottom: healthSleepMin != null ? 4 : 0 }}>
+                    <TextWidget text="👟" style={{ fontSize: 11 }} />
+                    <TextWidget
+                      text={healthSteps.toLocaleString('fr-FR')}
+                      style={{ fontSize: 13, color: '#FF9800', fontWeight: 'bold', marginLeft: 4 }}
+                    />
+                  </FlexWidget>
+                )}
+                {healthSleepMin != null && (
+                  <FlexWidget style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <TextWidget text="😴" style={{ fontSize: 11 }} />
+                    <TextWidget
+                      text={formatSleep(healthSleepMin)}
+                      style={{ fontSize: 13, color: TEXT, fontWeight: 'bold', marginLeft: 4 }}
+                    />
+                  </FlexWidget>
+                )}
+              </>
+            )}
+          </FlexWidget>
+
+          {/* ③ Droite : travail + bouton pause */}
+          <FlexWidget style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <FlexWidget
+              style={{
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginRight: 8,
+              }}
+            >
+              <FlexWidget style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 3 }}>
+                <TextWidget text="💼 " style={{ fontSize: 10 }} />
+                <TextWidget text="Travail" style={{ fontSize: 10, color: MUTED }} />
+              </FlexWidget>
               <TextWidget
-                text="Travail aujourd'hui"
-                style={{ fontSize: 10, color: MUTED }}
+                text={todayWork}
+                style={{ fontSize: 14, color: isRepos ? MUTED : PRIMARY, fontWeight: 'bold' }}
               />
             </FlexWidget>
-            <TextWidget
-              text={todayWork}
-              style={{ fontSize: 16, color: isRepos ? MUTED : PRIMARY, fontWeight: 'bold' }}
-            />
-          </FlexWidget>
 
-          {/* ④ Cercle play/pause (anneau jaune, fond sombre) */}
-          <FlexWidget
-            clickAction="OPEN_URI"
-            clickActionData={{ uri: `${SCHEME}:///pause-toggle` }}
-            style={{ marginLeft: 8, width: 52, height: 52 }}
-          >
-            <OverlapWidget style={{ width: 52, height: 52 }}>
-              {/* Anneau extérieur */}
-              <FlexWidget
-                style={{
-                  width: 52,
-                  height: 52,
-                  borderRadius: 26,
-                  backgroundColor: (pauseActive ? '#4CAF50' : PRIMARY) as ColorProp,
-                }}
-              />
-              {/* Fond intérieur sombre */}
-              <FlexWidget
-                style={{
-                  width: 42,
-                  height: 42,
-                  borderRadius: 21,
-                  backgroundColor: '#1A1500' as ColorProp,
-                  marginTop: 5,
-                  marginLeft: 5,
-                }}
-              />
-              {/* Icône centrée */}
-              <FlexWidget
-                style={{
-                  width: 52,
-                  height: 52,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <TextWidget
-                  text={pauseActive ? '⏸' : '▶'}
+            <FlexWidget
+              clickAction="OPEN_URI"
+              clickActionData={{ uri: `${SCHEME}:///pause-toggle` }}
+              style={{ width: 52, height: 52 }}
+            >
+              <OverlapWidget style={{ width: 52, height: 52 }}>
+                <FlexWidget
                   style={{
-                    fontSize: 18,
-                    color: (pauseActive ? '#4CAF50' : PRIMARY) as ColorProp,
+                    width: 52,
+                    height: 52,
+                    borderRadius: 26,
+                    backgroundColor: (pauseActive ? '#4CAF50' : PRIMARY) as ColorProp,
                   }}
                 />
-              </FlexWidget>
-            </OverlapWidget>
+                <FlexWidget
+                  style={{
+                    width: 42,
+                    height: 42,
+                    borderRadius: 21,
+                    backgroundColor: '#1A1500' as ColorProp,
+                    marginTop: 5,
+                    marginLeft: 5,
+                  }}
+                />
+                <FlexWidget
+                  style={{
+                    width: 52,
+                    height: 52,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <TextWidget
+                    text={pauseActive ? '⏸' : '▶'}
+                    style={{
+                      fontSize: 18,
+                      color: (pauseActive ? '#4CAF50' : PRIMARY) as ColorProp,
+                    }}
+                  />
+                </FlexWidget>
+              </OverlapWidget>
+            </FlexWidget>
           </FlexWidget>
         </FlexWidget>
-
-        {/* ── Ligne Garmin santé (discrète) ── */}
-        {hasGarmin && (
-          <FlexWidget
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              marginTop: 8,
-              paddingTop: 6,
-              borderTopWidth: 1,
-              borderTopColor: '#3A3A3A',
-              width: 'match_parent',
-            }}
-          >
-            {garminBattery != null && (
-              <FlexWidget style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <TextWidget text="👟" style={{ fontSize: 10 }} />
-                <TextWidget
-                  text={garminBattery.toLocaleString('fr-FR')}
-                  style={{ fontSize: 11, color: '#FF9800', fontWeight: 'bold', marginLeft: 3 }}
-                />
-              </FlexWidget>
-            )}
-            {garminSleep != null && (
-              <FlexWidget style={{ flexDirection: 'row', alignItems: 'center', marginLeft: 12 }}>
-                <TextWidget text="😴" style={{ fontSize: 10 }} />
-                <TextWidget
-                  text={`${garminSleep}/100`}
-                  style={{ fontSize: 11, color: MUTED, marginLeft: 3 }}
-                />
-              </FlexWidget>
-            )}
-          </FlexWidget>
-        )}
       </FlexWidget>
 
       {/* ── Bloc 2 : Tâches ── */}

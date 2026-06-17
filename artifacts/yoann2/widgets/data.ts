@@ -93,9 +93,9 @@ export interface WidgetData {
   nounouColor: string;
   nounouPeriod: string;
   nounouDuration: string;
-  // Garmin health
-  garminBattery: number | null;
-  garminSleep: number | null;
+  // Health Connect data
+  healthSteps: number | null;
+  healthSleepMin: number | null;
 }
 
 interface RawTask {
@@ -120,6 +120,7 @@ interface GarminStoredData {
   } | null;
   yesterday: {
     sleepScore?: number | null;
+    sleepDurationMin?: number | null;
   } | null;
 }
 
@@ -292,9 +293,10 @@ export function buildWidgetData(
     }
   }
 
-  // ── Garmin health ──────────────────────────────────────────────────────────
-  const garminBattery = garminData?.today?.steps ?? null;
-  const garminSleep   = garminData?.yesterday?.sleepScore ?? garminData?.today?.sleepScore ?? null;
+  // ── Health Connect data ────────────────────────────────────────────────────
+  const healthSteps   = garminData?.today?.steps ?? null;
+  const rawSleepMin   = garminData?.yesterday?.sleepDurationMin ?? null;
+  const healthSleepMin = rawSleepMin != null ? rawSleepMin : null;
 
   return {
     tasks: taskItems,
@@ -314,8 +316,8 @@ export function buildWidgetData(
     nounouColor,
     nounouPeriod,
     nounouDuration,
-    garminBattery,
-    garminSleep,
+    healthSteps,
+    healthSleepMin,
   };
 }
 
