@@ -1,2 +1,3 @@
 - [EAS build git lock workaround](eas-build-git-lock.md) — prefix `GIT_OPTIONAL_LOCKS=0` to run `eas-cli build` for the yoann2 Expo app; plain `eas build` fails on `.git/index.lock`.
 - [EAS Build fix — pnpm lockfile](eas-build-fix.md) — run `pnpm install` at workspace root before every EAS build + `.npmrc` with public registry in artifacts/yoann2.
+- [EAS build minSdkVersion fix (bare workflow)](eas-build-minsdk.md) — `android.minSdkVersion` in app.json is invalid schema; set it in native build.gradle files with afterEvaluate to survive expo-root-project plugin override.

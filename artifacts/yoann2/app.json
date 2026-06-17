@@ -21,7 +21,6 @@
       "backgroundColor": "#121212",
       "package": "com.yoann2.app",
       "versionCode": 17,
-      "minSdkVersion": 26,
       "permissions": [
         "android.permission.RECORD_AUDIO",
         "android.permission.health.READ_SLEEP",
