@@ -4,12 +4,16 @@ description: How to resolve minSdkVersion conflicts when expo-root-project plugi
 ---
 
 ## Rule
-`android.minSdkVersion` in `app.json` est invalide — `expo doctor` le rejette et bloque les builds EAS.
+Do NOT use `android.minSdkVersion` in `app.json` — invalid Expo schema, blocks builds.
+Do NOT rely on Gradle overrides (`defaultConfig { minSdkVersion 26 }`, `afterEvaluate { ... }`) — the `expo-root-project` plugin uses `allprojects { afterEvaluate {} }` and overwrites ALL of these. Even a 3-layer approach fails.
 
-Les overrides Gradle (`defaultConfig { minSdkVersion 26 }`, `afterEvaluate { ... }`, `ext.minSdkVersion = 26`) NE FONCTIONNENT PAS — le plugin `expo-root-project` utilise `allprojects { afterEvaluate {} }` et réécrit toutes ces valeurs. Même une approche à 3 couches échoue.
+**Correct fix:** Add the following to `android/app/src/main/AndroidManifest.xml` (MUST include BOTH attributes on the same element):
+```xml
+<uses-sdk android:minSdkVersion="24" tools:overrideLibrary="androidx.health.connect.client"/>
+```
 
-**Correct fix:** Ajouter `<uses-sdk tools:overrideLibrary="androidx.health.connect.client"/>` directement dans `android/app/src/main/AndroidManifest.xml`. Cela indique au manifest merger d'ignorer la contrainte minSdk de la bibliothèque. Safe tant que la disponibilité est vérifiée au runtime (ce que `useHealthConnect.ts` fait déjà).
+**CRITICAL:** `tools:overrideLibrary` alone (without `android:minSdkVersion`) is silently ignored by the manifest merger and the build still fails. Both attributes must be present on the same `<uses-sdk>` element.
 
-**Why:** `expo-root-project` (de `expo-modules-autolinking`) set `rootProject.ext.minSdkVersion = 24` et configure tous les sous-projets via `allprojects`. Son `afterEvaluate` tourne APRÈS celui du module app — le plugin gagne toujours côté Gradle. L'approche manifest bypasse Gradle entièrement.
+**Why:** `expo-root-project` (from `expo-modules-autolinking`) sets `rootProject.ext.minSdkVersion = 24` and configures all subprojects via `allprojects` — it runs its `afterEvaluate` AFTER the app module's own `afterEvaluate`, so the plugin always wins in Gradle. The manifest approach bypasses Gradle entirely. Safe because `useHealthConnect.ts` already guards all Health Connect calls with runtime availability checks.
 
-**How to apply:** Quand une bibliothèque lève "uses-sdk:minSdkVersion X cannot be smaller than version Y" lors du manifest merge, utiliser `tools:overrideLibrary="<library.package.name>"` — pas un workaround Gradle.
+**How to apply:** When any library raises "uses-sdk:minSdkVersion X cannot be smaller than version Y" during manifest merge, use `<uses-sdk android:minSdkVersion="X" tools:overrideLibrary="<library.package.name>"/>` in the app's `AndroidManifest.xml` — not a Gradle workaround.
