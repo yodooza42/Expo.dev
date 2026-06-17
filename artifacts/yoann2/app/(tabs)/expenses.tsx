@@ -17,9 +17,13 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Line, Rect, Text as SvgText } from 'react-native-svg';
 
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
 import { useApp } from '@/contexts/AppContext';
 import { useColors } from '@/hooks/useColors';
 import { exportExpensesCSV, exportExpensesPDF } from '@/utils/expenseExport';
+
+const SHOW_AMOUNTS_KEY = '@yoann2/show_amounts';
 
 const { width } = Dimensions.get('window');
 const CHART_W = width - 32;
@@ -100,6 +104,22 @@ export default function ExpensesScreen() {
   const [catSort, setCatSort] = useState<'date-desc' | 'date-asc' | 'price-desc' | 'price-asc' | 'project'>('date-desc');
   const [exporting, setExporting] = useState(false);
   const [showAmounts, setShowAmounts] = useState(false);
+
+  React.useEffect(() => {
+    AsyncStorage.getItem(SHOW_AMOUNTS_KEY).then(val => {
+      if (val === 'true') setShowAmounts(true);
+    });
+  }, []);
+
+  function toggleShowAmounts() {
+    Haptics.selectionAsync();
+    setShowAmounts(v => {
+      const next = !v;
+      AsyncStorage.setItem(SHOW_AMOUNTS_KEY, String(next));
+      return next;
+    });
+  }
+
   const [customStart, setCustomStart] = useState(() => {
     const d = new Date();
     d.setMonth(d.getMonth() - 5);
@@ -250,7 +270,7 @@ export default function ExpensesScreen() {
             />
           </Pressable>
           <Pressable
-            onPress={() => { Haptics.selectionAsync(); setShowAmounts(v => !v); }}
+            onPress={toggleShowAmounts}
             hitSlop={8}
             style={[styles.exportBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
           >
@@ -459,7 +479,7 @@ export default function ExpensesScreen() {
                             <React.Fragment key={t}>
                               <Line x1={PAD.left} y1={y} x2={PAD.left + innerW} y2={y} stroke={colors.border} strokeWidth={1} />
                               <SvgText x={PAD.left - 4} y={y + 4} fontSize={8} fill={colors.mutedForeground} textAnchor="end">
-                                {label > 999 ? `${Math.round(label / 100) / 10}k` : String(label)}
+                                {showAmounts ? (label > 999 ? `${Math.round(label / 100) / 10}k` : String(label)) : '••'}
                               </SvgText>
                             </React.Fragment>
                           );
@@ -576,7 +596,7 @@ export default function ExpensesScreen() {
             <View style={[styles.catSheetTotal, { backgroundColor: colors.background, borderColor: colors.border }]}>
               <Text style={[styles.catSheetTotalLbl, { color: colors.mutedForeground }]}>Total</Text>
               <Text style={[styles.catSheetTotalAmt, { color: colors.primary }]}>
-                {catDetailExpenses.reduce((s, e) => s + e.amount, 0).toFixed(2)} €
+                {showAmounts ? `${catDetailExpenses.reduce((s, e) => s + e.amount, 0).toFixed(2)} €` : '••••'}
               </Text>
             </View>
 
@@ -612,7 +632,7 @@ export default function ExpensesScreen() {
                       </View>
                     </View>
                     <Text style={[styles.catSheetRowAmt, { color: colors.foreground }]}>
-                      {exp.amount.toFixed(2)} €
+                      {showAmounts ? `${exp.amount.toFixed(2)} €` : '••••'}
                     </Text>
                   </View>
                 );
