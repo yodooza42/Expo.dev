@@ -5,12 +5,11 @@ import type { WidgetData } from '@/widgets/data';
 
 const IMG_RESET = require('../assets/icons/icon-reset.png') as ImageSourcePropType;
 const IMG_TASK  = require('../assets/icons/icon-task.png')  as ImageSourcePropType;
-const IMG_IDEA  = require('../assets/icons/icon-idea.png')  as ImageSourcePropType;
 const IMG_RDV   = require('../assets/icons/icon-rdv.png')   as ImageSourcePropType;
 const IMG_MIC   = require('../assets/icons/icon-mic.png')   as ImageSourcePropType;
 const IMG_HOME  = require('../assets/icons/icon-home.png')  as ImageSourcePropType;
 
-const NAV_ICONS: ImageSourcePropType[] = [IMG_RESET, IMG_TASK, IMG_IDEA, IMG_RDV, IMG_MIC, IMG_HOME];
+const NAV_ICONS: ImageSourcePropType[] = [IMG_RESET, IMG_TASK, IMG_MIC, IMG_RDV, IMG_HOME];
 
 const CARD   = 'rgba(32,32,32,0.80)';
 const NAVBAR = 'rgba(18,18,18,0.87)';
