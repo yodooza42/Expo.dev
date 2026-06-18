@@ -33,7 +33,6 @@ const FR_MONTHS = [
   'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre',
 ];
 const FR_DAYS_SHORT = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
-const FR_DAYS_LONG  = ['lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.', 'dim.'];
 
 function daysInMonth(year: number, month: number): number {
   return new Date(year, month, 0).getDate();
@@ -51,12 +50,6 @@ function toDateKey(year: number, month: number, day: number): string {
 function parseDateKey(key: string): { year: number; month: number; day: number } {
   const [y, m, d] = key.split('-').map(Number);
   return { year: y, month: m, day: d };
-}
-
-function weekdayIndex(dateKey: string): number {
-  const { year, month, day } = parseDateKey(dateKey);
-  const d = new Date(year, month - 1, day).getDay();
-  return d === 0 ? 6 : d - 1;
 }
 
 function parseMonth(monthStr: string): { year: number; month: number } {
@@ -358,59 +351,6 @@ export default function MarieScreen() {
           </View>
         </View>
 
-        {/* ── Working days list ── */}
-        <View style={styles.sectionHeader}>
-          <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>
-            JOURS TRAVAILLÉS · {workingDays.length}
-          </Text>
-        </View>
-
-        {workingDays.length === 0 ? (
-          <View style={[styles.emptyCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <MaterialCommunityIcons name="calendar-blank-outline" size={32} color={colors.mutedForeground} />
-            <Text style={[styles.emptyTxt, { color: colors.mutedForeground }]}>
-              Aucun jour saisi pour {monthLabel}
-            </Text>
-            <Text style={[styles.emptySub, { color: colors.mutedForeground }]}>
-              Appuie sur un jour du calendrier pour ajouter un quart
-            </Text>
-          </View>
-        ) : (
-          workingDays.map(dateKey => {
-            const { day } = parseDateKey(dateKey);
-            const wdIdx  = weekdayIndex(dateKey);
-            const shift  = planning[dateKey]!;
-            const info   = SHIFT_TIMES[shift];
-            return (
-              <Pressable
-                key={dateKey}
-                onPress={() => handleToggle(dateKey)}
-                style={({ pressed }) => [
-                  styles.dayRow,
-                  { backgroundColor: colors.card, borderColor: colors.border, opacity: pressed ? 0.7 : 1 },
-                ]}
-              >
-                <View style={[styles.dayShiftBar, { backgroundColor: info.color }]} />
-                <View style={styles.dayContent}>
-                  <View style={styles.dayLeft}>
-                    <Text style={[styles.dayName, { color: colors.mutedForeground }]}>
-                      {FR_DAYS_LONG[wdIdx]}
-                    </Text>
-                    <Text style={[styles.dayNum2, { color: colors.foreground }]}>{day}</Text>
-                  </View>
-                  <View style={[styles.shiftBadge, { backgroundColor: info.color + '22' }]}>
-                    <Text style={[styles.shiftBadgeTxt, { color: info.color }]}>{shift}</Text>
-                  </View>
-                  <Text style={[styles.dayTimes, { color: colors.foreground }]}>
-                    {info.start} – {info.end}
-                  </Text>
-                </View>
-                <MaterialCommunityIcons name="gesture-tap" size={14} color={colors.mutedForeground + '60'} style={{ marginRight: 4 }} />
-              </Pressable>
-            );
-          })
-        )}
-
         <View style={{ height: 40 }} />
       </ScrollView>
 
@@ -645,39 +585,6 @@ const styles = StyleSheet.create({
   },
   calLegendHint: { fontSize: 10, fontFamily: 'Inter_400Regular' },
 
-  sectionHeader: { marginBottom: 8 },
-  sectionTitle: { fontSize: 11, fontFamily: 'Inter_600SemiBold', letterSpacing: 0.6 },
-
-  emptyCard: {
-    borderRadius: 14,
-    borderWidth: StyleSheet.hairlineWidth,
-    padding: 28,
-    alignItems: 'center',
-    gap: 8,
-  },
-  emptyTxt: { fontSize: 14, fontFamily: 'Inter_500Medium' },
-  emptySub: { fontSize: 12, fontFamily: 'Inter_400Regular', textAlign: 'center' },
-
-  dayRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 12,
-    borderWidth: StyleSheet.hairlineWidth,
-    marginBottom: 8,
-    overflow: 'hidden',
-  },
-  dayShiftBar: { width: 4, alignSelf: 'stretch' },
-  dayContent: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    gap: 10,
-  },
-  dayLeft: { flexDirection: 'row', alignItems: 'baseline', gap: 5, minWidth: 70 },
-  dayName: { fontSize: 12, fontFamily: 'Inter_400Regular' },
-  dayNum2: { fontSize: 20, fontFamily: 'Inter_700Bold' },
   shiftBadge: {
     paddingHorizontal: 10,
     paddingVertical: 3,
