@@ -25,7 +25,6 @@ const IMG_HOME   = require('../assets/icons/icon-home.png')  as ImageWidgetSourc
 
 export function TodoWidget({
   tasks, widgetAppts, todayWork, settings, todayLabel,
-  pauseActive, pauseElapsedLabel,
   todayDayNum, marieCircleColor,
   nounouName, nounouColor, nounouPeriod, nounouDuration,
 }: WidgetData) {
@@ -180,68 +179,22 @@ export function TodoWidget({
           >
           </FlexWidget>
 
-          {/* ③ Droite : travail + bouton pause */}
-          <FlexWidget style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <FlexWidget
-              style={{
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                marginRight: 8,
-              }}
-            >
-              <FlexWidget style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 3 }}>
-                <TextWidget text="💼 " style={{ fontSize: 10 }} />
-                <TextWidget text="Travail" style={{ fontSize: 10, color: MUTED }} />
-              </FlexWidget>
-              <TextWidget
-                text={todayWork}
-                style={{ fontSize: 14, color: isRepos ? MUTED : PRIMARY, fontWeight: 'bold' }}
-              />
+          {/* ③ Droite : travail */}
+          <FlexWidget
+            style={{
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <FlexWidget style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 3 }}>
+              <TextWidget text="💼 " style={{ fontSize: 10 }} />
+              <TextWidget text="Travail" style={{ fontSize: 10, color: MUTED }} />
             </FlexWidget>
-
-            <FlexWidget
-              clickAction="OPEN_URI"
-              clickActionData={{ uri: `${SCHEME}:///pause-toggle` }}
-              style={{ width: 52, height: 52 }}
-            >
-              <OverlapWidget style={{ width: 52, height: 52 }}>
-                <FlexWidget
-                  style={{
-                    width: 52,
-                    height: 52,
-                    borderRadius: 26,
-                    backgroundColor: (pauseActive ? '#4CAF50' : PRIMARY) as ColorProp,
-                  }}
-                />
-                <FlexWidget
-                  style={{
-                    width: 42,
-                    height: 42,
-                    borderRadius: 21,
-                    backgroundColor: '#1A1500' as ColorProp,
-                    marginTop: 5,
-                    marginLeft: 5,
-                  }}
-                />
-                <FlexWidget
-                  style={{
-                    width: 52,
-                    height: 52,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  <TextWidget
-                    text={pauseActive ? '⏸' : '▶'}
-                    style={{
-                      fontSize: 18,
-                      color: (pauseActive ? '#4CAF50' : PRIMARY) as ColorProp,
-                    }}
-                  />
-                </FlexWidget>
-              </OverlapWidget>
-            </FlexWidget>
+            <TextWidget
+              text={todayWork}
+              style={{ fontSize: 14, color: isRepos ? MUTED : PRIMARY, fontWeight: 'bold' }}
+            />
           </FlexWidget>
         </FlexWidget>
       </FlexWidget>

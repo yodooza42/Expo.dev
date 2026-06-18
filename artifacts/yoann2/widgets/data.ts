@@ -6,7 +6,6 @@ const TASKS_KEY    = '@yoann2_tasks';
 const APPTS_KEY    = '@yoann2_appointments';
 const SETTINGS_KEY = '@yoann2_widget_settings';
 const CONFIRM_KEY  = '@yoann2_widget_confirm_id';
-const PAUSE_KEY    = '@yoann2_active_pause';
 const MARIE_KEY    = '@marie_planning_v1';
 const ANNA_KEY     = '@anna_badges_v1';
 
@@ -32,15 +31,6 @@ function _durationLabel(diffMins: number): string {
   const h = Math.floor(diffMins / 60);
   const m = diffMins % 60;
   return h > 0 ? (m > 0 ? `${h}h${String(m).padStart(2, '0')}` : `${h}h`) : `${m}min`;
-}
-
-function formatPauseElapsed(startTs: number): string {
-  const secs = Math.max(0, Math.floor((Date.now() - startTs) / 1000));
-  const h = Math.floor(secs / 3600);
-  const m = Math.floor((secs % 3600) / 60);
-  if (h > 0) return `${h}h${String(m).padStart(2, '0')}`;
-  if (m > 0) return `${m}min`;
-  return '<1min';
 }
 
 const PRIORITY_COLORS: Record<string, string> = {
@@ -83,8 +73,6 @@ export interface WidgetData {
   confirmTask: WidgetItem | null;
   settings: WidgetSettings;
   todayLabel: string;
-  pauseActive: boolean;
-  pauseElapsedLabel: string;
   // Marie + nanny
   todayDayNum: number;
   marieCircleColor: string;
@@ -286,8 +274,6 @@ export function buildWidgetData(
     confirmTask,
     settings,
     todayLabel,
-    pauseActive: false,
-    pauseElapsedLabel: '',
     todayDayNum: today.getDate(),
     marieCircleColor,
     nounouName,
@@ -302,32 +288,22 @@ export async function getWidgetDataFromStorage(): Promise<WidgetData> {
   let appts: RawAppt[] = [];
   let settings = DEFAULT_WIDGET_SETTINGS;
   let confirmId: string | null = null;
-  let pauseActive = false;
-  let pauseElapsedLabel = '';
   let mariePlanning: Record<string, 'PB' | 'PD'> = {};
   let annaBadges: Record<string, 'Isabelle' | 'Evelyne'>  = {};
 
   try {
-    const [t, a, s, c, p, mr, ab] = await AsyncStorage.multiGet([
-      TASKS_KEY, APPTS_KEY, SETTINGS_KEY, CONFIRM_KEY, PAUSE_KEY, MARIE_KEY, ANNA_KEY,
+    const [t, a, s, c, mr, ab] = await AsyncStorage.multiGet([
+      TASKS_KEY, APPTS_KEY, SETTINGS_KEY, CONFIRM_KEY, MARIE_KEY, ANNA_KEY,
     ]);
     if (t[1])  tasks          = JSON.parse(t[1]);
     if (a[1])  appts          = JSON.parse(a[1]);
     if (s[1])  settings       = { ...DEFAULT_WIDGET_SETTINGS, ...JSON.parse(s[1]) };
     if (c[1])  confirmId      = c[1];
-    if (p[1]) {
-      const ap = JSON.parse(p[1]) as { startTs: number };
-      if (ap?.startTs) {
-        pauseActive       = true;
-        pauseElapsedLabel = formatPauseElapsed(ap.startTs);
-      }
-    }
     if (mr[1]) mariePlanning  = JSON.parse(mr[1]);
     if (ab[1]) annaBadges     = JSON.parse(ab[1]);
   } catch {}
 
-  const data = buildWidgetData(tasks, appts, settings, confirmId, mariePlanning, annaBadges);
-  return { ...data, pauseActive, pauseElapsedLabel };
+  return buildWidgetData(tasks, appts, settings, confirmId, mariePlanning, annaBadges);
 }
 
 export async function setConfirmId(id: string | null): Promise<void> {

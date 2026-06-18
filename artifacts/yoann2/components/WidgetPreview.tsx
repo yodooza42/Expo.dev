@@ -52,28 +52,15 @@ export function WidgetPreview({ data }: { data: WidgetData }) {
 
           <View style={{ flex: 1 }} />
 
-          {/* Droite : travail + bouton pause */}
-          <View style={styles.rightGroup}>
-            <View style={styles.workCol}>
-              <View style={styles.workLabelRow}>
-                <Text style={styles.workEmoji}>💼 </Text>
-                <Text style={[styles.workLbl, { color: MUTED }]}>Travail</Text>
-              </View>
-              <Text style={[styles.workVal, { color: isRepos ? MUTED : PRIMARY }]}>
-                {data.todayWork}
-              </Text>
+          {/* Droite : travail */}
+          <View style={styles.workCol}>
+            <View style={styles.workLabelRow}>
+              <Text style={styles.workEmoji}>💼 </Text>
+              <Text style={[styles.workLbl, { color: MUTED }]}>Travail</Text>
             </View>
-
-            {/* Pause button — concentric circles overlay */}
-            <View style={styles.pauseWrap}>
-              <View style={[styles.pauseRing, { backgroundColor: data.pauseActive ? '#4CAF50' : PRIMARY }]} />
-              <View style={styles.pauseCore} />
-              <View style={styles.pauseLabel}>
-                <Text style={[styles.pauseIcon, { color: data.pauseActive ? '#4CAF50' : PRIMARY }]}>
-                  {data.pauseActive ? '⏸' : '▶'}
-                </Text>
-              </View>
-            </View>
+            <Text style={[styles.workVal, { color: isRepos ? MUTED : PRIMARY }]}>
+              {data.todayWork}
+            </Text>
           </View>
         </View>
       </View>
@@ -249,36 +236,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: 'Inter_700Bold',
   },
-  pauseWrap: {
-    width: 52,
-    height: 52,
-  },
-  pauseRing: {
-    position: 'absolute',
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-  },
-  pauseCore: {
-    position: 'absolute',
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: '#1A1500',
-    top: 5,
-    left: 5,
-  },
-  pauseLabel: {
-    position: 'absolute',
-    width: 52,
-    height: 52,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pauseIcon: {
-    fontSize: 18,
-  },
-
   /* Blocs 2 & 3 */
   bloc: {
     backgroundColor: CARD,
