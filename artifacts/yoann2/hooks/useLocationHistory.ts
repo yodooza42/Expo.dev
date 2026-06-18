@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 
+import { tryRestoreFromLocalBackup } from '@/utils/locationBackup';
 import {
   dateKey,
   haversineKm,
@@ -94,8 +95,9 @@ export function useLocationHistory() {
     setPeriodAvg30({ days: 30, avgKmPerDay: avg30 });
   }, []);
 
-  // Check permissions and paused state
+  // Check permissions and paused state; restore backup if AsyncStorage is empty
   const init = useCallback(async () => {
+    await tryRestoreFromLocalBackup();
     const p = await isTrackingPaused();
     setPaused(p);
     const fg = await import('expo-location').then(m => m.getForegroundPermissionsAsync());

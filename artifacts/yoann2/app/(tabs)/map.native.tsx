@@ -16,6 +16,7 @@ import WebView from 'react-native-webview';
 
 import { useColors } from '@/hooks/useColors';
 import { useLocationHistory } from '@/hooks/useLocationHistory';
+import { exportBackup, importBackup } from '@/utils/locationBackup';
 import type { LocationPoint } from '@/utils/locationTracking';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -170,9 +171,10 @@ function StatChip({
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function MapScreen() {
-  const colors  = useColors();
-  const insets  = useSafeAreaInsets();
-  const webRef  = useRef<WebView>(null);
+  const colors   = useColors();
+  const insets   = useSafeAreaInsets();
+  const webRef   = useRef<WebView>(null);
+  const [backupBusy, setBackupBusy] = useState(false);
 
   const {
     selectedDay,
@@ -246,6 +248,36 @@ export default function MapScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     await togglePause();
   }, [togglePause]);
+
+  const handleExport = useCallback(async () => {
+    if (backupBusy) return;
+    setBackupBusy(true);
+    try {
+      await exportBackup();
+    } catch {
+      Alert.alert('Erreur', 'Impossible d\'exporter les données.');
+    } finally {
+      setBackupBusy(false);
+    }
+  }, [backupBusy]);
+
+  const handleImport = useCallback(async () => {
+    if (backupBusy) return;
+    setBackupBusy(true);
+    try {
+      const { restored, error } = await importBackup();
+      if (error) {
+        Alert.alert('Erreur', error);
+      } else if (restored > 0) {
+        Alert.alert('Importé', `${restored} jour${restored > 1 ? 's' : ''} restauré${restored > 1 ? 's' : ''}.`);
+        refresh();
+      }
+    } catch {
+      Alert.alert('Erreur', 'Impossible d\'importer le fichier.');
+    } finally {
+      setBackupBusy(false);
+    }
+  }, [backupBusy, refresh]);
 
   const mapHtml    = buildMapHtml(dayStats.points, colors.primary, highlightPt);
   const mapKey     = `${selectedDay}-${highlightPt?.timestamp ?? 'none'}`;
@@ -389,6 +421,26 @@ export default function MapScreen() {
                 </Text>
               </Pressable>
             </View>
+
+            {/* ── Backup row ── */}
+            <View style={[styles.backupRow, { borderTopColor: colors.border }]}>
+              <Pressable
+                style={[styles.backupBtn, { borderColor: colors.border, opacity: backupBusy ? 0.5 : 1 }]}
+                onPress={handleExport}
+                disabled={backupBusy}
+              >
+                <MaterialCommunityIcons name="export-variant" size={15} color={colors.mutedForeground} />
+                <Text style={[styles.backupTxt, { color: colors.mutedForeground }]}>Exporter</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.backupBtn, { borderColor: colors.border, opacity: backupBusy ? 0.5 : 1 }]}
+                onPress={handleImport}
+                disabled={backupBusy}
+              >
+                <MaterialCommunityIcons name="import" size={15} color={colors.mutedForeground} />
+                <Text style={[styles.backupTxt, { color: colors.mutedForeground }]}>Importer</Text>
+              </Pressable>
+            </View>
           </>
         )}
       </View>
@@ -515,4 +567,22 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   pauseTxt: { fontSize: 12, fontFamily: 'Inter_500Medium' },
+
+  backupRow: {
+    flexDirection: 'row',
+    gap: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingTop: 8,
+  },
+  backupBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  backupTxt: { fontSize: 11, fontFamily: 'Inter_500Medium' },
 });

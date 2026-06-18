@@ -2,6 +2,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 
+import { autoBackup } from '@/utils/locationBackup';
+
 export const LOCATION_TASK_NAME = 'background-location-task';
 const KEY_PREFIX = '@yoann2_location_';
 const MAX_DAYS = 90;
@@ -62,6 +64,7 @@ export async function appendPoint(point: LocationPoint): Promise<void> {
     const points: LocationPoint[] = raw ? JSON.parse(raw) : [];
     points.push(point);
     await AsyncStorage.setItem(key, JSON.stringify(points));
+    await autoBackup();
   } catch {
     // silently ignore storage errors
   }
