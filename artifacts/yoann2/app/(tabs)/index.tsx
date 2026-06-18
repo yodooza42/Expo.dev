@@ -369,7 +369,7 @@ export default function DashboardScreen() {
               {proj.name}
             </Text>
           )}
-          {showPhotos && hasPhotos && !isDone && (
+          {showPhotos && hasPhotos && (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.photoStrip}>
               {task.photos.map((uri, i) => (
                 <Image key={i} source={{ uri }} style={styles.photoThumb} contentFit="cover" />

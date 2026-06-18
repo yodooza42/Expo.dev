@@ -20,7 +20,7 @@
     "android": {
       "backgroundColor": "#121212",
       "package": "com.yoann2.app",
-      "versionCode": 20,
+      "versionCode": 21,
       "permissions": [
         "android.permission.RECORD_AUDIO"
       ]
