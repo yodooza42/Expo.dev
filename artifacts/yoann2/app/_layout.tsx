@@ -18,13 +18,38 @@ import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { AppProvider } from '@/contexts/AppContext';
 import { PauseProvider } from '@/contexts/PauseContext';
 import { ThemeProvider } from '@/contexts/ThemeContext';
+import { isTrackingPaused, requestLocationPermissions, startTracking } from '@/utils/locationTracking';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
 const queryClient = new QueryClient();
 
+async function bootstrapLocationTracking() {
+  try {
+    const fg = await import('expo-location').then(m => m.getForegroundPermissionsAsync());
+    if (fg.status !== 'granted') {
+      const granted = await requestLocationPermissions();
+      if (!granted) return;
+    } else {
+      const bg = await import('expo-location').then(m => m.getBackgroundPermissionsAsync());
+      if (bg.status !== 'granted') {
+        const granted = await requestLocationPermissions();
+        if (!granted) return;
+      }
+    }
+    const paused = await isTrackingPaused();
+    if (!paused) await startTracking();
+  } catch {
+    // silently ignore — tracking is optional
+  }
+}
+
 function RootLayoutNav() {
   const router = useRouter();
+
+  useEffect(() => {
+    bootstrapLocationTracking();
+  }, []);
 
   useEffect(() => {
     const sub = Notifications.addNotificationResponseReceivedListener(response => {

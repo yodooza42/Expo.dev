@@ -31,6 +31,7 @@ const TAB_ICONS: Record<string, string> = {
   kanban:   'view-column-outline',
   expenses: 'chart-line',
   calendar: 'calendar-month-outline',
+  map:      'map-outline',
 };
 
 const TAB_LABELS: Record<string, string> = {
@@ -39,6 +40,7 @@ const TAB_LABELS: Record<string, string> = {
   kanban:   'Kanban',
   expenses: 'Finances',
   calendar: 'Agenda',
+  map:      'Carte',
 };
 
 const QUICK_SHORTCUTS = [
