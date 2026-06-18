@@ -1,12 +1,9 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import * as ImageManipulator from 'expo-image-manipulator';
-import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
-  Image,
   Platform,
   Pressable,
   ScrollView,
@@ -55,18 +52,6 @@ const DAY_ROWS: { label: string; idx: number }[] = [
   { label: 'Dimanche', idx: 0 },
 ];
 
-const COLOR_PALETTE = [
-  '#FFC107', '#FF9800', '#FF5722', '#F44336', '#E91E63',
-  '#9C27B0', '#673AB7', '#3F51B5', '#2196F3', '#03A9F4',
-  '#00BCD4', '#009688', '#4CAF50', '#8BC34A', '#FFFFFF',
-  '#795548', '#9E9E9E', '#607D8B', '#CCAA44', '#444444',
-];
-
-const BG_PALETTE = [
-  '#FFC107',
-  '#121212',
-];
-
 const FONT_SIZES = [
   { label: 'Petit', value: 13 },
   { label: 'Moyen', value: 16 },
@@ -82,7 +67,6 @@ export default function WidgetSettingsScreen() {
 
   const [settings, setSettings] = useState<WidgetSettings>(DEFAULT_WIDGET_SETTINGS);
   const [saving, setSaving] = useState(false);
-  const [pickingImage, setPickingImage] = useState(false);
   const [clockoutInputs, setClockoutInputs] = useState<ShiftClockouts>({});
   const [expandedShifts, setExpandedShifts] = useState<Set<string>>(new Set());
 
@@ -122,14 +106,8 @@ export default function WidgetSettingsScreen() {
       mariePlanning,
       annaBadges,
     );
-    return {
-      ...base,
-      pauseActive:       !!activePause,
-      pauseElapsedLabel: activePause
-        ? formatDuration(Math.floor((Date.now() - activePause.startTs) / 1000))
-        : '',
-    };
-  }, [tasks, appointments, settings, mariePlanning, annaBadges, activePause]);
+    return base;
+  }, [tasks, appointments, settings, mariePlanning, annaBadges]);
 
   async function handleSave() {
     setSaving(true);
@@ -196,95 +174,6 @@ export default function WidgetSettingsScreen() {
     const normalized = normalizeTime(raw, fallback);
     setClockoutInputs(c => ({ ...c, [shiftDate]: normalized }));
     await saveClockout(shiftDate, normalized);
-  }
-
-  async function pickBgImage() {
-    setPickingImage(true);
-    try {
-      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!perm.granted) return;
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        allowsEditing: false,
-        quality: 1,
-      });
-      if (!result.canceled && result.assets[0]) {
-        const asset = result.assets[0];
-        const srcW = asset.width;
-        const srcH = asset.height;
-
-        const TARGET_W = 640;
-        const TARGET_H = 320;
-
-        const srcAspect = srcW / srcH;
-        const tgtAspect = TARGET_W / TARGET_H;
-
-        let scaleW: number;
-        let scaleH: number;
-        if (srcAspect > tgtAspect) {
-          scaleH = TARGET_H;
-          scaleW = Math.round(srcW * (TARGET_H / srcH));
-        } else {
-          scaleW = TARGET_W;
-          scaleH = Math.round(srcH * (TARGET_W / srcW));
-        }
-
-        const cropX = Math.round((scaleW - TARGET_W) / 2);
-        const cropY = Math.round((scaleH - TARGET_H) / 2);
-
-        const manipResult = await ImageManipulator.manipulateAsync(
-          asset.uri,
-          [
-            { resize: { width: scaleW, height: scaleH } },
-            { crop: { originX: cropX, originY: cropY, width: TARGET_W, height: TARGET_H } },
-          ],
-          { compress: 0.5, format: ImageManipulator.SaveFormat.JPEG, base64: true }
-        );
-
-        const uri = `data:image/jpeg;base64,${manipResult.base64}`;
-        setSettings(s => ({ ...s, bgImageUri: uri }));
-      }
-    } finally {
-      setPickingImage(false);
-    }
-  }
-
-  function removeBgImage() {
-    setSettings(s => ({ ...s, bgImageUri: undefined }));
-  }
-
-  function ColorGrid({
-    value,
-    palette,
-    onChange,
-  }: {
-    value: string;
-    palette: string[];
-    onChange: (c: string) => void;
-  }) {
-    return (
-      <View style={styles.palette}>
-        {palette.map(c => (
-          <Pressable
-            key={c}
-            onPress={() => onChange(c)}
-            style={[
-              styles.paletteCell,
-              { backgroundColor: c },
-              value === c && styles.paletteCellSelected,
-            ]}
-          >
-            {value === c && (
-              <MaterialCommunityIcons
-                name="check"
-                size={16}
-                color={c === '#FFFFFF' || c === '#CCAA44' || c === '#8BC34A' || c === '#FFC107' ? '#000' : '#fff'}
-              />
-            )}
-          </Pressable>
-        ))}
-      </View>
-    );
   }
 
   return (
@@ -645,63 +534,6 @@ export default function WidgetSettingsScreen() {
           </View>
         </View>
 
-        <Text style={[styles.section, { color: colors.mutedForeground }]}>Couleur principale</Text>
-        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <ColorGrid
-            value={settings.primaryColor}
-            palette={COLOR_PALETTE}
-            onChange={c => setSettings(s => ({ ...s, primaryColor: c }))}
-          />
-        </View>
-
-        <Text style={[styles.section, { color: colors.mutedForeground }]}>Couleur de fond</Text>
-        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <ColorGrid
-            value={settings.bgColor}
-            palette={BG_PALETTE}
-            onChange={c => setSettings(s => ({ ...s, bgColor: c }))}
-          />
-        </View>
-
-        <Text style={[styles.section, { color: colors.mutedForeground }]}>Image de fond</Text>
-        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border, gap: 12 }]}>
-          {settings.bgImageUri ? (
-            <View style={styles.imgPreviewRow}>
-              <Image
-                source={{ uri: settings.bgImageUri }}
-                style={styles.imgThumb}
-                resizeMode="cover"
-              />
-              <View style={{ flex: 1, gap: 8 }}>
-                <Text style={[styles.imgHint, { color: colors.mutedForeground }]}>
-                  Image sélectionnée — sera utilisée comme fond du widget.
-                </Text>
-                <Pressable
-                  onPress={removeBgImage}
-                  style={[styles.removeBtn, { borderColor: colors.border }]}
-                >
-                  <MaterialCommunityIcons name="trash-can-outline" size={16} color="#F44336" />
-                  <Text style={[styles.removeTxt, { color: '#F44336' }]}>Supprimer l'image</Text>
-                </Pressable>
-              </View>
-            </View>
-          ) : (
-            <Text style={[styles.imgHint, { color: colors.mutedForeground }]}>
-              Aucune image — le widget utilise la couleur de fond ci-dessus.
-            </Text>
-          )}
-          <Pressable
-            onPress={pickBgImage}
-            disabled={pickingImage}
-            style={[styles.pickBtn, { backgroundColor: colors.primary, opacity: pickingImage ? 0.6 : 1 }]}
-          >
-            <MaterialCommunityIcons name="image-plus" size={18} color={colors.primaryForeground} />
-            <Text style={[styles.pickTxt, { color: colors.primaryForeground }]}>
-              {pickingImage ? 'Chargement…' : settings.bgImageUri ? 'Changer l\'image' : 'Choisir une image'}
-            </Text>
-          </Pressable>
-        </View>
-
         <Pressable
           onPress={() => setSettings(DEFAULT_WIDGET_SETTINGS)}
           style={[styles.resetBtn, { borderColor: colors.border }]}
@@ -768,40 +600,6 @@ const styles = StyleSheet.create({
   },
   notifTitle: { fontSize: 14, fontFamily: 'Inter_500Medium' },
   notifHint: { fontSize: 12, fontFamily: 'Inter_400Regular', marginTop: 2 },
-  palette: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  paletteCell: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  paletteCellSelected: { borderColor: '#FFFFFF' },
-  imgPreviewRow: { flexDirection: 'row', gap: 12, alignItems: 'flex-start' },
-  imgThumb: { width: 80, height: 54, borderRadius: 8 },
-  imgHint: { fontSize: 12, fontFamily: 'Inter_400Regular', lineHeight: 18 },
-  pickBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 12,
-    borderRadius: 12,
-  },
-  pickTxt: { fontSize: 14, fontFamily: 'Inter_600SemiBold' },
-  removeBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 8,
-    borderWidth: 1,
-    alignSelf: 'flex-start',
-  },
-  removeTxt: { fontSize: 12, fontFamily: 'Inter_500Medium' },
   resetBtn: {
     paddingVertical: 12,
     borderRadius: 12,
