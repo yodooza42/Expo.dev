@@ -8,6 +8,7 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -140,6 +141,31 @@ export default function CalendarScreen() {
     d.getMonth() === today.getMonth() &&
     d.getFullYear() === today.getFullYear();
 
+  async function shareMesRdv() {
+    const myAppts = appointments.filter(a => !a.fromMarie);
+    if (myAppts.length === 0) {
+      Alert.alert('Aucun RDV', "Tu n'as pas encore de rendez-vous à partager.");
+      return;
+    }
+    const byDate: Record<string, string[]> = {};
+    myAppts.forEach(a => {
+      const d = a.date.slice(0, 10);
+      if (!byDate[d]) byDate[d] = [];
+      byDate[d].push(a.title);
+    });
+    const sorted = Object.entries(byDate).sort(([a], [b]) => a.localeCompare(b));
+    const obj = Object.fromEntries(sorted.map(([d, titles]) => [d, titles.join(' + ')]));
+    await Share.share({ message: `RDV:${JSON.stringify(obj)}` });
+  }
+
+  function openMarieMenu() {
+    Alert.alert('Marie', 'Que veux-tu faire ?', [
+      { text: 'Importer ses RDVs', onPress: () => setImportVisible(true) },
+      { text: 'Partager mes RDVs', onPress: shareMesRdv },
+      { text: 'Annuler', style: 'cancel' },
+    ]);
+  }
+
   function closeImport() {
     setImportVisible(false);
     setImportStep('paste');
@@ -249,10 +275,10 @@ export default function CalendarScreen() {
           <Text style={[styles.title, { color: colors.foreground }]}>Calendrier</Text>
           <View style={styles.titleBtns}>
             <Pressable
-              onPress={() => setImportVisible(true)}
+              onPress={openMarieMenu}
               style={[styles.addBtn, { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }]}
             >
-              <MaterialCommunityIcons name="calendar-import" size={17} color={colors.primary} />
+              <MaterialCommunityIcons name="calendar-sync" size={17} color={colors.primary} />
               <Text style={[styles.addBtnLabel, { color: colors.primary }]}>Marie</Text>
             </Pressable>
             <Pressable
