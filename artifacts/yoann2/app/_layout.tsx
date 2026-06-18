@@ -19,7 +19,7 @@ import { AppProvider } from '@/contexts/AppContext';
 import { PauseProvider } from '@/contexts/PauseContext';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 
-SplashScreen.preventAutoHideAsync();
+SplashScreen.preventAutoHideAsync().catch(() => {});
 
 const queryClient = new QueryClient();
 
