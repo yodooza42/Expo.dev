@@ -2,11 +2,15 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useMemo, useState } from 'react';
 import {
+  Alert,
+  KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -56,16 +60,38 @@ function appointmentDateKey(a: Appointment) {
   return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
 }
 
+function formatDateFR(isoDate: string): string {
+  const [year, month, day] = isoDate.split('-').map(Number);
+  const d = new Date(year, month - 1, day);
+  const dayName = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'][d.getDay()];
+  return `${dayName} ${day} ${MONTHS_FR[month - 1]} ${year}`;
+}
+
+type ImportStatus = 'new' | 'date_conflict' | 'duplicate';
+
+interface ImportItem {
+  isoDate: string;
+  title: string;
+  status: ImportStatus;
+  selected: boolean;
+  conflictTitles: string[];
+}
+
 export default function CalendarScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { tasks, projects, appointments, deleteAppointment } = useApp();
+  const { tasks, projects, appointments, addAppointment, deleteAppointment } = useApp();
 
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth());
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+
+  const [importVisible, setImportVisible] = useState(false);
+  const [importStep, setImportStep] = useState<'paste' | 'review'>('paste');
+  const [importText, setImportText] = useState('');
+  const [importItems, setImportItems] = useState<ImportItem[]>([]);
 
   const topPad = Platform.OS === 'web' ? 67 : insets.top;
 
@@ -109,18 +135,128 @@ export default function CalendarScreen() {
     d.getMonth() === today.getMonth() &&
     d.getFullYear() === today.getFullYear();
 
+  function closeImport() {
+    setImportVisible(false);
+    setImportStep('paste');
+    setImportText('');
+    setImportItems([]);
+  }
+
+  function parseAndReview() {
+    const trimmed = importText.trim();
+    const match = trimmed.match(/RDV:(\{[\s\S]*\})/);
+    if (!match) {
+      Alert.alert(
+        'Format non reconnu',
+        'Le texte doit contenir "RDV:{...}" avec les rendez-vous. Vérifie que Marie a bien copié ses données.'
+      );
+      return;
+    }
+    let incoming: Record<string, string>;
+    try {
+      incoming = JSON.parse(match[1]);
+    } catch {
+      Alert.alert('Erreur de lecture', 'Impossible de lire les données. Vérifie que le texte n\'est pas tronqué.');
+      return;
+    }
+
+    const existingDateTitleKeys = new Set(
+      appointments.map(a => `${a.date.slice(0, 10)}|${a.title.toLowerCase().trim()}`)
+    );
+    const existingByDate: Record<string, string[]> = {};
+    appointments.forEach(a => {
+      const d = a.date.slice(0, 10);
+      if (!existingByDate[d]) existingByDate[d] = [];
+      existingByDate[d].push(a.title);
+    });
+
+    const items: ImportItem[] = Object.entries(incoming)
+      .filter(([, title]) => typeof title === 'string' && title.trim().length > 0)
+      .map(([isoDate, title]) => {
+        const titleTrimmed = title.trim();
+        const dupKey = `${isoDate}|${titleTrimmed.toLowerCase()}`;
+        let status: ImportStatus;
+        let conflictTitles: string[] = [];
+
+        if (existingDateTitleKeys.has(dupKey)) {
+          status = 'duplicate';
+        } else if (existingByDate[isoDate]) {
+          status = 'date_conflict';
+          conflictTitles = existingByDate[isoDate];
+        } else {
+          status = 'new';
+        }
+        return { isoDate, title: titleTrimmed, status, selected: status !== 'duplicate', conflictTitles };
+      });
+
+    if (items.length === 0) {
+      Alert.alert('Aucun RDV', 'Aucun rendez-vous trouvé dans les données.');
+      return;
+    }
+
+    setImportItems(items);
+    setImportStep('review');
+  }
+
+  function toggleItem(idx: number) {
+    setImportItems(prev => prev.map((item, i) =>
+      i === idx ? { ...item, selected: !item.selected } : item
+    ));
+  }
+
+  function confirmImport() {
+    const toImport = importItems.filter(i => i.selected);
+    if (toImport.length === 0) {
+      Alert.alert('Aucun RDV sélectionné', 'Sélectionne au moins un rendez-vous à importer.');
+      return;
+    }
+    toImport.forEach(item => {
+      addAppointment({
+        title: item.title,
+        date: new Date(item.isoDate).toISOString(),
+        description: '',
+        location: '',
+        time: '',
+        category: '',
+      });
+    });
+    closeImport();
+  }
+
+  const selectedCount = importItems.filter(i => i.selected).length;
+
+  const STATUS_LABELS: Record<ImportStatus, string> = {
+    new: 'Nouveau',
+    date_conflict: 'Conflit',
+    duplicate: 'Doublon',
+  };
+  const STATUS_COLORS: Record<ImportStatus, string> = {
+    new: '#4CAF50',
+    date_conflict: '#FF9800',
+    duplicate: colors.mutedForeground,
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { paddingTop: topPad + 12 }]}>
         <View style={styles.titleRow}>
           <Text style={[styles.title, { color: colors.foreground }]}>Calendrier</Text>
-          <Pressable
-            onPress={() => router.push('/appointment/new')}
-            style={[styles.addBtn, { backgroundColor: colors.primary }]}
-          >
-            <MaterialCommunityIcons name="calendar-plus" size={18} color={colors.primaryForeground} />
-            <Text style={[styles.addBtnLabel, { color: colors.primaryForeground }]}>RDV</Text>
-          </Pressable>
+          <View style={styles.titleBtns}>
+            <Pressable
+              onPress={() => setImportVisible(true)}
+              style={[styles.addBtn, { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }]}
+            >
+              <MaterialCommunityIcons name="calendar-import" size={17} color={colors.primary} />
+              <Text style={[styles.addBtnLabel, { color: colors.primary }]}>Marie</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => router.push('/appointment/new')}
+              style={[styles.addBtn, { backgroundColor: colors.primary }]}
+            >
+              <MaterialCommunityIcons name="calendar-plus" size={18} color={colors.primaryForeground} />
+              <Text style={[styles.addBtnLabel, { color: colors.primaryForeground }]}>RDV</Text>
+            </Pressable>
+          </View>
         </View>
         <View style={styles.navRow}>
           <Pressable onPress={prevMonth} style={[styles.navBtn, { backgroundColor: colors.card }]}>
@@ -278,6 +414,138 @@ export default function CalendarScreen() {
           </View>
         </View>
       </ScrollView>
+
+      {/* ── Import Marie Modal ── */}
+      <Modal
+        visible={importVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={closeImport}
+      >
+        <KeyboardAvoidingView
+          style={[styles.modalContainer, { backgroundColor: colors.background }]}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          {/* Modal header */}
+          <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
+            <Pressable onPress={importStep === 'review' ? () => setImportStep('paste') : closeImport} hitSlop={12}>
+              <MaterialCommunityIcons
+                name={importStep === 'review' ? 'arrow-left' : 'close'}
+                size={22}
+                color={colors.foreground}
+              />
+            </Pressable>
+            <Text style={[styles.modalTitle, { color: colors.foreground }]}>
+              {importStep === 'paste' ? 'Importer les RDV de Marie' : 'Vérifier les rendez-vous'}
+            </Text>
+            <View style={{ width: 22 }} />
+          </View>
+
+          {/* ── Step 1: Paste ── */}
+          {importStep === 'paste' && (
+            <View style={styles.pasteStep}>
+              <Text style={[styles.pasteHint, { color: colors.mutedForeground }]}>
+                Demande à Marie de copier ses rendez-vous depuis son appli, puis colle le texte ici :
+              </Text>
+              <TextInput
+                style={[styles.pasteInput, {
+                  backgroundColor: colors.card,
+                  borderColor: colors.border,
+                  color: colors.foreground,
+                }]}
+                multiline
+                numberOfLines={8}
+                placeholder={'RDV:{"2026-06-19": "Dentiste Anna", ...}'}
+                placeholderTextColor={colors.mutedForeground}
+                value={importText}
+                onChangeText={setImportText}
+                autoCorrect={false}
+                autoCapitalize="none"
+                textAlignVertical="top"
+              />
+              <Pressable
+                onPress={parseAndReview}
+                style={[styles.primaryBtn, { backgroundColor: colors.primary, opacity: importText.trim().length < 5 ? 0.5 : 1 }]}
+                disabled={importText.trim().length < 5}
+              >
+                <MaterialCommunityIcons name="magnify" size={18} color={colors.primaryForeground} />
+                <Text style={[styles.primaryBtnLabel, { color: colors.primaryForeground }]}>Analyser</Text>
+              </Pressable>
+            </View>
+          )}
+
+          {/* ── Step 2: Review ── */}
+          {importStep === 'review' && (
+            <View style={styles.reviewStep}>
+              <Text style={[styles.reviewCount, { color: colors.mutedForeground }]}>
+                {importItems.length} rendez-vous trouvé{importItems.length > 1 ? 's' : ''} · {selectedCount} sélectionné{selectedCount > 1 ? 's' : ''}
+              </Text>
+              <ScrollView style={styles.reviewList} contentContainerStyle={{ gap: 10, paddingBottom: 20 }} showsVerticalScrollIndicator={false}>
+                {importItems.map((item, idx) => {
+                  const statusColor = STATUS_COLORS[item.status];
+                  const isDup = item.status === 'duplicate';
+                  return (
+                    <Pressable
+                      key={idx}
+                      onPress={() => !isDup && toggleItem(idx)}
+                      style={[
+                        styles.reviewItem,
+                        {
+                          backgroundColor: colors.card,
+                          borderColor: item.selected ? statusColor + '60' : colors.border,
+                          borderLeftColor: statusColor,
+                          opacity: isDup ? 0.55 : 1,
+                        },
+                      ]}
+                    >
+                      <View style={styles.reviewItemLeft}>
+                        <View style={[styles.reviewStatusBadge, { backgroundColor: statusColor + '22' }]}>
+                          <Text style={[styles.reviewStatusLabel, { color: statusColor }]}>
+                            {STATUS_LABELS[item.status]}
+                          </Text>
+                        </View>
+                        <Text style={[styles.reviewItemDate, { color: colors.mutedForeground }]}>
+                          {formatDateFR(item.isoDate)}
+                        </Text>
+                        <Text style={[styles.reviewItemTitle, { color: colors.foreground }]} numberOfLines={2}>
+                          {item.title}
+                        </Text>
+                        {item.status === 'date_conflict' && item.conflictTitles.length > 0 && (
+                          <Text style={[styles.reviewConflictNote, { color: '#FF9800' }]}>
+                            ⚠ Tu as déjà : {item.conflictTitles.join(', ')}
+                          </Text>
+                        )}
+                        {item.status === 'duplicate' && (
+                          <Text style={[styles.reviewConflictNote, { color: colors.mutedForeground }]}>
+                            Déjà présent dans ton calendrier
+                          </Text>
+                        )}
+                      </View>
+                      {!isDup && (
+                        <MaterialCommunityIcons
+                          name={item.selected ? 'checkbox-marked-circle' : 'checkbox-blank-circle-outline'}
+                          size={24}
+                          color={item.selected ? statusColor : colors.mutedForeground}
+                        />
+                      )}
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+              <Pressable
+                onPress={confirmImport}
+                style={[styles.primaryBtn, { backgroundColor: colors.primary, opacity: selectedCount === 0 ? 0.4 : 1 }]}
+                disabled={selectedCount === 0}
+              >
+                <MaterialCommunityIcons name="calendar-check" size={18} color={colors.primaryForeground} />
+                <Text style={[styles.primaryBtnLabel, { color: colors.primaryForeground }]}>
+                  Importer {selectedCount} RDV{selectedCount > 1 ? '' : ''}
+                </Text>
+              </Pressable>
+            </View>
+          )}
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
@@ -293,6 +561,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+  },
+  titleBtns: {
+    flexDirection: 'row',
+    gap: 8,
   },
   title: {
     fontSize: 28,
@@ -439,5 +711,106 @@ const styles = StyleSheet.create({
   legendLabel: {
     fontSize: 12,
     fontFamily: 'Inter_400Regular',
+  },
+
+  /* ── Import modal ── */
+  modalContainer: {
+    flex: 1,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontFamily: 'Inter_600SemiBold',
+  },
+
+  /* Step 1 - Paste */
+  pasteStep: {
+    flex: 1,
+    padding: 16,
+    gap: 16,
+  },
+  pasteHint: {
+    fontSize: 14,
+    fontFamily: 'Inter_400Regular',
+    lineHeight: 20,
+  },
+  pasteInput: {
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 14,
+    fontSize: 13,
+    fontFamily: 'Inter_400Regular',
+    minHeight: 160,
+    lineHeight: 20,
+  },
+  primaryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 14,
+    borderRadius: 14,
+  },
+  primaryBtnLabel: {
+    fontSize: 15,
+    fontFamily: 'Inter_600SemiBold',
+  },
+
+  /* Step 2 - Review */
+  reviewStep: {
+    flex: 1,
+    padding: 16,
+    gap: 12,
+  },
+  reviewCount: {
+    fontSize: 13,
+    fontFamily: 'Inter_500Medium',
+  },
+  reviewList: {
+    flex: 1,
+  },
+  reviewItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderLeftWidth: 4,
+  },
+  reviewItemLeft: {
+    flex: 1,
+    gap: 3,
+  },
+  reviewStatusBadge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 20,
+    marginBottom: 2,
+  },
+  reviewStatusLabel: {
+    fontSize: 11,
+    fontFamily: 'Inter_600SemiBold',
+  },
+  reviewItemDate: {
+    fontSize: 12,
+    fontFamily: 'Inter_400Regular',
+  },
+  reviewItemTitle: {
+    fontSize: 14,
+    fontFamily: 'Inter_500Medium',
+  },
+  reviewConflictNote: {
+    fontSize: 12,
+    fontFamily: 'Inter_400Regular',
+    marginTop: 2,
   },
 });
