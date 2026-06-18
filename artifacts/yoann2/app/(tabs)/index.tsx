@@ -909,15 +909,6 @@ const styles = StyleSheet.create({
   apptCatBadge: { borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
   apptCatTxt: { fontSize: 10, fontFamily: 'Inter_500Medium' },
 
-  // Health card
-  healthCard:    { marginBottom: 10, borderRadius: 14, borderWidth: 1, overflow: 'hidden', padding: 12 },
-  healthHeader:  { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 },
-  healthTitle:   { fontSize: 11, fontFamily: 'Inter_700Bold', textTransform: 'uppercase', letterSpacing: 0.6 },
-  healthMetrics: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  healthMetric:  { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, borderWidth: 1, minWidth: 120 },
-  healthMetricVal:   { fontSize: 14, fontFamily: 'Inter_700Bold' },
-  healthMetricLabel: { fontSize: 10, fontFamily: 'Inter_400Regular', marginTop: 1 },
-
   // Alert card
   alertsCard:   { marginHorizontal: 16, marginBottom: 10, borderRadius: 14, borderWidth: 1, overflow: 'hidden' },
   alertsHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 10 },
