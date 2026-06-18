@@ -9,8 +9,8 @@ import type { ColorProp, ImageWidgetSource } from 'react-native-android-widget';
 
 import type { WidgetData } from './data';
 
-const CARD: ColorProp    = '#CC2A2A2A';  // 80% opaque dark card
-const NAVBAR: ColorProp  = '#DD0D1B3E';  // 87% opaque navy bar
+const CARD: ColorProp    = '#CC202020';  // 80% opaque anthracite card
+const NAVBAR: ColorProp  = '#DD121212';  // 87% opaque anthracite bar
 const TEXT: ColorProp    = '#FFFFFF';
 const MUTED: ColorProp   = '#9E9E9E';
 const TRANSPARENT: ColorProp = '#00000000';

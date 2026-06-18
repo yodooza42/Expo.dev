@@ -11,8 +11,8 @@ const IMG_HOME  = require('../assets/icons/icon-home.png')  as ImageSourcePropTy
 
 const NAV_ICONS: ImageSourcePropType[] = [IMG_RESET, IMG_TASK, IMG_IDEA, IMG_RDV, IMG_HOME];
 
-const CARD   = 'rgba(42,42,42,0.80)';
-const NAVBAR = 'rgba(13,27,62,0.87)';
+const CARD   = 'rgba(32,32,32,0.80)';
+const NAVBAR = 'rgba(18,18,18,0.87)';
 const WH     = '#FFFFFF';
 const MUTED  = '#9E9E9E';
 
