@@ -200,7 +200,10 @@ export default function WidgetSettingsScreen() {
       >
         {/* ── Aperçu live du widget ── */}
         <Text style={[styles.section, { color: colors.mutedForeground, marginTop: 8 }]}>Aperçu</Text>
-        <WidgetPreview data={widgetData} />
+        {/* Simule un fond d'écran pour rendre la transparence visible */}
+        <View style={styles.wallpaperFrame}>
+          <WidgetPreview data={widgetData} />
+        </View>
 
         <Text style={[styles.section, { color: colors.mutedForeground }]}>Heures de travail</Text>
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border, gap: 6 }]}>
@@ -549,6 +552,12 @@ export default function WidgetSettingsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  wallpaperFrame: {
+    borderRadius: 20,
+    overflow: 'hidden',
+    backgroundColor: '#3D2B5A',
+    padding: 10,
+  },
   headerBar: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -9,11 +9,11 @@ import type { ColorProp, ImageWidgetSource } from 'react-native-android-widget';
 
 import type { WidgetData } from './data';
 
-const CARD: ColorProp    = '#2A2A2A';
-const NAVBAR: ColorProp  = '#0D1B3E';
+const CARD: ColorProp    = '#CC2A2A2A';  // 80% opaque dark card
+const NAVBAR: ColorProp  = '#DD0D1B3E';  // 87% opaque navy bar
 const TEXT: ColorProp    = '#FFFFFF';
 const MUTED: ColorProp   = '#9E9E9E';
-const OVERLAY: ColorProp = '#BB000000';
+const TRANSPARENT: ColorProp = '#00000000';
 const SCHEME = 'yoann2';
 
 const IMG_RESET  = require('../assets/icons/icon-reset.png') as ImageWidgetSource;
@@ -30,9 +30,7 @@ export function TodoWidget({
   spinAngle = 0,
 }: WidgetData & { spinAngle?: number }) {
   const PRIMARY = settings.primaryColor as ColorProp;
-  const BG      = settings.bgColor as ColorProp;
   const bgImage = settings.bgImageUri;
-  const containerBg: ColorProp = bgImage ? OVERLAY : BG;
   const isRepos = todayWork === 'Repos';
 
   function wrapWithBg(content: React.ReactElement): React.ReactElement {
@@ -95,7 +93,7 @@ export function TodoWidget({
       style={{
         height: 'match_parent',
         width: 'match_parent',
-        backgroundColor: containerBg,
+        backgroundColor: TRANSPARENT,
         borderRadius: 16,
         paddingHorizontal: 12,
         paddingTop: 10,

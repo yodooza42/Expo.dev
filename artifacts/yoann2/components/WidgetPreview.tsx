@@ -11,8 +11,8 @@ const IMG_HOME  = require('../assets/icons/icon-home.png')  as ImageSourcePropTy
 
 const NAV_ICONS: ImageSourcePropType[] = [IMG_RESET, IMG_TASK, IMG_IDEA, IMG_RDV, IMG_HOME];
 
-const CARD   = '#2A2A2A';
-const NAVBAR = '#0D1B3E';
+const CARD   = 'rgba(42,42,42,0.80)';
+const NAVBAR = 'rgba(13,27,62,0.87)';
 const WH     = '#FFFFFF';
 const MUTED  = '#9E9E9E';
 
@@ -143,7 +143,7 @@ export function WidgetPreview({ data }: { data: WidgetData }) {
       </View>
     );
   }
-  return <View style={[styles.container, { backgroundColor: BG }]}>{inner}</View>;
+  return <View style={styles.container}>{inner}</View>;
 }
 
 const styles = StyleSheet.create({
