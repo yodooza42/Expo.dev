@@ -95,7 +95,7 @@ export default function DashboardScreen() {
 
   const [showPhotos,   setShowPhotos]   = useState(false);
   const [showAppts,    setShowAppts]    = useState(false);
-  const [showHistory,  setShowHistory]  = useState(false);
+  const [showHistory,  setShowHistory]  = useState(true);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
 
   const stats    = getStats();
@@ -219,7 +219,7 @@ export default function DashboardScreen() {
       .filter(t => {
         if (t.status !== 'done') return false;
         const d = parseFrDate(t.completedAt ?? t.dueDate);
-        return d && startOfDay(d) >= startOfYear && startOfDay(d) < todayStart;
+        return d && startOfDay(d) >= startOfYear && startOfDay(d) <= todayStart;
       })
       .sort((a, b) => {
         const da = parseFrDate(a.completedAt ?? a.dueDate)!.getTime();
