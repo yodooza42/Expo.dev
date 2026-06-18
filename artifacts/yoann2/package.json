@@ -66,6 +66,7 @@
     "react": "19.1.0",
     "react-native": "0.81.5",
     "react-native-android-widget": "^0.20.3",
-    "react-native-maps": "^1.20.1"
+    "react-native-maps": "^1.20.1",
+    "react-native-webview": "^13.16.1"
   }
 }

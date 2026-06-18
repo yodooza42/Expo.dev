@@ -4,7 +4,6 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -12,8 +11,8 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import MapView, { Marker, Polyline, type Region } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import WebView from 'react-native-webview';
 
 import { useColors } from '@/hooks/useColors';
 import { useLocationHistory } from '@/hooks/useLocationHistory';
@@ -32,94 +31,148 @@ const FR_MONTHS: Record<string, number> = {
   septembre: 9, octobre: 10, novembre: 11, décembre: 12, decembre: 12,
 };
 
-/**
- * Parses French search queries:
- * - "14h30" / "14:30" / "14h" → time search on current day
- * - "16 juin" / "lundi 16 juin" / "16/06" → navigate to that date
- * - "lundi 16 juin 14h30" → navigate to date + zoom to time
- */
-function parseSearchQuery(query: string, currentYear: number): {
-  dateKey?: string;
-  time?: string;
-} | null {
-  const q = query.trim().toLowerCase();
-  if (!q) return null;
+function parseSearchQuery(
+  q: string,
+  currentYear: number,
+): { dateKey?: string; time?: string } | null {
+  const norm = q.toLowerCase().trim();
+
+  const timeRe = /(\d{1,2})[h:](\d{2})|(\d{1,2})h$/;
+  const slashRe = /^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?$/;
+  const numMonthRe = /(?:lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)?\s*(\d{1,2})\s+([a-zéûôùèàâî]+)(?:\s+(\d{4}))?/;
+  const timeOnlyRe = /^(\d{1,2})[h:](\d{2})?$|^(\d{1,2})h$/;
+
+  if (timeOnlyRe.test(norm)) {
+    const m = norm.match(timeRe);
+    if (!m) return null;
+    const h = m[1] ?? m[3] ?? '0';
+    const min = m[2] ?? '00';
+    return { time: `${h.padStart(2, '0')}:${min}` };
+  }
 
   let dateKey: string | undefined;
   let time: string | undefined;
 
-  // Extract time part: "14h30" / "14:30" / "14h"
-  const timeRx = /\b(\d{1,2})[h:](\d{2})\b|\b(\d{1,2})h\b/;
-  const timeM = q.match(timeRx);
-  if (timeM) {
-    const h = (timeM[1] ?? timeM[3] ?? '0').padStart(2, '0');
-    const m = (timeM[2] ?? '00').padStart(2, '0');
-    time = `${h}:${m}`;
+  const sm = norm.match(slashRe);
+  if (sm) {
+    const day = parseInt(sm[1]!, 10);
+    const month = parseInt(sm[2]!, 10);
+    const year = sm[3] ? parseInt(sm[3], 10) + (sm[3].length === 2 ? 2000 : 0) : currentYear;
+    dateKey = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
   }
 
-  // Extract date part (remove time token first)
-  const withoutTime = q.replace(timeRx, '').trim();
-
-  // "16/06" or "16/06/2026"
-  const slashM = withoutTime.match(/(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?/);
-  if (slashM) {
-    const day  = parseInt(slashM[1]!, 10);
-    const mon  = parseInt(slashM[2]!, 10);
-    const year = slashM[3] ? parseInt(slashM[3], 10) : currentYear;
-    if (day >= 1 && day <= 31 && mon >= 1 && mon <= 12) {
-      dateKey = `${year}-${String(mon).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-    }
-  }
-
-  // "16 juin" / "lundi 16 juin" / "16 juin 2026"
   if (!dateKey) {
-    const textM = withoutTime.match(/(\d{1,2})\s+([a-zéûôèàâùî]+)(?:\s+(\d{4}))?/);
-    if (textM) {
-      const day = parseInt(textM[1]!, 10);
-      const monName = textM[2]!;
-      const year = textM[3] ? parseInt(textM[3], 10) : currentYear;
-      const mon = FR_MONTHS[monName];
-      if (mon && day >= 1 && day <= 31) {
-        dateKey = `${year}-${String(mon).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    const nm = norm.match(numMonthRe);
+    if (nm) {
+      const day = parseInt(nm[1]!, 10);
+      const monthNum = FR_MONTHS[nm[2]!];
+      if (monthNum) {
+        const year = nm[3] ? parseInt(nm[3], 10) : currentYear;
+        dateKey = `${year}-${String(monthNum).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
       }
     }
+  }
+
+  const tm = norm.match(timeRe);
+  if (tm) {
+    const h = tm[1] ?? tm[3] ?? '0';
+    const min = tm[2] ?? '00';
+    time = `${h.padStart(2, '0')}:${min}`;
   }
 
   if (!dateKey && !time) return null;
   return { dateKey, time };
 }
 
-function regionFromPoints(points: LocationPoint[]): Region | null {
-  if (points.length === 0) return null;
-  const lats = points.map(p => p.lat);
-  const lngs = points.map(p => p.lng);
-  const minLat = Math.min(...lats);
-  const maxLat = Math.max(...lats);
-  const minLng = Math.min(...lngs);
-  const maxLng = Math.max(...lngs);
-  const latDelta = Math.max((maxLat - minLat) * 1.4, 0.01);
-  const lngDelta = Math.max((maxLng - minLng) * 1.4, 0.01);
-  return {
-    latitude: (minLat + maxLat) / 2,
-    longitude: (minLng + maxLng) / 2,
-    latitudeDelta: latDelta,
-    longitudeDelta: lngDelta,
-  };
+// ── Leaflet HTML builder ──────────────────────────────────────────────────────
+
+function buildMapHtml(
+  points: LocationPoint[],
+  primaryColor: string,
+  highlightPt: LocationPoint | null,
+): string {
+  const latlngs = JSON.stringify(points.map(p => [p.lat, p.lng]));
+  const highlight = highlightPt
+    ? JSON.stringify([highlightPt.lat, highlightPt.lng])
+    : 'null';
+
+  return `<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#121212}
+  #map{width:100vw;height:100vh}
+  .leaflet-control-zoom{margin:12px!important}
+  .leaflet-control-zoom a{background:#1E1E1E!important;color:#FFF!important;border-color:#333!important}
+</style>
+</head>
+<body>
+<div id="map"></div>
+<script>
+var map=L.map('map',{zoomControl:true,attributionControl:false});
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{maxZoom:19}).addTo(map);
+
+var pts=${latlngs};
+var hl=${highlight};
+var pri='${primaryColor}';
+
+if(pts.length>0){
+  L.polyline(pts,{color:pri,weight:4,opacity:0.9}).addTo(map);
+  L.circleMarker(pts[0],{radius:8,color:'#4CAF50',fillColor:'#4CAF50',fillOpacity:1,weight:2}).addTo(map);
+  if(pts.length>1){
+    L.circleMarker(pts[pts.length-1],{radius:8,color:'#F44336',fillColor:'#F44336',fillOpacity:1,weight:2}).addTo(map);
+    for(var i=1;i<pts.length-1;i++){
+      L.circleMarker(pts[i],{radius:3,color:'#2196F3',fillColor:'#2196F3',fillOpacity:0.7,weight:1}).addTo(map);
+    }
+  }
+  if(hl){
+    L.circleMarker(hl,{radius:11,color:pri,fillColor:pri,fillOpacity:0.85,weight:3}).addTo(map);
+    map.setView(hl,16);
+  } else {
+    map.fitBounds(L.polyline(pts).getBounds().pad(0.15));
+  }
+} else {
+  map.setView([46.2276,2.2137],6);
 }
 
-const DEFAULT_REGION: Region = {
-  latitude: 48.8566,
-  longitude: 2.3522,
-  latitudeDelta: 0.05,
-  longitudeDelta: 0.05,
+window.recenter=function(){
+  if(pts.length>0) map.fitBounds(L.polyline(pts).getBounds().pad(0.15));
+  else map.setView([46.2276,2.2137],6);
 };
+</script>
+</body>
+</html>`;
+}
+
+// ── Sub-components ────────────────────────────────────────────────────────────
+
+function StatChip({
+  icon, color, label, value, colors,
+}: {
+  icon: string; color: string; label: string; value: string;
+  colors: ReturnType<typeof useColors>;
+}) {
+  return (
+    <View style={[styles.statChip, { backgroundColor: color + '18', borderColor: color + '44' }]}>
+      <MaterialCommunityIcons name={icon as any} size={18} color={color} />
+      <View>
+        <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>{label}</Text>
+        <Text style={[styles.statValue, { color: colors.foreground }]}>{value}</Text>
+      </View>
+    </View>
+  );
+}
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function MapScreen() {
   const colors  = useColors();
   const insets  = useSafeAreaInsets();
-  const mapRef  = useRef<MapView>(null);
+  const webRef  = useRef<WebView>(null);
 
   const {
     selectedDay,
@@ -140,33 +193,18 @@ export default function MapScreen() {
 
   const [search, setSearch]           = useState('');
   const [highlightPt, setHighlightPt] = useState<LocationPoint | null>(null);
-  const pendingTimeRef = useRef<string | null>(null);
+  const pendingTimeRef                = useRef<string | null>(null);
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today   = new Date().toISOString().slice(0, 10);
   const isToday = selectedDay === today;
 
-  // Fit map to points when data loads; also run any pending time search
   useEffect(() => {
-    const region = regionFromPoints(dayStats.points);
-    if (region && mapRef.current) {
-      mapRef.current.animateToRegion(region, 600);
-    }
     setHighlightPt(null);
-
-    // If a time search was deferred waiting for this day's data, run it now
     const pendingTime = pendingTimeRef.current;
     if (pendingTime && dayStats.points.length > 0) {
       pendingTimeRef.current = null;
       const pt = findPointByTime(pendingTime);
-      if (pt) {
-        setHighlightPt(pt);
-        mapRef.current?.animateToRegion({
-          latitude: pt.lat,
-          longitude: pt.lng,
-          latitudeDelta: 0.005,
-          longitudeDelta: 0.005,
-        }, 800);
-      }
+      if (pt) setHighlightPt(pt);
     }
   }, [dayStats.points, findPointByTime]);
 
@@ -176,26 +214,16 @@ export default function MapScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const parsed = parseSearchQuery(q, new Date().getFullYear());
     if (!parsed) {
-      Alert.alert('Format non reconnu', 'Exemples : "16 juin", "lundi 16 juin", "14h30", "16/06"');
+      Alert.alert('Format non reconnu', 'Exemples : "16 juin", "14h30", "16/06"');
       return;
     }
     if (parsed.dateKey) {
-      // Navigate to another day; defer time lookup until new day's points load
-      if (parsed.time) {
-        pendingTimeRef.current = parsed.time;
-      }
+      if (parsed.time) pendingTimeRef.current = parsed.time;
       setSelectedDay(parsed.dateKey);
     } else if (parsed.time) {
-      // Same day — resolve immediately with current data
       const pt = findPointByTime(parsed.time);
       if (pt) {
         setHighlightPt(pt);
-        mapRef.current?.animateToRegion({
-          latitude: pt.lat,
-          longitude: pt.lng,
-          latitudeDelta: 0.005,
-          longitudeDelta: 0.005,
-        }, 600);
       } else {
         Alert.alert('Aucun point trouvé', 'Aucun point GPS enregistré à cet horaire.');
       }
@@ -219,72 +247,26 @@ export default function MapScreen() {
     await togglePause();
   }, [togglePause]);
 
-  const coordinates = dayStats.points.map(p => ({ latitude: p.lat, longitude: p.lng }));
+  const mapHtml    = buildMapHtml(dayStats.points, colors.primary, highlightPt);
+  const mapKey     = `${selectedDay}-${highlightPt?.timestamp ?? 'none'}`;
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
 
-      {/* ── Map ── */}
-      <MapView
-        ref={mapRef}
+      {/* ── Map (WebView + Leaflet) ── */}
+      <WebView
+        key={mapKey}
+        ref={webRef}
+        source={{ html: mapHtml }}
         style={styles.map}
-        initialRegion={DEFAULT_REGION}
-        userInterfaceStyle="dark"
-        showsUserLocation
-        showsMyLocationButton={false}
-      >
-        {coordinates.length > 1 && (
-          <Polyline
-            coordinates={coordinates}
-            strokeColor={colors.primary}
-            strokeWidth={3}
-          />
-        )}
-        {/* Intermediate point markers (all points except first/last) */}
-        {dayStats.points.slice(1, -1).map((pt, idx) => (
-          <Marker
-            key={`pt-${idx}`}
-            coordinate={{ latitude: pt.lat, longitude: pt.lng }}
-            anchor={{ x: 0.5, y: 0.5 }}
-            tracksViewChanges={false}
-          >
-            <View style={[styles.markerDot, styles.markerMid]} />
-          </Marker>
-        ))}
-        {/* Start marker */}
-        {dayStats.points.length > 0 && (
-          <Marker
-            coordinate={{ latitude: dayStats.points[0]!.lat, longitude: dayStats.points[0]!.lng }}
-            anchor={{ x: 0.5, y: 0.5 }}
-            tracksViewChanges={false}
-          >
-            <View style={[styles.markerDot, { backgroundColor: '#4CAF50' }]} />
-          </Marker>
-        )}
-        {/* End marker */}
-        {dayStats.points.length > 1 && (
-          <Marker
-            coordinate={{
-              latitude: dayStats.points[dayStats.points.length - 1]!.lat,
-              longitude: dayStats.points[dayStats.points.length - 1]!.lng,
-            }}
-            anchor={{ x: 0.5, y: 0.5 }}
-            tracksViewChanges={false}
-          >
-            <View style={[styles.markerDot, { backgroundColor: '#F44336' }]} />
-          </Marker>
-        )}
-        {/* Highlight marker (search result) */}
-        {highlightPt && (
-          <Marker
-            coordinate={{ latitude: highlightPt.lat, longitude: highlightPt.lng }}
-            anchor={{ x: 0.5, y: 0.5 }}
-            tracksViewChanges={false}
-          >
-            <View style={[styles.markerDot, styles.markerHighlight, { borderColor: colors.primary }]} />
-          </Marker>
-        )}
-      </MapView>
+        originWhitelist={['*']}
+        javaScriptEnabled
+        domStorageEnabled
+        scalesPageToFit={false}
+        scrollEnabled={false}
+        showsVerticalScrollIndicator={false}
+        showsHorizontalScrollIndicator={false}
+      />
 
       {/* ── Top overlay: day navigator + search ── */}
       <View
@@ -293,7 +275,6 @@ export default function MapScreen() {
           { top: insets.top + 8, backgroundColor: colors.card + 'F0', borderColor: colors.border },
         ]}
       >
-        {/* Day navigator */}
         <View style={styles.dayNav}>
           <Pressable onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); goToPrevDay(); }} hitSlop={12}>
             <MaterialCommunityIcons name="chevron-left" size={24} color={colors.foreground} />
@@ -310,7 +291,6 @@ export default function MapScreen() {
           </Pressable>
         </View>
 
-        {/* Search bar */}
         <View style={[styles.searchRow, { borderColor: colors.border, backgroundColor: colors.background + 'CC' }]}>
           <MaterialCommunityIcons name="magnify" size={16} color={colors.mutedForeground} />
           <TextInput
@@ -339,11 +319,10 @@ export default function MapScreen() {
 
       {/* ── Recenter button ── */}
       <Pressable
-        style={[styles.recenterBtn, { bottom: 260, right: 16, backgroundColor: colors.card + 'F0', borderColor: colors.border }]}
+        style={[styles.recenterBtn, { backgroundColor: colors.card + 'F0', borderColor: colors.border }]}
         onPress={() => {
-          const region = regionFromPoints(dayStats.points);
-          if (region) mapRef.current?.animateToRegion(region, 400);
-          else mapRef.current?.animateToRegion(DEFAULT_REGION, 400);
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          webRef.current?.injectJavaScript('window.recenter && window.recenter(); true;');
         }}
         hitSlop={8}
       >
@@ -361,7 +340,6 @@ export default function MapScreen() {
           <ActivityIndicator color={colors.primary} style={{ marginVertical: 12 }} />
         ) : (
           <>
-            {/* Permission prompt */}
             {hasPermission === false && (
               <Pressable
                 style={[styles.permBanner, { backgroundColor: '#FFC10722', borderColor: '#FFC107' }]}
@@ -374,41 +352,15 @@ export default function MapScreen() {
               </Pressable>
             )}
 
-            {/* Day stats */}
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.statsScroll}>
               <View style={styles.statsRow}>
-                <StatChip
-                  icon="map-marker-distance"
-                  color="#2196F3"
-                  label="Distance"
-                  value={`${dayStats.distanceKm} km`}
-                  colors={colors}
-                />
-                <StatChip
-                  icon="map-marker-multiple-outline"
-                  color="#9C27B0"
-                  label="Points"
-                  value={String(dayStats.points.length)}
-                  colors={colors}
-                />
-                <StatChip
-                  icon="clock-start"
-                  color="#4CAF50"
-                  label="Premier"
-                  value={dayStats.firstTime ?? '—'}
-                  colors={colors}
-                />
-                <StatChip
-                  icon="clock-end"
-                  color="#F44336"
-                  label="Dernier"
-                  value={dayStats.lastTime ?? '—'}
-                  colors={colors}
-                />
+                <StatChip icon="map-marker-distance" color="#2196F3" label="Distance" value={`${dayStats.distanceKm} km`} colors={colors} />
+                <StatChip icon="map-marker-multiple-outline" color="#9C27B0" label="Points" value={String(dayStats.points.length)} colors={colors} />
+                <StatChip icon="clock-start" color="#4CAF50" label="Premier" value={dayStats.firstTime ?? '—'} colors={colors} />
+                <StatChip icon="clock-end" color="#F44336" label="Dernier" value={dayStats.lastTime ?? '—'} colors={colors} />
               </View>
             </ScrollView>
 
-            {/* Period averages */}
             <View style={[styles.avgRow, { borderTopColor: colors.border }]}>
               <View style={styles.avgItem}>
                 <Text style={[styles.avgPeriod, { color: colors.mutedForeground }]}>Moy. 7 jours</Text>
@@ -420,7 +372,6 @@ export default function MapScreen() {
                 <Text style={[styles.avgVal, { color: colors.foreground }]}>{periodAvg30.avgKmPerDay} km/j</Text>
               </View>
               <View style={[styles.avgDivider, { backgroundColor: colors.border }]} />
-              {/* Pause/resume button */}
               <Pressable
                 style={[
                   styles.pauseBtn,
@@ -445,37 +396,12 @@ export default function MapScreen() {
   );
 }
 
-// ── Sub-component ─────────────────────────────────────────────────────────────
-
-function StatChip({
-  icon, color, label, value, colors,
-}: {
-  icon: string;
-  color: string;
-  label: string;
-  value: string;
-  colors: ReturnType<typeof useColors>;
-}) {
-  return (
-    <View style={[styles.statChip, { backgroundColor: color + '18', borderColor: color + '40' }]}>
-      <MaterialCommunityIcons name={icon as any} size={16} color={color} />
-      <View>
-        <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>{label}</Text>
-        <Text style={[styles.statValue, { color: colors.foreground }]}>{value}</Text>
-      </View>
-    </View>
-  );
-}
-
 // ── Styles ────────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  map: {
-    flex: 1,
-  },
+  container: { flex: 1 },
+  map: { flex: 1 },
+
   topOverlay: {
     position: 'absolute',
     left: 12,
@@ -483,13 +409,9 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     borderWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: 12,
-    paddingTop: 10,
-    paddingBottom: 10,
+    paddingVertical: 8,
     gap: 8,
-    ...Platform.select({
-      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 6 },
-      android: { elevation: 4 },
-    }),
+    elevation: 4,
   },
   dayNav: {
     flexDirection: 'row',
@@ -497,78 +419,69 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   dayLabel: {
+    flex: 1,
+    textAlign: 'center',
     fontSize: 14,
     fontFamily: 'Inter_600SemiBold',
-    textAlign: 'center',
-    flex: 1,
-    textTransform: 'capitalize',
+    paddingHorizontal: 8,
   },
   searchRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    borderRadius: 10,
     borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    gap: 6,
   },
   searchInput: {
     flex: 1,
     fontSize: 13,
     fontFamily: 'Inter_400Regular',
-    paddingVertical: 0,
+    paddingVertical: 2,
   },
   searchBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
     borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
   },
   searchBtnTxt: {
-    color: '#fff',
+    color: '#121212',
     fontSize: 12,
     fontFamily: 'Inter_600SemiBold',
   },
+
   recenterBtn: {
     position: 'absolute',
-    width: 42,
-    height: 42,
-    borderRadius: 12,
+    right: 16,
+    bottom: 260,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
     justifyContent: 'center',
-    ...Platform.select({
-      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4 },
-      android: { elevation: 3 },
-    }),
+    elevation: 4,
   },
+
   bottomPanel: {
     borderTopWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 16,
     paddingTop: 12,
-    paddingHorizontal: 12,
     gap: 10,
   },
   permBanner: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    padding: 10,
     borderRadius: 10,
     borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
   },
-  permTxt: {
-    fontSize: 13,
-    fontFamily: 'Inter_500Medium',
-    flex: 1,
-  },
-  statsScroll: {
-    flexGrow: 0,
-  },
-  statsRow: {
-    flexDirection: 'row',
-    gap: 8,
-    paddingRight: 4,
-  },
+  permTxt: { flex: 1, fontSize: 13, fontFamily: 'Inter_500Medium' },
+
+  statsScroll: { flexGrow: 0 },
+  statsRow: { flexDirection: 'row', gap: 8, paddingRight: 4 },
   statChip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -578,73 +491,28 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 7,
   },
-  statLabel: {
-    fontSize: 9,
-    fontFamily: 'Inter_400Regular',
-  },
-  statValue: {
-    fontSize: 14,
-    fontFamily: 'Inter_700Bold',
-  },
+  statLabel: { fontSize: 9, fontFamily: 'Inter_400Regular' },
+  statValue: { fontSize: 14, fontFamily: 'Inter_700Bold' },
+
   avgRow: {
     flexDirection: 'row',
     alignItems: 'center',
     borderTopWidth: StyleSheet.hairlineWidth,
     paddingTop: 10,
-    gap: 0,
   },
-  avgItem: {
-    flex: 1,
-    alignItems: 'center',
-    gap: 2,
-  },
-  avgPeriod: {
-    fontSize: 10,
-    fontFamily: 'Inter_400Regular',
-  },
-  avgVal: {
-    fontSize: 15,
-    fontFamily: 'Inter_700Bold',
-  },
-  avgDivider: {
-    width: StyleSheet.hairlineWidth,
-    height: 30,
-    marginHorizontal: 4,
-  },
+  avgItem: { flex: 1, alignItems: 'center', gap: 2 },
+  avgPeriod: { fontSize: 10, fontFamily: 'Inter_400Regular' },
+  avgVal: { fontSize: 15, fontFamily: 'Inter_700Bold' },
+  avgDivider: { width: 1, height: 30, marginHorizontal: 4 },
+
   pauseBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
     borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    marginLeft: 4,
   },
-  pauseTxt: {
-    fontSize: 12,
-    fontFamily: 'Inter_600SemiBold',
-  },
-  markerDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    borderWidth: 2,
-    borderColor: '#fff',
-  },
-  markerMid: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#2196F3',
-    borderWidth: 1.5,
-    borderColor: '#fff',
-  },
-  markerHighlight: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: '#FFC107',
-    borderWidth: 2,
-  },
+  pauseTxt: { fontSize: 12, fontFamily: 'Inter_500Medium' },
 });
