@@ -28,21 +28,12 @@ export function TodoWidget({
   pauseActive, pauseElapsedLabel,
   todayDayNum, marieCircleColor,
   nounouName, nounouColor, nounouPeriod, nounouDuration,
-  healthSteps, healthSleepMin,
 }: WidgetData) {
   const PRIMARY = settings.primaryColor as ColorProp;
   const BG      = settings.bgColor as ColorProp;
   const bgImage = settings.bgImageUri;
   const containerBg: ColorProp = bgImage ? OVERLAY : BG;
   const isRepos = todayWork === 'Repos';
-
-  const hasHealth = healthSteps != null || healthSleepMin != null;
-
-  function formatSleep(minutes: number): string {
-    const h = Math.floor(minutes / 60);
-    const m = minutes % 60;
-    return m > 0 ? `${h}h${String(m).padStart(2, '0')}` : `${h}h`;
-  }
 
   function wrapWithBg(content: React.ReactElement): React.ReactElement {
     if (!bgImage) return content;
@@ -187,28 +178,6 @@ export function TodoWidget({
               justifyContent: 'center',
             }}
           >
-            {hasHealth && (
-              <>
-                {healthSteps != null && (
-                  <FlexWidget style={{ flexDirection: 'row', alignItems: 'center', marginBottom: healthSleepMin != null ? 4 : 0 }}>
-                    <TextWidget text="👟" style={{ fontSize: 11 }} />
-                    <TextWidget
-                      text={healthSteps.toLocaleString('fr-FR')}
-                      style={{ fontSize: 13, color: '#FF9800', fontWeight: 'bold', marginLeft: 4 }}
-                    />
-                  </FlexWidget>
-                )}
-                {healthSleepMin != null && (
-                  <FlexWidget style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <TextWidget text="😴" style={{ fontSize: 11 }} />
-                    <TextWidget
-                      text={formatSleep(healthSleepMin)}
-                      style={{ fontSize: 13, color: TEXT, fontWeight: 'bold', marginLeft: 4 }}
-                    />
-                  </FlexWidget>
-                )}
-              </>
-            )}
           </FlexWidget>
 
           {/* ③ Droite : travail + bouton pause */}

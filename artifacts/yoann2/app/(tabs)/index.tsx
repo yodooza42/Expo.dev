@@ -5,7 +5,6 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import React, { useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
   Modal,
   Platform,
   Pressable,
@@ -18,7 +17,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useApp } from '@/contexts/AppContext';
 import { useColors } from '@/hooks/useColors';
-import { useHealthConnect, bodyBatteryColor, stressColor, formatSleepDuration } from '@/hooks/useHealthConnect';
 import type { Appointment, Task } from '@/types';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -99,8 +97,6 @@ export default function DashboardScreen() {
   const [showAppts,    setShowAppts]    = useState(false);
   const [showHistory,  setShowHistory]  = useState(false);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
-
-  const { data: healthData, isLoading: healthLoading, refetch: refetchHealth } = useHealthConnect();
 
   const stats    = getStats();
   const now      = new Date();
@@ -489,108 +485,6 @@ export default function DashboardScreen() {
             <MaterialCommunityIcons name="chevron-right" size={14} color={colors.primary} />
           </Pressable>
         )}
-
-        {/* ── SANTÉ (Health Connect) ── */}
-        {healthData && (healthData.today || healthData.yesterday) && (() => {
-          const today     = healthData.today;
-          const yesterday = healthData.yesterday;
-          const sleep     = yesterday?.sleepScore ?? today?.sleepScore ?? null;
-          const hrv       = today?.hrvStatus ?? yesterday?.hrvStatus ?? null;
-          const steps     = today?.steps ?? null;
-          const heartRate = today?.heartRateAvg ?? null;
-          const sleepDur  = yesterday?.sleepDurationMin ?? today?.sleepDurationMin ?? null;
-          const sleepDeep = yesterday?.sleepDeepMin ?? null;
-          const sleepLight = yesterday?.sleepLightMin ?? null;
-          const sleepRem  = yesterday?.sleepRemMin ?? null;
-          const hasPhases = sleepDeep != null || sleepLight != null || sleepRem != null;
-          return (
-            <View style={[styles.healthCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <View style={styles.healthHeader}>
-                <MaterialCommunityIcons name="heart-pulse" size={13} color="#E91E63" />
-                <Text style={[styles.healthTitle, { color: colors.mutedForeground }]}>Santé</Text>
-                <Pressable
-                  onPress={() => void refetchHealth()}
-                  disabled={healthLoading}
-                  style={{ marginLeft: 'auto', padding: 4 }}
-                  hitSlop={8}
-                >
-                  {healthLoading
-                    ? <ActivityIndicator size={13} color={colors.mutedForeground} />
-                    : <MaterialCommunityIcons name="refresh" size={15} color={colors.mutedForeground} />
-                  }
-                </Pressable>
-              </View>
-              <View style={styles.healthMetrics}>
-                {sleep != null && (
-                  <View style={[styles.healthMetric, { backgroundColor: '#7C4DFF18', borderColor: '#7C4DFF40' }]}>
-                    <MaterialCommunityIcons name="sleep" size={16} color="#7C4DFF" />
-                    <View>
-                      <Text style={[styles.healthMetricVal, { color: '#7C4DFF' }]}>
-                        {sleepDur != null ? formatSleepDuration(sleepDur) : `${sleep}/100`}
-                      </Text>
-                      <Text style={[styles.healthMetricLabel, { color: colors.mutedForeground }]}>Sommeil</Text>
-                    </View>
-                  </View>
-                )}
-                {heartRate != null && (
-                  <View style={[styles.healthMetric, { backgroundColor: '#E91E6318', borderColor: '#E91E6340' }]}>
-                    <MaterialCommunityIcons name="heart-pulse" size={16} color="#E91E63" />
-                    <View>
-                      <Text style={[styles.healthMetricVal, { color: '#E91E63' }]}>{heartRate} bpm</Text>
-                      <Text style={[styles.healthMetricLabel, { color: colors.mutedForeground }]}>FC moy.</Text>
-                    </View>
-                  </View>
-                )}
-                {hrv && (
-                  <View style={[styles.healthMetric, { backgroundColor: '#00BCD418', borderColor: '#00BCD440' }]}>
-                    <MaterialCommunityIcons name="wave" size={16} color="#00BCD4" />
-                    <View>
-                      <Text style={[styles.healthMetricVal, { color: '#00BCD4' }]}>{hrv}</Text>
-                      <Text style={[styles.healthMetricLabel, { color: colors.mutedForeground }]}>HRV</Text>
-                    </View>
-                  </View>
-                )}
-                {steps != null && (
-                  <View style={[styles.healthMetric, { backgroundColor: '#FF980018', borderColor: '#FF980040' }]}>
-                    <MaterialCommunityIcons name="shoe-print" size={16} color="#FF9800" />
-                    <View>
-                      <Text style={[styles.healthMetricVal, { color: '#FF9800' }]}>{steps.toLocaleString('fr-FR')}</Text>
-                      <Text style={[styles.healthMetricLabel, { color: colors.mutedForeground }]}>Pas</Text>
-                    </View>
-                  </View>
-                )}
-              </View>
-              {hasPhases && (
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
-                  {sleepDeep != null && (
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#1A237E22', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4 }}>
-                      <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#3F51B5' }} />
-                      <Text style={{ fontSize: 10, color: colors.mutedForeground }}>
-                        Profond · {formatSleepDuration(sleepDeep)}
-                      </Text>
-                    </View>
-                  )}
-                  {sleepRem != null && (
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#4A148C22', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4 }}>
-                      <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#9C27B0' }} />
-                      <Text style={{ fontSize: 10, color: colors.mutedForeground }}>
-                        REM · {formatSleepDuration(sleepRem)}
-                      </Text>
-                    </View>
-                  )}
-                  {sleepLight != null && (
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#1B5E2022', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4 }}>
-                      <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#4CAF50' }} />
-                      <Text style={{ fontSize: 10, color: colors.mutedForeground }}>
-                        Léger · {formatSleepDuration(sleepLight)}
-                      </Text>
-                    </View>
-                  )}
-                </View>
-              )}
-            </View>
-          );
-        })()}
 
         {/* ── ALERTES ── */}
         {(projectAlerts.length > 0 || criticalTasks.length > 0) && (
