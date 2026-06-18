@@ -30,6 +30,18 @@ top-level `SplashScreen.preventAutoHideAsync()` non-throwing with `.catch()`.
 
 **When you cannot fix it from symptom alone:** the only ground truth for a native
 crash is `adb logcat` from the device. Exhaust the symptom-based narrowing first.
+A useful intermediate step before logcat: inject a global `ErrorUtils.setGlobalHandler`
++ `try/catch` around `require('expo-router/entry')` in `index.js` to show an on-screen
+Alert for any JS crash. If no alert appears despite the guard, the crash is definitely
+native (ruled out JS entirely without needing the user to install adb tools).
+
+**Confirmed native crash case — react-native-health-connect:** In Expo SDK 54 /
+RN 0.81.5 + New Architecture, `react-native-health-connect@3.5.3` caused a silent
+native startup crash ("splash then close", zero JS alert) on Android. Fix: remove
+the library + its plugin block from `app.json` + its entry from `package.json`.
+Likely cause: native module init fails on devices where Health Connect is absent or
+unsupported (requires Android 14 / Health Connect app). This pattern applies to any
+health/sensor native module with hard device requirements.
 
 # Reanimated 4 ⇒ New Architecture is mandatory
 
