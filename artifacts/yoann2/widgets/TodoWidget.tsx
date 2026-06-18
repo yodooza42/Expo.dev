@@ -27,7 +27,8 @@ export function TodoWidget({
   tasks, widgetAppts, todayWork, settings, todayLabel,
   todayDayNum, marieCircleColor,
   nounouName, nounouColor, nounouPeriod, nounouDuration,
-}: WidgetData) {
+  spinAngle = 0,
+}: WidgetData & { spinAngle?: number }) {
   const PRIMARY = settings.primaryColor as ColorProp;
   const BG      = settings.bgColor as ColorProp;
   const bgImage = settings.bgImageUri;
@@ -54,11 +55,13 @@ export function TodoWidget({
     label,
     clickAction,
     uri,
+    rotation,
   }: {
     image: ImageWidgetSource;
     label: string;
     clickAction: string;
     uri?: string;
+    rotation?: number;
   }) {
     return (
       <FlexWidget
@@ -72,7 +75,7 @@ export function TodoWidget({
           alignItems: 'center',
         }}
       >
-        <ImageWidget image={image} style={{ width: 26, height: 26 }} />
+        <ImageWidget image={image} style={{ width: 26, height: 26, rotation: rotation ?? 0 }} />
       </FlexWidget>
     );
   }
@@ -351,7 +354,7 @@ export function TodoWidget({
           paddingVertical: 2,
         }}
       >
-        <NavItem image={IMG_RESET} label="Reset"   clickAction="REFRESH" />
+        <NavItem image={IMG_RESET} label="Reset"   clickAction="REFRESH" rotation={spinAngle} />
         <Divider />
         <NavItem image={IMG_TASK}  label="Tâche"   clickAction="OPEN_URI" uri={`${SCHEME}:///task/new`} />
         <Divider />
