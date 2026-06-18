@@ -50,7 +50,7 @@ const QUICK_SHORTCUTS = [
   { key: 'settings', icon: 'cog-outline',           label: 'Paramètres', route: '/(tabs)/settings', color: '#9E9E9E' },
 ] as const;
 
-const HIDDEN_TABS = ['settings'];
+const HIDDEN_TABS = ['settings', 'map'];
 
 export function CustomTabBar({ state, navigation }: TabBarProps) {
   const colors    = useColors();
