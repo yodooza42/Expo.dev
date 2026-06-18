@@ -3,7 +3,7 @@ import * as Haptics from 'expo-haptics';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Image,
@@ -18,6 +18,9 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+import { WidgetPreview } from '@/components/WidgetPreview';
 import { useApp } from '@/contexts/AppContext';
 import { usePause } from '@/contexts/PauseContext';
 import { useColors } from '@/hooks/useColors';
@@ -32,6 +35,7 @@ import {
 } from '@/utils/pauseStorage';
 import { cancelShiftNotifications, scheduleShiftNotifications } from '@/utils/notificationScheduler';
 import { updateTodoWidget } from '@/widgets/updateWidget';
+import { buildWidgetData, type WidgetData } from '@/widgets/data';
 import {
   DEFAULT_WIDGET_SETTINGS,
   getWidgetSettings,
@@ -95,6 +99,37 @@ export default function WidgetSettingsScreen() {
   useEffect(() => {
     setExpandedShifts(s => new Set([...s, todayShiftDate]));
   }, [todayShiftDate]);
+
+  const [mariePlanning, setMariePlanning] = useState<Record<string, 'PB' | 'PD'>>({});
+  const [annaBadges,    setAnnaBadges]    = useState<Record<string, 'Isabelle' | 'Evelyne'>>({});
+
+  useEffect(() => {
+    Promise.all([
+      AsyncStorage.getItem('@marie_planning_v1'),
+      AsyncStorage.getItem('@anna_badges_v1'),
+    ]).then(([mr, ab]) => {
+      if (mr) setMariePlanning(JSON.parse(mr) as Record<string, 'PB' | 'PD'>);
+      if (ab) setAnnaBadges(JSON.parse(ab)    as Record<string, 'Isabelle' | 'Evelyne'>);
+    }).catch(() => {});
+  }, []);
+
+  const widgetData = useMemo<WidgetData>(() => {
+    const base = buildWidgetData(
+      tasks        as Parameters<typeof buildWidgetData>[0],
+      appointments as Parameters<typeof buildWidgetData>[1],
+      settings,
+      null,
+      mariePlanning,
+      annaBadges,
+    );
+    return {
+      ...base,
+      pauseActive:       !!activePause,
+      pauseElapsedLabel: activePause
+        ? formatDuration(Math.floor((Date.now() - activePause.startTs) / 1000))
+        : '',
+    };
+  }, [tasks, appointments, settings, mariePlanning, annaBadges, activePause]);
 
   async function handleSave() {
     setSaving(true);
@@ -274,39 +309,9 @@ export default function WidgetSettingsScreen() {
         contentContainerStyle={[styles.content, { paddingBottom: 120 }]}
         showsVerticalScrollIndicator={false}
       >
-        {/* Preview */}
-        <View style={[
-          styles.previewBox,
-          { borderColor: colors.border, overflow: 'hidden' },
-          settings.bgImageUri
-            ? {}
-            : { backgroundColor: settings.bgColor },
-        ]}>
-          {settings.bgImageUri ? (
-            <Image
-              source={{ uri: settings.bgImageUri }}
-              style={StyleSheet.absoluteFillObject}
-              resizeMode="cover"
-            />
-          ) : null}
-          <View style={[
-            styles.previewInner,
-            settings.bgImageUri ? { backgroundColor: 'rgba(0,0,0,0.55)' } : {},
-          ]}>
-            <Text style={[styles.previewSub, { color: '#9E9E9E' }]}>💼 Travail aujourd'hui</Text>
-            <Text style={[styles.previewTitle, { color: settings.primaryColor, fontSize: settings.taskFontSize }]}>
-              15h00 - 01h00
-            </Text>
-            <Text style={[styles.previewSub, { color: settings.primaryColor }]}>
-              📌 Prochain : Médecin · 10h
-            </Text>
-            <View style={styles.previewBar}>
-              {['↺', '📝', '💡', '📅', '🏠'].map((l, i) => (
-                <Text key={i} style={[styles.previewBarItem, { color: '#9E9E9E', fontSize: 14 }]}>{l}</Text>
-              ))}
-            </View>
-          </View>
-        </View>
+        {/* ── Aperçu live du widget ── */}
+        <Text style={[styles.section, { color: colors.mutedForeground, marginTop: 8 }]}>Aperçu</Text>
+        <WidgetPreview data={widgetData} />
 
         <Text style={[styles.section, { color: colors.mutedForeground }]}>Heures de travail</Text>
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border, gap: 6 }]}>
@@ -733,23 +738,6 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   card: { borderRadius: 14, borderWidth: 1, padding: 14 },
-  previewBox: {
-    borderRadius: 16,
-    borderWidth: 1,
-    marginTop: 16,
-    height: 120,
-  },
-  previewInner: {
-    flex: 1,
-    padding: 14,
-    gap: 8,
-    borderRadius: 16,
-    justifyContent: 'space-between',
-  },
-  previewTitle: { fontFamily: 'Inter_500Medium', color: '#FFFFFF' },
-  previewSub: { fontSize: 11, fontFamily: 'Inter_400Regular' },
-  previewBar: { flexDirection: 'row', gap: 12 },
-  previewBarItem: { fontFamily: 'Inter_500Medium' },
   chipRow: { flexDirection: 'row', gap: 8 },
   chip: { flex: 1, paddingVertical: 10, borderRadius: 12, alignItems: 'center' },
   chipTxt: { fontSize: 13, fontFamily: 'Inter_500Medium' },

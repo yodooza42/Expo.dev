@@ -159,7 +159,16 @@ export default function KanbanScreen() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { paddingTop: topPad + 12 }]}>
-        <Text style={[styles.title, { color: colors.foreground }]}>Kanban</Text>
+        <View style={styles.titleRow}>
+          <Text style={[styles.title, { color: colors.foreground }]}>Kanban</Text>
+          <Pressable
+            onPress={() => router.push('/widget-settings')}
+            hitSlop={8}
+            style={[styles.widgetBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+          >
+            <MaterialCommunityIcons name="widgets-outline" size={18} color={colors.primary} />
+          </Pressable>
+        </View>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.projectFilter} contentContainerStyle={{ gap: 6 }}>
           {[{ id: 'all', name: 'Tous' }, ...projects].map(p => (
             <Pressable
@@ -286,6 +295,19 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 28,
     fontFamily: 'Inter_700Bold',
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  widgetBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   hint: {
     fontSize: 11,
