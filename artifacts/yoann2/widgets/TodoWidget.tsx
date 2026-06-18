@@ -356,11 +356,11 @@ export function TodoWidget({
         <Divider />
         <NavItem image={IMG_TASK}  label="Tâche"   clickAction="OPEN_URI" uri={`${SCHEME}:///task/new`} />
         <Divider />
-        <NavItem image={IMG_MIC}   label="Voix"    clickAction="OPEN_URI" uri={`${SCHEME}:///voice`} />
+        <NavItem image={IMG_HOME}  label="Accueil" clickAction="OPEN_APP" />
         <Divider />
         <NavItem image={IMG_RDV}   label="RDV"     clickAction="OPEN_URI" uri={`${SCHEME}:///appointment/new`} />
         <Divider />
-        <NavItem image={IMG_HOME}  label="Accueil" clickAction="OPEN_APP" />
+        <NavItem image={IMG_MIC}   label="Voix"    clickAction="OPEN_URI" uri={`${SCHEME}:///voice`} />
       </FlexWidget>
     </FlexWidget>
   );

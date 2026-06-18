@@ -9,7 +9,7 @@ const IMG_RDV   = require('../assets/icons/icon-rdv.png')   as ImageSourcePropTy
 const IMG_MIC   = require('../assets/icons/icon-mic.png')   as ImageSourcePropType;
 const IMG_HOME  = require('../assets/icons/icon-home.png')  as ImageSourcePropType;
 
-const NAV_ICONS: ImageSourcePropType[] = [IMG_RESET, IMG_TASK, IMG_MIC, IMG_RDV, IMG_HOME];
+const NAV_ICONS: ImageSourcePropType[] = [IMG_RESET, IMG_TASK, IMG_HOME, IMG_RDV, IMG_MIC];
 
 const CARD   = 'rgba(32,32,32,0.80)';
 const NAVBAR = 'rgba(18,18,18,0.87)';
