@@ -329,7 +329,7 @@ export function TodoWidget({
               </FlexWidget>
               <TextWidget
                 text={appt.when}
-                style={{ fontSize: 9, color: PRIMARY, marginLeft: 4 }}
+                style={{ fontSize: 9, color: appt.color as ColorProp, marginLeft: 4 }}
               />
             </FlexWidget>
           ))

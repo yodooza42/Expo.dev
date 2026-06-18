@@ -61,6 +61,7 @@ export interface WidgetNextEvent {
   title: string;
   when: string;
   color: string;
+  fromMarie?: boolean;
 }
 
 export interface WidgetData {
@@ -94,6 +95,7 @@ interface RawAppt {
   title: string;
   date: string;
   time?: string;
+  fromMarie?: boolean;
 }
 
 function formatDeadline(dateStr: string | undefined): string {
@@ -232,7 +234,12 @@ export function buildWidgetData(
       const isToday = sameDay(d, today);
       const datePart = isToday ? "Aujourd'hui" : `${DAYS_FR[d.getDay()]}. ${d.getDate()} ${MONTHS_FR[d.getMonth()]}`;
       const timePart = a.time ? ` · ${a.time.replace(':', 'h')}` : '';
-      return { title: a.title, when: `${datePart}${timePart}`, color: settings.primaryColor };
+      return {
+        title: a.title,
+        when: `${datePart}${timePart}`,
+        color: a.fromMarie ? '#EC4899' : settings.primaryColor,
+        fromMarie: a.fromMarie,
+      };
     });
 
   // ── Marie circle color ────────────────────────────────────────────────────

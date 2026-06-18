@@ -112,7 +112,7 @@ export function WidgetPreview({ data }: { data: WidgetData }) {
             <View key={i} style={[styles.itemRow, i < visibleAppts.length - 1 && { marginBottom: 5 }]}>
               <View style={[styles.dot, { backgroundColor: PRIMARY }]} />
               <Text style={styles.itemTitle} numberOfLines={1}>{appt.title}</Text>
-              <Text style={[styles.itemMeta, { color: PRIMARY }]}>{appt.when}</Text>
+              <Text style={[styles.itemMeta, { color: appt.color }]}>{appt.when}</Text>
             </View>
           ))
         )}
