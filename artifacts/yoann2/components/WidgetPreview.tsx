@@ -1,7 +1,15 @@
 import React from 'react';
-import { Image, StyleSheet, Text, View } from 'react-native';
+import { Image, ImageSourcePropType, StyleSheet, Text, View } from 'react-native';
 
 import type { WidgetData } from '@/widgets/data';
+
+const IMG_RESET = require('../assets/icons/icon-reset.png') as ImageSourcePropType;
+const IMG_TASK  = require('../assets/icons/icon-task.png')  as ImageSourcePropType;
+const IMG_IDEA  = require('../assets/icons/icon-idea.png')  as ImageSourcePropType;
+const IMG_RDV   = require('../assets/icons/icon-rdv.png')   as ImageSourcePropType;
+const IMG_HOME  = require('../assets/icons/icon-home.png')  as ImageSourcePropType;
+
+const NAV_ICONS: ImageSourcePropType[] = [IMG_RESET, IMG_TASK, IMG_IDEA, IMG_RDV, IMG_HOME];
 
 const CARD   = '#2A2A2A';
 const NAVBAR = '#0D1B3E';
@@ -128,11 +136,11 @@ export function WidgetPreview({ data }: { data: WidgetData }) {
 
       {/* ── Bloc 4 : Barre de navigation ── */}
       <View style={styles.navbar}>
-        {(['↺', '📝', '💡', '📅', '🏠'] as string[]).map((icon, i) => (
+        {NAV_ICONS.map((src, i) => (
           <React.Fragment key={i}>
             {i > 0 && <View style={styles.navDiv} />}
             <View style={styles.navItem}>
-              <Text style={styles.navIcon}>{icon}</Text>
+              <Image source={src} style={styles.navIcon} resizeMode="contain" />
             </View>
           </React.Fragment>
         ))}
@@ -346,7 +354,8 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
   },
   navIcon: {
-    fontSize: 18,
+    width: 26,
+    height: 26,
   },
   navDiv: {
     width: 1,
