@@ -27,6 +27,11 @@ const PRIORITY_COLORS: Record<Priority, string> = {
 };
 
 const APPOINTMENT_COLOR = '#7C3AED';
+const MARIE_APPT_COLOR  = '#EC4899';
+
+function apptColor(a: Appointment): string {
+  return a.fromMarie ? MARIE_APPT_COLOR : APPOINTMENT_COLOR;
+}
 
 const DAYS_FR = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
 const MONTHS_FR = [
@@ -218,6 +223,7 @@ export default function CalendarScreen() {
         location: '',
         time: '',
         category: '',
+        fromMarie: true,
       });
     });
     closeImport();
@@ -315,8 +321,8 @@ export default function CalendarScreen() {
                   {dayTasks.slice(0, 2).map((t, j) => (
                     <View key={j} style={[styles.dot, { backgroundColor: PRIORITY_COLORS[t.priority] }]} />
                   ))}
-                  {dayAppts.slice(0, 1).map((_, j) => (
-                    <View key={`a${j}`} style={[styles.dot, { backgroundColor: APPOINTMENT_COLOR }]} />
+                  {dayAppts.slice(0, 2).map((a, j) => (
+                    <View key={`a${j}`} style={[styles.dot, { backgroundColor: apptColor(a) }]} />
                   ))}
                 </View>
               </Pressable>
@@ -336,15 +342,20 @@ export default function CalendarScreen() {
                   <Pressable
                     key={a.id}
                     onPress={() => router.push(`/appointment/${a.id}`)}
-                    style={[styles.apptItem, { backgroundColor: colors.card, borderColor: colors.border, borderLeftColor: APPOINTMENT_COLOR }]}
+                    style={[styles.apptItem, { backgroundColor: colors.card, borderColor: colors.border, borderLeftColor: apptColor(a) }]}
                   >
                     <View style={{ flex: 1 }}>
                       <Text style={[styles.apptTitle, { color: colors.foreground }]} numberOfLines={1}>
                         {a.title}
                       </Text>
+                      {a.fromMarie && (
+                        <Text style={[styles.apptDetail, { color: MARIE_APPT_COLOR, marginBottom: 2 }]}>
+                          <MaterialCommunityIcons name="heart-outline" size={11} /> Marie
+                        </Text>
+                      )}
                       <View style={styles.apptMeta}>
                         {a.time ? (
-                          <Text style={[styles.apptDetail, { color: APPOINTMENT_COLOR }]}>
+                          <Text style={[styles.apptDetail, { color: apptColor(a) }]}>
                             <MaterialCommunityIcons name="clock-outline" size={12} /> {a.time}
                           </Text>
                         ) : null}
@@ -410,6 +421,10 @@ export default function CalendarScreen() {
             <View style={styles.legendItem}>
               <View style={[styles.legendDot, { backgroundColor: APPOINTMENT_COLOR }]} />
               <Text style={[styles.legendLabel, { color: colors.mutedForeground }]}>RDV</Text>
+            </View>
+            <View style={styles.legendItem}>
+              <View style={[styles.legendDot, { backgroundColor: MARIE_APPT_COLOR }]} />
+              <Text style={[styles.legendLabel, { color: colors.mutedForeground }]}>RDV Marie</Text>
             </View>
           </View>
         </View>

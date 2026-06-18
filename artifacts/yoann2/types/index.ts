@@ -66,6 +66,7 @@ export interface Appointment {
   time: string;
   category: string;
   createdAt: string;
+  fromMarie?: boolean;
 }
 
 export interface AppStats {
