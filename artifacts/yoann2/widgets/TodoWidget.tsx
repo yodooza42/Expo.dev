@@ -20,6 +20,7 @@ const IMG_RESET  = require('../assets/icons/icon-reset.png') as ImageWidgetSourc
 const IMG_TASK   = require('../assets/icons/icon-task.png')  as ImageWidgetSource;
 const IMG_IDEA   = require('../assets/icons/icon-idea.png')  as ImageWidgetSource;
 const IMG_RDV    = require('../assets/icons/icon-rdv.png')   as ImageWidgetSource;
+const IMG_MIC    = require('../assets/icons/icon-mic.png')   as ImageWidgetSource;
 const IMG_HOME   = require('../assets/icons/icon-home.png')  as ImageWidgetSource;
 
 
@@ -359,6 +360,8 @@ export function TodoWidget({
         <NavItem image={IMG_IDEA}  label="Idée"    clickAction="OPEN_URI" uri={`${SCHEME}:///task/new?idea=1`} />
         <Divider />
         <NavItem image={IMG_RDV}   label="RDV"     clickAction="OPEN_URI" uri={`${SCHEME}:///appointment/new`} />
+        <Divider />
+        <NavItem image={IMG_MIC}   label="Voix"    clickAction="OPEN_URI" uri={`${SCHEME}:///voice`} />
         <Divider />
         <NavItem image={IMG_HOME}  label="Accueil" clickAction="OPEN_APP" />
       </FlexWidget>

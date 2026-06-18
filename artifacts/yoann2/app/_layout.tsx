@@ -86,6 +86,14 @@ function RootLayoutNav() {
         }}
       />
       <Stack.Screen
+        name="voice"
+        options={{
+          headerShown: false,
+          presentation: 'transparentModal',
+          animation: 'fade',
+        }}
+      />
+      <Stack.Screen
         name="marie"
         options={{ headerShown: false, presentation: 'card' }}
       />

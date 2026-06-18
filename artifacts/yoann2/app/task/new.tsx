@@ -43,7 +43,7 @@ export default function NewTaskScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const params = useLocalSearchParams<{ id?: string; projectId?: string; idea?: string }>();
+  const params = useLocalSearchParams<{ id?: string; projectId?: string; idea?: string; title?: string }>();
   const { tasks, projects, addTask, updateTask } = useApp();
 
   const existing = params.id ? tasks.find(t => t.id === params.id) : null;
@@ -52,7 +52,7 @@ export default function NewTaskScreen() {
 
   const defaultProjectId = params.projectId ?? projects[0]?.id ?? '';
 
-  const [title, setTitle] = useState(existing?.title ?? '');
+  const [title, setTitle] = useState(existing?.title ?? params.title ?? '');
   const [desc, setDesc] = useState(existing?.description ?? '');
   const [notes, setNotes] = useState(existing?.notes ?? '');
   const [projectId, setProjectId] = useState(existing?.projectId ?? defaultProjectId);

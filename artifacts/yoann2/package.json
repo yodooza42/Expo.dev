@@ -58,6 +58,7 @@
     "expo-clipboard": "^8.0.8",
     "expo-file-system": "~19.0.23",
     "expo-image-manipulator": "~14.0.8",
+    "expo-intent-launcher": "^56.0.4",
     "expo-notifications": "~0.32.17",
     "expo-print": "~15.0.8",
     "expo-sharing": "~14.0.8",
