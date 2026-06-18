@@ -95,7 +95,7 @@ export default function DashboardScreen() {
 
   const [showPhotos,   setShowPhotos]   = useState(false);
   const [showAppts,    setShowAppts]    = useState(false);
-  const [showHistory,  setShowHistory]  = useState(true);
+  const [showHistory,  setShowHistory]  = useState(false);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
 
   const stats    = getStats();
