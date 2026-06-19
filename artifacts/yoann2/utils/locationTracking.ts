@@ -81,6 +81,31 @@ export async function appendPoint(point: LocationPoint): Promise<void> {
   }
 }
 
+export async function saveDayPoints(day: string, points: LocationPoint[]): Promise<void> {
+  try {
+    await AsyncStorage.setItem(storageKey(day), JSON.stringify(points));
+  } catch {
+    // silently ignore storage errors
+  }
+}
+
+export async function correctActivity(
+  day: string,
+  timestamp: number,
+  newActivity: ActivityType,
+): Promise<boolean> {
+  try {
+    const points = await loadDayPoints(day);
+    const idx = points.findIndex(p => p.timestamp === timestamp);
+    if (idx === -1) return false;
+    points[idx] = { ...points[idx]!, activity: newActivity };
+    await saveDayPoints(day, points);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // ── Purge old data (>90 days) ─────────────────────────────────────────────────
 
 export async function purgeOldData(): Promise<void> {

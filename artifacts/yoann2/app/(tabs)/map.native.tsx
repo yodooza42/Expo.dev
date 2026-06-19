@@ -2,8 +2,10 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  ActionSheetIOS,
   ActivityIndicator,
   Alert,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -12,12 +14,13 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import WebView from 'react-native-webview';
+import WebView, { type WebViewMessageEvent } from 'react-native-webview';
 
 import { useColors } from '@/hooks/useColors';
 import { useLocationHistory } from '@/hooks/useLocationHistory';
 import { exportBackup, importBackup } from '@/utils/locationBackup';
-import type { LocationPoint } from '@/utils/locationTracking';
+import { correctActivity } from '@/utils/locationTracking';
+import type { ActivityType, LocationPoint } from '@/utils/locationTracking';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -160,7 +163,9 @@ function fmtTime(ts){
 function makeSeg(i){
   var seg=[[ptsData[i].lat,ptsData[i].lng],[ptsData[i+1].lat,ptsData[i+1].lng]];
   var col=colorFor(ptsData[i].activity);
-  L.polyline(seg,{color:col,weight:6,opacity:0,interactive:true}).addTo(map).on('click',function(e){
+  var hitLine=L.polyline(seg,{color:col,weight:14,opacity:0,interactive:true}).addTo(map);
+  var lpTimer=null;
+  hitLine.on('click',function(e){
     var p=ptsData[i];
     var spd=p.spd!=null?'<span class="popup-spd">'+p.spd+' km/h</span>':'<span class="popup-row">Vitesse inconnue</span>';
     var html='<div class="popup-act">'+(ACT_LABELS[p.activity]||'❓ Inconnu')+'</div>'
@@ -168,6 +173,18 @@ function makeSeg(i){
       +'<div class="popup-row">⚡ '+spd+'</div>';
     L.popup({className:'dark-popup',offset:[0,-2],maxWidth:180}).setLatLng(e.latlng).setContent(html).openOn(map);
     L.DomEvent.stopPropagation(e);
+  });
+  hitLine.on('touchstart',function(e){
+    var p=ptsData[i];
+    lpTimer=setTimeout(function(){
+      lpTimer=null;
+      if(window.ReactNativeWebView){
+        window.ReactNativeWebView.postMessage(JSON.stringify({type:'longpress',ts:p.ts,activity:p.activity}));
+      }
+    },600);
+  });
+  hitLine.on('touchend touchmove',function(){
+    if(lpTimer){clearTimeout(lpTimer);lpTimer=null;}
   });
   L.polyline(seg,{color:col,weight:4,opacity:0.9,interactive:false}).addTo(map);
 }
@@ -254,6 +271,7 @@ export default function MapScreen() {
   const [search, setSearch]           = useState('');
   const [highlightPt, setHighlightPt] = useState<LocationPoint | null>(null);
   const pendingTimeRef                = useRef<string | null>(null);
+  const [correctionCount, setCorrectionCount] = useState(0);
 
   const today   = new Date().toISOString().slice(0, 10);
   const isToday = selectedDay === today;
@@ -337,8 +355,57 @@ export default function MapScreen() {
     }
   }, [backupBusy, refresh]);
 
+  const handleWebViewMessage = useCallback((event: WebViewMessageEvent) => {
+    try {
+      const msg = JSON.parse(event.nativeEvent.data) as {
+        type: string;
+        ts: number;
+        activity: string;
+      };
+      if (msg.type !== 'longpress') return;
+      const ts = msg.ts;
+      const day = selectedDay;
+
+      const applyCorrection = async (newActivity: ActivityType) => {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        const ok = await correctActivity(day, ts, newActivity);
+        if (ok) {
+          await refresh();
+          setCorrectionCount(c => c + 1);
+        } else {
+          Alert.alert('Erreur', 'Impossible de modifier ce point.');
+        }
+      };
+
+      if (Platform.OS === 'ios') {
+        ActionSheetIOS.showActionSheetWithOptions(
+          {
+            options: ['Annuler', 'Marquer comme Marche', 'Marquer comme Voiture'],
+            cancelButtonIndex: 0,
+          },
+          buttonIndex => {
+            if (buttonIndex === 1) applyCorrection('walk');
+            else if (buttonIndex === 2) applyCorrection('car');
+          },
+        );
+      } else {
+        Alert.alert(
+          'Corriger l\'activité',
+          'Choisissez le type d\'activité pour ce segment.',
+          [
+            { text: 'Annuler', style: 'cancel' },
+            { text: '🚶 Marquer comme Marche', onPress: () => applyCorrection('walk') },
+            { text: '🚗 Marquer comme Voiture', onPress: () => applyCorrection('car') },
+          ],
+        );
+      }
+    } catch {
+      // ignore malformed messages
+    }
+  }, [selectedDay, refresh]);
+
   const mapHtml    = buildMapHtml(dayStats.points, colors.primary, highlightPt);
-  const mapKey     = `${selectedDay}-${highlightPt?.timestamp ?? 'none'}`;
+  const mapKey     = `${selectedDay}-${highlightPt?.timestamp ?? 'none'}-${correctionCount}`;
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -356,6 +423,7 @@ export default function MapScreen() {
         scrollEnabled={false}
         showsVerticalScrollIndicator={false}
         showsHorizontalScrollIndicator={false}
+        onMessage={handleWebViewMessage}
       />
 
       {/* ── Top overlay: day navigator + search ── */}
