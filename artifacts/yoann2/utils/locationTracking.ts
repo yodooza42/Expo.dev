@@ -89,6 +89,14 @@ export async function saveDayPoints(day: string, points: LocationPoint[]): Promi
   }
 }
 
+export async function deleteDayPoints(day: string): Promise<void> {
+  try {
+    await AsyncStorage.removeItem(storageKey(day));
+  } catch {
+    // silently ignore storage errors
+  }
+}
+
 export async function correctActivity(
   day: string,
   timestamp: number,

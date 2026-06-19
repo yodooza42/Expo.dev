@@ -19,7 +19,7 @@ import WebView, { type WebViewMessageEvent } from 'react-native-webview';
 import { useColors } from '@/hooks/useColors';
 import { useLocationHistory } from '@/hooks/useLocationHistory';
 import { exportBackup, importBackup } from '@/utils/locationBackup';
-import { correctActivity, loadMultiDayPoints } from '@/utils/locationTracking';
+import { correctActivity, deleteDayPoints, loadMultiDayPoints } from '@/utils/locationTracking';
 import type { ActivityType, LocationPoint } from '@/utils/locationTracking';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -555,6 +555,27 @@ export default function MapScreen() {
     }
   }, [backupBusy, refresh]);
 
+  const handleDeleteDay = useCallback(() => {
+    if (dayStats.points.length === 0) return;
+    const label = fmtReplayDay(selectedDay);
+    Alert.alert(
+      'Effacer ce jour',
+      `Effacer les ${dayStats.points.length} point${dayStats.points.length > 1 ? 's' : ''} du ${label} ?`,
+      [
+        { text: 'Annuler', style: 'cancel' },
+        {
+          text: 'Effacer',
+          style: 'destructive',
+          onPress: async () => {
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+            await deleteDayPoints(selectedDay);
+            refresh();
+          },
+        },
+      ],
+    );
+  }, [dayStats.points.length, selectedDay, refresh]);
+
   // ── Replay handlers ─────────────────────────────────────────────────────────
 
   const handleOpenReplay = useCallback(() => {
@@ -1061,6 +1082,15 @@ export default function MapScreen() {
                 <MaterialCommunityIcons name="play-circle-outline" size={15} color={colors.primary} />
                 <Text style={[styles.backupTxt, { color: colors.primary }]}>Replay</Text>
               </Pressable>
+              {dayStats.points.length > 0 && (
+                <Pressable
+                  style={[styles.backupBtn, { borderColor: '#F4433688', backgroundColor: '#F4433612' }]}
+                  onPress={handleDeleteDay}
+                >
+                  <MaterialCommunityIcons name="trash-can-outline" size={15} color="#F44336" />
+                  <Text style={[styles.backupTxt, { color: '#F44336' }]}>Effacer</Text>
+                </Pressable>
+              )}
             </View>
           </>
         )}
