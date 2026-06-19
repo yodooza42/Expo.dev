@@ -15,6 +15,7 @@ export type LocationPoint = {
   lng: number;
   timestamp: number;
   activity?: ActivityType;
+  speedKmh?: number;
 };
 
 function classifyActivity(speedMs: number | null | undefined): ActivityType {
@@ -164,11 +165,13 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
   if (!data) return;
   const { locations } = data as { locations: Location.LocationObject[] };
   for (const loc of locations) {
+    const speedMs = loc.coords.speed;
     await appendPoint({
       lat: loc.coords.latitude,
       lng: loc.coords.longitude,
       timestamp: loc.timestamp,
-      activity: classifyActivity(loc.coords.speed),
+      activity: classifyActivity(speedMs),
+      speedKmh: speedMs != null && speedMs >= 0 ? Math.round(speedMs * 3.6) : undefined,
     });
   }
   await purgeOldData();

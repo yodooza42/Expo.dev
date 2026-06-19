@@ -99,7 +99,13 @@ function buildMapHtml(
   highlightPt: LocationPoint | null,
 ): string {
   const ptsData = JSON.stringify(
-    points.map(p => ({ lat: p.lat, lng: p.lng, activity: p.activity ?? 'unknown' })),
+    points.map(p => ({
+      lat: p.lat,
+      lng: p.lng,
+      activity: p.activity ?? 'unknown',
+      ts: p.timestamp,
+      spd: p.speedKmh,
+    })),
   );
   const highlight = highlightPt
     ? JSON.stringify([highlightPt.lat, highlightPt.lng])
@@ -120,6 +126,13 @@ function buildMapHtml(
   #map{width:100vw;height:100vh}
   .leaflet-control-zoom{margin:12px!important}
   .leaflet-control-zoom a{background:#1E1E1E!important;color:#FFF!important;border-color:#333!important}
+  .dark-popup .leaflet-popup-content-wrapper{background:#1E1E1E;color:#FFF;border:1px solid #FFC107;border-radius:10px;box-shadow:0 4px 16px #0008}
+  .dark-popup .leaflet-popup-tip{background:#1E1E1E}
+  .dark-popup .leaflet-popup-content{margin:10px 14px;font-family:sans-serif;font-size:13px;line-height:1.7}
+  .dark-popup .leaflet-popup-close-button{color:#999!important;font-size:16px!important;top:6px!important;right:8px!important}
+  .popup-act{font-size:15px;font-weight:700;margin-bottom:2px}
+  .popup-row{color:#CCC;font-size:12px}
+  .popup-spd{color:#FFC107;font-weight:600}
 </style>
 </head>
 <body>
@@ -133,16 +146,37 @@ var hl=${highlight};
 var hlColor='${highlightColor}';
 
 var COLORS={walk:'#4CAF50',car:'#2196F3',unknown:'#FFC107'};
+var ACT_LABELS={walk:'🚶 Marche',car:'🚗 Voiture',unknown:'❓ Inconnu'};
 
 function colorFor(act){return COLORS[act]||'#FFC107';}
+
+function fmtTime(ts){
+  var d=new Date(ts);
+  var h=String(d.getHours()).padStart(2,'0');
+  var m=String(d.getMinutes()).padStart(2,'0');
+  return h+'h'+m;
+}
+
+function makeSeg(i){
+  var seg=[[ptsData[i].lat,ptsData[i].lng],[ptsData[i+1].lat,ptsData[i+1].lng]];
+  var col=colorFor(ptsData[i].activity);
+  L.polyline(seg,{color:col,weight:6,opacity:0,interactive:true}).addTo(map).on('click',function(e){
+    var p=ptsData[i];
+    var spd=p.spd!=null?'<span class="popup-spd">'+p.spd+' km/h</span>':'<span class="popup-row">Vitesse inconnue</span>';
+    var html='<div class="popup-act">'+(ACT_LABELS[p.activity]||'❓ Inconnu')+'</div>'
+      +'<div class="popup-row">🕐 '+fmtTime(p.ts)+'</div>'
+      +'<div class="popup-row">⚡ '+spd+'</div>';
+    L.popup({className:'dark-popup',offset:[0,-2],maxWidth:180}).setLatLng(e.latlng).setContent(html).openOn(map);
+    L.DomEvent.stopPropagation(e);
+  });
+  L.polyline(seg,{color:col,weight:4,opacity:0.9,interactive:false}).addTo(map);
+}
 
 if(ptsData.length>0){
   var latlngs=ptsData.map(function(p){return[p.lat,p.lng];});
 
   for(var i=0;i<ptsData.length-1;i++){
-    var seg=[[ptsData[i].lat,ptsData[i].lng],[ptsData[i+1].lat,ptsData[i+1].lng]];
-    var col=colorFor(ptsData[i].activity);
-    L.polyline(seg,{color:col,weight:4,opacity:0.9}).addTo(map);
+    makeSeg(i);
   }
 
   L.circleMarker(latlngs[0],{radius:8,color:'#4CAF50',fillColor:'#4CAF50',fillOpacity:1,weight:2}).addTo(map);
