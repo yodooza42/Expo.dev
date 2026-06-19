@@ -19,7 +19,7 @@ import WebView, { type WebViewMessageEvent } from 'react-native-webview';
 import { useColors } from '@/hooks/useColors';
 import { useLocationHistory } from '@/hooks/useLocationHistory';
 import { exportBackup, importBackup } from '@/utils/locationBackup';
-import { correctActivity } from '@/utils/locationTracking';
+import { correctActivity, loadMultiDayPoints } from '@/utils/locationTracking';
 import type { ActivityType, LocationPoint } from '@/utils/locationTracking';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -27,6 +27,20 @@ import type { ActivityType, LocationPoint } from '@/utils/locationTracking';
 function formatDayLabel(day: string): string {
   const d = new Date(day + 'T12:00:00');
   return d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+}
+
+function fmtReplayDay(day: string): string {
+  const d = new Date(day + 'T12:00:00');
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const wd = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'][d.getDay()]!;
+  return `${wd} ${dd}/${mm}`;
+}
+
+function shiftDay(day: string, delta: number): string {
+  const d = new Date(day + 'T12:00:00');
+  d.setDate(d.getDate() + delta);
+  return d.toISOString().slice(0, 10);
 }
 
 const FR_MONTHS: Record<string, number> = {
@@ -88,13 +102,25 @@ function parseSearchQuery(
   return { dateKey, time };
 }
 
-// ── Leaflet HTML builder ──────────────────────────────────────────────────────
+// ── Leaflet HTML builders ─────────────────────────────────────────────────────
 
 const ACTIVITY_COLORS: Record<string, string> = {
   walk: '#4CAF50',
   car: '#2196F3',
   unknown: '#FFC107',
 };
+
+const LEAFLET_HEAD = `
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>`;
+
+const LEAFLET_BASE_CSS = `
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#121212}
+  #map{width:100vw;height:100vh}
+  .leaflet-control-zoom{margin:12px!important}
+  .leaflet-control-zoom a{background:#1E1E1E!important;color:#FFF!important;border-color:#333!important}`;
 
 function buildMapHtml(
   points: LocationPoint[],
@@ -110,25 +136,15 @@ function buildMapHtml(
       spd: p.speedKmh,
     })),
   );
-  const highlight = highlightPt
-    ? JSON.stringify([highlightPt.lat, highlightPt.lng])
-    : 'null';
+  const highlight = highlightPt ? JSON.stringify([highlightPt.lat, highlightPt.lng]) : 'null';
   const highlightColor = highlightPt
     ? (ACTIVITY_COLORS[highlightPt.activity ?? 'unknown'] ?? primaryColor)
     : primaryColor;
 
   return `<!DOCTYPE html>
 <html>
-<head>
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<style>
-  *{margin:0;padding:0;box-sizing:border-box}
-  body{background:#121212}
-  #map{width:100vw;height:100vh}
-  .leaflet-control-zoom{margin:12px!important}
-  .leaflet-control-zoom a{background:#1E1E1E!important;color:#FFF!important;border-color:#333!important}
+<head>${LEAFLET_HEAD}
+<style>${LEAFLET_BASE_CSS}
   .dark-popup .leaflet-popup-content-wrapper{background:#1E1E1E;color:#FFF;border:1px solid #FFC107;border-radius:10px;box-shadow:0 4px 16px #0008}
   .dark-popup .leaflet-popup-tip{background:#1E1E1E}
   .dark-popup .leaflet-popup-content{margin:10px 14px;font-family:sans-serif;font-size:13px;line-height:1.7}
@@ -174,7 +190,7 @@ function makeSeg(i){
     L.popup({className:'dark-popup',offset:[0,-2],maxWidth:180}).setLatLng(e.latlng).setContent(html).openOn(map);
     L.DomEvent.stopPropagation(e);
   });
-  hitLine.on('touchstart',function(e){
+  hitLine.on('touchstart',function(){
     var p=ptsData[i];
     lpTimer=setTimeout(function(){
       lpTimer=null;
@@ -191,16 +207,9 @@ function makeSeg(i){
 
 if(ptsData.length>0){
   var latlngs=ptsData.map(function(p){return[p.lat,p.lng];});
-
-  for(var i=0;i<ptsData.length-1;i++){
-    makeSeg(i);
-  }
-
+  for(var i=0;i<ptsData.length-1;i++){makeSeg(i);}
   L.circleMarker(latlngs[0],{radius:8,color:'#4CAF50',fillColor:'#4CAF50',fillOpacity:1,weight:2}).addTo(map);
-  if(ptsData.length>1){
-    L.circleMarker(latlngs[latlngs.length-1],{radius:8,color:'#F44336',fillColor:'#F44336',fillOpacity:1,weight:2}).addTo(map);
-  }
-
+  if(ptsData.length>1){L.circleMarker(latlngs[latlngs.length-1],{radius:8,color:'#F44336',fillColor:'#F44336',fillOpacity:1,weight:2}).addTo(map);}
   if(hl){
     L.circleMarker(hl,{radius:11,color:hlColor,fillColor:hlColor,fillOpacity:0.85,weight:3}).addTo(map);
     map.setView(hl,16);
@@ -218,6 +227,151 @@ window.recenter=function(){
   } else {
     map.setView([46.2276,2.2137],6);
   }
+};
+</script>
+</body>
+</html>`;
+}
+
+function buildReplayHtml(points: LocationPoint[]): string {
+  const ptsJSON = JSON.stringify(
+    points.map(p => ({ lat: p.lat, lng: p.lng, ts: p.timestamp, activity: p.activity ?? 'unknown' })),
+  );
+
+  return `<!DOCTYPE html>
+<html>
+<head>${LEAFLET_HEAD}
+<style>${LEAFLET_BASE_CSS}
+  #replay-time{
+    position:fixed;top:14px;left:50%;transform:translateX(-50%);
+    background:#1E1E1EE8;color:#FFC107;font-size:24px;font-weight:700;
+    font-family:sans-serif;padding:6px 20px;border-radius:28px;
+    border:1px solid #FFC10755;letter-spacing:3px;
+    pointer-events:none;display:none;z-index:9999;
+  }
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div id="replay-time"></div>
+<script>
+var map=L.map('map',{zoomControl:true,attributionControl:false});
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{maxZoom:19}).addTo(map);
+
+var pts=${ptsJSON};
+var COLORS={walk:'#4CAF50',car:'#2196F3',unknown:'#FFC107'};
+
+function colorFor(a){return COLORS[a]||'#FFC107';}
+function fmtTs(ts){
+  var d=new Date(ts);
+  return String(d.getHours()).padStart(2,'0')+'h'+String(d.getMinutes()).padStart(2,'0');
+}
+
+var timeEl=document.getElementById('replay-time');
+
+if(pts.length>0){
+  var ghost=pts.map(function(p){return[p.lat,p.lng];});
+  L.polyline(ghost,{color:'#555',weight:2,opacity:0.35,interactive:false}).addTo(map);
+  map.fitBounds(L.polyline(ghost).getBounds().pad(0.15));
+  L.circleMarker(ghost[0],{radius:7,color:'#4CAF50',fillColor:'#4CAF50',fillOpacity:1,weight:2}).addTo(map);
+  if(ghost.length>1){
+    L.circleMarker(ghost[ghost.length-1],{radius:7,color:'#F44336',fillColor:'#F44336',fillOpacity:1,weight:2}).addTo(map);
+  }
+} else {
+  map.setView([46.2276,2.2137],6);
+}
+
+var mover=pts.length>0
+  ?L.circleMarker([pts[0].lat,pts[0].lng],{radius:11,color:'#FFC107',fillColor:'#FFC107',fillOpacity:1,weight:3}).addTo(map)
+  :null;
+
+var drawnUpTo=0;
+var startWall=null;
+var totalPausedMs=0;
+var pauseStartWall=null;
+var rafId=null;
+var isPlaying=false;
+var lastMsgMs=-9999;
+window._replayDur=30000;
+
+function tick(){
+  if(!isPlaying)return;
+  var now=performance.now();
+  var elapsed=now-startWall-totalPausedMs;
+  var progress=Math.min(elapsed/window._replayDur,1);
+
+  if(pts.length<2){progress=1;}
+
+  var minTs=pts[0].ts;
+  var maxTs=pts[pts.length-1].ts;
+  var simTs=minTs+progress*(maxTs-minTs);
+
+  while(drawnUpTo<pts.length-1&&pts[drawnUpTo+1].ts<=simTs){
+    var a=pts[drawnUpTo],b=pts[drawnUpTo+1];
+    L.polyline([[a.lat,a.lng],[b.lat,b.lng]],{
+      color:colorFor(a.activity),weight:4,opacity:0.95,interactive:false
+    }).addTo(map);
+    drawnUpTo++;
+  }
+
+  if(mover&&pts.length>=2){
+    var si=0;
+    for(var i=0;i<pts.length-1;i++){
+      if(pts[i].ts<=simTs)si=i;
+      else break;
+    }
+    var p0=pts[si],p1=pts[Math.min(si+1,pts.length-1)];
+    var sr=p1.ts-p0.ts;
+    var f=sr>0?(simTs-p0.ts)/sr:0;
+    mover.setLatLng([p0.lat+f*(p1.lat-p0.lat),p0.lng+f*(p1.lng-p0.lng)]);
+  }
+
+  var t=fmtTs(simTs);
+  if(timeEl){timeEl.style.display='block';timeEl.textContent=t;}
+
+  if(now-lastMsgMs>500&&window.ReactNativeWebView){
+    window.ReactNativeWebView.postMessage(JSON.stringify({type:'replay_progress',time:t}));
+    lastMsgMs=now;
+  }
+
+  if(progress>=1){
+    isPlaying=false;
+    if(timeEl)timeEl.style.display='none';
+    if(window.ReactNativeWebView){
+      window.ReactNativeWebView.postMessage(JSON.stringify({type:'replay_done'}));
+    }
+    return;
+  }
+  rafId=requestAnimationFrame(tick);
+}
+
+window.startReplay=function(dur){
+  window._replayDur=dur;
+  drawnUpTo=0;
+  startWall=performance.now();
+  totalPausedMs=0;
+  pauseStartWall=null;
+  lastMsgMs=-9999;
+  isPlaying=true;
+  rafId=requestAnimationFrame(tick);
+};
+window.pauseReplay=function(){
+  if(!isPlaying)return;
+  isPlaying=false;
+  pauseStartWall=performance.now();
+  if(rafId){cancelAnimationFrame(rafId);rafId=null;}
+};
+window.resumeReplay=function(){
+  if(isPlaying||pauseStartWall===null)return;
+  totalPausedMs+=performance.now()-pauseStartWall;
+  pauseStartWall=null;
+  isPlaying=true;
+  rafId=requestAnimationFrame(tick);
+};
+window.stopReplay=function(){
+  isPlaying=false;
+  if(rafId){cancelAnimationFrame(rafId);rafId=null;}
+  if(timeEl)timeEl.style.display='none';
 };
 </script>
 </body>
@@ -242,6 +396,34 @@ function StatChip({
     </View>
   );
 }
+
+function Stepper({
+  label, onDec, onInc, colors,
+}: {
+  label: string; onDec: () => void; onInc: () => void;
+  colors: ReturnType<typeof useColors>;
+}) {
+  return (
+    <View style={styles.stepper}>
+      <Pressable onPress={onDec} hitSlop={10} style={styles.stepperBtn}>
+        <MaterialCommunityIcons name="chevron-left" size={22} color={colors.foreground} />
+      </Pressable>
+      <Text style={[styles.stepperVal, { color: colors.foreground }]}>{label}</Text>
+      <Pressable onPress={onInc} hitSlop={10} style={styles.stepperBtn}>
+        <MaterialCommunityIcons name="chevron-right" size={22} color={colors.foreground} />
+      </Pressable>
+    </View>
+  );
+}
+
+// ── Duration options ──────────────────────────────────────────────────────────
+
+const DURATIONS: { label: string; ms: number }[] = [
+  { label: '10 s', ms: 10_000 },
+  { label: '30 s', ms: 30_000 },
+  { label: '1 min', ms: 60_000 },
+  { label: '3 min', ms: 180_000 },
+];
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
@@ -268,10 +450,24 @@ export default function MapScreen() {
     refresh,
   } = useLocationHistory();
 
-  const [search, setSearch]           = useState('');
-  const [highlightPt, setHighlightPt] = useState<LocationPoint | null>(null);
-  const pendingTimeRef                = useRef<string | null>(null);
+  const [search, setSearch]                   = useState('');
+  const [highlightPt, setHighlightPt]         = useState<LocationPoint | null>(null);
+  const pendingTimeRef                         = useRef<string | null>(null);
   const [correctionCount, setCorrectionCount] = useState(0);
+
+  // ── Replay state ────────────────────────────────────────────────────────────
+  const [replayOpen, setReplayOpen]           = useState(false);
+  const [replayStartDay, setReplayStartDay]   = useState('');
+  const [replayStartHour, setReplayStartHour] = useState(0);
+  const [replayEndDay, setReplayEndDay]       = useState('');
+  const [replayEndHour, setReplayEndHour]     = useState(23);
+  const [replayDurMs, setReplayDurMs]         = useState(30_000);
+  const [replayMode, setReplayMode]           = useState(false);
+  const [replayPlaying, setReplayPlaying]     = useState(false);
+  const [replayIsPaused, setReplayIsPaused]   = useState(false);
+  const [replayCurrentTime, setReplayCurrentTime] = useState('');
+  const [replayPoints, setReplayPoints]       = useState<LocationPoint[]>([]);
+  const pendingReplayRef = useRef<number | null>(null);
 
   const today   = new Date().toISOString().slice(0, 10);
   const isToday = selectedDay === today;
@@ -331,7 +527,7 @@ export default function MapScreen() {
     try {
       await exportBackup();
     } catch {
-      Alert.alert('Erreur', 'Impossible d\'exporter les données.');
+      Alert.alert('Erreur', "Impossible d'exporter les données.");
     } finally {
       setBackupBusy(false);
     }
@@ -349,21 +545,111 @@ export default function MapScreen() {
         refresh();
       }
     } catch {
-      Alert.alert('Erreur', 'Impossible d\'importer le fichier.');
+      Alert.alert('Erreur', "Impossible d'importer le fichier.");
     } finally {
       setBackupBusy(false);
     }
   }, [backupBusy, refresh]);
 
+  // ── Replay handlers ─────────────────────────────────────────────────────────
+
+  const handleOpenReplay = useCallback(() => {
+    setReplayStartDay(selectedDay);
+    setReplayStartHour(0);
+    setReplayEndDay(selectedDay);
+    setReplayEndHour(23);
+    setReplayOpen(true);
+  }, [selectedDay]);
+
+  const handleCloseReplay = useCallback(() => {
+    setReplayOpen(false);
+  }, []);
+
+  const handleLancer = useCallback(async () => {
+    const startTs = new Date(
+      `${replayStartDay}T${String(replayStartHour).padStart(2, '0')}:00:00`,
+    ).getTime();
+    const endTs = new Date(
+      `${replayEndDay}T${String(replayEndHour).padStart(2, '0')}:59:59`,
+    ).getTime();
+
+    if (endTs <= startTs) {
+      Alert.alert('Période invalide', 'La fin doit être après le début.');
+      return;
+    }
+
+    const pts = await loadMultiDayPoints(startTs, endTs);
+    if (pts.length < 2) {
+      Alert.alert('Pas de données', 'Aucun point GPS enregistré dans cette période.');
+      return;
+    }
+
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setReplayPoints(pts);
+    pendingReplayRef.current = replayDurMs;
+    setReplayMode(true);
+    setReplayPlaying(true);
+    setReplayIsPaused(false);
+    setReplayCurrentTime('');
+    setReplayOpen(false);
+  }, [replayStartDay, replayStartHour, replayEndDay, replayEndHour, replayDurMs]);
+
+  const handleWebViewLoad = useCallback(() => {
+    if (pendingReplayRef.current !== null) {
+      const dur = pendingReplayRef.current;
+      pendingReplayRef.current = null;
+      webRef.current?.injectJavaScript(`window.startReplay(${dur}); true;`);
+    }
+  }, []);
+
+  const handleReplayPause = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    webRef.current?.injectJavaScript('window.pauseReplay && window.pauseReplay(); true;');
+    setReplayIsPaused(true);
+    setReplayPlaying(false);
+  }, []);
+
+  const handleReplayResume = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    webRef.current?.injectJavaScript('window.resumeReplay && window.resumeReplay(); true;');
+    setReplayIsPaused(false);
+    setReplayPlaying(true);
+  }, []);
+
+  const handleReplayStop = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    webRef.current?.injectJavaScript('window.stopReplay && window.stopReplay(); true;');
+    pendingReplayRef.current = null;
+    setReplayMode(false);
+    setReplayPlaying(false);
+    setReplayIsPaused(false);
+    setReplayCurrentTime('');
+    setReplayPoints([]);
+  }, []);
+
+  // ── WebView message handler ─────────────────────────────────────────────────
+
   const handleWebViewMessage = useCallback((event: WebViewMessageEvent) => {
     try {
       const msg = JSON.parse(event.nativeEvent.data) as {
         type: string;
-        ts: number;
-        activity: string;
+        ts?: number;
+        activity?: string;
+        time?: string;
       };
-      if (msg.type !== 'longpress') return;
-      const ts = msg.ts;
+
+      if (msg.type === 'replay_progress') {
+        setReplayCurrentTime(msg.time ?? '');
+        return;
+      }
+      if (msg.type === 'replay_done') {
+        setReplayPlaying(false);
+        setReplayIsPaused(false);
+        return;
+      }
+      if (msg.type !== 'longpress' || replayMode) return;
+
+      const ts  = msg.ts!;
       const day = selectedDay;
 
       const applyCorrection = async (newActivity: ActivityType) => {
@@ -390,8 +676,8 @@ export default function MapScreen() {
         );
       } else {
         Alert.alert(
-          'Corriger l\'activité',
-          'Choisissez le type d\'activité pour ce segment.',
+          "Corriger l'activité",
+          "Choisissez le type d'activité pour ce segment.",
           [
             { text: 'Annuler', style: 'cancel' },
             { text: '🚶 Marquer comme Marche', onPress: () => applyCorrection('walk') },
@@ -402,15 +688,24 @@ export default function MapScreen() {
     } catch {
       // ignore malformed messages
     }
-  }, [selectedDay, refresh]);
+  }, [selectedDay, refresh, replayMode]);
 
-  const mapHtml    = buildMapHtml(dayStats.points, colors.primary, highlightPt);
-  const mapKey     = `${selectedDay}-${highlightPt?.timestamp ?? 'none'}-${correctionCount}`;
+  // ── Map HTML / key ──────────────────────────────────────────────────────────
+
+  const mapHtml = replayMode
+    ? buildReplayHtml(replayPoints)
+    : buildMapHtml(dayStats.points, colors.primary, highlightPt);
+
+  const mapKey = replayMode
+    ? `replay-${replayPoints.length}-${replayPoints[0]?.timestamp ?? 0}`
+    : `${selectedDay}-${highlightPt?.timestamp ?? 'none'}-${correctionCount}`;
+
+  // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
 
-      {/* ── Map (WebView + Leaflet) ── */}
+      {/* ── Map ── */}
       <WebView
         key={mapKey}
         ref={webRef}
@@ -424,68 +719,73 @@ export default function MapScreen() {
         showsVerticalScrollIndicator={false}
         showsHorizontalScrollIndicator={false}
         onMessage={handleWebViewMessage}
+        onLoadEnd={handleWebViewLoad}
       />
 
-      {/* ── Top overlay: day navigator + search ── */}
-      <View
-        style={[
-          styles.topOverlay,
-          { top: insets.top + 8, backgroundColor: colors.card + 'F0', borderColor: colors.border },
-        ]}
-      >
-        <View style={styles.dayNav}>
-          <Pressable onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); goToPrevDay(); }} hitSlop={12}>
-            <MaterialCommunityIcons name="chevron-left" size={24} color={colors.foreground} />
-          </Pressable>
-          <Text style={[styles.dayLabel, { color: colors.foreground }]} numberOfLines={1}>
-            {formatDayLabel(selectedDay)}
-          </Text>
-          <Pressable
-            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); goToNextDay(); }}
-            hitSlop={12}
-            style={{ opacity: isToday ? 0.3 : 1 }}
-          >
-            <MaterialCommunityIcons name="chevron-right" size={24} color={colors.foreground} />
-          </Pressable>
-        </View>
-
-        <View style={[styles.searchRow, { borderColor: colors.border, backgroundColor: colors.background + 'CC' }]}>
-          <MaterialCommunityIcons name="magnify" size={16} color={colors.mutedForeground} />
-          <TextInput
-            style={[styles.searchInput, { color: colors.foreground }]}
-            placeholder="Heure (ex: 14h30)…"
-            placeholderTextColor={colors.mutedForeground}
-            value={search}
-            onChangeText={setSearch}
-            onSubmitEditing={handleSearch}
-            returnKeyType="search"
-          />
-          {search.length > 0 && (
-            <Pressable onPress={() => setSearch('')} hitSlop={8}>
-              <MaterialCommunityIcons name="close-circle" size={15} color={colors.mutedForeground} />
+      {/* ── Top overlay (hidden during replay) ── */}
+      {!replayMode && (
+        <View
+          style={[
+            styles.topOverlay,
+            { top: insets.top + 8, backgroundColor: colors.card + 'F0', borderColor: colors.border },
+          ]}
+        >
+          <View style={styles.dayNav}>
+            <Pressable onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); goToPrevDay(); }} hitSlop={12}>
+              <MaterialCommunityIcons name="chevron-left" size={24} color={colors.foreground} />
             </Pressable>
-          )}
-          <Pressable
-            onPress={handleSearch}
-            hitSlop={8}
-            style={[styles.searchBtn, { backgroundColor: colors.primary }]}
-          >
-            <Text style={styles.searchBtnTxt}>OK</Text>
-          </Pressable>
+            <Text style={[styles.dayLabel, { color: colors.foreground }]} numberOfLines={1}>
+              {formatDayLabel(selectedDay)}
+            </Text>
+            <Pressable
+              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); goToNextDay(); }}
+              hitSlop={12}
+              style={{ opacity: isToday ? 0.3 : 1 }}
+            >
+              <MaterialCommunityIcons name="chevron-right" size={24} color={colors.foreground} />
+            </Pressable>
+          </View>
+
+          <View style={[styles.searchRow, { borderColor: colors.border, backgroundColor: colors.background + 'CC' }]}>
+            <MaterialCommunityIcons name="magnify" size={16} color={colors.mutedForeground} />
+            <TextInput
+              style={[styles.searchInput, { color: colors.foreground }]}
+              placeholder="Heure (ex: 14h30)…"
+              placeholderTextColor={colors.mutedForeground}
+              value={search}
+              onChangeText={setSearch}
+              onSubmitEditing={handleSearch}
+              returnKeyType="search"
+            />
+            {search.length > 0 && (
+              <Pressable onPress={() => setSearch('')} hitSlop={8}>
+                <MaterialCommunityIcons name="close-circle" size={15} color={colors.mutedForeground} />
+              </Pressable>
+            )}
+            <Pressable
+              onPress={handleSearch}
+              hitSlop={8}
+              style={[styles.searchBtn, { backgroundColor: colors.primary }]}
+            >
+              <Text style={styles.searchBtnTxt}>OK</Text>
+            </Pressable>
+          </View>
         </View>
-      </View>
+      )}
 
       {/* ── Recenter button ── */}
-      <Pressable
-        style={[styles.recenterBtn, { backgroundColor: colors.card + 'F0', borderColor: colors.border }]}
-        onPress={() => {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-          webRef.current?.injectJavaScript('window.recenter && window.recenter(); true;');
-        }}
-        hitSlop={8}
-      >
-        <MaterialCommunityIcons name="crosshairs-gps" size={20} color={colors.primary} />
-      </Pressable>
+      {!replayMode && (
+        <Pressable
+          style={[styles.recenterBtn, { backgroundColor: colors.card + 'F0', borderColor: colors.border }]}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            webRef.current?.injectJavaScript('window.recenter && window.recenter(); true;');
+          }}
+          hitSlop={8}
+        >
+          <MaterialCommunityIcons name="crosshairs-gps" size={20} color={colors.primary} />
+        </Pressable>
+      )}
 
       {/* ── Bottom panel ── */}
       <View
@@ -494,7 +794,132 @@ export default function MapScreen() {
           { backgroundColor: colors.card + 'F8', borderTopColor: colors.border, paddingBottom: insets.bottom + 8 },
         ]}
       >
-        {loading ? (
+        {/* ── Replay playback controls ── */}
+        {replayMode ? (
+          <View style={styles.replayPlayContainer}>
+            <View style={styles.replayStatusRow}>
+              <MaterialCommunityIcons
+                name={replayPlaying ? 'play-circle' : replayIsPaused ? 'pause-circle' : 'check-circle'}
+                size={18}
+                color={replayPlaying ? '#F44336' : replayIsPaused ? '#FFC107' : '#4CAF50'}
+              />
+              <Text style={[styles.replayStatusTxt, { color: colors.foreground }]}>
+                {replayPlaying
+                  ? 'En lecture'
+                  : replayIsPaused
+                  ? 'En pause'
+                  : 'Terminé'}
+                {replayCurrentTime ? `  ·  ${replayCurrentTime}` : ''}
+              </Text>
+            </View>
+            <View style={styles.replayBtnRow}>
+              {replayPlaying && (
+                <Pressable
+                  style={[styles.replayCtrlBtn, { borderColor: '#FFC107', backgroundColor: '#FFC10715' }]}
+                  onPress={handleReplayPause}
+                >
+                  <MaterialCommunityIcons name="pause" size={18} color="#FFC107" />
+                  <Text style={[styles.replayCtrlTxt, { color: '#FFC107' }]}>Pause</Text>
+                </Pressable>
+              )}
+              {replayIsPaused && (
+                <Pressable
+                  style={[styles.replayCtrlBtn, { borderColor: '#4CAF50', backgroundColor: '#4CAF5015' }]}
+                  onPress={handleReplayResume}
+                >
+                  <MaterialCommunityIcons name="play" size={18} color="#4CAF50" />
+                  <Text style={[styles.replayCtrlTxt, { color: '#4CAF50' }]}>Reprendre</Text>
+                </Pressable>
+              )}
+              <Pressable
+                style={[styles.replayCtrlBtn, { borderColor: '#F44336', backgroundColor: '#F4433615' }]}
+                onPress={handleReplayStop}
+              >
+                <MaterialCommunityIcons name="stop" size={18} color="#F44336" />
+                <Text style={[styles.replayCtrlTxt, { color: '#F44336' }]}>Stop</Text>
+              </Pressable>
+            </View>
+          </View>
+
+        /* ── Replay settings panel ── */
+        ) : replayOpen ? (
+          <View style={styles.replayPanel}>
+            <View style={styles.replayPanelHeader}>
+              <MaterialCommunityIcons name="play-circle-outline" size={18} color={colors.primary} />
+              <Text style={[styles.replayPanelTitle, { color: colors.foreground }]}>Replay GPS</Text>
+              <Pressable onPress={handleCloseReplay} hitSlop={10}>
+                <MaterialCommunityIcons name="close" size={20} color={colors.mutedForeground} />
+              </Pressable>
+            </View>
+
+            <View style={styles.replayRow}>
+              <View style={styles.replayCol}>
+                <Text style={[styles.replayColLabel, { color: colors.mutedForeground }]}>Début</Text>
+                <Stepper
+                  label={fmtReplayDay(replayStartDay)}
+                  onDec={() => setReplayStartDay(d => shiftDay(d, -1))}
+                  onInc={() => setReplayStartDay(d => shiftDay(d, 1))}
+                  colors={colors}
+                />
+                <Stepper
+                  label={`${String(replayStartHour).padStart(2, '0')}h00`}
+                  onDec={() => setReplayStartHour(h => Math.max(0, h - 1))}
+                  onInc={() => setReplayStartHour(h => Math.min(23, h + 1))}
+                  colors={colors}
+                />
+              </View>
+              <View style={[styles.replayColDivider, { backgroundColor: colors.border }]} />
+              <View style={styles.replayCol}>
+                <Text style={[styles.replayColLabel, { color: colors.mutedForeground }]}>Fin</Text>
+                <Stepper
+                  label={fmtReplayDay(replayEndDay)}
+                  onDec={() => setReplayEndDay(d => shiftDay(d, -1))}
+                  onInc={() => setReplayEndDay(d => shiftDay(d, 1))}
+                  colors={colors}
+                />
+                <Stepper
+                  label={`${String(replayEndHour).padStart(2, '0')}h00`}
+                  onDec={() => setReplayEndHour(h => Math.max(0, h - 1))}
+                  onInc={() => setReplayEndHour(h => Math.min(23, h + 1))}
+                  colors={colors}
+                />
+              </View>
+            </View>
+
+            <View style={styles.replayDurRow}>
+              {DURATIONS.map(d => (
+                <Pressable
+                  key={d.ms}
+                  onPress={() => setReplayDurMs(d.ms)}
+                  style={[
+                    styles.replayDurBtn,
+                    {
+                      borderColor: replayDurMs === d.ms ? colors.primary : colors.border,
+                      backgroundColor: replayDurMs === d.ms ? colors.primary + '22' : 'transparent',
+                    },
+                  ]}
+                >
+                  <Text style={[
+                    styles.replayDurTxt,
+                    { color: replayDurMs === d.ms ? colors.primary : colors.mutedForeground },
+                  ]}>
+                    {d.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+
+            <Pressable
+              style={[styles.lancerBtn, { backgroundColor: colors.primary }]}
+              onPress={handleLancer}
+            >
+              <MaterialCommunityIcons name="play" size={16} color="#121212" />
+              <Text style={styles.lancerTxt}>Lancer</Text>
+            </Pressable>
+          </View>
+
+        /* ── Normal panel content ── */
+        ) : loading ? (
           <ActivityIndicator color={colors.primary} style={{ marginVertical: 12 }} />
         ) : (
           <>
@@ -579,7 +1004,6 @@ export default function MapScreen() {
               </Pressable>
             </View>
 
-            {/* ── Backup row ── */}
             <View style={[styles.backupRow, { borderTopColor: colors.border }]}>
               <Pressable
                 style={[styles.backupBtn, { borderColor: colors.border, opacity: backupBusy ? 0.5 : 1 }]}
@@ -596,6 +1020,13 @@ export default function MapScreen() {
               >
                 <MaterialCommunityIcons name="import" size={15} color={colors.mutedForeground} />
                 <Text style={[styles.backupTxt, { color: colors.mutedForeground }]}>Importer</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.backupBtn, { borderColor: colors.primary + '88', backgroundColor: colors.primary + '12' }]}
+                onPress={handleOpenReplay}
+              >
+                <MaterialCommunityIcons name="play-circle-outline" size={15} color={colors.primary} />
+                <Text style={[styles.backupTxt, { color: colors.primary }]}>Replay</Text>
               </Pressable>
             </View>
           </>
@@ -764,5 +1195,115 @@ const styles = StyleSheet.create({
   legendLabel: {
     fontSize: 11,
     fontFamily: 'Inter_400Regular',
+  },
+
+  // ── Replay styles ────────────────────────────────────────────────────────────
+
+  replayPanel: { gap: 12 },
+
+  replayPanelHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  replayPanelTitle: {
+    flex: 1,
+    fontSize: 15,
+    fontFamily: 'Inter_600SemiBold',
+  },
+
+  replayRow: {
+    flexDirection: 'row',
+    gap: 0,
+  },
+  replayCol: {
+    flex: 1,
+    gap: 6,
+    alignItems: 'center',
+  },
+  replayColDivider: {
+    width: 1,
+    marginHorizontal: 8,
+    marginVertical: 4,
+  },
+  replayColLabel: {
+    fontSize: 10,
+    fontFamily: 'Inter_400Regular',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+
+  stepper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  stepperBtn: {
+    padding: 4,
+  },
+  stepperVal: {
+    fontSize: 13,
+    fontFamily: 'Inter_600SemiBold',
+    minWidth: 72,
+    textAlign: 'center',
+  },
+
+  replayDurRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  replayDurBtn: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 7,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  replayDurTxt: {
+    fontSize: 12,
+    fontFamily: 'Inter_600SemiBold',
+  },
+
+  lancerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: 10,
+  },
+  lancerTxt: {
+    color: '#121212',
+    fontSize: 14,
+    fontFamily: 'Inter_700Bold',
+  },
+
+  replayPlayContainer: { gap: 12 },
+  replayStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  replayStatusTxt: {
+    fontSize: 14,
+    fontFamily: 'Inter_600SemiBold',
+  },
+  replayBtnRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  replayCtrlBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 9,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  replayCtrlTxt: {
+    fontSize: 13,
+    fontFamily: 'Inter_600SemiBold',
   },
 });

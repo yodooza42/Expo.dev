@@ -106,6 +106,32 @@ export async function correctActivity(
   }
 }
 
+// ── Multi-day load ────────────────────────────────────────────────────────────
+
+export async function loadMultiDayPoints(
+  startTs: number,
+  endTs: number,
+): Promise<LocationPoint[]> {
+  const startDate = new Date(startTs);
+  const endDate   = new Date(endTs);
+  const startDay  = dateKey(startDate);
+  const endDay    = dateKey(endDate);
+
+  const days: string[] = [];
+  const cur = new Date(startDay + 'T12:00:00');
+  while (dateKey(cur) <= endDay) {
+    days.push(dateKey(cur));
+    cur.setDate(cur.getDate() + 1);
+  }
+
+  const all: LocationPoint[] = [];
+  for (const day of days) {
+    const pts = await loadDayPoints(day);
+    all.push(...pts);
+  }
+  return all.filter(p => p.timestamp >= startTs && p.timestamp <= endTs);
+}
+
 // ── Purge old data (>90 days) ─────────────────────────────────────────────────
 
 export async function purgeOldData(): Promise<void> {
