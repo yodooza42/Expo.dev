@@ -386,7 +386,8 @@ export default function MapScreen() {
 
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.statsScroll}>
               <View style={styles.statsRow}>
-                <StatChip icon="map-marker-distance" color="#2196F3" label="Distance" value={`${dayStats.distanceKm} km`} colors={colors} />
+                <StatChip icon="walk" color="#4CAF50" label="À pied" value={`${dayStats.walkKm} km`} colors={colors} />
+                <StatChip icon="car" color="#2196F3" label="Voiture" value={`${dayStats.carKm} km`} colors={colors} />
                 <StatChip icon="map-marker-multiple-outline" color="#9C27B0" label="Points" value={String(dayStats.points.length)} colors={colors} />
                 <StatChip icon="clock-start" color="#4CAF50" label="Premier" value={dayStats.firstTime ?? '—'} colors={colors} />
                 <StatChip icon="clock-end" color="#F44336" label="Dernier" value={dayStats.lastTime ?? '—'} colors={colors} />

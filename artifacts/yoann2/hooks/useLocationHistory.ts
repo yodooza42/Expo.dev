@@ -19,6 +19,8 @@ const KEY_PREFIX = '@yoann2_location_';
 export type DayStats = {
   points: LocationPoint[];
   distanceKm: number;
+  walkKm: number;
+  carKm: number;
   firstTime: string | null;
   lastTime: string | null;
 };
@@ -49,7 +51,7 @@ function todayKey(): string {
 
 export function useLocationHistory() {
   const [selectedDay, setSelectedDay]   = useState<string>(todayKey());
-  const [dayStats, setDayStats]         = useState<DayStats>({ points: [], distanceKm: 0, firstTime: null, lastTime: null });
+  const [dayStats, setDayStats]         = useState<DayStats>({ points: [], distanceKm: 0, walkKm: 0, carKm: 0, firstTime: null, lastTime: null });
   const [periodAvg7,  setPeriodAvg7]    = useState<PeriodAvg>({ days: 7,  avgKmPerDay: 0 });
   const [periodAvg30, setPeriodAvg30]   = useState<PeriodAvg>({ days: 30, avgKmPerDay: 0 });
   const [paused, setPaused]             = useState(false);
@@ -59,11 +61,15 @@ export function useLocationHistory() {
   // Load day stats
   const loadDay = useCallback(async (day: string) => {
     setLoading(true);
-    const points = await loadDayPoints(day);
+    const points    = await loadDayPoints(day);
     const distanceKm = calcDistance(points);
+    const walkPts   = points.filter(p => (p.activity ?? 'walk') === 'walk');
+    const carPts    = points.filter(p => p.activity === 'car');
+    const walkKm    = calcDistance(walkPts);
+    const carKm     = calcDistance(carPts);
     const firstTime = points.length > 0 ? formatTime(points[0]!.timestamp) : null;
     const lastTime  = points.length > 0 ? formatTime(points[points.length - 1]!.timestamp) : null;
-    setDayStats({ points, distanceKm, firstTime, lastTime });
+    setDayStats({ points, distanceKm, walkKm, carKm, firstTime, lastTime });
     setLoading(false);
   }, []);
 

@@ -8,11 +8,21 @@ export const LOCATION_TASK_NAME = 'background-location-task';
 const KEY_PREFIX = '@yoann2_location_';
 const MAX_DAYS = 90;
 
+export type ActivityType = 'walk' | 'car' | 'unknown';
+
 export type LocationPoint = {
   lat: number;
   lng: number;
   timestamp: number;
+  activity?: ActivityType;
 };
+
+function classifyActivity(speedMs: number | null | undefined): ActivityType {
+  if (speedMs == null || speedMs < 0) return 'unknown';
+  if (speedMs < 2) return 'walk';
+  if (speedMs > 5) return 'car';
+  return 'unknown';
+}
 
 // ── Haversine distance in km ──────────────────────────────────────────────────
 
@@ -129,8 +139,8 @@ export async function startTracking(): Promise<void> {
 
   await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
     accuracy: Location.Accuracy.Balanced,
-    timeInterval: 5 * 60 * 1000,
-    distanceInterval: 100,
+    timeInterval: 30_000,
+    distanceInterval: 10,
     showsBackgroundLocationIndicator: true,
     foregroundService: {
       notificationTitle: 'Yoann2.0',
@@ -158,6 +168,7 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
       lat: loc.coords.latitude,
       lng: loc.coords.longitude,
       timestamp: loc.timestamp,
+      activity: classifyActivity(loc.coords.speed),
     });
   }
   await purgeOldData();
