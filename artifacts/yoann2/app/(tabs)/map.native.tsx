@@ -293,6 +293,7 @@ var rafId=null;
 var isPlaying=false;
 var lastMsgMs=-9999;
 window._replayDur=30000;
+window._replayFollow=false;
 
 function tick(){
   if(!isPlaying)return;
@@ -323,7 +324,9 @@ function tick(){
     var p0=pts[si],p1=pts[Math.min(si+1,pts.length-1)];
     var sr=p1.ts-p0.ts;
     var f=sr>0?(simTs-p0.ts)/sr:0;
-    mover.setLatLng([p0.lat+f*(p1.lat-p0.lat),p0.lng+f*(p1.lng-p0.lng)]);
+    var newLat=p0.lat+f*(p1.lat-p0.lat),newLng=p0.lng+f*(p1.lng-p0.lng);
+    mover.setLatLng([newLat,newLng]);
+    if(window._replayFollow){map.panTo([newLat,newLng],{animate:true,duration:0.3});}
   }
 
   var t=fmtTs(simTs);
@@ -467,6 +470,7 @@ export default function MapScreen() {
   const [replayIsPaused, setReplayIsPaused]   = useState(false);
   const [replayCurrentTime, setReplayCurrentTime] = useState('');
   const [replayPoints, setReplayPoints]       = useState<LocationPoint[]>([]);
+  const [replayFollow, setReplayFollow]       = useState(false);
   const pendingReplayRef = useRef<number | null>(null);
 
   const today   = new Date().toISOString().slice(0, 10);
@@ -616,6 +620,15 @@ export default function MapScreen() {
     setReplayPlaying(true);
   }, []);
 
+  const handleToggleFollow = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setReplayFollow(f => {
+      const next = !f;
+      webRef.current?.injectJavaScript(`window._replayFollow=${next};true;`);
+      return next;
+    });
+  }, []);
+
   const handleReplayStop = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     webRef.current?.injectJavaScript('window.stopReplay && window.stopReplay(); true;');
@@ -625,6 +638,7 @@ export default function MapScreen() {
     setReplayIsPaused(false);
     setReplayCurrentTime('');
     setReplayPoints([]);
+    setReplayFollow(false);
   }, []);
 
   // ── WebView message handler ─────────────────────────────────────────────────
@@ -839,6 +853,25 @@ export default function MapScreen() {
                 <Text style={[styles.replayCtrlTxt, { color: '#F44336' }]}>Stop</Text>
               </Pressable>
             </View>
+            <Pressable
+              style={[
+                styles.replayFollowBtn,
+                {
+                  borderColor: replayFollow ? colors.primary : colors.border,
+                  backgroundColor: replayFollow ? colors.primary + '22' : 'transparent',
+                },
+              ]}
+              onPress={handleToggleFollow}
+            >
+              <MaterialCommunityIcons
+                name={replayFollow ? 'lock' : 'lock-open-variant-outline'}
+                size={15}
+                color={replayFollow ? colors.primary : colors.mutedForeground}
+              />
+              <Text style={[styles.replayFollowTxt, { color: replayFollow ? colors.primary : colors.mutedForeground }]}>
+                {replayFollow ? 'Suivi activé — carte suit le marqueur' : 'Suivi désactivé'}
+              </Text>
+            </Pressable>
           </View>
 
         /* ── Replay settings panel ── */
@@ -1305,5 +1338,19 @@ const styles = StyleSheet.create({
   replayCtrlTxt: {
     fontSize: 13,
     fontFamily: 'Inter_600SemiBold',
+  },
+
+  replayFollowBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+    paddingVertical: 7,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  replayFollowTxt: {
+    fontSize: 12,
+    fontFamily: 'Inter_500Medium',
   },
 });
