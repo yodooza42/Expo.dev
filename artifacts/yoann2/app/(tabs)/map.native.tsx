@@ -87,15 +87,26 @@ function parseSearchQuery(
 
 // ── Leaflet HTML builder ──────────────────────────────────────────────────────
 
+const ACTIVITY_COLORS: Record<string, string> = {
+  walk: '#4CAF50',
+  car: '#2196F3',
+  unknown: '#FFC107',
+};
+
 function buildMapHtml(
   points: LocationPoint[],
   primaryColor: string,
   highlightPt: LocationPoint | null,
 ): string {
-  const latlngs = JSON.stringify(points.map(p => [p.lat, p.lng]));
+  const ptsData = JSON.stringify(
+    points.map(p => ({ lat: p.lat, lng: p.lng, activity: p.activity ?? 'unknown' })),
+  );
   const highlight = highlightPt
     ? JSON.stringify([highlightPt.lat, highlightPt.lng])
     : 'null';
+  const highlightColor = highlightPt
+    ? (ACTIVITY_COLORS[highlightPt.activity ?? 'unknown'] ?? primaryColor)
+    : primaryColor;
 
   return `<!DOCTYPE html>
 <html>
@@ -117,32 +128,45 @@ function buildMapHtml(
 var map=L.map('map',{zoomControl:true,attributionControl:false});
 L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{maxZoom:19}).addTo(map);
 
-var pts=${latlngs};
+var ptsData=${ptsData};
 var hl=${highlight};
-var pri='${primaryColor}';
+var hlColor='${highlightColor}';
 
-if(pts.length>0){
-  L.polyline(pts,{color:pri,weight:4,opacity:0.9}).addTo(map);
-  L.circleMarker(pts[0],{radius:8,color:'#4CAF50',fillColor:'#4CAF50',fillOpacity:1,weight:2}).addTo(map);
-  if(pts.length>1){
-    L.circleMarker(pts[pts.length-1],{radius:8,color:'#F44336',fillColor:'#F44336',fillOpacity:1,weight:2}).addTo(map);
-    for(var i=1;i<pts.length-1;i++){
-      L.circleMarker(pts[i],{radius:3,color:'#2196F3',fillColor:'#2196F3',fillOpacity:0.7,weight:1}).addTo(map);
-    }
+var COLORS={walk:'#4CAF50',car:'#2196F3',unknown:'#FFC107'};
+
+function colorFor(act){return COLORS[act]||'#FFC107';}
+
+if(ptsData.length>0){
+  var latlngs=ptsData.map(function(p){return[p.lat,p.lng];});
+
+  for(var i=0;i<ptsData.length-1;i++){
+    var seg=[[ptsData[i].lat,ptsData[i].lng],[ptsData[i+1].lat,ptsData[i+1].lng]];
+    var col=colorFor(ptsData[i].activity);
+    L.polyline(seg,{color:col,weight:4,opacity:0.9}).addTo(map);
   }
+
+  L.circleMarker(latlngs[0],{radius:8,color:'#4CAF50',fillColor:'#4CAF50',fillOpacity:1,weight:2}).addTo(map);
+  if(ptsData.length>1){
+    L.circleMarker(latlngs[latlngs.length-1],{radius:8,color:'#F44336',fillColor:'#F44336',fillOpacity:1,weight:2}).addTo(map);
+  }
+
   if(hl){
-    L.circleMarker(hl,{radius:11,color:pri,fillColor:pri,fillOpacity:0.85,weight:3}).addTo(map);
+    L.circleMarker(hl,{radius:11,color:hlColor,fillColor:hlColor,fillOpacity:0.85,weight:3}).addTo(map);
     map.setView(hl,16);
   } else {
-    map.fitBounds(L.polyline(pts).getBounds().pad(0.15));
+    map.fitBounds(L.polyline(latlngs).getBounds().pad(0.15));
   }
 } else {
   map.setView([46.2276,2.2137],6);
 }
 
 window.recenter=function(){
-  if(pts.length>0) map.fitBounds(L.polyline(pts).getBounds().pad(0.15));
-  else map.setView([46.2276,2.2137],6);
+  if(ptsData.length>0){
+    var ll=ptsData.map(function(p){return[p.lat,p.lng];});
+    map.fitBounds(L.polyline(ll).getBounds().pad(0.15));
+  } else {
+    map.setView([46.2276,2.2137],6);
+  }
 };
 </script>
 </body>
@@ -394,6 +418,21 @@ export default function MapScreen() {
               </View>
             </ScrollView>
 
+            <View style={styles.legendRow}>
+              <View style={styles.legendItem}>
+                <View style={[styles.legendDot, { backgroundColor: '#4CAF50' }]} />
+                <Text style={[styles.legendLabel, { color: colors.mutedForeground }]}>Marche</Text>
+              </View>
+              <View style={styles.legendItem}>
+                <View style={[styles.legendDot, { backgroundColor: '#2196F3' }]} />
+                <Text style={[styles.legendLabel, { color: colors.mutedForeground }]}>Voiture</Text>
+              </View>
+              <View style={styles.legendItem}>
+                <View style={[styles.legendDot, { backgroundColor: '#FFC107' }]} />
+                <Text style={[styles.legendLabel, { color: colors.mutedForeground }]}>Inconnu</Text>
+              </View>
+            </View>
+
             <View style={[styles.avgRow, { borderTopColor: colors.border }]}>
               <View style={styles.avgItem}>
                 <Text style={[styles.avgPeriod, { color: colors.mutedForeground }]}>Moy. 7 jours</Text>
@@ -586,4 +625,24 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
   },
   backupTxt: { fontSize: 11, fontFamily: 'Inter_500Medium' },
+
+  legendRow: {
+    flexDirection: 'row',
+    gap: 16,
+    alignItems: 'center',
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  legendDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  legendLabel: {
+    fontSize: 11,
+    fontFamily: 'Inter_400Regular',
+  },
 });
