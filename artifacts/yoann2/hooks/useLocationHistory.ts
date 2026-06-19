@@ -28,6 +28,8 @@ export type DayStats = {
 export type PeriodAvg = {
   days: number;
   avgKmPerDay: number;
+  walkAvgKmPerDay: number;
+  carAvgKmPerDay: number;
 };
 
 function calcDistance(points: LocationPoint[]): number {
@@ -52,8 +54,8 @@ function todayKey(): string {
 export function useLocationHistory() {
   const [selectedDay, setSelectedDay]   = useState<string>(todayKey());
   const [dayStats, setDayStats]         = useState<DayStats>({ points: [], distanceKm: 0, walkKm: 0, carKm: 0, firstTime: null, lastTime: null });
-  const [periodAvg7,  setPeriodAvg7]    = useState<PeriodAvg>({ days: 7,  avgKmPerDay: 0 });
-  const [periodAvg30, setPeriodAvg30]   = useState<PeriodAvg>({ days: 30, avgKmPerDay: 0 });
+  const [periodAvg7,  setPeriodAvg7]    = useState<PeriodAvg>({ days: 7,  avgKmPerDay: 0, walkAvgKmPerDay: 0, carAvgKmPerDay: 0 });
+  const [periodAvg30, setPeriodAvg30]   = useState<PeriodAvg>({ days: 30, avgKmPerDay: 0, walkAvgKmPerDay: 0, carAvgKmPerDay: 0 });
   const [paused, setPaused]             = useState(false);
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [loading, setLoading]           = useState(true);
@@ -78,7 +80,7 @@ export function useLocationHistory() {
     const allKeys = await AsyncStorage.getAllKeys();
     const locKeys = allKeys.filter(k => k.startsWith(KEY_PREFIX));
 
-    async function avgForDays(n: number): Promise<number> {
+    async function avgForDays(n: number): Promise<{ total: number; walk: number; car: number }> {
       const cutoff = new Date();
       cutoff.setDate(cutoff.getDate() - n);
       const cutStr = dateKey(cutoff);
@@ -86,19 +88,24 @@ export function useLocationHistory() {
         const d = k.replace(KEY_PREFIX, '');
         return d >= cutStr;
       });
-      if (relevant.length === 0) return 0;
+      if (relevant.length === 0) return { total: 0, walk: 0, car: 0 };
       let totalKm = 0;
+      let walkKm = 0;
+      let carKm = 0;
       for (const k of relevant) {
         const raw = await AsyncStorage.getItem(k);
         const pts: LocationPoint[] = raw ? JSON.parse(raw) : [];
         totalKm += calcDistance(pts);
+        walkKm  += calcDistance(pts.filter(p => (p.activity ?? 'walk') === 'walk'));
+        carKm   += calcDistance(pts.filter(p => p.activity === 'car'));
       }
-      return Math.round((totalKm / n) * 10) / 10;
+      const round = (v: number) => Math.round((v / n) * 10) / 10;
+      return { total: round(totalKm), walk: round(walkKm), car: round(carKm) };
     }
 
-    const [avg7, avg30] = await Promise.all([avgForDays(7), avgForDays(30)]);
-    setPeriodAvg7({ days: 7,  avgKmPerDay: avg7 });
-    setPeriodAvg30({ days: 30, avgKmPerDay: avg30 });
+    const [r7, r30] = await Promise.all([avgForDays(7), avgForDays(30)]);
+    setPeriodAvg7({ days: 7,  avgKmPerDay: r7.total,  walkAvgKmPerDay: r7.walk,  carAvgKmPerDay: r7.car });
+    setPeriodAvg30({ days: 30, avgKmPerDay: r30.total, walkAvgKmPerDay: r30.walk, carAvgKmPerDay: r30.car });
   }, []);
 
   // Check permissions and paused state; restore backup if AsyncStorage is empty

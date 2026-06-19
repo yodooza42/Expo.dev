@@ -467,17 +467,32 @@ export default function MapScreen() {
               </View>
             </View>
 
-            <View style={[styles.avgRow, { borderTopColor: colors.border }]}>
-              <View style={styles.avgItem}>
-                <Text style={[styles.avgPeriod, { color: colors.mutedForeground }]}>Moy. 7 jours</Text>
-                <Text style={[styles.avgVal, { color: colors.foreground }]}>{periodAvg7.avgKmPerDay} km/j</Text>
+            <View style={[styles.avgSection, { borderTopColor: colors.border }]}>
+              <View style={styles.avgGrid}>
+                <View style={styles.avgCell}>
+                  <MaterialCommunityIcons name="walk" size={13} color="#4CAF50" />
+                  <Text style={[styles.avgPeriod, { color: colors.mutedForeground }]}>7 jours</Text>
+                  <Text style={[styles.avgVal, { color: colors.foreground }]}>{periodAvg7.walkAvgKmPerDay} km/j</Text>
+                </View>
+                <View style={[styles.avgDivider, { backgroundColor: colors.border }]} />
+                <View style={styles.avgCell}>
+                  <MaterialCommunityIcons name="car" size={13} color="#2196F3" />
+                  <Text style={[styles.avgPeriod, { color: colors.mutedForeground }]}>7 jours</Text>
+                  <Text style={[styles.avgVal, { color: colors.foreground }]}>{periodAvg7.carAvgKmPerDay} km/j</Text>
+                </View>
+                <View style={[styles.avgDivider, { backgroundColor: colors.border }]} />
+                <View style={styles.avgCell}>
+                  <MaterialCommunityIcons name="walk" size={13} color="#4CAF50" />
+                  <Text style={[styles.avgPeriod, { color: colors.mutedForeground }]}>30 jours</Text>
+                  <Text style={[styles.avgVal, { color: colors.foreground }]}>{periodAvg30.walkAvgKmPerDay} km/j</Text>
+                </View>
+                <View style={[styles.avgDivider, { backgroundColor: colors.border }]} />
+                <View style={styles.avgCell}>
+                  <MaterialCommunityIcons name="car" size={13} color="#2196F3" />
+                  <Text style={[styles.avgPeriod, { color: colors.mutedForeground }]}>30 jours</Text>
+                  <Text style={[styles.avgVal, { color: colors.foreground }]}>{periodAvg30.carAvgKmPerDay} km/j</Text>
+                </View>
               </View>
-              <View style={[styles.avgDivider, { backgroundColor: colors.border }]} />
-              <View style={styles.avgItem}>
-                <Text style={[styles.avgPeriod, { color: colors.mutedForeground }]}>Moy. 30 jours</Text>
-                <Text style={[styles.avgVal, { color: colors.foreground }]}>{periodAvg30.avgKmPerDay} km/j</Text>
-              </View>
-              <View style={[styles.avgDivider, { backgroundColor: colors.border }]} />
               <Pressable
                 style={[
                   styles.pauseBtn,
@@ -620,16 +635,19 @@ const styles = StyleSheet.create({
   statLabel: { fontSize: 9, fontFamily: 'Inter_400Regular' },
   statValue: { fontSize: 14, fontFamily: 'Inter_700Bold' },
 
-  avgRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  avgSection: {
     borderTopWidth: StyleSheet.hairlineWidth,
     paddingTop: 10,
+    gap: 8,
   },
-  avgItem: { flex: 1, alignItems: 'center', gap: 2 },
+  avgGrid: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  avgCell: { flex: 1, alignItems: 'center', gap: 2 },
   avgPeriod: { fontSize: 10, fontFamily: 'Inter_400Regular' },
-  avgVal: { fontSize: 15, fontFamily: 'Inter_700Bold' },
-  avgDivider: { width: 1, height: 30, marginHorizontal: 4 },
+  avgVal: { fontSize: 13, fontFamily: 'Inter_700Bold' },
+  avgDivider: { width: 1, height: 34, marginHorizontal: 4 },
 
   pauseBtn: {
     flexDirection: 'row',
