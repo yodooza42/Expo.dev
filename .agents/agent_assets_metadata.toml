@@ -12,8 +12,68 @@ uri = "file://attached_assets/yoann20_wordmark_preview.png"
 type = "image"
 title = "yoann20 wordmark preview dark golden"
 
+[[generated]]
+id = "-WREmhP6Yjn9o9mBpZdnD"
+uri = "file://attached_assets/generated_images/yoann2_logo_01_compass_gps.png"
+type = "image"
+title = "compass GPS badge logo"
+
+[[generated]]
+id = "q161xsrArI74LnE_Npc1_"
+uri = "file://attached_assets/generated_images/yoann2_logo_02_letter_y.png"
+type = "image"
+title = "Y letter geometric logo"
+
+[[generated]]
+id = "6Mr4uRVmu6OYYomOVE9wP"
+uri = "file://attached_assets/generated_images/yoann2_logo_03_gps_loop.png"
+type = "image"
+title = "GPS path loop badge"
+
+[[generated]]
+id = "CC6HfK6PLdWyYbHX5_uXH"
+uri = "file://attached_assets/generated_images/yoann2_logo_04_hex_target.png"
+type = "image"
+title = "hexagonal target badge"
+
+[[generated]]
+id = "Vv5PE9aCxcqAv2WEpxKns"
+uri = "file://attached_assets/generated_images/yoann2_logo_05_trajet.png"
+type = "image"
+title = "trajectory path icon"
+
 [[outputs]]
 id = "XuhJX-lUqYwl5JK9hSvwv"
 uri = "file://artifacts/yoann2/assets/images/icon.png"
 type = "image"
 title = "Icône app — Y 2.0 golden"
+
+[[outputs]]
+id = "ap2fruiuEvJjC_tJswyjd"
+uri = "file://attached_assets/generated_images/yoann2_logo_01_compass_gps.png"
+type = "image"
+title = "#1 — Boussole + GPS"
+
+[[outputs]]
+id = "h0a_9lTzM972id6nr6JR7"
+uri = "file://attached_assets/generated_images/yoann2_logo_02_letter_y.png"
+type = "image"
+title = "#2 — Lettre Y flèches"
+
+[[outputs]]
+id = "Q4hoY9xjn75CuZ85QhmBH"
+uri = "file://attached_assets/generated_images/yoann2_logo_03_gps_loop.png"
+type = "image"
+title = "#3 — Boucle GPS"
+
+[[outputs]]
+id = "txRfmPQtcw_pTTMH1DYAW"
+uri = "file://attached_assets/generated_images/yoann2_logo_04_hex_target.png"
+type = "image"
+title = "#4 — Hexagone cible"
+
+[[outputs]]
+id = "I4Hl4mb1H-64OgPv4GNNb"
+uri = "file://attached_assets/generated_images/yoann2_logo_05_trajet.png"
+type = "image"
+title = "#5 — Trajectoire montante"
