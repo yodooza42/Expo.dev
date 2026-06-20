@@ -162,6 +162,12 @@ uri = "file://attached_assets/generated_images/yoann2_logo_phoenix_10_dashboard.
 type = "image"
 title = "phoenix dashboard tiles"
 
+[[generated]]
+id = "be06Zqi9pYDrgAfjbAfID"
+uri = "file://attached_assets/generated_images/yoann2_logo_phoenix_06b_clean.png"
+type = "image"
+title = "phoenix clean no arrows"
+
 [[outputs]]
 id = "XuhJX-lUqYwl5JK9hSvwv"
 uri = "file://artifacts/yoann2/assets/images/icon.png"
@@ -317,3 +323,9 @@ id = "6RYtti58IflXqL3XGoVVg"
 uri = "file://attached_assets/generated_images/yoann2_logo_phoenix_10_dashboard.png"
 type = "image"
 title = "Phoenix-10 — Dashboard tuiles"
+
+[[outputs]]
+id = "IFZwVfyGIPmSWSmZ7B0M6"
+uri = "file://attached_assets/generated_images/yoann2_logo_phoenix_06b_clean.png"
+type = "image"
+title = "Phoenix-6 — Version sans flèches"
