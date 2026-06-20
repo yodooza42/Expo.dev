@@ -42,6 +42,36 @@ uri = "file://attached_assets/generated_images/yoann2_logo_05_trajet.png"
 type = "image"
 title = "trajectory path icon"
 
+[[generated]]
+id = "5JZeQZJ4vrYgqkoIma9_f"
+uri = "file://attached_assets/generated_images/yoann2_logo_y_01_thick.png"
+type = "image"
+title = "Y thick bold lines"
+
+[[generated]]
+id = "pK94RBqNMfBYICCBNhfLV"
+uri = "file://attached_assets/generated_images/yoann2_logo_y_02_circled.png"
+type = "image"
+title = "Y compass in circle"
+
+[[generated]]
+id = "kkqR6cqbqGVIUo37dtLfI"
+uri = "file://attached_assets/generated_images/yoann2_logo_y_03_mountain.png"
+type = "image"
+title = "Y mountain peak shape"
+
+[[generated]]
+id = "r0CUeLSeT7zrO047Ec7RQ"
+uri = "file://attached_assets/generated_images/yoann2_logo_y_04_speed.png"
+type = "image"
+title = "Y speed lines dynamic"
+
+[[generated]]
+id = "4y9mxL7_m1l4YRuoRj8sH"
+uri = "file://attached_assets/generated_images/yoann2_logo_y_05_dotted.png"
+type = "image"
+title = "Y dotted GPS path"
+
 [[outputs]]
 id = "XuhJX-lUqYwl5JK9hSvwv"
 uri = "file://artifacts/yoann2/assets/images/icon.png"
@@ -77,3 +107,33 @@ id = "I4Hl4mb1H-64OgPv4GNNb"
 uri = "file://attached_assets/generated_images/yoann2_logo_05_trajet.png"
 type = "image"
 title = "#5 — Trajectoire montante"
+
+[[outputs]]
+id = "CBvK6ToMCyRw1UfY0wzIw"
+uri = "file://attached_assets/generated_images/yoann2_logo_y_01_thick.png"
+type = "image"
+title = "Y-1 — Lignes épaisses"
+
+[[outputs]]
+id = "tMGxjIED6jwKzjWy9vmxx"
+uri = "file://attached_assets/generated_images/yoann2_logo_y_02_circled.png"
+type = "image"
+title = "Y-2 — Cercle boussole"
+
+[[outputs]]
+id = "e9mnwopvuonR8Soj3kMT0"
+uri = "file://attached_assets/generated_images/yoann2_logo_y_03_mountain.png"
+type = "image"
+title = "Y-3 — Pic montagne"
+
+[[outputs]]
+id = "gXBFYMck6wziaV2cp1Z2i"
+uri = "file://attached_assets/generated_images/yoann2_logo_y_04_speed.png"
+type = "image"
+title = "Y-4 — Vitesse dynamique"
+
+[[outputs]]
+id = "TQVl1l1vaQNogXexYtEBS"
+uri = "file://attached_assets/generated_images/yoann2_logo_y_05_dotted.png"
+type = "image"
+title = "Y-5 — Points GPS"
