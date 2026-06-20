@@ -167,6 +167,10 @@ export async function purgeOldData(): Promise<void> {
 
 const PAUSED_KEY = '@yoann2_location_paused';
 const GPS_INTERVAL_KEY = '@yoann2_gps_interval';
+const LAST_VALID_KEY = '@yoann2_last_valid_point';
+
+const MIN_DISTANCE_METERS = 15;
+const MAX_SPEED_MS = 55.56; // 200 km/h
 
 export type GpsInterval = {
   label: string;
@@ -262,15 +266,48 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
   if (error) return;
   if (!data) return;
   const { locations } = data as { locations: Location.LocationObject[] };
+
+  let lastValid: LocationPoint | null = null;
+  try {
+    const raw = await AsyncStorage.getItem(LAST_VALID_KEY);
+    if (raw) lastValid = JSON.parse(raw) as LocationPoint;
+  } catch {}
+  if (!lastValid) {
+    try {
+      const today = dateKey(new Date());
+      const pts = await loadDayPoints(today);
+      if (pts.length > 0) lastValid = pts[pts.length - 1]!;
+    } catch {}
+  }
+
   for (const loc of locations) {
+    const lat = loc.coords.latitude;
+    const lng = loc.coords.longitude;
+    const timestamp = loc.timestamp;
     const speedMs = loc.coords.speed;
-    await appendPoint({
-      lat: loc.coords.latitude,
-      lng: loc.coords.longitude,
-      timestamp: loc.timestamp,
+
+    if (lastValid) {
+      const distM = haversineKm(lastValid.lat, lastValid.lng, lat, lng) * 1000;
+      const timeS = (timestamp - lastValid.timestamp) / 1000;
+
+      if (distM < MIN_DISTANCE_METERS) continue;
+      if (timeS > 0 && distM / timeS > MAX_SPEED_MS) continue;
+    }
+
+    const point: LocationPoint = {
+      lat,
+      lng,
+      timestamp,
       activity: classifyActivity(speedMs),
       speedKmh: speedMs != null && speedMs >= 0 ? Math.round(speedMs * 3.6) : undefined,
-    });
+    };
+
+    await appendPoint(point);
+    lastValid = point;
+    try {
+      await AsyncStorage.setItem(LAST_VALID_KEY, JSON.stringify(point));
+    } catch {}
   }
+
   await purgeOldData();
 });

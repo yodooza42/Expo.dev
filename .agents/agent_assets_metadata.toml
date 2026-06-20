@@ -132,6 +132,36 @@ uri = "file://attached_assets/generated_images/yoann2_logo_app_05_dashboard.png"
 type = "image"
 title = "dashboard 2x2 grid"
 
+[[generated]]
+id = "EDMSxEpSWlW2qvNNluKb_"
+uri = "file://attached_assets/generated_images/yoann2_logo_phoenix_06_tasks.png"
+type = "image"
+title = "phoenix checklist arrows"
+
+[[generated]]
+id = "9LIv1jhsMAFJJwEswEUQl"
+uri = "file://attached_assets/generated_images/yoann2_logo_phoenix_07_calendar.png"
+type = "image"
+title = "phoenix calendar grid wings"
+
+[[generated]]
+id = "6XtwVqVD7ejpH1sXmLiVi"
+uri = "file://attached_assets/generated_images/yoann2_logo_phoenix_08_path.png"
+type = "image"
+title = "phoenix GPS path dots"
+
+[[generated]]
+id = "5kq_sw1PwwQQPgPX49Ud6"
+uri = "file://attached_assets/generated_images/yoann2_logo_phoenix_09_ywings.png"
+type = "image"
+title = "phoenix Y wings arrow"
+
+[[generated]]
+id = "23vGV9RRHtuHBXETsG4MV"
+uri = "file://attached_assets/generated_images/yoann2_logo_phoenix_10_dashboard.png"
+type = "image"
+title = "phoenix dashboard tiles"
+
 [[outputs]]
 id = "XuhJX-lUqYwl5JK9hSvwv"
 uri = "file://artifacts/yoann2/assets/images/icon.png"
@@ -257,3 +287,33 @@ id = "dd2TE4uuW1dW13vTV4m1H"
 uri = "file://attached_assets/generated_images/yoann2_logo_app_05_dashboard.png"
 type = "image"
 title = "App-5 — Dashboard 2x2"
+
+[[outputs]]
+id = "OcpQTj_q_uDK3FjvKyEfP"
+uri = "file://attached_assets/generated_images/yoann2_logo_phoenix_06_tasks.png"
+type = "image"
+title = "Phoenix-6 — Checklist flèches"
+
+[[outputs]]
+id = "vpbFzNrNSiK33MPdfCUFj"
+uri = "file://attached_assets/generated_images/yoann2_logo_phoenix_07_calendar.png"
+type = "image"
+title = "Phoenix-7 — Calendrier ailes"
+
+[[outputs]]
+id = "F2p1t6axAKYuDQJPqZFTC"
+uri = "file://attached_assets/generated_images/yoann2_logo_phoenix_08_path.png"
+type = "image"
+title = "Phoenix-8 — Trajet GPS"
+
+[[outputs]]
+id = "AVa9x0EzM2H1CFEBThs4B"
+uri = "file://attached_assets/generated_images/yoann2_logo_phoenix_09_ywings.png"
+type = "image"
+title = "Phoenix-9 — Ailes Y flèche"
+
+[[outputs]]
+id = "6RYtti58IflXqL3XGoVVg"
+uri = "file://attached_assets/generated_images/yoann2_logo_phoenix_10_dashboard.png"
+type = "image"
+title = "Phoenix-10 — Dashboard tuiles"
