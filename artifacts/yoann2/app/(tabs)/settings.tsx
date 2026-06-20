@@ -22,6 +22,12 @@ import { useApp } from '@/contexts/AppContext';
 import { type ThemeColorKey, useTheme } from '@/contexts/ThemeContext';
 import { useColors } from '@/hooks/useColors';
 import {
+  getGpsInterval,
+  setGpsInterval,
+  GPS_INTERVALS,
+  restartTracking,
+} from '@/utils/locationTracking';
+import {
   cancelAppointmentReminders,
   cancelMonthlyReport,
   cancelWeeklyReport,
@@ -112,6 +118,7 @@ export default function SettingsScreen() {
   const [weeklyNotif, setWeeklyNotif] = useState(false);
   const [monthlyNotif, setMonthlyNotif] = useState(false);
   const [apptReminder, setApptReminder] = useState(false);
+  const [gpsIntervalIdx, setGpsIntervalIdx] = useState(0);
   const router = useRouter();
 
   useEffect(() => {
@@ -120,6 +127,10 @@ export default function SettingsScreen() {
       setMonthlyNotif(prefs.monthly);
     });
     getApptReminderPref().then(setApptReminder);
+    getGpsInterval().then(interval => {
+      const idx = GPS_INTERVALS.findIndex(g => g.label === interval.label);
+      setGpsIntervalIdx(idx >= 0 ? idx : 0);
+    });
   }, []);
 
   async function handleWeeklyToggle(value: boolean) {
@@ -152,6 +163,13 @@ export default function SettingsScreen() {
       await cancelAppointmentReminders();
       Haptics.selectionAsync();
     }
+  }
+
+  async function handleGpsIntervalChange(idx: number) {
+    setGpsIntervalIdx(idx);
+    await setGpsInterval(idx);
+    await restartTracking();
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   }
 
   const topPad = Platform.OS === 'web' ? 67 : insets.top;
@@ -276,6 +294,35 @@ export default function SettingsScreen() {
           onPress={() => setExpCatModalVisible(true)}
           colors={colors}
         />
+
+        <Text style={[styles.section, { color: colors.mutedForeground }]}>Localisation GPS</Text>
+        <View style={[styles.row, { backgroundColor: colors.card, borderColor: colors.border }] }>
+          <View style={[styles.rowIcon, { backgroundColor: colors.primary + '20' }]}>
+            <MaterialCommunityIcons name="map-marker-radius" size={20} color={colors.primary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.rowLabel, { color: colors.foreground }]}>Fréquence de rafraîchissement</Text>
+            <Text style={[styles.rowSub, { color: colors.mutedForeground }]}>Plus fréquent = plus précis, plus de batterie</Text>
+          </View>
+        </View>
+        {GPS_INTERVALS.map((g, i) => (
+          <Pressable
+            key={g.label}
+            onPress={() => handleGpsIntervalChange(i)}
+            style={({ pressed }) => [
+              styles.row,
+              { backgroundColor: colors.card, borderColor: colors.border, paddingLeft: 56 },
+              pressed && { opacity: 0.75 },
+            ]}
+          >
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.rowLabel, { color: colors.foreground }]}>{g.label}</Text>
+            </View>
+            {gpsIntervalIdx === i && (
+              <MaterialCommunityIcons name="check-circle" size={20} color={colors.primary} />
+            )}
+          </Pressable>
+        ))}
 
         <Text style={[styles.section, { color: colors.mutedForeground }]}>Widget Android</Text>
         <SettingRow

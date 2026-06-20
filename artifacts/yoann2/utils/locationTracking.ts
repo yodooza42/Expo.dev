@@ -166,6 +166,36 @@ export async function purgeOldData(): Promise<void> {
 // ── Tracking state ────────────────────────────────────────────────────────────
 
 const PAUSED_KEY = '@yoann2_location_paused';
+const GPS_INTERVAL_KEY = '@yoann2_gps_interval';
+
+export type GpsInterval = {
+  label: string;
+  timeIntervalMs: number;
+  distanceIntervalM: number;
+};
+
+export const GPS_INTERVALS: GpsInterval[] = [
+  { label: 'Économique (30s)', timeIntervalMs: 30_000, distanceIntervalM: 10 },
+  { label: 'Standard (10s)',    timeIntervalMs: 10_000, distanceIntervalM: 5 },
+  { label: 'Précis (5s)',       timeIntervalMs: 5_000,  distanceIntervalM: 3 },
+  { label: 'Rapide (3s)',       timeIntervalMs: 3_000,  distanceIntervalM: 2 },
+];
+
+export async function getGpsInterval(): Promise<GpsInterval> {
+  try {
+    const raw = await AsyncStorage.getItem(GPS_INTERVAL_KEY);
+    if (raw) {
+      const idx = parseInt(raw, 10);
+      if (idx >= 0 && idx < GPS_INTERVALS.length) return GPS_INTERVALS[idx]!;
+    }
+  } catch {}
+  return GPS_INTERVALS[0]!;
+}
+
+export async function setGpsInterval(index: number): Promise<void> {
+  if (index < 0 || index >= GPS_INTERVALS.length) return;
+  await AsyncStorage.setItem(GPS_INTERVAL_KEY, String(index));
+}
 
 export async function isTrackingPaused(): Promise<boolean> {
   const v = await AsyncStorage.getItem(PAUSED_KEY);
@@ -197,10 +227,11 @@ export async function startTracking(): Promise<void> {
   const isRegistered = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME).catch(() => false);
   if (isRegistered) return;
 
+  const interval = await getGpsInterval();
   await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
     accuracy: Location.Accuracy.Balanced,
-    timeInterval: 30_000,
-    distanceInterval: 10,
+    timeInterval: interval.timeIntervalMs,
+    distanceInterval: interval.distanceIntervalM,
     showsBackgroundLocationIndicator: true,
     foregroundService: {
       notificationTitle: 'Yoann2.0',
@@ -208,6 +239,14 @@ export async function startTracking(): Promise<void> {
       notificationColor: '#FFC107',
     },
   });
+}
+
+export async function restartTracking(): Promise<void> {
+  const isRegistered = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME).catch(() => false);
+  if (isRegistered) {
+    await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME);
+  }
+  await startTracking();
 }
 
 export async function stopTracking(): Promise<void> {
