@@ -102,6 +102,36 @@ uri = "file://attached_assets/generated_images/yoann2_logo_phoenix_05_hexagon.pn
 type = "image"
 title = "phoenix Y wings hexagon"
 
+[[generated]]
+id = "4UzgvVVC0JMdgura6I799"
+uri = "file://attached_assets/generated_images/yoann2_logo_app_01_kanban.png"
+type = "image"
+title = "kanban cards checkmark"
+
+[[generated]]
+id = "nx6OTMVqaAIFu-bIByg6N"
+uri = "file://attached_assets/generated_images/yoann2_logo_app_02_calendar.png"
+type = "image"
+title = "calendar page event marker"
+
+[[generated]]
+id = "Q9QJtfhOTY61IuOOGmPLA"
+uri = "file://attached_assets/generated_images/yoann2_logo_app_03_voice.png"
+type = "image"
+title = "microphone voice input"
+
+[[generated]]
+id = "uPgbOAF3Ng5m4psc6fyqH"
+uri = "file://attached_assets/generated_images/yoann2_logo_app_04_checklist.png"
+type = "image"
+title = "hexagonal checklist badge"
+
+[[generated]]
+id = "iW83QdglkvVBxeFMzBppl"
+uri = "file://attached_assets/generated_images/yoann2_logo_app_05_dashboard.png"
+type = "image"
+title = "dashboard 2x2 grid"
+
 [[outputs]]
 id = "XuhJX-lUqYwl5JK9hSvwv"
 uri = "file://artifacts/yoann2/assets/images/icon.png"
@@ -197,3 +227,33 @@ id = "hdc241eHzUCdwD_-_4DiH"
 uri = "file://attached_assets/generated_images/yoann2_logo_phoenix_05_hexagon.png"
 type = "image"
 title = "Phoenix-5 — Hexagone Y"
+
+[[outputs]]
+id = "wEOUcBteMFj_uy2a15iLH"
+uri = "file://attached_assets/generated_images/yoann2_logo_app_01_kanban.png"
+type = "image"
+title = "App-1 — Kanban + checkmark"
+
+[[outputs]]
+id = "5B1mjjoTLt60zG1B3ItyV"
+uri = "file://attached_assets/generated_images/yoann2_logo_app_02_calendar.png"
+type = "image"
+title = "App-2 — Calendrier événement"
+
+[[outputs]]
+id = "TQPZtzfPeiXa1mnLCxdiR"
+uri = "file://attached_assets/generated_images/yoann2_logo_app_03_voice.png"
+type = "image"
+title = "App-3 — Micro voix"
+
+[[outputs]]
+id = "3Sa02s2WnLy9IMXBSxmtU"
+uri = "file://attached_assets/generated_images/yoann2_logo_app_04_checklist.png"
+type = "image"
+title = "App-4 — Checklist hexagonale"
+
+[[outputs]]
+id = "dd2TE4uuW1dW13vTV4m1H"
+uri = "file://attached_assets/generated_images/yoann2_logo_app_05_dashboard.png"
+type = "image"
+title = "App-5 — Dashboard 2x2"
