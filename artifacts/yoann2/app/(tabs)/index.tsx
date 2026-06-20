@@ -211,25 +211,21 @@ export default function DashboardScreen() {
     tasks.filter(t => t.priority === 'critical' && t.status !== 'done'),
   [tasks]);
 
-  // Past done tasks grouped by week (since start of current year)
+  // All done tasks grouped by week (completedAt or dueDate); no-date ones get their own bucket
   const pastWeekGroups = useMemo((): WeekGroup[] => {
-    const startOfYear = new Date(todayStart.getFullYear(), 0, 1);
-
-    const pastDone = tasks
-      .filter(t => {
-        if (t.status !== 'done') return false;
-        const d = parseFrDate(t.completedAt ?? t.dueDate);
-        return d && startOfDay(d) >= startOfYear && startOfDay(d) <= todayStart;
-      })
-      .sort((a, b) => {
-        const da = parseFrDate(a.completedAt ?? a.dueDate)!.getTime();
-        const db = parseFrDate(b.completedAt ?? b.dueDate)!.getTime();
-        return db - da;
-      });
+    const allDone = tasks.filter(t => t.status === 'done');
 
     const weekMap = new Map<string, WeekGroup>();
-    for (const task of pastDone) {
-      const date   = parseFrDate(task.completedAt ?? task.dueDate)!;
+    const noDateDone: Task[] = [];
+
+    for (const task of allDone) {
+      const d = parseFrDate(task.completedAt ?? task.dueDate);
+      if (!d) {
+        noDateDone.push(task);
+        continue;
+      }
+
+      const date   = d;
       const monday = getMondayOfWeek(date);
       const wKey   = isoDate(monday);
       const dKey   = isoDate(startOfDay(date));
@@ -238,7 +234,7 @@ export default function DashboardScreen() {
         weekMap.set(wKey, { weekKey: wKey, label: buildWeekLabel(monday), days: [] });
 
       const week = weekMap.get(wKey)!;
-      let day = week.days.find(d => d.dateKey === dKey);
+      let day = week.days.find(dg => dg.dateKey === dKey);
       if (!day) {
         day = {
           dateKey: dKey,
@@ -250,8 +246,27 @@ export default function DashboardScreen() {
       }
       day.tasks.push(task);
     }
-    return Array.from(weekMap.values()).sort((a, b) => a.weekKey.localeCompare(b.weekKey));
-  }, [tasks]);
+
+    for (const week of weekMap.values())
+      week.days.sort((a, b) => a.dateKey.localeCompare(b.dateKey));
+
+    const result = Array.from(weekMap.values()).sort((a, b) => a.weekKey.localeCompare(b.weekKey));
+
+    if (noDateDone.length > 0) {
+      result.push({
+        weekKey: 'no-date',
+        label: 'Sans date',
+        days: [{
+          dateKey: 'no-date',
+          date: todayStart,
+          label: 'Terminées sans date',
+          tasks: noDateDone,
+        }],
+      });
+    }
+
+    return result;
+  }, [tasks, todayStart]);
 
   // ── Sub-component: ApptEntry ──────────────────────────────────────────
 
@@ -550,7 +565,7 @@ export default function DashboardScreen() {
             color={colors.mutedForeground}
           />
           <Text style={[styles.historyTxt, { color: colors.mutedForeground }]}>
-            {showHistory ? 'Masquer l\'historique' : 'Voir les semaines passées'}
+            {showHistory ? 'Masquer l\'historique' : 'Voir les tâches terminées'}
           </Text>
           {!showHistory && pastWeekGroups.length > 0 && (
             <View style={[styles.historyBadge, { backgroundColor: colors.border }]}>
@@ -565,7 +580,7 @@ export default function DashboardScreen() {
         {showHistory && (
           pastWeekGroups.length === 0 ? (
             <Text style={[styles.historyEmpty, { color: colors.mutedForeground }]}>
-              Aucune tâche terminée avec une date dans les 8 dernières semaines
+              Aucune tâche terminée
             </Text>
           ) : (
             pastWeekGroups.map(week => (
