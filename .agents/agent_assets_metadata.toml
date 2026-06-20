@@ -72,6 +72,36 @@ uri = "file://attached_assets/generated_images/yoann2_logo_y_05_dotted.png"
 type = "image"
 title = "Y dotted GPS path"
 
+[[generated]]
+id = "-AM4up-HjLum1nDa-0i-Y"
+uri = "file://attached_assets/generated_images/yoann2_logo_phoenix_01_gps.png"
+type = "image"
+title = "phoenix GPS trajectory"
+
+[[generated]]
+id = "S37Qb8DCAGCXjB8IWPdZM"
+uri = "file://attached_assets/generated_images/yoann2_logo_phoenix_02_compass.png"
+type = "image"
+title = "phoenix compass wings"
+
+[[generated]]
+id = "FVyq-2lhfSqhWqOzIVpwA"
+uri = "file://attached_assets/generated_images/yoann2_logo_phoenix_03_dots.png"
+type = "image"
+title = "phoenix GPS dots trail"
+
+[[generated]]
+id = "k6th1FU4ovkntifeNHrmR"
+uri = "file://attached_assets/generated_images/yoann2_logo_phoenix_04_head.png"
+type = "image"
+title = "phoenix head forward arrow"
+
+[[generated]]
+id = "81m-WHfqUpsU2m55KxYqd"
+uri = "file://attached_assets/generated_images/yoann2_logo_phoenix_05_hexagon.png"
+type = "image"
+title = "phoenix Y wings hexagon"
+
 [[outputs]]
 id = "XuhJX-lUqYwl5JK9hSvwv"
 uri = "file://artifacts/yoann2/assets/images/icon.png"
@@ -137,3 +167,33 @@ id = "TQVl1l1vaQNogXexYtEBS"
 uri = "file://attached_assets/generated_images/yoann2_logo_y_05_dotted.png"
 type = "image"
 title = "Y-5 — Points GPS"
+
+[[outputs]]
+id = "2xV7NJcE_Q35mqGlQEW4A"
+uri = "file://attached_assets/generated_images/yoann2_logo_phoenix_01_gps.png"
+type = "image"
+title = "Phoenix-1 — Trajectoire GPS"
+
+[[outputs]]
+id = "FNjwZxShlgz39l24_uolF"
+uri = "file://attached_assets/generated_images/yoann2_logo_phoenix_02_compass.png"
+type = "image"
+title = "Phoenix-2 — Ailes boussole"
+
+[[outputs]]
+id = "gbWaCIBhU1BaVWHc2ZDgn"
+uri = "file://attached_assets/generated_images/yoann2_logo_phoenix_03_dots.png"
+type = "image"
+title = "Phoenix-3 — Points connectés"
+
+[[outputs]]
+id = "tGOboeIFJAtoETGwAh0hM"
+uri = "file://attached_assets/generated_images/yoann2_logo_phoenix_04_head.png"
+type = "image"
+title = "Phoenix-4 — Tête flèche"
+
+[[outputs]]
+id = "hdc241eHzUCdwD_-_4DiH"
+uri = "file://attached_assets/generated_images/yoann2_logo_phoenix_05_hexagon.png"
+type = "image"
+title = "Phoenix-5 — Hexagone Y"
