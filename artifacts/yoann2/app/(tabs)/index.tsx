@@ -5,6 +5,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import React, { useMemo, useState } from 'react';
 import {
+  Dimensions,
+  FlatList,
   Modal,
   Platform,
   Pressable,
@@ -93,10 +95,12 @@ export default function DashboardScreen() {
   const router   = useRouter();
   const { projects, tasks, appointments, getStats, updateTask } = useApp();
 
-  const [showPhotos,   setShowPhotos]   = useState(false);
-  const [showAppts,    setShowAppts]    = useState(false);
-  const [showHistory,  setShowHistory]  = useState(false);
-  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [showPhotos,    setShowPhotos]    = useState(false);
+  const [showAppts,     setShowAppts]     = useState(false);
+  const [showHistory,   setShowHistory]   = useState(false);
+  const [selectedTask,  setSelectedTask]  = useState<Task | null>(null);
+  const [photoViewer,   setPhotoViewer]   = useState<string[]>([]);
+  const [photoIndex,    setPhotoIndex]     = useState(0);
 
   const stats    = getStats();
   const now      = new Date();
@@ -343,7 +347,7 @@ export default function DashboardScreen() {
 
     return (
       <Pressable
-        onPress={() => !isDone && handleTaskPress(task)}
+        onPress={() => handleTaskPress(task)}
         style={({ pressed }) => [
           styles.taskEntry,
           {
@@ -387,7 +391,16 @@ export default function DashboardScreen() {
           {showPhotos && hasPhotos && (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.photoStrip}>
               {task.photos.map((uri, i) => (
-                <Image key={i} source={{ uri }} style={styles.photoThumb} contentFit="cover" />
+                <Pressable
+                  key={i}
+                  onPress={() => {
+                    setPhotoViewer(task.photos);
+                    setPhotoIndex(i);
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  }}
+                >
+                  <Image source={{ uri }} style={styles.photoThumb} contentFit="cover" />
+                </Pressable>
               ))}
             </ScrollView>
           )}
@@ -800,13 +813,55 @@ export default function DashboardScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+
+      {/* ── PHOTO VIEWER ── */}
+      <Modal
+        visible={photoViewer.length > 0}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPhotoViewer([])}
+      >
+        <View style={styles.photoOverlay}>
+          <Pressable style={styles.photoCloseArea} onPress={() => setPhotoViewer([])} />
+          <FlatList
+            data={photoViewer}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            initialScrollIndex={photoIndex}
+            getItemLayout={(_, index) => ({
+              length: Dimensions.get('window').width,
+              offset: Dimensions.get('window').width * index,
+              index,
+            })}
+            renderItem={({ item }) => (
+              <View style={styles.photoSlide}>
+                <Image source={{ uri: item }} style={styles.photoFull} contentFit="contain" />
+              </View>
+            )}
+            keyExtractor={(_, i) => String(i)}
+            onMomentumScrollEnd={(e) => {
+              const idx = Math.round(e.nativeEvent.contentOffset.x / Dimensions.get('window').width);
+              setPhotoIndex(idx);
+            }}
+          />
+          <View style={styles.photoBar}>
+            <Text style={styles.photoCount}>
+              {photoIndex + 1} / {photoViewer.length}
+            </Text>
+          </View>
+          <Pressable onPress={() => setPhotoViewer([])} style={styles.photoCloseBtn}>
+            <MaterialCommunityIcons name="close" size={24} color="#FFFFFF" />
+          </Pressable>
+        </View>
+      </Modal>
     </View>
   );
 }
 
 // ── Styles ─────────────────────────────────────────────────────────────────
 
-const PHOTO_H = 72;
+const PHOTO_H = 108;
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
@@ -941,4 +996,13 @@ const styles = StyleSheet.create({
   alertName:    { flex: 1, fontSize: 13, fontFamily: 'Inter_500Medium' },
   alertTag:     { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 },
   alertTagTxt:  { fontSize: 11, fontFamily: 'Inter_600SemiBold' },
+
+  // Photo viewer
+  photoOverlay:   { flex: 1, backgroundColor: 'rgba(0,0,0,0.92)', justifyContent: 'center' },
+  photoCloseArea: { ...StyleSheet.absoluteFillObject, zIndex: 1 },
+  photoSlide:     { width: Dimensions.get('window').width, height: Dimensions.get('window').height, justifyContent: 'center', alignItems: 'center' },
+  photoFull:      { width: '100%', height: '100%' },
+  photoBar:       { position: 'absolute', bottom: 40, left: 0, right: 0, alignItems: 'center', zIndex: 2 },
+  photoCount:     { fontSize: 14, fontFamily: 'Inter_600SemiBold', color: '#FFFFFF' },
+  photoCloseBtn:  { position: 'absolute', top: 48, right: 16, zIndex: 2, width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' },
 });
