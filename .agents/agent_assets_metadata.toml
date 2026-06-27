@@ -347,3 +347,9 @@ id = "wr0bSbWHvcC07-TmkM0Kq"
 uri = "file://artifacts/yoann2/assets/images/phoenix-icon-new.png"
 type = "image"
 title = "Nouveau logo phénix"
+
+[[outputs]]
+id = "gWScSTrUaj-EHLfQ-10MS"
+uri = "file://artifacts/yoann2/assets/images/phoenix-wordmark.png"
+type = "image"
+title = "Logo YOANN 2.0 complet"
