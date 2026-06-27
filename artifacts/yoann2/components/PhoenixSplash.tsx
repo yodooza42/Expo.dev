@@ -1,7 +1,7 @@
 import { Image } from 'expo-image';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import React, { useEffect, useRef, useState } from 'react';
-import { Dimensions, StyleSheet, Text, View } from 'react-native';
+import { Dimensions, StyleSheet, View } from 'react-native';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -11,19 +11,14 @@ import Animated, {
 } from 'react-native-reanimated';
 
 const VIDEO       = require('@/assets/videos/phoenix-splash.mp4');
-const PHOENIX_PNG = require('@/assets/images/phoenix-logo-cropped.png');
+const PHOENIX_PNG = require('@/assets/images/phoenix-logo-final.png');
 
 const { width: W } = Dimensions.get('window');
-
-// PNG dimensions : 1079 × 970  →  ratio w/h = 1.1124
-const PNG_RATIO   = 1079 / 970;
-const LOGO_W      = W * 0.82;
-const LOGO_H      = LOGO_W / PNG_RATIO;
 
 const eOut = Easing.out(Easing.cubic);
 const eIn  = Easing.in(Easing.quad);
 
-type Phase = 'video' | 'title' | 'done';
+type Phase = 'video' | 'logo' | 'done';
 
 interface Props { onDone: () => void }
 
@@ -34,8 +29,6 @@ export function PhoenixSplash({ onDone }: Props) {
   const overlayOp = useSharedValue(1);
   const videoOp   = useSharedValue(1);
   const logoOp    = useSharedValue(0);
-  const titleOp   = useSharedValue(0);
-  const titleTY   = useSharedValue(16);
 
   const player = useVideoPlayer(VIDEO, (p) => {
     p.loop = false;
@@ -43,21 +36,18 @@ export function PhoenixSplash({ onDone }: Props) {
   });
 
   useEffect(() => {
-    const sub = player.addListener('playToEnd', () => setPhase('title'));
+    const sub = player.addListener('playToEnd', () => setPhase('logo'));
     return () => sub.remove();
   }, [player]);
 
   useEffect(() => {
-    if (phase === 'title') {
-      // 1. Vidéo fondue vers 0 en 400ms
+    if (phase === 'logo') {
+      // Vidéo s'éteint en 400ms
       videoOp.value = withTiming(0, { duration: 400, easing: eIn });
-      // 2. Logo phénix arrive après que la vidéo soit éteinte (délai 450ms)
-      logoOp.value  = withDelay(450, withTiming(1, { duration: 700, easing: eOut }));
-      // 3. Texte 200ms après le logo
-      titleOp.value = withDelay(650, withTiming(1, { duration: 600, easing: eOut }));
-      titleTY.value = withDelay(650, withTiming(0,  { duration: 600, easing: eOut }));
+      // Logo final arrive après coupure noire (délai 450ms)
+      logoOp.value = withDelay(450, withTiming(1, { duration: 700, easing: eOut }));
 
-      const t = setTimeout(() => setPhase('done'), 2800);
+      const t = setTimeout(() => setPhase('done'), 2200);
       return () => clearTimeout(t);
     }
     if (phase === 'done' && !doneCalledRef.current) {
@@ -72,14 +62,10 @@ export function PhoenixSplash({ onDone }: Props) {
   const overlayStyle = useAnimatedStyle(() => ({ opacity: overlayOp.value }));
   const videoStyle   = useAnimatedStyle(() => ({ opacity: videoOp.value }));
   const logoStyle    = useAnimatedStyle(() => ({ opacity: logoOp.value }));
-  const titleStyle   = useAnimatedStyle(() => ({
-    opacity: titleOp.value,
-    transform: [{ translateY: titleTY.value }],
-  }));
 
   return (
     <Animated.View style={[styles.overlay, overlayStyle]} pointerEvents="none">
-      {/* ── Vidéo plein écran ── */}
+      {/* ── Vidéo plein écran (8s) ── */}
       <Animated.View style={[StyleSheet.absoluteFill, videoStyle]}>
         <VideoView
           player={player}
@@ -89,24 +75,13 @@ export function PhoenixSplash({ onDone }: Props) {
         />
       </Animated.View>
 
-      {/* ── Logo phénix complet + texte (apparaît en fin de vidéo) ── */}
-      <Animated.View style={[styles.logoBlock, logoStyle]}>
+      {/* ── Logo final (phénix + YOANN 2.0 intégré) ── */}
+      <Animated.View style={[styles.logoWrap, logoStyle]}>
         <Image
           source={PHOENIX_PNG}
-          style={{ width: LOGO_W, height: LOGO_H }}
+          style={styles.logoImg}
           contentFit="contain"
         />
-        <Animated.View style={[styles.textBlock, titleStyle]}>
-          <View style={styles.titleRow}>
-            <Text style={styles.titleMain}>YOANN</Text>
-            <Text style={styles.titleVersion}>2.0</Text>
-          </View>
-          <View style={styles.subtitleRow}>
-            <View style={styles.subtitleLine} />
-            <Text style={styles.subtitle}>PRODUCTIVITY APP</Text>
-            <View style={styles.subtitleLine} />
-          </View>
-        </Animated.View>
       </Animated.View>
     </Animated.View>
   );
@@ -120,47 +95,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     zIndex: 9999,
   },
-  logoBlock: {
+  logoWrap: {
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  textBlock: {
-    alignItems: 'center',
-    marginTop: 4,
-    gap: 6,
-  },
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    gap: 8,
-  },
-  titleMain: {
-    fontSize: 38,
-    fontFamily: 'Inter_700Bold',
-    color: '#FFFFFF',
-    letterSpacing: 8,
-  },
-  titleVersion: {
-    fontSize: 22,
-    fontFamily: 'Inter_600SemiBold',
-    color: '#FFC107',
-    letterSpacing: 3,
-  },
-  subtitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  subtitleLine: {
-    width: 28,
-    height: 1,
-    backgroundColor: '#FFC107',
-    opacity: 0.6,
-  },
-  subtitle: {
-    fontSize: 11,
-    fontFamily: 'Inter_400Regular',
-    color: '#888',
-    letterSpacing: 3,
-    textTransform: 'uppercase',
+  logoImg: {
+    width: W * 0.72,
+    height: W * 0.72,
   },
 });
