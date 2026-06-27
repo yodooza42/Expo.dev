@@ -359,3 +359,9 @@ id = "97rCGPCGrSh0PeB4qmD8d"
 uri = "file://attached_assets/phoenix-splash-preview.png"
 type = "image"
 title = "Splash screen complet — état final (après la vidéo)"
+
+[[outputs]]
+id = "B20R4x70VbcjlesKYZwX1"
+uri = "file://attached_assets/phoenix-splash-v2-preview.png"
+type = "image"
+title = "Splash final — phénix dézoomé + texte sous les pattes"
