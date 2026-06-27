@@ -30,7 +30,7 @@ export function WidgetPreview({ data }: { data: WidgetData }) {
   const inner = (
     <View style={[styles.inner, bgImage ? { backgroundColor: 'rgba(0,0,0,0.55)' } : {}]}>
 
-      {/* ── Bloc 1 : Marie · Nounou · Travail · Pause ── */}
+      {/* ── Bloc 1 : Marie · Nounou · Travail ── */}
       <View style={styles.bloc1}>
         <View style={styles.bloc1Row}>
 

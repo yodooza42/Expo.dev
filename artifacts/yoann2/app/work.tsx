@@ -15,17 +15,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { usePause } from '@/contexts/PauseContext';
 import { useColors } from '@/hooks/useColors';
-import {
-  type ShiftClockouts,
-  formatDuration,
-  formatHHMM,
-  getShiftWindow,
-  loadClockouts,
-  longShiftDate,
-  saveClockout,
-} from '@/utils/pauseStorage';
 import { cancelShiftNotifications, scheduleShiftNotifications } from '@/utils/notificationScheduler';
 import {
   type MonthlyReport,
@@ -140,20 +130,11 @@ export default function WorkScreen() {
   const router = useRouter();
   const topPad = Platform.OS === 'web' ? 67 : insets.top;
 
-  const {
-    activePause, sessions, startPause, stopPause,
-    clearAllPauseSessions, todayShiftDate,
-  } = usePause();
-
   // ── Planning (schedule) ──
   const [settings, setSettings]           = useState<WidgetSettings>(DEFAULT_WIDGET_SETTINGS);
   const [saving, setSaving]               = useState(false);
   const [planningExpanded, setPlanningExpanded] = useState(false);
   const [planningModified, setPlanningModified] = useState(false);
-
-  // ── Pause clockouts ──
-  const [clockoutInputs, setClockoutInputs] = useState<ShiftClockouts>({});
-  const [expandedShifts,  setExpandedShifts]  = useState<Set<string>>(new Set());
 
   // ── Work sessions ──
   const [workSessions,  setWorkSessions]  = useState<Record<string, WorkSession>>({});
@@ -178,8 +159,6 @@ export default function WorkScreen() {
 
   // ── Load on mount ──
   useEffect(() => { getWidgetSettings().then(s => setSettings(s)); }, []);
-  useEffect(() => { loadClockouts().then(co => setClockoutInputs(co)); }, []);
-  useEffect(() => { setExpandedShifts(s => new Set([...s, todayShiftDate])); }, [todayShiftDate]);
   useEffect(() => {
     loadWorkSessions().then(all => {
       setWorkSessions(all);
@@ -406,30 +385,6 @@ export default function WorkScreen() {
     await markMonthImported('history_v2');
     setMayImportDone(true);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-  }
-
-  // ── Pause helpers ──
-  function getScheduledEnd(shiftDate: string): string {
-    const dayIdx = new Date(shiftDate + 'T12:00:00').getDay();
-    const sched  = settings.workSchedule[dayIdx];
-    return !sched || sched.off ? '' : sched.end;
-  }
-  function getScheduledStart(shiftDate: string): string {
-    const dayIdx = new Date(shiftDate + 'T12:00:00').getDay();
-    const sched  = settings.workSchedule[dayIdx];
-    return !sched || sched.off ? '' : sched.start;
-  }
-
-  async function handleClockoutBlur(shiftDate: string) {
-    const raw = clockoutInputs[shiftDate]?.trim() ?? '';
-    if (!raw) {
-      await saveClockout(shiftDate, null);
-      setClockoutInputs(c => { const n = { ...c }; delete n[shiftDate]; return n; });
-      return;
-    }
-    const normalized = normalizeTime(raw, getScheduledEnd(shiftDate) || '23:59');
-    setClockoutInputs(c => ({ ...c, [shiftDate]: normalized }));
-    await saveClockout(shiftDate, normalized);
   }
 
   // ── Weekly total (full Mon→Sun, not just the 3 displayed rows) ──
@@ -887,195 +842,6 @@ export default function WorkScreen() {
           })
         )}
 
-        {/* ══════════════════════════════════════════════
-            4. SUIVI DES PAUSES
-        ══════════════════════════════════════════════ */}
-        <Text style={[styles.section, { color: colors.mutedForeground }]}>Suivi des pauses ☕</Text>
-
-        <Pressable
-          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); activePause ? stopPause() : startPause(); }}
-          style={[styles.pauseBtn, { backgroundColor: activePause ? '#C62828' : colors.primary }]}
-        >
-          <MaterialCommunityIcons
-            name={activePause ? 'stop-circle-outline' : 'play-circle-outline'}
-            size={20}
-            color={colors.primaryForeground}
-          />
-          <Text style={[styles.pauseBtnTxt, { color: colors.primaryForeground }]}>
-            {activePause
-              ? `⏸ En cours — ${formatDuration(Math.floor((Date.now() - activePause.startTs) / 1000))}`
-              : '☕  Démarrer une pause'}
-          </Text>
-        </Pressable>
-
-        {/* Today pause card */}
-        {(() => {
-          const todaySessions = sessions.filter(s => s.shiftDate === todayShiftDate);
-          const activeSecs    = activePause ? Math.floor((Date.now() - activePause.startTs) / 1000) : 0;
-          const totalSecs     = todaySessions.reduce((a, s) => a + s.durationSecs, 0) + activeSecs;
-          const nbPauses      = todaySessions.length + (activePause ? 1 : 0);
-          const win           = getShiftWindow(todayShiftDate, settings.workSchedule, clockoutInputs[todayShiftDate]);
-          const schedEnd      = getScheduledEnd(todayShiftDate);
-          return (
-            <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border, gap: 12 }]}>
-              <View style={styles.shiftHeader}>
-                <Text style={[styles.shiftDateLabel, { color: colors.foreground }]}>{longShiftDate(todayShiftDate)}</Text>
-                <View style={styles.shiftHoursRow}>
-                  <Text style={[styles.shiftHoursText, { color: colors.mutedForeground }]}>{getScheduledStart(todayShiftDate)} →</Text>
-                  <TextInput
-                    value={clockoutInputs[todayShiftDate] ?? ''}
-                    onChangeText={t => setClockoutInputs(c => ({ ...c, [todayShiftDate]: t }))}
-                    onBlur={() => handleClockoutBlur(todayShiftDate)}
-                    placeholder={schedEnd || 'fin'}
-                    placeholderTextColor={colors.mutedForeground}
-                    keyboardType="numbers-and-punctuation"
-                    maxLength={5}
-                    style={[styles.clockoutInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]}
-                  />
-                  <Text style={[styles.clockoutLabel, { color: colors.mutedForeground }]}>réel</Text>
-                </View>
-              </View>
-
-              {nbPauses > 0 && (
-                <Text style={[styles.shiftTotal, { color: colors.primary }]}>
-                  ⏸ {formatDuration(totalSecs)} · {nbPauses} pause{nbPauses > 1 ? 's' : ''}
-                </Text>
-              )}
-
-              {win && nbPauses > 0 && (() => {
-                const total  = win.endTs - win.startTs;
-                const blocks = [
-                  ...todaySessions.map(s => ({ start: s.startTs, end: s.endTs, active: false })),
-                  ...(activePause ? [{ start: activePause.startTs, end: Date.now(), active: true }] : []),
-                ];
-                return (
-                  <View>
-                    <View style={[styles.timelineBar, { backgroundColor: colors.border }]}>
-                      {blocks.map((b, i) => {
-                        const pLeft  = Math.max(0, (b.start - win.startTs) / total * 100);
-                        const pWidth = Math.min(100 - pLeft, Math.max(1.5, (b.end - b.start) / total * 100));
-                        return (
-                          <View key={i} style={[styles.timelineBlock, {
-                            left: `${pLeft}%`, width: `${pWidth}%`,
-                            backgroundColor: colors.primary, opacity: b.active ? 0.6 : 1,
-                          }]} />
-                        );
-                      })}
-                    </View>
-                    <View style={styles.timelineLabels}>
-                      <Text style={[styles.timelineLabelTxt, { color: colors.mutedForeground }]}>{win.startLabel}</Text>
-                      <Text style={[styles.timelineLabelTxt, { color: colors.mutedForeground }]}>{clockoutInputs[todayShiftDate] ?? schedEnd}</Text>
-                    </View>
-                  </View>
-                );
-              })()}
-
-              {nbPauses === 0 ? (
-                <Text style={[styles.pauseHint, { color: colors.mutedForeground }]}>
-                  Aucune pause aujourd'hui — appuie sur ☕ pour démarrer.
-                </Text>
-              ) : (
-                <View style={styles.pauseList}>
-                  {todaySessions.map(s => (
-                    <View key={s.id} style={styles.pauseListRow}>
-                      <Text style={[styles.pauseListTime,     { color: colors.mutedForeground }]}>☕  {formatHHMM(s.startTs)}</Text>
-                      <Text style={[styles.pauseListDuration, { color: colors.foreground }]}>{formatDuration(s.durationSecs)}</Text>
-                    </View>
-                  ))}
-                  {activePause && (
-                    <View style={styles.pauseListRow}>
-                      <Text style={[styles.pauseListTime,     { color: colors.primary }]}>▶  {formatHHMM(activePause.startTs)} (en cours)</Text>
-                      <Text style={[styles.pauseListDuration, { color: colors.primary }]}>{formatDuration(Math.floor((Date.now() - activePause.startTs) / 1000))}</Text>
-                    </View>
-                  )}
-                </View>
-              )}
-            </View>
-          );
-        })()}
-
-        {/* Pause history */}
-        {(() => {
-          const historyDates = Array.from(
-            new Set(sessions.filter(s => s.shiftDate !== todayShiftDate).map(s => s.shiftDate))
-          ).sort().reverse().slice(0, 20);
-          if (historyDates.length === 0) return null;
-          return (
-            <>
-              <Text style={[styles.section, { color: colors.mutedForeground }]}>Historique pauses</Text>
-              <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border, gap: 0 }]}>
-                {historyDates.map((shiftDate, idx) => {
-                  const shiftSessions = sessions.filter(s => s.shiftDate === shiftDate);
-                  const total    = shiftSessions.reduce((a, s) => a + s.durationSecs, 0);
-                  const win      = getShiftWindow(shiftDate, settings.workSchedule, clockoutInputs[shiftDate]);
-                  const expanded = expandedShifts.has(shiftDate);
-                  const sEnd     = getScheduledEnd(shiftDate);
-                  return (
-                    <View key={shiftDate}>
-                      {idx > 0 && <View style={[styles.separator, { backgroundColor: colors.border }]} />}
-                      <Pressable
-                        onPress={() => setExpandedShifts(prev => {
-                          const n = new Set(prev); n.has(shiftDate) ? n.delete(shiftDate) : n.add(shiftDate); return n;
-                        })}
-                        style={styles.historyRow}
-                      >
-                        <View style={{ flex: 1 }}>
-                          <Text style={[styles.historyDateLabel, { color: colors.foreground }]}>{longShiftDate(shiftDate)}</Text>
-                          <Text style={[styles.historyMeta, { color: colors.mutedForeground }]}>
-                            ⏸ {formatDuration(total)} · {shiftSessions.length} pause{shiftSessions.length !== 1 ? 's' : ''}
-                          </Text>
-                        </View>
-                        <MaterialCommunityIcons name={expanded ? 'chevron-up' : 'chevron-down'} size={18} color={colors.mutedForeground} />
-                      </Pressable>
-                      {expanded && (
-                        <View style={styles.historyDetail}>
-                          {win && (() => {
-                            const tot = win.endTs - win.startTs;
-                            return (
-                              <View style={{ marginBottom: 8 }}>
-                                <View style={[styles.timelineBar, { backgroundColor: colors.border }]}>
-                                  {shiftSessions.map((s, i) => {
-                                    const pL = Math.max(0, (s.startTs - win.startTs) / tot * 100);
-                                    const pW = Math.min(100 - pL, Math.max(1.5, s.durationSecs * 1000 / tot * 100));
-                                    return <View key={i} style={[styles.timelineBlock, { left: `${pL}%`, width: `${pW}%`, backgroundColor: colors.primary }]} />;
-                                  })}
-                                </View>
-                                <View style={styles.timelineLabels}>
-                                  <Text style={[styles.timelineLabelTxt, { color: colors.mutedForeground }]}>{win.startLabel}</Text>
-                                  <Text style={[styles.timelineLabelTxt, { color: colors.mutedForeground }]}>{clockoutInputs[shiftDate] ?? sEnd}</Text>
-                                </View>
-                              </View>
-                            );
-                          })()}
-                          {shiftSessions.map(s => (
-                            <View key={s.id} style={styles.pauseListRow}>
-                              <Text style={[styles.pauseListTime,     { color: colors.mutedForeground }]}>☕  {formatHHMM(s.startTs)}</Text>
-                              <Text style={[styles.pauseListDuration, { color: colors.foreground }]}>{formatDuration(s.durationSecs)}</Text>
-                            </View>
-                          ))}
-                        </View>
-                      )}
-                    </View>
-                  );
-                })}
-              </View>
-            </>
-          );
-        })()}
-
-        {(sessions.length > 0 || !!activePause) && (
-          <Pressable
-            onPress={() => Alert.alert(
-              "Effacer l\u2019historique ?",
-              "Toutes les sessions de pause seront supprim\u00E9es.",
-              [{ text: 'Annuler', style: 'cancel' }, { text: 'Effacer', style: 'destructive', onPress: clearAllPauseSessions }]
-            )}
-            style={[styles.resetBtn, { borderColor: '#F4433655' }]}
-          >
-            <Text style={[styles.resetTxt, { color: '#F44336' }]}>Effacer tout l'historique des pauses</Text>
-          </Pressable>
-        )}
-
       </ScrollView>
     </View>
   );
@@ -1212,10 +978,6 @@ const styles = StyleSheet.create({
   regenBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, padding: 10, borderTopWidth: StyleSheet.hairlineWidth },
   regenTxt: { fontSize: 12, fontFamily: 'Inter_400Regular' },
 
-  // Pauses
-  pauseBtn:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 13, borderRadius: 14 },
-  pauseBtnTxt: { fontSize: 14, fontFamily: 'Inter_600SemiBold' },
-  pauseHint:   { fontSize: 12, fontFamily: 'Inter_400Regular', lineHeight: 18, textAlign: 'center' },
   shiftHeader:    { gap: 6 },
   shiftDateLabel: { fontSize: 15, fontFamily: 'Inter_600SemiBold' },
   shiftHoursRow:  { flexDirection: 'row', alignItems: 'center', gap: 6 },
@@ -1227,10 +989,6 @@ const styles = StyleSheet.create({
   timelineBlock:  { position: 'absolute', top: 0, bottom: 0, borderRadius: 4 },
   timelineLabels: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 },
   timelineLabelTxt: { fontSize: 10, fontFamily: 'Inter_400Regular' },
-  pauseList:         { gap: 6 },
-  pauseListRow:      { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  pauseListTime:     { fontSize: 13, fontFamily: 'Inter_400Regular' },
-  pauseListDuration: { fontSize: 13, fontFamily: 'Inter_500Medium' },
   separator:     { height: 1, marginVertical: 2 },
   historyRow:    { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, gap: 8 },
   historyDateLabel: { fontSize: 14, fontFamily: 'Inter_500Medium' },

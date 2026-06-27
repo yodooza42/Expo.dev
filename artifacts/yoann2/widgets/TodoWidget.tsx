@@ -101,7 +101,7 @@ export function TodoWidget({
         flexDirection: 'column',
       }}
     >
-      {/* ── Bloc 1 : Marie · Nounou · Travail · Pause ── */}
+      {/* ── Bloc 1 : Marie · Nounou · Travail ── */}
       <FlexWidget
         style={{
           width: 'match_parent',
@@ -113,7 +113,7 @@ export function TodoWidget({
           flexDirection: 'column',
         }}
       >
-        {/* Row principale : [Gauche: Cercle+Nounou] [Centre: Santé] [Droite: Travail+Pause] */}
+        {/* Row principale : [Gauche: Cercle+Nounou] [Centre: Santé] [Droite: Travail] */}
         <FlexWidget
           style={{
             width: 'match_parent',
