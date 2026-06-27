@@ -36,17 +36,23 @@ export function PhoenixSplash({ onDone }: Props) {
   });
 
   useEffect(() => {
-    const sub = player.addListener('playToEnd', () => setPhase('logo'));
+    let hasStarted = false;
+    const sub = player.addListener('statusChange', (payload: { status: string }) => {
+      if (payload.status === 'readyToPlay') {
+        hasStarted = true;
+      }
+      if (hasStarted && payload.status === 'idle') {
+        setPhase('logo');
+        sub.remove();
+      }
+    });
     return () => sub.remove();
   }, [player]);
 
   useEffect(() => {
     if (phase === 'logo') {
-      // Vidéo s'éteint en 400ms
       videoOp.value = withTiming(0, { duration: 400, easing: eIn });
-      // Logo final arrive après coupure noire (délai 450ms)
-      logoOp.value = withDelay(450, withTiming(1, { duration: 700, easing: eOut }));
-
+      logoOp.value  = withDelay(450, withTiming(1, { duration: 700, easing: eOut }));
       const t = setTimeout(() => setPhase('done'), 2200);
       return () => clearTimeout(t);
     }
@@ -65,7 +71,6 @@ export function PhoenixSplash({ onDone }: Props) {
 
   return (
     <Animated.View style={[styles.overlay, overlayStyle]} pointerEvents="none">
-      {/* ── Vidéo plein écran (8s) ── */}
       <Animated.View style={[StyleSheet.absoluteFill, videoStyle]}>
         <VideoView
           player={player}
@@ -74,8 +79,6 @@ export function PhoenixSplash({ onDone }: Props) {
           nativeControls={false}
         />
       </Animated.View>
-
-      {/* ── Logo final (phénix + YOANN 2.0 intégré) ── */}
       <Animated.View style={[styles.logoWrap, logoStyle]}>
         <Image
           source={PHOENIX_PNG}
