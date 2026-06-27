@@ -365,3 +365,9 @@ id = "B20R4x70VbcjlesKYZwX1"
 uri = "file://attached_assets/phoenix-splash-v2-preview.png"
 type = "image"
 title = "Splash final — phénix dézoomé + texte sous les pattes"
+
+[[outputs]]
+id = "lMZNqEQgglfEwhmu12cR0"
+uri = "file://attached_assets/splash-sequence.png"
+type = "image"
+title = "Séquence splash complète"
