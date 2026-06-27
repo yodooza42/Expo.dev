@@ -933,8 +933,8 @@ const styles = StyleSheet.create({
   emptySub:   { fontSize: 13, fontFamily: 'Inter_400Regular', textAlign: 'center' },
 
   // Bottom sheet
-  overlay:     { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' },
-  sheet:       { borderTopLeftRadius: 24, borderTopRightRadius: 24, borderWidth: 1, padding: 20, gap: 14 },
+  overlay:     { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 16 },
+  sheet:       { borderRadius: 24, borderWidth: 1, padding: 20, gap: 14, width: '100%', maxWidth: 420 },
   sheetHandle: { width: 40, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: 4 },
   sheetTitleRow:{ flexDirection: 'row', gap: 12, alignItems: 'flex-start' },
   sheetAccent: { width: 4, borderRadius: 2, alignSelf: 'stretch', minHeight: 42 },
