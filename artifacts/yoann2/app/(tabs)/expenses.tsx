@@ -19,7 +19,8 @@ import Svg, { Line, Rect, Text as SvgText } from 'react-native-svg';
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { CameraOcrIcon, OcrScanModal } from '@/components/OcrScanModal';
+import { CameraOcrIcon } from '@/components/CameraOcrIcon';
+import { OcrScanModal } from '@/components/OcrScanModal';
 import { useApp } from '@/contexts/AppContext';
 import { useColors } from '@/hooks/useColors';
 import { exportExpensesCSV, exportExpensesPDF } from '@/utils/expenseExport';

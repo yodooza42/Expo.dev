@@ -2,6 +2,8 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import React, { useCallback, useState } from 'react';
+
+import { CameraOcrIcon } from '@/components/CameraOcrIcon';
 import {
   ActivityIndicator,
   Alert,
@@ -460,28 +462,6 @@ function ExpenseLine({ line, index, projects, onChange, onDelete, onPickCategory
           </Text>
         </Pressable>
       </View>
-    </View>
-  );
-}
-
-// ── Custom icon: camera with $ inside ──────────────────────────────────────
-
-export function CameraOcrIcon({ size = 20, color = '#FFC107' }: { size?: number; color?: string }) {
-  return (
-    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
-      <MaterialCommunityIcons name="camera" size={size} color={color} />
-      <Text
-        style={{
-          position: 'absolute',
-          fontSize: size * 0.28,
-          fontFamily: 'Inter_700Bold',
-          color: '#121212',
-          lineHeight: size * 0.32,
-          marginTop: size * 0.06,
-        }}
-      >
-        $
-      </Text>
     </View>
   );
 }

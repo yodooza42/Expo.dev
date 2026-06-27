@@ -329,3 +329,9 @@ id = "IFZwVfyGIPmSWSmZ7B0M6"
 uri = "file://attached_assets/generated_images/yoann2_logo_phoenix_06b_clean.png"
 type = "image"
 title = "Phoenix-6 — Version sans flèches"
+
+[[outputs]]
+id = "z-egkBxaTx333CIhUADn4"
+uri = "file://attached_assets/generated_videos/phoenix-splash.mp4"
+type = "video"
+title = "Phénix — vidéo IA 8s (splash)"

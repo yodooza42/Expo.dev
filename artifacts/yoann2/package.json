@@ -65,6 +65,7 @@
     "expo-print": "~15.0.8",
     "expo-sharing": "~14.0.8",
     "expo-task-manager": "^14.0.9",
+    "expo-video": "^56.1.4",
     "react": "19.1.0",
     "react-native": "0.81.5",
     "react-native-android-widget": "^0.20.3",
