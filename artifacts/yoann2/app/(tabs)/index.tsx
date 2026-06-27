@@ -3,7 +3,7 @@ import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   Dimensions,
   FlatList,
@@ -18,6 +18,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useApp } from '@/contexts/AppContext';
+import { useSplash } from '@/contexts/SplashContext';
 import { useColors } from '@/hooks/useColors';
 import type { Appointment, Task } from '@/types';
 
@@ -94,6 +95,7 @@ export default function DashboardScreen() {
   const insets   = useSafeAreaInsets();
   const router   = useRouter();
   const { projects, tasks, appointments, getStats, updateTask } = useApp();
+  const { triggerSplash } = useSplash();
 
   const [showPhotos,    setShowPhotos]    = useState(false);
   const [showAppts,     setShowAppts]     = useState(false);
@@ -420,14 +422,20 @@ export default function DashboardScreen() {
         style={[styles.header, { paddingTop: topPad + 16 }]}
       >
         <View style={styles.headerRow}>
-          {/* ── Wordmark ── */}
-          <View>
+          {/* ── Wordmark (tap to replay phoenix) ── */}
+          <Pressable
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              triggerSplash();
+            }}
+            hitSlop={8}
+          >
             <View style={styles.wordmarkRow}>
               <Text style={[styles.wordmarkMain, { color: colors.foreground }]}>YOANN</Text>
               <Text style={[styles.wordmarkVersion, { color: colors.primary }]}>2.0</Text>
             </View>
             <View style={[styles.wordmarkLine, { backgroundColor: colors.primary }]} />
-          </View>
+          </Pressable>
           <View style={styles.headerActions}>
             {/* Appointments toggle */}
             <Pressable

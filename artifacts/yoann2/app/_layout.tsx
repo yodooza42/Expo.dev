@@ -16,6 +16,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { AppProvider } from '@/contexts/AppContext';
+import { SplashProvider } from '@/contexts/SplashContext';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 import { isTrackingPaused, requestLocationPermissions, startTracking } from '@/utils/locationTracking';
 
@@ -152,9 +153,11 @@ export default function RootLayout() {
           <GestureHandlerRootView style={{ flex: 1 }}>
             <KeyboardProvider>
               <ThemeProvider>
-                <AppProvider>
-                  <RootLayoutNav />
-                </AppProvider>
+                <SplashProvider>
+                  <AppProvider>
+                    <RootLayoutNav />
+                  </AppProvider>
+                </SplashProvider>
               </ThemeProvider>
             </KeyboardProvider>
           </GestureHandlerRootView>
