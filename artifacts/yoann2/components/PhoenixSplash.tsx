@@ -49,15 +49,15 @@ export function PhoenixSplash({ onDone }: Props) {
 
   useEffect(() => {
     if (phase === 'title') {
-      // Vidéo fondue vers 0
-      videoOp.value = withTiming(0, { duration: 600, easing: eIn });
-      // Logo phénix complet fondu vers 1
-      logoOp.value  = withTiming(1, { duration: 700, easing: eOut });
-      // Texte apparaît 300ms après le logo
-      titleOp.value = withDelay(300, withTiming(1, { duration: 700, easing: eOut }));
-      titleTY.value = withDelay(300, withTiming(0,  { duration: 700, easing: eOut }));
+      // 1. Vidéo fondue vers 0 en 400ms
+      videoOp.value = withTiming(0, { duration: 400, easing: eIn });
+      // 2. Logo phénix arrive après que la vidéo soit éteinte (délai 450ms)
+      logoOp.value  = withDelay(450, withTiming(1, { duration: 700, easing: eOut }));
+      // 3. Texte 200ms après le logo
+      titleOp.value = withDelay(650, withTiming(1, { duration: 600, easing: eOut }));
+      titleTY.value = withDelay(650, withTiming(0,  { duration: 600, easing: eOut }));
 
-      const t = setTimeout(() => setPhase('done'), 2600);
+      const t = setTimeout(() => setPhase('done'), 2800);
       return () => clearTimeout(t);
     }
     if (phase === 'done' && !doneCalledRef.current) {
