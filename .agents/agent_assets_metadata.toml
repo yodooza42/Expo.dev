@@ -168,6 +168,12 @@ uri = "file://attached_assets/generated_images/yoann2_logo_phoenix_06b_clean.png
 type = "image"
 title = "phoenix clean no arrows"
 
+[[generated]]
+id = "Hf3lxfbVmDRhPLFxMLo7o"
+uri = "file://artifacts/yoann2/assets/images/phoenix-icon-new.png"
+type = "image"
+title = "phoenix-icon-fire"
+
 [[outputs]]
 id = "XuhJX-lUqYwl5JK9hSvwv"
 uri = "file://artifacts/yoann2/assets/images/icon.png"
@@ -335,3 +341,9 @@ id = "z-egkBxaTx333CIhUADn4"
 uri = "file://attached_assets/generated_videos/phoenix-splash.mp4"
 type = "video"
 title = "Phénix — vidéo IA 8s (splash)"
+
+[[outputs]]
+id = "wr0bSbWHvcC07-TmkM0Kq"
+uri = "file://artifacts/yoann2/assets/images/phoenix-icon-new.png"
+type = "image"
+title = "Nouveau logo phénix"
