@@ -431,3 +431,9 @@ id = "p_55zQW9Lz0w1gqcFtldG"
 uri = "file://attached_assets/frame_9s.jpg"
 type = "image"
 title = "9s (fin)"
+
+[[outputs]]
+id = "XiEYR9POwIOIaNOj4uww9"
+uri = "file://attached_assets/mockup_s25.png"
+type = "image"
+title = "Dernière frame splash — mockup S25 Ultra"
