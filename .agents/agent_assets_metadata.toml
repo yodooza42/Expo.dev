@@ -395,3 +395,21 @@ id = "KoY1ib3gAyY7RG79ZXkRm"
 uri = "file://attached_assets/splash_6s.jpg"
 type = "image"
 title = "Splash — seconde 6"
+
+[[outputs]]
+id = "4QCwB-QNgGRV4rmwgfXKv"
+uri = "file://attached_assets/splash_shift_60.jpg"
+type = "image"
+title = "Décalage ← 60px"
+
+[[outputs]]
+id = "6LU7HQvdmCPjRSRYu5sU5"
+uri = "file://attached_assets/splash_shift_100.jpg"
+type = "image"
+title = "Décalage ← 100px"
+
+[[outputs]]
+id = "QKnGpyLRS9CaK3re3HDm_"
+uri = "file://attached_assets/splash_shift_140.jpg"
+type = "image"
+title = "Décalage ← 140px"
