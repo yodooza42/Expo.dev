@@ -371,3 +371,9 @@ id = "lMZNqEQgglfEwhmu12cR0"
 uri = "file://attached_assets/splash-sequence.png"
 type = "image"
 title = "Séquence splash complète"
+
+[[outputs]]
+id = "oYJbz75bW1RxFh8tpi3Be"
+uri = "file://attached_assets/generated_videos/phoenix-flies-yoann2-text.mp4"
+type = "video"
+title = "Suite phénix — YOANN 2.0 en braises (8s)"
