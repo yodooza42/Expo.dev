@@ -42,76 +42,61 @@ export function displayDateToIso(display: string): string {
 
 const DATE_RE = /\b(\d{1,2}[\/\.\-]\d{1,2}(?:[\/\.\-]\d{2,4})?)\b/;
 
-const AMOUNT_RE_GLOBAL = /[-+]?\s*\d{1,3}(?:[\s\u00A0]\d{3})*(?:[,\.]\d{1,2})?(?=\s|$)/g;
+// Matches: 25€  25,90€  1 250,90€  25.90€  25 €  25,90 €  €25  €25,90  -12,50€
+const EURO_RE = /[-+]?\s*\d{1,3}(?:[\s\u00A0]\d{3})*(?:[,\.]\d{1,2})?\s*€|€\s*[-+]?\s*\d{1,3}(?:[\s\u00A0]\d{3})*(?:[,\.]\d{1,2})?/gi;
 
-function cleanAmountStr(raw: string): number {
-  const s = raw.replace(/[\s\u00A0]/g, '').replace(',', '.');
+function cleanEuroAmount(raw: string): number {
+  const s = raw
+    .replace(/€/g, '')
+    .replace(/[\s\u00A0]/g, '')
+    .replace(',', '.');
   return Math.abs(parseFloat(s));
 }
 
 const NOISE_WORDS = /^(DEBIT|CREDIT|DÉBIT|CRÉDIT|SOLDE|TOTAL|DATE|LIBELLÉ|LIBELLE|MONTANT|OPÉRATION|OPERATION|RÉFÉRENCE|REFERENCE|DISPONIBLE|ANCIEN|NOUVEAU|RELEVÉ|RELEVE)$/i;
 
+function extractName(line: string): string {
+  let name = line
+    .replace(EURO_RE, '')
+    .replace(DATE_RE, '')
+    .replace(/[|;:\t]+/g, ' ')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+  const words = name.split(' ').filter(w => !NOISE_WORDS.test(w) && w.length > 1);
+  return words.join(' ').substring(0, 80);
+}
+
 export function parseBankStatementText(rawText: string): OcrLine[] {
   const results: OcrLine[] = [];
+
   const lines = rawText
     .split(/\r?\n/)
     .map(l => l.trim())
-    .filter(l => l.length > 3);
+    .filter(l => l.length > 1);
 
   for (const line of lines) {
-    const dateMatch = line.match(DATE_RE);
-    if (!dateMatch) continue;
+    EURO_RE.lastIndex = 0;
+    const euroMatches = line.match(EURO_RE);
+    if (!euroMatches || euroMatches.length === 0) continue;
 
-    const amounts = line.match(AMOUNT_RE_GLOBAL);
-    if (!amounts || amounts.length === 0) continue;
-
-    const rawAmount = cleanAmountStr(amounts[amounts.length - 1]!);
+    const rawAmount = cleanEuroAmount(euroMatches[euroMatches.length - 1]!);
     if (isNaN(rawAmount) || rawAmount <= 0 || rawAmount > 999_999) continue;
 
-    let name = line
-      .replace(DATE_RE, '')
-      .replace(AMOUNT_RE_GLOBAL, '')
-      .replace(/[|;:\t]+/g, ' ')
-      .replace(/\s{2,}/g, ' ')
-      .trim();
+    const name = extractName(line);
+    if (name.length < 1 && !DATE_RE.test(line)) continue;
 
-    const words = name.split(' ').filter(w => !NOISE_WORDS.test(w) && w.length > 1);
-    name = words.join(' ').substring(0, 80);
-    if (name.length < 2) continue;
-
-    const iso = parseFrDate(dateMatch[1]!);
+    const dateMatch = line.match(DATE_RE);
+    const iso = dateMatch ? parseFrDate(dateMatch[1]!) : new Date().toISOString();
 
     results.push({
       id: makeId(),
       selected: true,
       date: toDisplayDate(iso),
-      name,
+      name: name.length > 0 ? name : '—',
       amount: rawAmount.toFixed(2),
       category: '',
       projectId: '',
     });
-  }
-
-  if (results.length === 0) {
-    const amountOnlyLines = lines.filter(l => AMOUNT_RE_GLOBAL.test(l));
-    AMOUNT_RE_GLOBAL.lastIndex = 0;
-    for (const line of amountOnlyLines) {
-      const amounts = line.match(AMOUNT_RE_GLOBAL);
-      if (!amounts) continue;
-      const rawAmount = cleanAmountStr(amounts[amounts.length - 1]!);
-      if (isNaN(rawAmount) || rawAmount <= 0) continue;
-      const name = line.replace(AMOUNT_RE_GLOBAL, '').replace(/\s{2,}/g, ' ').trim().substring(0, 80);
-      if (name.length < 2) continue;
-      results.push({
-        id: makeId(),
-        selected: true,
-        date: toDisplayDate(new Date().toISOString()),
-        name,
-        amount: rawAmount.toFixed(2),
-        category: '',
-        projectId: '',
-      });
-    }
   }
 
   return results;
