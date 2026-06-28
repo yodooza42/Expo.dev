@@ -383,3 +383,51 @@ id = "WSFIr83AyutnXABjiMwDH"
 uri = "file://attached_assets/splash_preview_contain.jpg"
 type = "image"
 title = "Aperçu splash — dernière frame, centré + fond noir (simulation contain)"
+
+[[outputs]]
+id = "5TWd2m3TLPBbQJpCot9IA"
+uri = "file://attached_assets/frame_2s.jpg"
+type = "image"
+title = "2s"
+
+[[outputs]]
+id = "CBAyhmZrFkfPJ4XkWHuAk"
+uri = "file://attached_assets/frame_3s.jpg"
+type = "image"
+title = "3s"
+
+[[outputs]]
+id = "7uTq-EZDqHboTC4Bn4Kug"
+uri = "file://attached_assets/frame_4s.jpg"
+type = "image"
+title = "4s"
+
+[[outputs]]
+id = "7Fk5WhTvvTaLo282_N0pr"
+uri = "file://attached_assets/frame_5s.jpg"
+type = "image"
+title = "5s"
+
+[[outputs]]
+id = "sq3ML6-m_SUtmx9y6JZ4P"
+uri = "file://attached_assets/frame_6s.jpg"
+type = "image"
+title = "6s"
+
+[[outputs]]
+id = "kSTAuVd_CSz7_M1AxO38D"
+uri = "file://attached_assets/frame_7s.jpg"
+type = "image"
+title = "7s"
+
+[[outputs]]
+id = "xCWylxL3YJyMCH_p-CoMe"
+uri = "file://attached_assets/frame_8s.jpg"
+type = "image"
+title = "8s"
+
+[[outputs]]
+id = "p_55zQW9Lz0w1gqcFtldG"
+uri = "file://attached_assets/frame_9s.jpg"
+type = "image"
+title = "9s (fin)"
