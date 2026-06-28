@@ -389,3 +389,9 @@ id = "JsPyxWb-IHWs_lSLTmcYN"
 uri = "file://attached_assets/splash_4s.jpg"
 type = "image"
 title = "Splash — seconde 4 (simulation contain, centré)"
+
+[[outputs]]
+id = "KoY1ib3gAyY7RG79ZXkRm"
+uri = "file://attached_assets/splash_6s.jpg"
+type = "image"
+title = "Splash — seconde 6"
