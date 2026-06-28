@@ -1,5 +1,5 @@
 import { useVideoPlayer, VideoView } from 'expo-video';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import { Pressable, StyleSheet } from 'react-native';
 import Animated, {
   Easing,
@@ -8,26 +8,22 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
-const PART1 = require('@/assets/videos/phoenix-splash.mp4');
-const PART2 = require('@/assets/videos/phoenix-splash-part2.mp4');
-
-const eIn = Easing.in(Easing.quad);
+const VIDEO = require('@/assets/videos/phoenix-splash.mp4');
 
 interface Props { onDone: () => void }
 
 export function PhoenixSplash({ onDone }: Props) {
   const doneCalledRef = useRef(false);
-  const [part, setPart]  = useState<1 | 2>(1);
-  const overlayOp        = useSharedValue(1);
+  const overlayOp     = useSharedValue(1);
 
   const finish = useCallback(() => {
     if (doneCalledRef.current) return;
     doneCalledRef.current = true;
-    overlayOp.value = withTiming(0, { duration: 500, easing: eIn });
+    overlayOp.value = withTiming(0, { duration: 500, easing: Easing.in(Easing.quad) });
     setTimeout(onDone, 500);
   }, [onDone, overlayOp]);
 
-  const player = useVideoPlayer(part === 1 ? PART1 : PART2, (p) => {
+  const player = useVideoPlayer(VIDEO, (p) => {
     p.loop = false;
     p.play();
   });
@@ -38,22 +34,17 @@ export function PhoenixSplash({ onDone }: Props) {
       if (payload.status === 'readyToPlay') started = true;
       if (started && payload.status === 'idle') {
         sub.remove();
-        if (part === 1) {
-          setPart(2);
-        } else {
-          finish();
-        }
+        finish();
       }
     });
     return () => sub.remove();
-  }, [player, part, finish]);
+  }, [player, finish]);
 
   const overlayStyle = useAnimatedStyle(() => ({ opacity: overlayOp.value }));
 
   return (
     <Animated.View style={[styles.overlay, overlayStyle]}>
       <VideoView
-        key={part}
         player={player}
         style={StyleSheet.absoluteFill}
         contentFit="cover"
