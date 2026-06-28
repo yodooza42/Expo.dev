@@ -413,3 +413,21 @@ id = "QKnGpyLRS9CaK3re3HDm_"
 uri = "file://attached_assets/splash_shift_140.jpg"
 type = "image"
 title = "Décalage ← 140px"
+
+[[outputs]]
+id = "XTgIPM7bA5besLhwzKEQT"
+uri = "file://attached_assets/splash_right_20.jpg"
+type = "image"
+title = "→ 20px droite"
+
+[[outputs]]
+id = "Sd8oFO9eRf9pzH-5WEmVR"
+uri = "file://attached_assets/splash_right_40.jpg"
+type = "image"
+title = "→ 40px droite"
+
+[[outputs]]
+id = "95jHJhimqr2fkzsCrN4kC"
+uri = "file://attached_assets/splash_right_60.jpg"
+type = "image"
+title = "→ 60px droite"
