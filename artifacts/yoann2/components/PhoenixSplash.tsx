@@ -1,6 +1,6 @@
 import { useVideoPlayer, VideoView } from 'expo-video';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { StyleSheet } from 'react-native';
+import { Pressable, StyleSheet } from 'react-native';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -16,21 +16,21 @@ const eIn = Easing.in(Easing.quad);
 interface Props { onDone: () => void }
 
 export function PhoenixSplash({ onDone }: Props) {
-  const doneCalledRef  = useRef(false);
-  const [part, setPart] = useState<1 | 2>(1);
-  const overlayOp      = useSharedValue(1);
+  const doneCalledRef = useRef(false);
+  const [part, setPart]  = useState<1 | 2>(1);
+  const overlayOp        = useSharedValue(1);
+
+  const finish = useCallback(() => {
+    if (doneCalledRef.current) return;
+    doneCalledRef.current = true;
+    overlayOp.value = withTiming(0, { duration: 500, easing: eIn });
+    setTimeout(onDone, 500);
+  }, [onDone, overlayOp]);
 
   const player = useVideoPlayer(part === 1 ? PART1 : PART2, (p) => {
     p.loop = false;
     p.play();
   });
-
-  const finish = useCallback(() => {
-    if (doneCalledRef.current) return;
-    doneCalledRef.current = true;
-    overlayOp.value = withTiming(0, { duration: 600, easing: eIn });
-    setTimeout(onDone, 600);
-  }, [onDone, overlayOp]);
 
   useEffect(() => {
     let started = false;
@@ -51,7 +51,7 @@ export function PhoenixSplash({ onDone }: Props) {
   const overlayStyle = useAnimatedStyle(() => ({ opacity: overlayOp.value }));
 
   return (
-    <Animated.View style={[styles.overlay, overlayStyle]} pointerEvents="none">
+    <Animated.View style={[styles.overlay, overlayStyle]}>
       <VideoView
         key={part}
         player={player}
@@ -59,6 +59,7 @@ export function PhoenixSplash({ onDone }: Props) {
         contentFit="cover"
         nativeControls={false}
       />
+      <Pressable style={StyleSheet.absoluteFill} onPress={finish} />
     </Animated.View>
   );
 }
