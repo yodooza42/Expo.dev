@@ -47,7 +47,7 @@ export function PhoenixSplash({ onDone }: Props) {
       <VideoView
         player={player}
         style={StyleSheet.absoluteFill}
-        contentFit="cover"
+        contentFit="contain"
         nativeControls={false}
       />
       <Pressable style={StyleSheet.absoluteFill} onPress={finish} />
