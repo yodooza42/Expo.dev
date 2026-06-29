@@ -1,6 +1,6 @@
 import React, { createContext, useCallback, useContext, useState } from 'react';
 
-import { PhoenixSplashAnimated } from '@/components/PhoenixSplashAnimated';
+import { PhoenixWebSplash } from '@/components/PhoenixWebSplash';
 
 interface SplashContextValue {
   triggerSplash: () => void;
@@ -28,7 +28,7 @@ export function SplashProvider({ children }: { children: React.ReactNode }) {
   return (
     <SplashContext.Provider value={{ triggerSplash }}>
       {children}
-      {visible && <PhoenixSplashAnimated key={key} onDone={handleDone} />}
+      {visible && <PhoenixWebSplash key={key} onDone={handleDone} />}
     </SplashContext.Provider>
   );
 }
