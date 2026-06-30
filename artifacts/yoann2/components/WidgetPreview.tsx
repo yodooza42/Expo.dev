@@ -11,8 +11,6 @@ const IMG_HOME  = require('../assets/icons/icon-home.png')  as ImageSourcePropTy
 
 const NAV_ICONS: ImageSourcePropType[] = [IMG_RESET, IMG_TASK, IMG_HOME, IMG_RDV, IMG_MIC];
 
-const CARD   = 'rgba(32,32,32,0.80)';
-const NAVBAR = 'rgba(18,18,18,0.87)';
 const WH     = '#FFFFFF';
 const MUTED  = '#9E9E9E';
 
@@ -21,6 +19,17 @@ export function WidgetPreview({ data }: { data: WidgetData }) {
   const BG       = data.settings.bgColor;
   const bgImage  = data.settings.bgImageUri;
   const isRepos  = data.todayWork === 'Repos';
+
+  const opacity = data.settings.bgOpacity / 100;
+  const hex = (BG.startsWith('#') ? BG.slice(1) : BG).padEnd(6, '0');
+  const cR = Math.min(255, parseInt(hex.slice(0, 2), 16) + 20);
+  const cG = Math.min(255, parseInt(hex.slice(2, 4), 16) + 20);
+  const cB = Math.min(255, parseInt(hex.slice(4, 6), 16) + 20);
+  const CARD   = `rgba(${cR},${cG},${cB},${opacity.toFixed(2)})`;
+  const navR = parseInt(hex.slice(0, 2), 16);
+  const navG = parseInt(hex.slice(2, 4), 16);
+  const navB = parseInt(hex.slice(4, 6), 16);
+  const NAVBAR = `rgba(${navR},${navG},${navB},${opacity.toFixed(2)})`;
 
   const visibleTasks = data.tasks.slice(0, 4);
   const visibleAppts = data.widgetAppts.slice(0, 3);
@@ -31,7 +40,7 @@ export function WidgetPreview({ data }: { data: WidgetData }) {
     <View style={[styles.inner, bgImage ? { backgroundColor: 'rgba(0,0,0,0.55)' } : {}]}>
 
       {/* ── Bloc 1 : Marie · Nounou · Travail ── */}
-      <View style={styles.bloc1}>
+      <View style={[styles.bloc1, { backgroundColor: CARD }]}>
         <View style={styles.bloc1Row}>
 
           {/* Gauche : cercle Marie + nounou */}
@@ -66,7 +75,7 @@ export function WidgetPreview({ data }: { data: WidgetData }) {
       </View>
 
       {/* ── Bloc 2 : Tâches ── */}
-      <View style={styles.bloc}>
+      <View style={[styles.bloc, { backgroundColor: CARD }]}>
         <View style={styles.blocHead}>
           <Text style={styles.headEmoji}>📋</Text>
           <Text style={[styles.headTxt, { color: MUTED }]}>Tâches</Text>
@@ -97,7 +106,7 @@ export function WidgetPreview({ data }: { data: WidgetData }) {
       </View>
 
       {/* ── Bloc 3 : Rendez-vous ── */}
-      <View style={styles.bloc}>
+      <View style={[styles.bloc, { backgroundColor: CARD }]}>
         <View style={styles.blocHead}>
           <Text style={styles.headEmoji}>📅</Text>
           <Text style={[styles.headTxt, { color: MUTED }]}>Rendez-vous</Text>
@@ -122,7 +131,7 @@ export function WidgetPreview({ data }: { data: WidgetData }) {
       </View>
 
       {/* ── Bloc 4 : Barre de navigation ── */}
-      <View style={styles.navbar}>
+      <View style={[styles.navbar, { backgroundColor: NAVBAR }]}>
         {NAV_ICONS.map((src, i) => (
           <React.Fragment key={i}>
             {i > 0 && <View style={styles.navDiv} />}
@@ -160,7 +169,6 @@ const styles = StyleSheet.create({
 
   /* Bloc 1 */
   bloc1: {
-    backgroundColor: CARD,
     borderRadius: 12,
     paddingHorizontal: 10,
     paddingVertical: 10,
@@ -238,7 +246,6 @@ const styles = StyleSheet.create({
   },
   /* Blocs 2 & 3 */
   bloc: {
-    backgroundColor: CARD,
     borderRadius: 12,
     paddingHorizontal: 12,
     paddingTop: 8,
@@ -298,7 +305,6 @@ const styles = StyleSheet.create({
   /* Nav bar */
   navbar: {
     flexDirection: 'row',
-    backgroundColor: NAVBAR,
     borderRadius: 12,
     paddingHorizontal: 2,
     paddingVertical: 6,

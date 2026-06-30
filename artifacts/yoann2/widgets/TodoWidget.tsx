@@ -7,10 +7,9 @@ import {
 } from 'react-native-android-widget';
 import type { ColorProp, ImageWidgetSource } from 'react-native-android-widget';
 
+import { buildCardColor, buildNavbarColor } from './widgetSettings';
 import type { WidgetData } from './data';
 
-const CARD: ColorProp    = '#FF202020';  // 100% opaque anthracite card
-const NAVBAR: ColorProp  = '#FF121212';  // 100% opaque anthracite bar
 const TEXT: ColorProp    = '#FFFFFF';
 const MUTED: ColorProp   = '#9E9E9E';
 const TRANSPARENT: ColorProp = '#00000000';
@@ -32,6 +31,8 @@ export function TodoWidget({
   const PRIMARY = settings.primaryColor as ColorProp;
   const bgImage = settings.bgImageUri;
   const isRepos = todayWork === 'Repos';
+  const CARD  = buildCardColor(settings.bgColor, settings.bgOpacity) as ColorProp;
+  const NAVBAR = buildNavbarColor(settings.bgColor, settings.bgOpacity) as ColorProp;
 
   function wrapWithBg(content: React.ReactElement): React.ReactElement {
     if (!bgImage) return content;

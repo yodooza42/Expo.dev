@@ -1,3 +1,4 @@
 - [EAS build git lock workaround](eas-build-git-lock.md) — prefix `GIT_OPTIONAL_LOCKS=0` to run `eas-cli build` for the yoann2 Expo app; plain `eas build` fails on `.git/index.lock`.
 - [EAS Build fix — yoann2 (lockfile, minSdkVersion, VCS)](eas-build-fix.md) — `pnpm install` at root first; set minSdkVersion via `expo-build-properties` plugin (NOT bare `android.minSdkVersion`); use normal git flow (includes uncommitted changes), avoid slow `EAS_NO_VCS=1`.
 - [Expo Android crash diagnosis](expo-android-crash-diagnosis.md) — splash-then-close = uncaught JS error in index.js/root render before React (guard sync native calls); instant-close = native init crash; Reanimated 4 requires New Arch.
+- [react-native-android-widget color format](widget-color-format.md) — library uses CSS #RRGGBBAA, NOT Android #AARRGGBB; use buildCardColor/buildNavbarColor from widgetSettings.ts.
