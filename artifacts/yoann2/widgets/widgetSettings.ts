@@ -60,10 +60,6 @@ export async function saveWidgetSettings(s: WidgetSettings): Promise<void> {
   await AsyncStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
 }
 
-export function getWidgetBgColor(settings: WidgetSettings): string {
-  return settings.bgColor;
-}
-
 /**
  * Build the card background color for react-native-android-widget.
  * The library uses CSS format #RRGGBBAA (NOT Android's #AARRGGBB).
