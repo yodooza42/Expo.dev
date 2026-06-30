@@ -4,7 +4,6 @@ const path = require('path');
 const config = getDefaultConfig(__dirname);
 
 const WEB_STUBS = {
-  'react-native-maps':    path.resolve(__dirname, './stubs/react-native-maps-stub.js'),
   'react-native-webview': path.resolve(__dirname, './stubs/react-native-webview-stub.js'),
 };
 

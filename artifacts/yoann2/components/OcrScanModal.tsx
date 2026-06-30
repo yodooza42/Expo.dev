@@ -84,24 +84,9 @@ export function OcrScanModal({ visible, onClose }: Props) {
       setStep('processing');
       setOcrError(null);
 
-      try {
-        const TextRecognition = (await import('@react-native-ml-kit/text-recognition')).default;
-        const recognized = await TextRecognition.recognize(uri);
-        const rawText = recognized.text ?? '';
-        const parsed = parseBankStatementText(rawText);
-
-        if (parsed.length === 0) {
-          setOcrError('Aucune ligne de dépense détectée. Vérifiez la qualité de l\'image et réessayez, ou ajoutez des lignes manuellement.');
-          setLines([]);
-        } else {
-          setLines(parsed);
-        }
-        setStep('review');
-      } catch (err) {
-        setOcrError('Erreur lors de la reconnaissance OCR. Vérifiez que l\'image est nette et lisible.');
-        setLines([]);
-        setStep('review');
-      }
+      setOcrError('Reconnaissance automatique indisponible. Saisissez les lignes manuellement ci-dessous.');
+      setLines([]);
+      setStep('review');
     } catch {
       Alert.alert('Erreur', 'Impossible d\'accéder à la caméra ou à la galerie.');
       setStep('pick');
