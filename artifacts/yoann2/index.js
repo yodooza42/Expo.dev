@@ -28,7 +28,7 @@ try {
   }, 300);
 }
 
-// Android widget task handler (best-effort, non-fatal)
+// Android widget task handler + background refresh scheduler (best-effort, non-fatal)
 const { Platform } = require('react-native');
 if (Platform.OS === 'android') {
   try {

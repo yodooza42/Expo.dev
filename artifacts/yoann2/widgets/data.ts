@@ -82,6 +82,8 @@ export interface WidgetData {
   nounouColor: string;
   nounouPeriod: string;
   nounouDuration: string;
+  /** True when any appointment (not display-sliced) starts within the next 2 hours */
+  hasImminentAppt: boolean;
 }
 
 interface RawTask {
@@ -248,6 +250,22 @@ export function buildWidgetData(
       };
     });
 
+  // ── Imminent appointment detection (full unsliced list, 2-hour window) ────
+  const IMMINENT_WINDOW_MS = 2 * 60 * 60 * 1000;
+  const nowMs = Date.now();
+  const hasImminentAppt = (appointments ?? []).some(a => {
+    const d = new Date(a.date);
+    if (isNaN(d.getTime())) return false;
+    if (a.time) {
+      const [h, m] = a.time.split(':').map(Number);
+      if (!isNaN(h)) d.setHours(h, isNaN(m) ? 0 : m, 0, 0);
+    } else {
+      return false; // no time means no countdown — skip
+    }
+    const ms = d.getTime();
+    return ms > nowMs && ms - nowMs <= IMMINENT_WINDOW_MS;
+  });
+
   // ── Marie circle color ────────────────────────────────────────────────────
   const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
   const marieShift = mariePlanning[todayKey] as 'PB' | 'PD' | undefined;
@@ -293,6 +311,7 @@ export function buildWidgetData(
     nounouColor,
     nounouPeriod,
     nounouDuration,
+    hasImminentAppt,
   };
 }
 
