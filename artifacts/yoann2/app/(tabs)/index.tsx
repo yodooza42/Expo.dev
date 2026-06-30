@@ -392,18 +392,21 @@ export default function DashboardScreen() {
           )}
           {showPhotos && hasPhotos && (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.photoStrip}>
-              {task.photos.map((uri, i) => (
-                <Pressable
-                  key={i}
-                  onPress={() => {
-                    setPhotoViewer(task.photos);
-                    setPhotoIndex(i);
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  }}
-                >
-                  <Image source={{ uri }} style={styles.photoThumb} contentFit="cover" />
-                </Pressable>
-              ))}
+              {task.photos.map((photo, i) => {
+                const uri = typeof photo === 'string' ? photo : photo.uri;
+                return (
+                  <Pressable
+                    key={i}
+                    onPress={() => {
+                      setPhotoViewer(task.photos.map(p => (typeof p === 'string' ? p : p.uri)));
+                      setPhotoIndex(i);
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    }}
+                  >
+                    <Image source={{ uri }} style={styles.photoThumb} contentFit="cover" />
+                  </Pressable>
+                );
+              })}
             </ScrollView>
           )}
         </View>

@@ -26,7 +26,7 @@ import { ProgressBar } from '@/components/ProgressBar';
 import { TaskCard } from '@/components/TaskCard';
 import { useApp } from '@/contexts/AppContext';
 import { useColors } from '@/hooks/useColors';
-import { savePhotoToPublicAlbum } from '@/utils/mediaLibrary';
+import { getPhotoUri, savePhotoToPublicAlbum } from '@/utils/mediaLibrary';
 import type { Expense, ProjectStatus, Task } from '@/types';
 
 const { width } = Dimensions.get('window');
@@ -74,8 +74,10 @@ export default function ProjectDetailScreen() {
   const allPhotos = useMemo<AllPhoto[]>(() => {
     if (!projectMaybe) return [];
     return [
-      ...projectMaybe.photos.map(uri => ({ uri, deletable: true, source: 'Projet' })),
-      ...tasks.flatMap(t => (t.photos ?? []).map(uri => ({ uri, deletable: false, source: t.title }))),
+      ...projectMaybe.photos.map(p => ({ uri: getPhotoUri(p), deletable: true, source: 'Projet' })),
+      ...tasks.flatMap(t =>
+        (t.photos ?? []).map(p => ({ uri: getPhotoUri(p), deletable: false, source: t.title }))
+      ),
     ];
   }, [projectMaybe, tasks]);
 
@@ -89,6 +91,7 @@ export default function ProjectDetailScreen() {
   const [expDescription, setExpDescription] = useState('');
   const [photoViewIdx, setPhotoViewIdx] = useState<number | null>(null);
   const [currentPhotoIdx, setCurrentPhotoIdx] = useState(0);
+  const [failedPhotos, setFailedPhotos] = useState<Set<number>>(new Set());
   const photoListRef = useRef<FlatList<AllPhoto>>(null);
   const [exporting, setExporting] = useState(false);
 
@@ -129,8 +132,8 @@ export default function ProjectDetailScreen() {
       const result = await ImagePicker.launchCameraAsync({ quality: 1 });
       if (!result.canceled && result.assets[0]) {
         const permanent = await persistProjectPhoto(result.assets[0].uri);
-        updateProject(project.id, { photos: [...project.photos, permanent] });
-        savePhotoToPublicAlbum(permanent, project.name).catch(() => {});
+        const taskPhoto = await savePhotoToPublicAlbum(permanent, project.name);
+        updateProject(project.id, { photos: [...project.photos, taskPhoto] });
       }
       return;
     }
@@ -141,8 +144,8 @@ export default function ProjectDetailScreen() {
           const r = await ImagePicker.launchCameraAsync({ quality: 1 });
           if (!r.canceled && r.assets[0]) {
             const permanent = await persistProjectPhoto(r.assets[0].uri);
-            updateProject(project.id, { photos: [...project.photos, permanent] });
-            savePhotoToPublicAlbum(permanent, project.name).catch(() => {});
+            const taskPhoto = await savePhotoToPublicAlbum(permanent, project.name);
+            updateProject(project.id, { photos: [...project.photos, taskPhoto] });
           }
         },
       },
@@ -152,8 +155,8 @@ export default function ProjectDetailScreen() {
           const r = await ImagePicker.launchImageLibraryAsync({ quality: 1, allowsMultipleSelection: true });
           if (!r.canceled) {
             const permanents = await Promise.all(r.assets.map(a => persistProjectPhoto(a.uri)));
-            updateProject(project.id, { photos: [...project.photos, ...permanents] });
-            permanents.forEach(uri => savePhotoToPublicAlbum(uri, project.name).catch(() => {}));
+            const taskPhotos = await Promise.all(permanents.map(uri => savePhotoToPublicAlbum(uri, project.name)));
+            updateProject(project.id, { photos: [...project.photos, ...taskPhotos] });
           }
         },
       },
@@ -169,7 +172,7 @@ export default function ProjectDetailScreen() {
   function removePhoto(allIdx: number) {
     const photo = allPhotos[allIdx];
     if (!photo?.deletable) { setPhotoViewIdx(null); return; }
-    const updated = project.photos.filter(u => u !== photo.uri);
+    const updated = project.photos.filter(p => getPhotoUri(p) !== photo.uri);
     updateProject(project.id, { photos: updated });
     setPhotoViewIdx(null);
   }
@@ -769,16 +772,30 @@ export default function ProjectDetailScreen() {
                     </Text>
                   )}
                   <View style={styles.photoGrid}>
-                    {allPhotos.map((photo, idx) => (
-                      <Pressable key={idx} onPress={() => openPhoto(idx)} style={styles.photoThumb}>
-                        <Image source={{ uri: photo.uri }} style={styles.photoImg} contentFit="cover" />
-                        {!photo.deletable && (
-                          <View style={[styles.taskPhotoBadge, { backgroundColor: colors.card + 'CC' }]}>
-                            <MaterialCommunityIcons name="format-list-checks" size={10} color={colors.primary} />
-                          </View>
-                        )}
-                      </Pressable>
-                    ))}
+                    {allPhotos.map((photo, idx) => {
+                      const broken = failedPhotos.has(idx);
+                      return (
+                        <Pressable key={idx} onPress={() => !broken && openPhoto(idx)} style={styles.photoThumb}>
+                          {broken ? (
+                            <View style={[styles.photoImg, styles.photoBroken]}>
+                              <MaterialCommunityIcons name="image-broken-variant" size={28} color="#666" />
+                            </View>
+                          ) : (
+                            <Image
+                              source={{ uri: photo.uri }}
+                              style={styles.photoImg}
+                              contentFit="cover"
+                              onError={() => setFailedPhotos(prev => new Set([...prev, idx]))}
+                            />
+                          )}
+                          {!photo.deletable && (
+                            <View style={[styles.taskPhotoBadge, { backgroundColor: colors.card + 'CC' }]}>
+                              <MaterialCommunityIcons name="format-list-checks" size={10} color={colors.primary} />
+                            </View>
+                          )}
+                        </Pressable>
+                      );
+                    })}
                   </View>
                   {tasks.some(t => (t.photos ?? []).length > 0) && (
                     <Text style={[styles.photoSectionLabel, { color: colors.mutedForeground, marginTop: 4 }]}>
@@ -1025,6 +1042,7 @@ const styles = StyleSheet.create({
   photoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   photoThumb: { width: (width - 48) / 3, height: (width - 48) / 3, borderRadius: 10, overflow: 'hidden' },
   photoImg: { width: '100%', height: '100%' },
+  photoBroken: { backgroundColor: '#1E1E1E', alignItems: 'center', justifyContent: 'center' },
   taskPhotoBadge: {
     position: 'absolute', bottom: 4, right: 4,
     width: 18, height: 18, borderRadius: 9,

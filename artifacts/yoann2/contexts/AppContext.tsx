@@ -5,7 +5,7 @@ import { AppState } from 'react-native';
 
 import { recoverPhotoFromAsset } from '@/utils/mediaLibrary';
 
-import type { Appointment, AppStats, Category, Expense, Priority, Project, ProjectStatus, Task, TaskStatus } from '@/types';
+import type { Appointment, AppStats, Category, Expense, Priority, Project, ProjectStatus, Task, TaskPhoto, TaskStatus } from '@/types';
 import { saveBackup } from '@/utils/backup';
 import {
   SEED_APPOINTMENTS,
@@ -293,49 +293,38 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const currentTasks = tasksRef.current;
       const currentProjects = projectsRef.current;
 
-      type Update = { id: string; photos: string[] };
+      type Update = { id: string; photos: (string | TaskPhoto)[] };
       const taskUpdates: Update[] = [];
       const projectUpdates: Update[] = [];
 
+      async function recoverPhotoEntry(photo: string | TaskPhoto): Promise<string | TaskPhoto> {
+        const uri = typeof photo === 'string' ? photo : photo.uri;
+        try {
+          const info = await FileSystem.getInfoAsync(uri);
+          if (info.exists) return photo;
+          if (typeof photo !== 'string' && photo.assetId) {
+            const newUri = await recoverPhotoFromAsset(photo);
+            if (newUri) return { ...photo, uri: newUri };
+          }
+        } catch { /* ignore */ }
+        return photo;
+      }
+
       for (const task of currentTasks) {
         if (!task.photos?.length) continue;
-        let changed = false;
-        const recovered: string[] = [];
-        for (const uri of task.photos) {
-          try {
-            const info = await FileSystem.getInfoAsync(uri);
-            if (info.exists) {
-              recovered.push(uri);
-            } else {
-              const newUri = await recoverPhotoFromAsset(uri);
-              recovered.push(newUri ?? uri);
-              if (newUri) changed = true;
-            }
-          } catch {
-            recovered.push(uri);
-          }
-        }
+        const recovered = await Promise.all(task.photos.map(recoverPhotoEntry));
+        const changed = recovered.some(
+          (p, i) => (typeof p === 'string' ? p : p.uri) !== (typeof task.photos[i] === 'string' ? task.photos[i] as string : (task.photos[i] as TaskPhoto).uri)
+        );
         if (changed) taskUpdates.push({ id: task.id, photos: recovered });
       }
 
       for (const project of currentProjects) {
         if (!project.photos?.length) continue;
-        let changed = false;
-        const recovered: string[] = [];
-        for (const uri of project.photos) {
-          try {
-            const info = await FileSystem.getInfoAsync(uri);
-            if (info.exists) {
-              recovered.push(uri);
-            } else {
-              const newUri = await recoverPhotoFromAsset(uri);
-              recovered.push(newUri ?? uri);
-              if (newUri) changed = true;
-            }
-          } catch {
-            recovered.push(uri);
-          }
-        }
+        const recovered = await Promise.all(project.photos.map(recoverPhotoEntry));
+        const changed = recovered.some(
+          (p, i) => (typeof p === 'string' ? p : p.uri) !== (typeof project.photos[i] === 'string' ? project.photos[i] as string : (project.photos[i] as TaskPhoto).uri)
+        );
         if (changed) projectUpdates.push({ id: project.id, photos: recovered });
       }
 

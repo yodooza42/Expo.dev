@@ -20,8 +20,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useApp } from '@/contexts/AppContext';
 import { useColors } from '@/hooks/useColors';
-import { savePhotoToPublicAlbum } from '@/utils/mediaLibrary';
-import type { Priority, RecurrenceType, TaskStatus } from '@/types';
+import { getPhotoUri, savePhotoToPublicAlbum } from '@/utils/mediaLibrary';
+import type { Priority, RecurrenceType, TaskPhoto, TaskStatus } from '@/types';
 
 const { width } = Dimensions.get('window');
 
@@ -76,7 +76,7 @@ export default function NewTaskScreen() {
     }
     return '';
   });
-  const [photos, setPhotos] = useState<string[]>(existing?.photos ?? []);
+  const [photos, setPhotos] = useState<(string | TaskPhoto)[]>(existing?.photos ?? []);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const topPad = Platform.OS === 'web' ? 67 : insets.top;
@@ -153,8 +153,8 @@ export default function NewTaskScreen() {
           const r = await ImagePicker.launchCameraAsync({ quality: 1 });
           if (!r.canceled && r.assets[0]) {
             const permanent = await persistPhoto(r.assets[0].uri);
-            setPhotos(prev => [...prev, permanent]);
-            savePhotoToPublicAlbum(permanent, getProjectName()).catch(() => {});
+            const taskPhoto = await savePhotoToPublicAlbum(permanent, getProjectName());
+            setPhotos(prev => [...prev, taskPhoto]);
           }
         },
       },
@@ -164,9 +164,9 @@ export default function NewTaskScreen() {
           const r = await ImagePicker.launchImageLibraryAsync({ quality: 1, allowsMultipleSelection: true });
           if (!r.canceled) {
             const permanents = await Promise.all(r.assets.map(a => persistPhoto(a.uri)));
-            setPhotos(prev => [...prev, ...permanents]);
             const name = getProjectName();
-            permanents.forEach(uri => savePhotoToPublicAlbum(uri, name).catch(() => {}));
+            const taskPhotos = await Promise.all(permanents.map(uri => savePhotoToPublicAlbum(uri, name)));
+            setPhotos(prev => [...prev, ...taskPhotos]);
           }
         },
       },
@@ -343,9 +343,9 @@ export default function NewTaskScreen() {
         <View>
           <Text style={[styles.label, { color: colors.mutedForeground }]}>Photos</Text>
           <View style={styles.photoGrid}>
-            {photos.map((uri, idx) => (
+            {photos.map((photo, idx) => (
               <View key={idx} style={styles.photoThumb}>
-                <Image source={{ uri }} style={styles.photoImg} contentFit="cover" />
+                <Image source={{ uri: getPhotoUri(photo) }} style={styles.photoImg} contentFit="cover" />
                 <Pressable
                   onPress={() => setPhotos(prev => prev.filter((_, i) => i !== idx))}
                   style={styles.photoRemove}
