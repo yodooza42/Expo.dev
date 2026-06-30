@@ -1,4 +1,10 @@
+import React from 'react';
 import { NativeModules } from 'react-native';
+import TaskManager from 'expo-task-manager';
+import { requestWidgetUpdate } from 'react-native-android-widget';
+
+import { getWidgetDataFromStorage } from './data';
+import { TodoWidget } from './TodoWidget';
 
 const { WidgetAlarm } = NativeModules as {
   WidgetAlarm?: {
@@ -18,3 +24,16 @@ export async function scheduleImminentRefresh(): Promise<void> {
 export async function cancelImminentRefresh(): Promise<void> {
   WidgetAlarm?.cancelAlarm();
 }
+
+TaskManager.defineTask(WIDGET_IMMINENT_REFRESH_TASK, async () => {
+  const data = await getWidgetDataFromStorage();
+  if (!data.hasImminentAppt) {
+    await cancelImminentRefresh();
+    return;
+  }
+  await requestWidgetUpdate({
+    widgetName: 'TodoWidget',
+    renderWidget: () => React.createElement(TodoWidget, data),
+    widgetNotFound: () => {},
+  });
+});
