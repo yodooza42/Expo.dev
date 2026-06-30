@@ -284,8 +284,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
   }, [appointments, loading]);
 
+  // Ref holding the latest recovery function so the AppState listener can call
+  // it without recreating the subscription every time loading changes.
+  const recoverPhotosRef = useRef<() => Promise<void>>(async () => { /* noop until loaded */ });
+
   // After initial load, silently recover any task/project photos whose local
-  // files were wiped by an app reinstall. Runs once per session after load.
+  // files were wiped by an app reinstall. Also retriggers on app foreground so
+  // that a permission grant that happens after the first pass is honoured.
   useEffect(() => {
     if (loading) return;
 
@@ -351,13 +356,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
     }
 
+    // Keep the ref up-to-date so the AppState listener always has the latest version.
+    recoverPhotosRef.current = recoverMissingPhotos;
     recoverMissingPhotos().catch(() => {/* silent – best-effort recovery */});
-  // Run once after loading completes
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading]);
 
   useEffect(() => {
     const sub = AppState.addEventListener('change', nextState => {
+      if (nextState === 'active' && !loading) {
+        // Retrigger recovery each time the app returns to foreground. This
+        // handles the case where media permission was denied on the first pass
+        // (e.g. fresh reinstall) and the user grants it later.
+        recoverPhotosRef.current().catch(() => {});
+      }
       if (nextState === 'background' && dirtyRef.current && !loading) {
         const data = JSON.stringify({
           projects: projectsRef.current,

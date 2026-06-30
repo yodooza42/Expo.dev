@@ -64,7 +64,7 @@ export async function savePhotoToPublicAlbum(
 export async function recoverPhotoFromAsset(photo: TaskPhoto): Promise<string | null> {
   if (Platform.OS === 'web' || !photo.assetId) return null;
   try {
-    const { status } = await MediaLibrary.getPermissionsAsync();
+    const { status } = await MediaLibrary.requestPermissionsAsync();
     if (status !== 'granted') return null;
 
     const assetInfo = await MediaLibrary.getAssetInfoAsync(photo.assetId);
