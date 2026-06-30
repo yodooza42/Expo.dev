@@ -18,13 +18,11 @@ const {
 
 // ── Module mocks ─────────────────────────────────────────────────────────────
 
-vi.mock('react-native', () => ({
-  NativeModules: {
-    WidgetAlarm: {
-      scheduleAlarm: mockScheduleAlarm,
-      cancelAlarm: mockCancelAlarm,
-    },
-  },
+vi.mock('expo-modules-core', () => ({
+  requireNativeModule: vi.fn(() => ({
+    scheduleAlarm: mockScheduleAlarm,
+    cancelAlarm: mockCancelAlarm,
+  })),
 }));
 
 vi.mock('expo-task-manager', () => ({

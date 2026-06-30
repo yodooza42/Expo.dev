@@ -65,6 +65,7 @@
     "expo-image-manipulator": "~14.0.8",
     "expo-intent-launcher": "^13.0.8",
     "expo-media-library": "^56.0.7",
+    "expo-modules-core": "^56.0.17",
     "expo-notifications": "~0.32.17",
     "expo-print": "~15.0.8",
     "expo-sharing": "~14.0.8",

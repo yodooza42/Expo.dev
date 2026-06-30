@@ -1,0 +1,6 @@
+{
+  "platforms": ["android"],
+  "android": {
+    "modules": ["com.yoann2.app.WidgetAlarmModule"]
+  }
+}

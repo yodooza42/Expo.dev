@@ -1,17 +1,21 @@
 import React from 'react';
-import { NativeModules } from 'react-native';
+import { requireNativeModule } from 'expo-modules-core';
 import TaskManager from 'expo-task-manager';
 import { requestWidgetUpdate } from 'react-native-android-widget';
 
 import { getWidgetDataFromStorage } from './data';
 import { TodoWidget } from './TodoWidget';
 
-const { WidgetAlarm } = NativeModules as {
-  WidgetAlarm?: {
-    scheduleAlarm: (intervalMs: number) => void;
-    cancelAlarm: () => void;
-  };
-};
+const WidgetAlarm = (() => {
+  try {
+    return requireNativeModule<{
+      scheduleAlarm: (intervalMs: number) => void;
+      cancelAlarm: () => void;
+    }>('WidgetAlarm');
+  } catch {
+    return null;
+  }
+})();
 
 export const WIDGET_IMMINENT_REFRESH_TASK = 'WIDGET_IMMINENT_REFRESH';
 
