@@ -15,7 +15,11 @@
       "backgroundColor": "#121212"
     },
     "ios": {
-      "supportsTablet": false
+      "supportsTablet": false,
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "Yoann2.0 lit vos photos pour les afficher dans vos projets et tâches.",
+        "NSPhotoLibraryAddUsageDescription": "Yoann2.0 sauvegarde vos photos dans des albums organisés par projet."
+      }
     },
     "android": {
       "backgroundColor": "#121212",
@@ -27,7 +31,10 @@
         "android.permission.ACCESS_FINE_LOCATION",
         "android.permission.ACCESS_BACKGROUND_LOCATION",
         "android.permission.FOREGROUND_SERVICE",
-        "android.permission.FOREGROUND_SERVICE_LOCATION"
+        "android.permission.FOREGROUND_SERVICE_LOCATION",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE"
       ]
     },
     "web": {
@@ -64,6 +71,14 @@
         {
           "photosPermission": "Yoann2.0 accède à votre galerie pour les photos de projets.",
           "cameraPermission": "Yoann2.0 accède à la caméra pour prendre des photos de projets."
+        }
+      ],
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Yoann2.0 sauvegarde vos photos dans des albums organisés par projet.",
+          "savePhotosPermission": "Yoann2.0 sauvegarde vos photos dans des albums organisés par projet.",
+          "isAccessMediaLocationEnabled": true
         }
       ],
       [

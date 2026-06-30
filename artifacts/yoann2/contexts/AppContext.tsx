@@ -1,6 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as FileSystem from 'expo-file-system/legacy';
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
+
+import { recoverPhotoFromAsset } from '@/utils/mediaLibrary';
 
 import type { Appointment, AppStats, Category, Expense, Priority, Project, ProjectStatus, Task, TaskStatus } from '@/types';
 import { saveBackup } from '@/utils/backup';
@@ -280,6 +283,89 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
     });
   }, [appointments, loading]);
+
+  // After initial load, silently recover any task/project photos whose local
+  // files were wiped by an app reinstall. Runs once per session after load.
+  useEffect(() => {
+    if (loading) return;
+
+    async function recoverMissingPhotos() {
+      const currentTasks = tasksRef.current;
+      const currentProjects = projectsRef.current;
+
+      type Update = { id: string; photos: string[] };
+      const taskUpdates: Update[] = [];
+      const projectUpdates: Update[] = [];
+
+      for (const task of currentTasks) {
+        if (!task.photos?.length) continue;
+        let changed = false;
+        const recovered: string[] = [];
+        for (const uri of task.photos) {
+          try {
+            const info = await FileSystem.getInfoAsync(uri);
+            if (info.exists) {
+              recovered.push(uri);
+            } else {
+              const newUri = await recoverPhotoFromAsset(uri);
+              recovered.push(newUri ?? uri);
+              if (newUri) changed = true;
+            }
+          } catch {
+            recovered.push(uri);
+          }
+        }
+        if (changed) taskUpdates.push({ id: task.id, photos: recovered });
+      }
+
+      for (const project of currentProjects) {
+        if (!project.photos?.length) continue;
+        let changed = false;
+        const recovered: string[] = [];
+        for (const uri of project.photos) {
+          try {
+            const info = await FileSystem.getInfoAsync(uri);
+            if (info.exists) {
+              recovered.push(uri);
+            } else {
+              const newUri = await recoverPhotoFromAsset(uri);
+              recovered.push(newUri ?? uri);
+              if (newUri) changed = true;
+            }
+          } catch {
+            recovered.push(uri);
+          }
+        }
+        if (changed) projectUpdates.push({ id: project.id, photos: recovered });
+      }
+
+      if (taskUpdates.length > 0) {
+        setTasks(prev => {
+          const next = prev.map(t => {
+            const upd = taskUpdates.find(u => u.id === t.id);
+            return upd ? { ...t, photos: upd.photos } : t;
+          });
+          AsyncStorage.setItem(STORAGE_KEYS.TASKS, JSON.stringify(next));
+          return next;
+        });
+      }
+
+      if (projectUpdates.length > 0) {
+        setProjects(prev => {
+          const next = prev.map(p => {
+            const upd = projectUpdates.find(u => u.id === p.id);
+            return upd ? { ...p, photos: upd.photos, updatedAt: new Date().toISOString() } : p;
+          });
+          AsyncStorage.setItem(STORAGE_KEYS.PROJECTS, JSON.stringify(next));
+          return next;
+        });
+      }
+    }
+
+    recoverMissingPhotos().catch(() => {/* silent – best-effort recovery */});
+  // Run once after loading completes
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading]);
 
   useEffect(() => {
     const sub = AppState.addEventListener('change', nextState => {

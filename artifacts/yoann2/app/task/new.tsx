@@ -20,6 +20,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useApp } from '@/contexts/AppContext';
 import { useColors } from '@/hooks/useColors';
+import { savePhotoToPublicAlbum } from '@/utils/mediaLibrary';
 import type { Priority, RecurrenceType, TaskStatus } from '@/types';
 
 const { width } = Dimensions.get('window');
@@ -138,6 +139,10 @@ export default function NewTaskScreen() {
     return dest;
   }
 
+  function getProjectName(): string {
+    return projects.find(p => p.id === projectId)?.name ?? 'Divers';
+  }
+
   async function pickPhoto() {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted && Platform.OS !== 'web') { Alert.alert('Permission refusée'); return; }
@@ -145,20 +150,23 @@ export default function NewTaskScreen() {
       {
         text: 'Appareil photo',
         onPress: async () => {
-          const r = await ImagePicker.launchCameraAsync({ quality: 0.7 });
+          const r = await ImagePicker.launchCameraAsync({ quality: 1 });
           if (!r.canceled && r.assets[0]) {
             const permanent = await persistPhoto(r.assets[0].uri);
             setPhotos(prev => [...prev, permanent]);
+            savePhotoToPublicAlbum(permanent, getProjectName()).catch(() => {});
           }
         },
       },
       {
         text: 'Galerie',
         onPress: async () => {
-          const r = await ImagePicker.launchImageLibraryAsync({ quality: 0.7, allowsMultipleSelection: true });
+          const r = await ImagePicker.launchImageLibraryAsync({ quality: 1, allowsMultipleSelection: true });
           if (!r.canceled) {
             const permanents = await Promise.all(r.assets.map(a => persistPhoto(a.uri)));
             setPhotos(prev => [...prev, ...permanents]);
+            const name = getProjectName();
+            permanents.forEach(uri => savePhotoToPublicAlbum(uri, name).catch(() => {}));
           }
         },
       },

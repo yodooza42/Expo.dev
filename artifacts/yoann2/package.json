@@ -61,6 +61,7 @@
     "expo-file-system": "~19.0.23",
     "expo-image-manipulator": "~14.0.8",
     "expo-intent-launcher": "^13.0.8",
+    "expo-media-library": "^56.0.7",
     "expo-notifications": "~0.32.17",
     "expo-print": "~15.0.8",
     "expo-sharing": "~14.0.8",
@@ -75,11 +76,15 @@
   "expo": {
     "doctor": {
       "reactNativeDirectoryCheck": {
-        "exclude": ["@react-native-ml-kit/text-recognition"]
+        "exclude": [
+          "@react-native-ml-kit/text-recognition"
+        ]
       }
     },
     "install": {
-      "exclude": ["react-native-webview"]
+      "exclude": [
+        "react-native-webview"
+      ]
     }
   }
 }

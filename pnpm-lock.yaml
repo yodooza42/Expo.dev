@@ -427,6 +427,9 @@ importers:
       expo-intent-launcher:
         specifier: ^13.0.8
         version: 13.0.8(expo@54.0.35)
+      expo-media-library:
+        specifier: ^56.0.7
+        version: 56.0.7(expo@54.0.35)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))
       expo-notifications:
         specifier: ~0.32.17
         version: 0.32.17(expo@54.0.35)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)(typescript@5.9.3)
@@ -3566,6 +3569,12 @@ packages:
     resolution: {integrity: sha512-H/FI75VuJ1coodJbbMu82pf+Zjess8X8Xkiv9Bv58ZgPKS/2ztjC1YO1/XMcGz7+s9DrbLuMIw22dFuP4HqneA==}
     peerDependencies:
       expo: '*'
+
+  expo-media-library@56.0.7:
+    resolution: {integrity: sha512-lVsXsagjDYuySr+WWvc6BfRHTXttnWeVX4qMP2ls7JyAVSECQOAQpqz47uZiJsEohtpCoDTLRL2mcn/XY8fLoQ==}
+    peerDependencies:
+      expo: '*'
+      react-native: '*'
 
   expo-modules-autolinking@3.0.26:
     resolution: {integrity: sha512-WOaud6UKg16ciCOj8raKcMOoKFMHLXKI29U29yhgu1lf+Y7VxJyCktUcYo6AM+ccZ7zLD1uWZdMtgnpf+95OXA==}
@@ -9654,6 +9663,11 @@ snapshots:
   expo-location@19.0.8(expo@54.0.35):
     dependencies:
       expo: 54.0.35(@babel/core@7.29.0)(@expo/metro-runtime@6.1.2)(expo-router@6.0.24)(react-native-webview@13.15.0(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)(typescript@5.9.3)
+
+  expo-media-library@56.0.7(expo@54.0.35)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0)):
+    dependencies:
+      expo: 54.0.35(@babel/core@7.29.0)(@expo/metro-runtime@6.1.2)(expo-router@6.0.24)(react-native-webview@13.15.0(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)(typescript@5.9.3)
+      react-native: 0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0)
 
   expo-modules-autolinking@3.0.26:
     dependencies:
