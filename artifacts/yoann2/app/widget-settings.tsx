@@ -270,6 +270,16 @@ export default function WidgetSettingsScreen() {
             step={5}
             value={settings.bgOpacity}
             onValueChange={v => setSettings(s => ({ ...s, bgOpacity: Math.round(v) }))}
+            onSlidingComplete={async v => {
+              const rounded = Math.round(v);
+              const updated = { ...settings, bgOpacity: rounded };
+              try {
+                await saveWidgetSettings(updated);
+                await updateTodoWidget(tasks, appointments);
+              } catch {
+                // Ne pas bloquer l'UX si la mise à jour échoue
+              }
+            }}
             minimumTrackTintColor={colors.primary}
             maximumTrackTintColor={colors.border}
             thumbTintColor={colors.primary}
