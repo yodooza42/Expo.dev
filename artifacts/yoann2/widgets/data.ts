@@ -62,6 +62,7 @@ export interface WidgetNextEvent {
   when: string;
   color: string;
   fromMarie?: boolean;
+  timestampMs?: number; // Unix ms — set when a time is known; used for countdown display
 }
 
 export interface WidgetData {
@@ -231,6 +232,10 @@ export function buildWidgetData(
     .slice(0, 5)
     .map(a => {
       const d = new Date(a.date);
+      if (a.time) {
+        const [h, m] = a.time.split(':').map(Number);
+        d.setHours(h, isNaN(m) ? 0 : m, 0, 0);
+      }
       const isToday = sameDay(d, today);
       const datePart = isToday ? "Aujourd'hui" : `${DAYS_FR[d.getDay()]}. ${d.getDate()} ${MONTHS_FR[d.getMonth()]}`;
       const timePart = a.time ? ` · ${a.time.replace(':', 'h')}` : '';
@@ -239,6 +244,7 @@ export function buildWidgetData(
         when: `${datePart}${timePart}`,
         color: a.fromMarie ? '#EC4899' : settings.primaryColor,
         fromMarie: a.fromMarie,
+        timestampMs: a.time ? d.getTime() : undefined,
       };
     });
 

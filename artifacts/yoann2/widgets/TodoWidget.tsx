@@ -10,10 +10,27 @@ import type { ColorProp, ImageWidgetSource } from 'react-native-android-widget';
 import { buildCardColor, buildNavbarColor } from './widgetSettings';
 import type { WidgetData } from './data';
 
-const TEXT: ColorProp    = '#FFFFFF';
-const MUTED: ColorProp   = '#9E9E9E';
+const TEXT: ColorProp        = '#FFFFFF';
+const MUTED: ColorProp       = '#9E9E9E';
 const TRANSPARENT: ColorProp = '#00000000';
+const ORANGE: ColorProp      = '#FF6600';
+const RED: ColorProp         = '#FF3B30';
 const SCHEME = 'yoann2';
+
+function getCountdown(
+  timestampMs: number | undefined,
+  primaryColor: ColorProp,
+): { label: string; color: ColorProp } | null {
+  if (!timestampMs) return null;
+  const deltaMs = timestampMs - Date.now();
+  if (deltaMs < 0 || deltaMs > 2 * 60 * 60 * 1000) return null;
+  const deltaMin = Math.floor(deltaMs / 60000);
+  if (deltaMin < 5) return { label: 'MAINTENANT', color: RED };
+  if (deltaMin < 60) return { label: `dans ${deltaMin} min`, color: ORANGE };
+  const h = Math.floor(deltaMin / 60);
+  const m = deltaMin % 60;
+  return { label: m > 0 ? `dans ${h}h${String(m).padStart(2, '0')}` : `dans ${h}h`, color: primaryColor };
+}
 
 const IMG_RESET  = require('../assets/icons/icon-reset.png') as ImageWidgetSource;
 const IMG_TASK   = require('../assets/icons/icon-task.png')  as ImageWidgetSource;
@@ -299,39 +316,42 @@ export function TodoWidget({
         {visibleAppts.length === 0 ? (
           <TextWidget text="Aucun RDV prévu" style={{ fontSize: 11, color: MUTED }} />
         ) : (
-          visibleAppts.map((appt, i) => (
-            <FlexWidget
-              key={i}
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                width: 'match_parent',
-                marginBottom: i < visibleAppts.length - 1 ? 5 : 0,
-              }}
-            >
+          visibleAppts.map((appt, i) => {
+            const countdown = getCountdown(appt.timestampMs, PRIMARY);
+            return (
               <FlexWidget
+                key={i}
                 style={{
-                  width: 7,
-                  height: 7,
-                  borderRadius: 4,
-                  backgroundColor: PRIMARY,
-                  marginRight: 7,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  width: 'match_parent',
+                  marginBottom: i < visibleAppts.length - 1 ? 5 : 0,
                 }}
-              />
-              <FlexWidget style={{ flex: 1 }}>
+              >
+                <FlexWidget
+                  style={{
+                    width: 7,
+                    height: 7,
+                    borderRadius: 4,
+                    backgroundColor: countdown ? countdown.color : PRIMARY,
+                    marginRight: 7,
+                  }}
+                />
+                <FlexWidget style={{ flex: 1 }}>
+                  <TextWidget
+                    text={appt.title}
+                    maxLines={1}
+                    truncate="END"
+                    style={{ fontSize: 12, color: TEXT }}
+                  />
+                </FlexWidget>
                 <TextWidget
-                  text={appt.title}
-                  maxLines={1}
-                  truncate="END"
-                  style={{ fontSize: 12, color: TEXT }}
+                  text={countdown ? countdown.label : appt.when}
+                  style={{ fontSize: 9, color: countdown ? countdown.color : appt.color as ColorProp, marginLeft: 4 }}
                 />
               </FlexWidget>
-              <TextWidget
-                text={appt.when}
-                style={{ fontSize: 9, color: appt.color as ColorProp, marginLeft: 4 }}
-              />
-            </FlexWidget>
-          ))
+            );
+          })
         )}
         {moreAppts > 0 && (
           <TextWidget

@@ -13,6 +13,23 @@ const NAV_ICONS: ImageSourcePropType[] = [IMG_RESET, IMG_TASK, IMG_HOME, IMG_RDV
 
 const WH     = '#FFFFFF';
 const MUTED  = '#9E9E9E';
+const ORANGE = '#FF6600';
+const RED    = '#FF3B30';
+
+function getCountdown(
+  timestampMs: number | undefined,
+  primaryColor: string,
+): { label: string; color: string } | null {
+  if (!timestampMs) return null;
+  const deltaMs = timestampMs - Date.now();
+  if (deltaMs < 0 || deltaMs > 2 * 60 * 60 * 1000) return null;
+  const deltaMin = Math.floor(deltaMs / 60000);
+  if (deltaMin < 5) return { label: 'MAINTENANT', color: RED };
+  if (deltaMin < 60) return { label: `dans ${deltaMin} min`, color: ORANGE };
+  const h = Math.floor(deltaMin / 60);
+  const m = deltaMin % 60;
+  return { label: m > 0 ? `dans ${h}h${String(m).padStart(2, '0')}` : `dans ${h}h`, color: primaryColor };
+}
 
 export function WidgetPreview({ data }: { data: WidgetData }) {
   const PRIMARY  = data.settings.primaryColor;
@@ -117,13 +134,18 @@ export function WidgetPreview({ data }: { data: WidgetData }) {
         {visibleAppts.length === 0 ? (
           <Text style={[styles.emptyTxt, { color: MUTED }]}>Aucun RDV prévu</Text>
         ) : (
-          visibleAppts.map((appt, i) => (
-            <View key={i} style={[styles.itemRow, i < visibleAppts.length - 1 && { marginBottom: 5 }]}>
-              <View style={[styles.dot, { backgroundColor: PRIMARY }]} />
-              <Text style={styles.itemTitle} numberOfLines={1}>{appt.title}</Text>
-              <Text style={[styles.itemMeta, { color: appt.color }]}>{appt.when}</Text>
-            </View>
-          ))
+          visibleAppts.map((appt, i) => {
+            const countdown = getCountdown(appt.timestampMs, PRIMARY);
+            return (
+              <View key={i} style={[styles.itemRow, i < visibleAppts.length - 1 && { marginBottom: 5 }]}>
+                <View style={[styles.dot, { backgroundColor: countdown ? countdown.color : PRIMARY }]} />
+                <Text style={styles.itemTitle} numberOfLines={1}>{appt.title}</Text>
+                <Text style={[styles.itemMeta, { color: countdown ? countdown.color : appt.color }]}>
+                  {countdown ? countdown.label : appt.when}
+                </Text>
+              </View>
+            );
+          })
         )}
         {moreAppts > 0 && (
           <Text style={[styles.moreTxt, { color: MUTED }]}>+{moreAppts} RDV…</Text>
