@@ -107,13 +107,6 @@
             "minSdkVersion": 26
           }
         }
-      ],
-      [
-        "@sentry/react-native/expo",
-        {
-          "organization": "yoann-gorge",
-          "project": "react-native"
-        }
       ]
     ],
     "experiments": {
