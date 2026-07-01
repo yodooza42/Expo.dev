@@ -107,6 +107,13 @@
             "minSdkVersion": 26
           }
         }
+      ],
+      [
+        "@sentry/react-native/expo",
+        {
+          "organization": "sentry",
+          "project": "yoann2"
+        }
       ]
     ],
     "experiments": {

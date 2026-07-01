@@ -56,6 +56,7 @@
   },
   "dependencies": {
     "@react-native-community/slider": "^5.2.0",
+    "@sentry/react-native": "^8.16.0",
     "expo": "~54.0.35",
     "expo-build-properties": "~1.0.10",
     "expo-clipboard": "^8.0.8",

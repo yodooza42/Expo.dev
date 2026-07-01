@@ -1,34 +1,51 @@
-// ── Native crash reporter (reads previous crash from disk) ──────────────────
 const { Platform } = require('react-native');
-if (Platform.OS === 'android') {
-  try {
-    const FileSystem = require('expo-file-system');
-    const crashPath = (FileSystem.documentDirectory || '').replace(/\/documents\/$/, '/') + 'native_crash.txt';
-    FileSystem.readAsStringAsync(crashPath).then((msg) => {
-      if (msg) {
-        FileSystem.deleteAsync(crashPath, { idempotent: true }).catch(() => {});
-        const { Alert } = require('react-native');
-        Alert.alert('💥 Crash natif (run précédent)', msg.slice(0, 600), [{ text: 'OK' }]);
-      }
-    }).catch(() => {});
-  } catch (_) {}
-}
 
-// ── JS crash interceptor ────────────────────────────────────────────────────
-const prevHandler = ErrorUtils.getGlobalHandler();
-ErrorUtils.setGlobalHandler((error, isFatal) => {
-  if (isFatal) {
-    const { Alert } = require('react-native');
-    setTimeout(() => {
-      Alert.alert(
-        '💥 Erreur JS fatale',
-        `${error?.message || String(error)}\n\n${(error?.stack || '').slice(0, 400)}`,
-        [{ text: 'OK' }]
-      );
-    }, 200);
+// ── Sentry initialisation ────────────────────────────────────────────────────
+// DSN is read from EXPO_PUBLIC_SENTRY_DSN (set in EAS secrets or .env.local).
+// In dev mode Sentry runs in debug mode so events are logged to console only.
+const SENTRY_DSN = process.env.EXPO_PUBLIC_SENTRY_DSN;
+
+if (SENTRY_DSN) {
+  const Sentry = require('@sentry/react-native');
+  const { __DEV__ } = require('react-native');
+  Sentry.init({
+    dsn: SENTRY_DSN,
+    debug: !!__DEV__,
+    enableNativeCrashHandling: true,
+    attachStacktrace: true,
+    tracesSampleRate: __DEV__ ? 0 : 0.2,
+  });
+} else {
+  // ── Fallback popup interceptor (dev / no DSN configured) ──────────────────
+  if (Platform.OS === 'android') {
+    try {
+      const FileSystem = require('expo-file-system');
+      const crashPath = (FileSystem.documentDirectory || '').replace(/\/documents\/$/, '/') + 'native_crash.txt';
+      FileSystem.readAsStringAsync(crashPath).then((msg) => {
+        if (msg) {
+          FileSystem.deleteAsync(crashPath, { idempotent: true }).catch(() => {});
+          const { Alert } = require('react-native');
+          Alert.alert('💥 Crash natif (run précédent)', msg.slice(0, 600), [{ text: 'OK' }]);
+        }
+      }).catch(() => {});
+    } catch (_) {}
   }
-  if (typeof prevHandler === 'function') prevHandler(error, isFatal);
-});
+
+  const prevHandler = ErrorUtils.getGlobalHandler();
+  ErrorUtils.setGlobalHandler((error, isFatal) => {
+    if (isFatal) {
+      const { Alert } = require('react-native');
+      setTimeout(() => {
+        Alert.alert(
+          '💥 Erreur JS fatale',
+          `${error?.message || String(error)}\n\n${(error?.stack || '').slice(0, 400)}`,
+          [{ text: 'OK' }]
+        );
+      }, 200);
+    }
+    if (typeof prevHandler === 'function') prevHandler(error, isFatal);
+  });
+}
 
 // ── Load the app ─────────────────────────────────────────────────────────────
 try {
