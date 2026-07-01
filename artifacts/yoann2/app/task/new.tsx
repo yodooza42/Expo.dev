@@ -20,8 +20,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useApp } from '@/contexts/AppContext';
 import { useColors } from '@/hooks/useColors';
-import { getPhotoUri, savePhotoToPublicAlbum } from '@/utils/mediaLibrary';
-import type { Priority, RecurrenceType, TaskPhoto, TaskStatus } from '@/types';
+import type { Priority, RecurrenceType, TaskStatus } from '@/types';
 
 const { width } = Dimensions.get('window');
 
@@ -76,7 +75,7 @@ export default function NewTaskScreen() {
     }
     return '';
   });
-  const [photos, setPhotos] = useState<(string | TaskPhoto)[]>(existing?.photos ?? []);
+  const [photos, setPhotos] = useState<string[]>(existing?.photos ?? []);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const topPad = Platform.OS === 'web' ? 67 : insets.top;
@@ -139,10 +138,6 @@ export default function NewTaskScreen() {
     return dest;
   }
 
-  function getProjectName(): string {
-    return projects.find(p => p.id === projectId)?.name ?? 'Divers';
-  }
-
   async function pickPhoto() {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted && Platform.OS !== 'web') { Alert.alert('Permission refusée'); return; }
@@ -150,23 +145,20 @@ export default function NewTaskScreen() {
       {
         text: 'Appareil photo',
         onPress: async () => {
-          const r = await ImagePicker.launchCameraAsync({ quality: 1 });
+          const r = await ImagePicker.launchCameraAsync({ quality: 0.7 });
           if (!r.canceled && r.assets[0]) {
             const permanent = await persistPhoto(r.assets[0].uri);
-            const taskPhoto = await savePhotoToPublicAlbum(permanent, getProjectName());
-            setPhotos(prev => [...prev, taskPhoto]);
+            setPhotos(prev => [...prev, permanent]);
           }
         },
       },
       {
         text: 'Galerie',
         onPress: async () => {
-          const r = await ImagePicker.launchImageLibraryAsync({ quality: 1, allowsMultipleSelection: true });
+          const r = await ImagePicker.launchImageLibraryAsync({ quality: 0.7, allowsMultipleSelection: true });
           if (!r.canceled) {
             const permanents = await Promise.all(r.assets.map(a => persistPhoto(a.uri)));
-            const name = getProjectName();
-            const taskPhotos = await Promise.all(permanents.map(uri => savePhotoToPublicAlbum(uri, name)));
-            setPhotos(prev => [...prev, ...taskPhotos]);
+            setPhotos(prev => [...prev, ...permanents]);
           }
         },
       },
@@ -343,9 +335,9 @@ export default function NewTaskScreen() {
         <View>
           <Text style={[styles.label, { color: colors.mutedForeground }]}>Photos</Text>
           <View style={styles.photoGrid}>
-            {photos.map((photo, idx) => (
+            {photos.map((uri, idx) => (
               <View key={idx} style={styles.photoThumb}>
-                <Image source={{ uri: getPhotoUri(photo) }} style={styles.photoImg} contentFit="cover" />
+                <Image source={{ uri }} style={styles.photoImg} contentFit="cover" />
                 <Pressable
                   onPress={() => setPhotos(prev => prev.filter((_, i) => i !== idx))}
                   style={styles.photoRemove}

@@ -4,19 +4,10 @@ import type { WidgetTaskHandlerProps } from 'react-native-android-widget';
 
 import { getWidgetDataFromStorage } from './data';
 import { TodoWidget } from './TodoWidget';
-import { scheduleImminentRefresh, cancelImminentRefresh } from './widgetRefreshScheduler';
 
 const SPIN_FRAMES   = 8;    // frames
 const SPIN_INTERVAL = 250;  // ms per frame  →  8 × 250 = 2 s
 const SPIN_TOTAL    = 720;  // degrees  →  2 full rotations
-
-async function applyScheduler(hasImminentAppt: boolean): Promise<void> {
-  if (hasImminentAppt) {
-    await scheduleImminentRefresh();
-  } else {
-    await cancelImminentRefresh();
-  }
-}
 
 export async function widgetTaskHandler(props: WidgetTaskHandlerProps): Promise<void> {
   switch (props.widgetAction) {
@@ -25,7 +16,6 @@ export async function widgetTaskHandler(props: WidgetTaskHandlerProps): Promise<
     case 'WIDGET_RESIZED': {
       const data = await getWidgetDataFromStorage();
       props.renderWidget(<TodoWidget {...data} />);
-      await applyScheduler(data.hasImminentAppt);
       break;
     }
 
@@ -56,13 +46,6 @@ export async function widgetTaskHandler(props: WidgetTaskHandlerProps): Promise<
       } else {
         props.renderWidget(<TodoWidget {...data} />);
       }
-
-      await applyScheduler(data.hasImminentAppt);
-      break;
-    }
-
-    case 'WIDGET_DELETED': {
-      await cancelImminentRefresh();
       break;
     }
 

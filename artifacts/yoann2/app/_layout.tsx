@@ -13,7 +13,6 @@ import React, { useEffect } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import * as Sentry from '@sentry/react-native';
 
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { AppProvider } from '@/contexts/AppContext';
@@ -131,7 +130,7 @@ function RootLayoutNav() {
   );
 }
 
-function RootLayout() {
+export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
     Inter_400Regular,
     Inter_500Medium,
@@ -167,7 +166,3 @@ function RootLayout() {
     </SafeAreaProvider>
   );
 }
-
-export default process.env.EXPO_PUBLIC_SENTRY_DSN
-  ? Sentry.wrap(RootLayout)
-  : RootLayout;

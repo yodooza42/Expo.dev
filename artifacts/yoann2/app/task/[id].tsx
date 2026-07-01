@@ -20,7 +20,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PriorityBadge } from '@/components/PriorityBadge';
 import { useApp } from '@/contexts/AppContext';
 import { useColors } from '@/hooks/useColors';
-import { getPhotoUri } from '@/utils/mediaLibrary';
 import type { TaskStatus } from '@/types';
 
 const { width } = Dimensions.get('window');
@@ -47,17 +46,14 @@ export default function TaskDetailScreen() {
   const project = taskMaybe ? projects.find(p => p.id === taskMaybe.projectId) : null;
 
   const [photoViewIdx, setPhotoViewIdx] = useState<number | null>(null);
-  const [failedPhotos, setFailedPhotos] = useState<Set<number>>(new Set());
 
-  async function handleDeletePhoto(photo: string | { uri: string }, idx: number) {
-    const uri = typeof photo === 'string' ? photo : photo.uri;
+  async function handleDeletePhoto(uri: string, idx: number) {
     Alert.alert('Supprimer la photo', 'Cette photo sera définitivement supprimée.', [
       { text: 'Annuler', style: 'cancel' },
       {
         text: 'Supprimer', style: 'destructive',
         onPress: async () => {
           if (photoViewIdx === idx) setPhotoViewIdx(null);
-          setFailedPhotos(prev => { const s = new Set(prev); s.delete(idx); return s; });
           const newPhotos = task.photos.filter((_, i) => i !== idx);
           updateTask(task.id, { photos: newPhotos });
           try {
@@ -274,35 +270,20 @@ export default function TaskDetailScreen() {
             <View>
               <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Photos</Text>
               <View style={styles.photoGrid}>
-                {task.photos.map((photo, idx) => {
-                  const uri = getPhotoUri(photo);
-                  const broken = failedPhotos.has(idx);
-                  return (
-                    <View key={idx} style={styles.photoThumb}>
-                      <Pressable onPress={() => !broken && setPhotoViewIdx(idx)} style={{ flex: 1 }}>
-                        {broken ? (
-                          <View style={[styles.photoImg, styles.photoBroken]}>
-                            <MaterialCommunityIcons name="image-broken-variant" size={28} color="#666" />
-                          </View>
-                        ) : (
-                          <Image
-                            source={{ uri }}
-                            style={styles.photoImg}
-                            contentFit="cover"
-                            onError={() => setFailedPhotos(prev => new Set([...prev, idx]))}
-                          />
-                        )}
-                      </Pressable>
-                      <Pressable
-                        onPress={() => handleDeletePhoto(photo, idx)}
-                        style={styles.photoRemove}
-                        hitSlop={6}
-                      >
-                        <MaterialCommunityIcons name="close-circle" size={20} color="#fff" />
-                      </Pressable>
-                    </View>
-                  );
-                })}
+                {task.photos.map((uri, idx) => (
+                  <View key={idx} style={styles.photoThumb}>
+                    <Pressable onPress={() => setPhotoViewIdx(idx)} style={{ flex: 1 }}>
+                      <Image source={{ uri }} style={styles.photoImg} contentFit="cover" />
+                    </Pressable>
+                    <Pressable
+                      onPress={() => handleDeletePhoto(uri, idx)}
+                      style={styles.photoRemove}
+                      hitSlop={6}
+                    >
+                      <MaterialCommunityIcons name="close-circle" size={20} color="#fff" />
+                    </Pressable>
+                  </View>
+                ))}
               </View>
             </View>
           )}
@@ -366,11 +347,7 @@ export default function TaskDetailScreen() {
             <MaterialCommunityIcons name="close" size={26} color="#fff" />
           </Pressable>
           {photoViewIdx !== null && task.photos[photoViewIdx] && (
-            <Image
-              source={{ uri: getPhotoUri(task.photos[photoViewIdx]) }}
-              style={styles.photoFull}
-              contentFit="contain"
-            />
+            <Image source={{ uri: task.photos[photoViewIdx] }} style={styles.photoFull} contentFit="contain" />
           )}
         </View>
       </Modal>
@@ -479,7 +456,6 @@ const styles = StyleSheet.create({
   photoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   photoThumb: { width: THUMB, height: THUMB, borderRadius: 10, overflow: 'hidden', position: 'relative' },
   photoImg: { width: '100%', height: '100%' },
-  photoBroken: { backgroundColor: '#1E1E1E', alignItems: 'center', justifyContent: 'center' },
   photoRemove: { position: 'absolute', top: 4, right: 4, zIndex: 10 },
   photoModal: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   photoClose: { position: 'absolute', top: 60, right: 20, zIndex: 10 },

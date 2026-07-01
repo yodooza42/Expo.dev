@@ -13,7 +13,6 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import Slider from '@react-native-community/slider';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -254,38 +253,6 @@ export default function WidgetSettingsScreen() {
           </View>
         </View>
 
-        <Text style={[styles.section, { color: colors.mutedForeground }]}>Opacité des cartes</Text>
-        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <View style={styles.sliderRow}>
-            <Text style={[styles.sliderLabel, { color: colors.foreground }]}>Fond transparent</Text>
-            <Text style={[styles.sliderValue, { color: colors.primary }]}>
-              {Math.round(settings.bgOpacity)} %
-            </Text>
-            <Text style={[styles.sliderLabel, { color: colors.foreground }]}>Opaque</Text>
-          </View>
-          <Slider
-            style={styles.slider}
-            minimumValue={0}
-            maximumValue={100}
-            step={5}
-            value={settings.bgOpacity}
-            onValueChange={v => setSettings(s => ({ ...s, bgOpacity: Math.round(v) }))}
-            onSlidingComplete={async v => {
-              const rounded = Math.round(v);
-              const updated = { ...settings, bgOpacity: rounded };
-              try {
-                await saveWidgetSettings(updated);
-                await updateTodoWidget(tasks, appointments);
-              } catch {
-                // Ne pas bloquer l'UX si la mise à jour échoue
-              }
-            }}
-            minimumTrackTintColor={colors.primary}
-            maximumTrackTintColor={colors.border}
-            thumbTintColor={colors.primary}
-          />
-        </View>
-
         <Pressable
           onPress={() => setSettings(DEFAULT_WIDGET_SETTINGS)}
           style={[styles.resetBtn, { borderColor: colors.border }]}
@@ -366,14 +333,6 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   resetTxt: { fontSize: 13, fontFamily: 'Inter_400Regular' },
-  sliderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  sliderLabel: { fontSize: 11, fontFamily: 'Inter_400Regular', flex: 1 },
-  sliderValue: { fontSize: 13, fontFamily: 'Inter_600SemiBold', textAlign: 'center', flex: 0, paddingHorizontal: 8 },
-  slider: { width: '100%', height: 40 },
   shiftHeader: { gap: 6 },
   shiftDateLabel: { fontSize: 15, fontFamily: 'Inter_600SemiBold' },
   shiftHoursRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },

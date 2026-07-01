@@ -3,24 +3,12 @@ export type TaskStatus = 'idea' | 'todo' | 'inprogress' | 'waiting' | 'done';
 export type ProjectStatus = 'idea' | 'todo' | 'inprogress' | 'waiting' | 'done' | 'abandoned';
 export type EisenhowerQuadrant = 'do_now' | 'schedule' | 'delegate' | 'eliminate';
 
-/**
- * A photo attached to a task or project. Stored as a mixed array
- * (string | TaskPhoto) for backward compatibility with old string-URI entries.
- * New photos are always saved as TaskPhoto objects so the assetId can be used
- * to recover the local file after an app reinstall.
- */
-export interface TaskPhoto {
-  uri: string;
-  assetId?: string;
-  capturedAt?: string;
-}
-
 export interface Project {
   id: string;
   name: string;
   description: string;
   category: string;
-  photos: (string | TaskPhoto)[];
+  photos: string[];
   startDate: string;
   dueDate: string;
   budget: number;
@@ -40,7 +28,7 @@ export interface Task {
   title: string;
   description: string;
   notes: string;
-  photos: (string | TaskPhoto)[];
+  photos: string[];
   dueDate: string;
   createdAt: string;
   completedAt?: string;

@@ -62,7 +62,6 @@ export interface WidgetNextEvent {
   when: string;
   color: string;
   fromMarie?: boolean;
-  timestampMs?: number; // Unix ms — set when a time is known; used for countdown display
 }
 
 export interface WidgetData {
@@ -82,8 +81,6 @@ export interface WidgetData {
   nounouColor: string;
   nounouPeriod: string;
   nounouDuration: string;
-  /** True when any appointment (not display-sliced) starts within the next 2 hours */
-  hasImminentAppt: boolean;
 }
 
 interface RawTask {
@@ -234,10 +231,6 @@ export function buildWidgetData(
     .slice(0, 5)
     .map(a => {
       const d = new Date(a.date);
-      if (a.time) {
-        const [h, m] = a.time.split(':').map(Number);
-        d.setHours(h, isNaN(m) ? 0 : m, 0, 0);
-      }
       const isToday = sameDay(d, today);
       const datePart = isToday ? "Aujourd'hui" : `${DAYS_FR[d.getDay()]}. ${d.getDate()} ${MONTHS_FR[d.getMonth()]}`;
       const timePart = a.time ? ` · ${a.time.replace(':', 'h')}` : '';
@@ -246,25 +239,8 @@ export function buildWidgetData(
         when: `${datePart}${timePart}`,
         color: a.fromMarie ? '#EC4899' : settings.primaryColor,
         fromMarie: a.fromMarie,
-        timestampMs: a.time ? d.getTime() : undefined,
       };
     });
-
-  // ── Imminent appointment detection (full unsliced list, 2-hour window) ────
-  const IMMINENT_WINDOW_MS = 2 * 60 * 60 * 1000;
-  const nowMs = Date.now();
-  const hasImminentAppt = (appointments ?? []).some(a => {
-    const d = new Date(a.date);
-    if (isNaN(d.getTime())) return false;
-    if (a.time) {
-      const [h, m] = a.time.split(':').map(Number);
-      if (!isNaN(h)) d.setHours(h, isNaN(m) ? 0 : m, 0, 0);
-    } else {
-      return false; // no time means no countdown — skip
-    }
-    const ms = d.getTime();
-    return ms > nowMs && ms - nowMs <= IMMINENT_WINDOW_MS;
-  });
 
   // ── Marie circle color ────────────────────────────────────────────────────
   const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
@@ -311,7 +287,6 @@ export function buildWidgetData(
     nounouColor,
     nounouPeriod,
     nounouDuration,
-    hasImminentAppt,
   };
 }
 

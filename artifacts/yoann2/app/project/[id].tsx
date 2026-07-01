@@ -1,5 +1,4 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
 import { Image } from 'expo-image';
 import * as Haptics from 'expo-haptics';
@@ -26,7 +25,6 @@ import { ProgressBar } from '@/components/ProgressBar';
 import { TaskCard } from '@/components/TaskCard';
 import { useApp } from '@/contexts/AppContext';
 import { useColors } from '@/hooks/useColors';
-import { getPhotoUri, savePhotoToPublicAlbum } from '@/utils/mediaLibrary';
 import type { Expense, ProjectStatus, Task } from '@/types';
 
 const { width } = Dimensions.get('window');
@@ -74,10 +72,8 @@ export default function ProjectDetailScreen() {
   const allPhotos = useMemo<AllPhoto[]>(() => {
     if (!projectMaybe) return [];
     return [
-      ...projectMaybe.photos.map(p => ({ uri: getPhotoUri(p), deletable: true, source: 'Projet' })),
-      ...tasks.flatMap(t =>
-        (t.photos ?? []).map(p => ({ uri: getPhotoUri(p), deletable: false, source: t.title }))
-      ),
+      ...projectMaybe.photos.map(uri => ({ uri, deletable: true, source: 'Projet' })),
+      ...tasks.flatMap(t => (t.photos ?? []).map(uri => ({ uri, deletable: false, source: t.title }))),
     ];
   }, [projectMaybe, tasks]);
 
@@ -91,7 +87,6 @@ export default function ProjectDetailScreen() {
   const [expDescription, setExpDescription] = useState('');
   const [photoViewIdx, setPhotoViewIdx] = useState<number | null>(null);
   const [currentPhotoIdx, setCurrentPhotoIdx] = useState(0);
-  const [failedPhotos, setFailedPhotos] = useState<Set<number>>(new Set());
   const photoListRef = useRef<FlatList<AllPhoto>>(null);
   const [exporting, setExporting] = useState(false);
 
@@ -114,26 +109,14 @@ export default function ProjectDetailScreen() {
   const dueDate = new Date(project.dueDate);
   const isOverdue = dueDate < new Date() && project.status !== 'done';
 
-  async function persistProjectPhoto(tempUri: string): Promise<string> {
-    const dir = FileSystem.documentDirectory + 'task_photos/';
-    const dirInfo = await FileSystem.getInfoAsync(dir);
-    if (!dirInfo.exists) await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
-    const ext = tempUri.split('.').pop()?.split('?')[0] ?? 'jpg';
-    const dest = dir + Date.now() + '_' + Math.random().toString(36).slice(2) + '.' + ext;
-    await FileSystem.copyAsync({ from: tempUri, to: dest });
-    return dest;
-  }
-
   async function pickPhoto() {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) {
       const cam = await ImagePicker.requestCameraPermissionsAsync();
       if (!cam.granted) { Alert.alert('Permission refusée'); return; }
-      const result = await ImagePicker.launchCameraAsync({ quality: 1 });
+      const result = await ImagePicker.launchCameraAsync({ quality: 0.7 });
       if (!result.canceled && result.assets[0]) {
-        const permanent = await persistProjectPhoto(result.assets[0].uri);
-        const taskPhoto = await savePhotoToPublicAlbum(permanent, project.name);
-        updateProject(project.id, { photos: [...project.photos, taskPhoto] });
+        updateProject(project.id, { photos: [...project.photos, result.assets[0].uri] });
       }
       return;
     }
@@ -141,23 +124,15 @@ export default function ProjectDetailScreen() {
       {
         text: 'Appareil photo',
         onPress: async () => {
-          const r = await ImagePicker.launchCameraAsync({ quality: 1 });
-          if (!r.canceled && r.assets[0]) {
-            const permanent = await persistProjectPhoto(r.assets[0].uri);
-            const taskPhoto = await savePhotoToPublicAlbum(permanent, project.name);
-            updateProject(project.id, { photos: [...project.photos, taskPhoto] });
-          }
+          const r = await ImagePicker.launchCameraAsync({ quality: 0.7 });
+          if (!r.canceled && r.assets[0]) updateProject(project.id, { photos: [...project.photos, r.assets[0].uri] });
         },
       },
       {
         text: 'Galerie (multi-sélection)',
         onPress: async () => {
-          const r = await ImagePicker.launchImageLibraryAsync({ quality: 1, allowsMultipleSelection: true });
-          if (!r.canceled) {
-            const permanents = await Promise.all(r.assets.map(a => persistProjectPhoto(a.uri)));
-            const taskPhotos = await Promise.all(permanents.map(uri => savePhotoToPublicAlbum(uri, project.name)));
-            updateProject(project.id, { photos: [...project.photos, ...taskPhotos] });
-          }
+          const r = await ImagePicker.launchImageLibraryAsync({ quality: 0.7, allowsMultipleSelection: true });
+          if (!r.canceled) updateProject(project.id, { photos: [...project.photos, ...r.assets.map(a => a.uri)] });
         },
       },
       { text: 'Annuler', style: 'cancel' },
@@ -172,7 +147,7 @@ export default function ProjectDetailScreen() {
   function removePhoto(allIdx: number) {
     const photo = allPhotos[allIdx];
     if (!photo?.deletable) { setPhotoViewIdx(null); return; }
-    const updated = project.photos.filter(p => getPhotoUri(p) !== photo.uri);
+    const updated = project.photos.filter(u => u !== photo.uri);
     updateProject(project.id, { photos: updated });
     setPhotoViewIdx(null);
   }
@@ -772,30 +747,16 @@ export default function ProjectDetailScreen() {
                     </Text>
                   )}
                   <View style={styles.photoGrid}>
-                    {allPhotos.map((photo, idx) => {
-                      const broken = failedPhotos.has(idx);
-                      return (
-                        <Pressable key={idx} onPress={() => !broken && openPhoto(idx)} style={styles.photoThumb}>
-                          {broken ? (
-                            <View style={[styles.photoImg, styles.photoBroken]}>
-                              <MaterialCommunityIcons name="image-broken-variant" size={28} color="#666" />
-                            </View>
-                          ) : (
-                            <Image
-                              source={{ uri: photo.uri }}
-                              style={styles.photoImg}
-                              contentFit="cover"
-                              onError={() => setFailedPhotos(prev => new Set([...prev, idx]))}
-                            />
-                          )}
-                          {!photo.deletable && (
-                            <View style={[styles.taskPhotoBadge, { backgroundColor: colors.card + 'CC' }]}>
-                              <MaterialCommunityIcons name="format-list-checks" size={10} color={colors.primary} />
-                            </View>
-                          )}
-                        </Pressable>
-                      );
-                    })}
+                    {allPhotos.map((photo, idx) => (
+                      <Pressable key={idx} onPress={() => openPhoto(idx)} style={styles.photoThumb}>
+                        <Image source={{ uri: photo.uri }} style={styles.photoImg} contentFit="cover" />
+                        {!photo.deletable && (
+                          <View style={[styles.taskPhotoBadge, { backgroundColor: colors.card + 'CC' }]}>
+                            <MaterialCommunityIcons name="format-list-checks" size={10} color={colors.primary} />
+                          </View>
+                        )}
+                      </Pressable>
+                    ))}
                   </View>
                   {tasks.some(t => (t.photos ?? []).length > 0) && (
                     <Text style={[styles.photoSectionLabel, { color: colors.mutedForeground, marginTop: 4 }]}>
@@ -1042,7 +1003,6 @@ const styles = StyleSheet.create({
   photoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   photoThumb: { width: (width - 48) / 3, height: (width - 48) / 3, borderRadius: 10, overflow: 'hidden' },
   photoImg: { width: '100%', height: '100%' },
-  photoBroken: { backgroundColor: '#1E1E1E', alignItems: 'center', justifyContent: 'center' },
   taskPhotoBadge: {
     position: 'absolute', bottom: 4, right: 4,
     width: 18, height: 18, borderRadius: 9,

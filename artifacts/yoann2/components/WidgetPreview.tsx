@@ -11,42 +11,16 @@ const IMG_HOME  = require('../assets/icons/icon-home.png')  as ImageSourcePropTy
 
 const NAV_ICONS: ImageSourcePropType[] = [IMG_RESET, IMG_TASK, IMG_HOME, IMG_RDV, IMG_MIC];
 
+const CARD   = 'rgba(32,32,32,0.80)';
+const NAVBAR = 'rgba(18,18,18,0.87)';
 const WH     = '#FFFFFF';
 const MUTED  = '#9E9E9E';
-const ORANGE = '#FF6600';
-const RED    = '#FF3B30';
-
-function getCountdown(
-  timestampMs: number | undefined,
-  primaryColor: string,
-): { label: string; color: string } | null {
-  if (!timestampMs) return null;
-  const deltaMs = timestampMs - Date.now();
-  if (deltaMs < 0 || deltaMs > 2 * 60 * 60 * 1000) return null;
-  const deltaMin = Math.floor(deltaMs / 60000);
-  if (deltaMin < 5) return { label: 'MAINTENANT', color: RED };
-  if (deltaMin < 60) return { label: `dans ${deltaMin} min`, color: ORANGE };
-  const h = Math.floor(deltaMin / 60);
-  const m = deltaMin % 60;
-  return { label: m > 0 ? `dans ${h}h${String(m).padStart(2, '0')}` : `dans ${h}h`, color: primaryColor };
-}
 
 export function WidgetPreview({ data }: { data: WidgetData }) {
   const PRIMARY  = data.settings.primaryColor;
   const BG       = data.settings.bgColor;
   const bgImage  = data.settings.bgImageUri;
   const isRepos  = data.todayWork === 'Repos';
-
-  const opacity = data.settings.bgOpacity / 100;
-  const hex = (BG.startsWith('#') ? BG.slice(1) : BG).padEnd(6, '0');
-  const cR = Math.min(255, parseInt(hex.slice(0, 2), 16) + 20);
-  const cG = Math.min(255, parseInt(hex.slice(2, 4), 16) + 20);
-  const cB = Math.min(255, parseInt(hex.slice(4, 6), 16) + 20);
-  const CARD   = `rgba(${cR},${cG},${cB},${opacity.toFixed(2)})`;
-  const navR = parseInt(hex.slice(0, 2), 16);
-  const navG = parseInt(hex.slice(2, 4), 16);
-  const navB = parseInt(hex.slice(4, 6), 16);
-  const NAVBAR = `rgba(${navR},${navG},${navB},${opacity.toFixed(2)})`;
 
   const visibleTasks = data.tasks.slice(0, 4);
   const visibleAppts = data.widgetAppts.slice(0, 3);
@@ -57,7 +31,7 @@ export function WidgetPreview({ data }: { data: WidgetData }) {
     <View style={[styles.inner, bgImage ? { backgroundColor: 'rgba(0,0,0,0.55)' } : {}]}>
 
       {/* ── Bloc 1 : Marie · Nounou · Travail ── */}
-      <View style={[styles.bloc1, { backgroundColor: CARD }]}>
+      <View style={styles.bloc1}>
         <View style={styles.bloc1Row}>
 
           {/* Gauche : cercle Marie + nounou */}
@@ -92,7 +66,7 @@ export function WidgetPreview({ data }: { data: WidgetData }) {
       </View>
 
       {/* ── Bloc 2 : Tâches ── */}
-      <View style={[styles.bloc, { backgroundColor: CARD }]}>
+      <View style={styles.bloc}>
         <View style={styles.blocHead}>
           <Text style={styles.headEmoji}>📋</Text>
           <Text style={[styles.headTxt, { color: MUTED }]}>Tâches</Text>
@@ -123,7 +97,7 @@ export function WidgetPreview({ data }: { data: WidgetData }) {
       </View>
 
       {/* ── Bloc 3 : Rendez-vous ── */}
-      <View style={[styles.bloc, { backgroundColor: CARD }]}>
+      <View style={styles.bloc}>
         <View style={styles.blocHead}>
           <Text style={styles.headEmoji}>📅</Text>
           <Text style={[styles.headTxt, { color: MUTED }]}>Rendez-vous</Text>
@@ -134,18 +108,13 @@ export function WidgetPreview({ data }: { data: WidgetData }) {
         {visibleAppts.length === 0 ? (
           <Text style={[styles.emptyTxt, { color: MUTED }]}>Aucun RDV prévu</Text>
         ) : (
-          visibleAppts.map((appt, i) => {
-            const countdown = getCountdown(appt.timestampMs, PRIMARY);
-            return (
-              <View key={i} style={[styles.itemRow, i < visibleAppts.length - 1 && { marginBottom: 5 }]}>
-                <View style={[styles.dot, { backgroundColor: countdown ? countdown.color : PRIMARY }]} />
-                <Text style={styles.itemTitle} numberOfLines={1}>{appt.title}</Text>
-                <Text style={[styles.itemMeta, { color: countdown ? countdown.color : appt.color }]}>
-                  {countdown ? countdown.label : appt.when}
-                </Text>
-              </View>
-            );
-          })
+          visibleAppts.map((appt, i) => (
+            <View key={i} style={[styles.itemRow, i < visibleAppts.length - 1 && { marginBottom: 5 }]}>
+              <View style={[styles.dot, { backgroundColor: PRIMARY }]} />
+              <Text style={styles.itemTitle} numberOfLines={1}>{appt.title}</Text>
+              <Text style={[styles.itemMeta, { color: appt.color }]}>{appt.when}</Text>
+            </View>
+          ))
         )}
         {moreAppts > 0 && (
           <Text style={[styles.moreTxt, { color: MUTED }]}>+{moreAppts} RDV…</Text>
@@ -153,7 +122,7 @@ export function WidgetPreview({ data }: { data: WidgetData }) {
       </View>
 
       {/* ── Bloc 4 : Barre de navigation ── */}
-      <View style={[styles.navbar, { backgroundColor: NAVBAR }]}>
+      <View style={styles.navbar}>
         {NAV_ICONS.map((src, i) => (
           <React.Fragment key={i}>
             {i > 0 && <View style={styles.navDiv} />}
@@ -191,6 +160,7 @@ const styles = StyleSheet.create({
 
   /* Bloc 1 */
   bloc1: {
+    backgroundColor: CARD,
     borderRadius: 12,
     paddingHorizontal: 10,
     paddingVertical: 10,
@@ -268,6 +238,7 @@ const styles = StyleSheet.create({
   },
   /* Blocs 2 & 3 */
   bloc: {
+    backgroundColor: CARD,
     borderRadius: 12,
     paddingHorizontal: 12,
     paddingTop: 8,
@@ -327,6 +298,7 @@ const styles = StyleSheet.create({
   /* Nav bar */
   navbar: {
     flexDirection: 'row',
+    backgroundColor: NAVBAR,
     borderRadius: 12,
     paddingHorizontal: 2,
     paddingVertical: 6,
