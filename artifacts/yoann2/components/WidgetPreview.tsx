@@ -11,15 +11,13 @@ const IMG_HOME  = require('../assets/icons/icon-home.png')  as ImageSourcePropTy
 
 const NAV_ICONS: ImageSourcePropType[] = [IMG_RESET, IMG_TASK, IMG_HOME, IMG_RDV, IMG_MIC];
 
-const CARD   = 'rgba(32,32,32,0.80)';
-const NAVBAR = 'rgba(18,18,18,0.87)';
+const CARD   = '#202020';
+const NAVBAR = '#121212';
 const WH     = '#FFFFFF';
 const MUTED  = '#9E9E9E';
 
 export function WidgetPreview({ data }: { data: WidgetData }) {
   const PRIMARY  = data.settings.primaryColor;
-  const BG       = data.settings.bgColor;
-  const bgImage  = data.settings.bgImageUri;
   const isRepos  = data.todayWork === 'Repos';
 
   const visibleTasks = data.tasks.slice(0, 4);
@@ -28,7 +26,7 @@ export function WidgetPreview({ data }: { data: WidgetData }) {
   const moreAppts    = data.widgetAppts.length > 3 ? data.widgetAppts.length - 3 : 0;
 
   const inner = (
-    <View style={[styles.inner, bgImage ? { backgroundColor: 'rgba(0,0,0,0.55)' } : {}]}>
+    <View style={styles.inner}>
 
       {/* ── Bloc 1 : Marie · Nounou · Travail ── */}
       <View style={styles.bloc1}>
@@ -135,14 +133,6 @@ export function WidgetPreview({ data }: { data: WidgetData }) {
     </View>
   );
 
-  if (bgImage) {
-    return (
-      <View style={styles.container}>
-        <Image source={{ uri: bgImage }} style={StyleSheet.absoluteFillObject} resizeMode="cover" />
-        {inner}
-      </View>
-    );
-  }
   return <View style={styles.container}>{inner}</View>;
 }
 
@@ -150,6 +140,7 @@ const styles = StyleSheet.create({
   container: {
     borderRadius: 16,
     overflow: 'hidden',
+    backgroundColor: NAVBAR,
   },
   inner: {
     paddingHorizontal: 12,

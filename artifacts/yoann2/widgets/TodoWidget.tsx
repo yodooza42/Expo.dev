@@ -2,18 +2,16 @@ import React from 'react';
 import {
   FlexWidget,
   ImageWidget,
-  OverlapWidget,
   TextWidget,
 } from 'react-native-android-widget';
 import type { ColorProp, ImageWidgetSource } from 'react-native-android-widget';
 
 import type { WidgetData } from './data';
 
-const CARD: ColorProp    = '#FF202020';  // 100% opaque anthracite card
-const NAVBAR: ColorProp  = '#FF121212';  // 100% opaque anthracite bar
+const CARD: ColorProp    = '#FF202020';
+const NAVBAR: ColorProp  = '#FF121212';
 const TEXT: ColorProp    = '#FFFFFF';
 const MUTED: ColorProp   = '#9E9E9E';
-const TRANSPARENT: ColorProp = '#00000000';
 const SCHEME = 'yoann2';
 
 const IMG_RESET  = require('../assets/icons/icon-reset.png') as ImageWidgetSource;
@@ -30,23 +28,7 @@ export function TodoWidget({
   spinAngle = 0,
 }: WidgetData & { spinAngle?: number }) {
   const PRIMARY = settings.primaryColor as ColorProp;
-  const bgImage = settings.bgImageUri;
   const isRepos = todayWork === 'Repos';
-
-  function wrapWithBg(content: React.ReactElement): React.ReactElement {
-    if (!bgImage) return content;
-    return (
-      <OverlapWidget style={{ height: 'match_parent', width: 'match_parent' }}>
-        <ImageWidget
-          image={bgImage as ImageWidgetSource}
-          resizeMode="cover"
-          radius={16}
-          style={{ height: 'match_parent', width: 'match_parent' }}
-        />
-        {content}
-      </OverlapWidget>
-    );
-  }
 
   function NavItem({
     image,
@@ -87,13 +69,13 @@ export function TodoWidget({
   const moreTasks     = tasks.length > 4  ? tasks.length - 4   : 0;
   const moreAppts     = widgetAppts.length > 3 ? widgetAppts.length - 3 : 0;
 
-  return wrapWithBg(
+  return (
     <FlexWidget
       clickAction="OPEN_APP"
       style={{
         height: 'match_parent',
         width: 'match_parent',
-        backgroundColor: TRANSPARENT,
+        backgroundColor: NAVBAR,
         borderRadius: 16,
         paddingHorizontal: 12,
         paddingTop: 10,
@@ -365,3 +347,4 @@ export function TodoWidget({
     </FlexWidget>
   );
 }
+

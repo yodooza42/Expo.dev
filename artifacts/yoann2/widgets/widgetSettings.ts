@@ -12,8 +12,6 @@ export interface WidgetSettings {
   taskFontSize: number;
   primaryColor: string;
   bgColor: string;
-  bgOpacity: number;
-  bgImageUri?: string;
   workSchedule: DaySchedule[]; // index 0=Dimanche .. 6=Samedi (convention Date.getDay())
   shiftNotif: boolean;
 }
@@ -33,7 +31,6 @@ export const DEFAULT_WIDGET_SETTINGS: WidgetSettings = {
   taskFontSize: 16,
   primaryColor: '#FFC107',
   bgColor: '#121212',
-  bgOpacity: 100,
   workSchedule: DEFAULT_WORK_SCHEDULE,
   shiftNotif: true,
 };
