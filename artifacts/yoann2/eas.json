@@ -7,6 +7,10 @@
       "distribution": "internal",
       "android": {
         "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_SENTRY_DSN": "https://361e55e9a05d8523676b9c6dfdb3e4ec@o4511657161981952.ingest.de.sentry.io/4511657166307408",
+        "SENTRY_DSN": "https://361e55e9a05d8523676b9c6dfdb3e4ec@o4511657161981952.ingest.de.sentry.io/4511657166307408"
       }
     }
   }

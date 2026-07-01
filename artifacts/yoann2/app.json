@@ -111,8 +111,8 @@
       [
         "@sentry/react-native/expo",
         {
-          "organization": "sentry",
-          "project": "yoann2"
+          "organization": "yoann-gorge",
+          "project": "react-native"
         }
       ]
     ],
