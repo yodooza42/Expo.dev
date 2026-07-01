@@ -2,6 +2,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
+import { savePhotoToProject } from '@/utils/photoStorage';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useMemo, useState } from 'react';
@@ -141,24 +142,28 @@ export default function NewTaskScreen() {
   async function pickPhoto() {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted && Platform.OS !== 'web') { Alert.alert('Permission refusée'); return; }
+    const projectName = projects.find(p => p.id === projectId)?.name ?? 'Projet';
     Alert.alert('Ajouter une photo', '', [
       {
         text: 'Appareil photo',
         onPress: async () => {
-          const r = await ImagePicker.launchCameraAsync({ quality: 0.7 });
+          const r = await ImagePicker.launchCameraAsync({ quality: 1 });
           if (!r.canceled && r.assets[0]) {
-            const permanent = await persistPhoto(r.assets[0].uri);
+            const asset = r.assets[0];
+            const permanent = await persistPhoto(asset.uri);
             setPhotos(prev => [...prev, permanent]);
+            savePhotoToProject(asset.uri, projectName, asset.fileName);
           }
         },
       },
       {
         text: 'Galerie',
         onPress: async () => {
-          const r = await ImagePicker.launchImageLibraryAsync({ quality: 0.7, allowsMultipleSelection: true });
+          const r = await ImagePicker.launchImageLibraryAsync({ quality: 1, allowsMultipleSelection: true });
           if (!r.canceled) {
             const permanents = await Promise.all(r.assets.map(a => persistPhoto(a.uri)));
             setPhotos(prev => [...prev, ...permanents]);
+            r.assets.forEach(a => savePhotoToProject(a.uri, projectName, a.fileName));
           }
         },
       },
