@@ -437,3 +437,21 @@ id = "XiEYR9POwIOIaNOj4uww9"
 uri = "file://attached_assets/mockup_s25.png"
 type = "image"
 title = "Dernière frame splash — mockup S25 Ultra"
+
+[[outputs]]
+id = "DM7Dpw8308dXLv9jDXZzt"
+uri = "file://attached_assets/mockup_new_1s.png"
+type = "image"
+title = "1s — début"
+
+[[outputs]]
+id = "x0iy0hvHwH3zToWA17Kea"
+uri = "file://attached_assets/mockup_new_4s.png"
+type = "image"
+title = "4s — milieu"
+
+[[outputs]]
+id = "6qetgH4NG_30UJsqx6Het"
+uri = "file://attached_assets/mockup_new_8s.png"
+type = "image"
+title = "8s — fin"
