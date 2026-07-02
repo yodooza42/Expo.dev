@@ -1,4 +1,6 @@
 import * as FileSystem from 'expo-file-system/legacy';
+import * as ImageManipulator from 'expo-image-manipulator';
+import { Image as RNImage } from 'react-native';
 
 import type { Project, Task } from '@/types';
 
@@ -26,14 +28,54 @@ function photoTs(uri: string): number | null {
   return m ? parseInt(m[1]!, 10) : null;
 }
 
+// ── Image dimensions ──────────────────────────────────────────────────────────
+
+function getImageDimensions(uri: string): Promise<{ width: number; height: number }> {
+  return new Promise((resolve) => {
+    RNImage.getSize(
+      uri,
+      (width, height) => resolve({ width, height }),
+      () => resolve({ width: 9999, height: 9999 }), // assume large on error → resize
+    );
+  });
+}
+
+// ── Image → base64 data URI (resize + compress for PDF) ──────────────────────
+//
+// Strategy:
+//   1. Read original dimensions — if max dim ≤ 1080 px, skip resize (no upscaling).
+//   2. Always compress to JPEG 75 % to cut file size regardless of original format.
+//   3. Return data:image/jpeg;base64,... — never touches the original stored file.
+
+const MAX_DIM = 1080;
+const JPEG_QUALITY = 0.75;
+
 async function toDataUri(uri: string): Promise<string> {
   try {
-    const ext  = (uri.split('.').pop()?.split('?')[0] ?? 'jpg').toLowerCase();
-    const mime = ext === 'png' ? 'image/png' : ext === 'heic' ? 'image/heic' : 'image/jpeg';
-    const b64  = await FileSystem.readAsStringAsync(uri, {
+    const { width, height } = await getImageDimensions(uri);
+    const maxDim = Math.max(width, height);
+
+    const actions: ImageManipulator.Action[] = [];
+    if (maxDim > MAX_DIM) {
+      const scale = MAX_DIM / maxDim;
+      actions.push({
+        resize: {
+          width:  Math.round(width  * scale),
+          height: Math.round(height * scale),
+        },
+      });
+    }
+
+    const result = await ImageManipulator.manipulateAsync(
+      uri,
+      actions,
+      { compress: JPEG_QUALITY, format: ImageManipulator.SaveFormat.JPEG },
+    );
+
+    const b64 = await FileSystem.readAsStringAsync(result.uri, {
       encoding: FileSystem.EncodingType.Base64,
     });
-    return `data:${mime};base64,${b64}`;
+    return `data:image/jpeg;base64,${b64}`;
   } catch {
     return '';
   }
@@ -71,7 +113,7 @@ export async function generateProjectReportHtml(
     : null;
   const doneCount = tasks.filter(t => t.status === 'done').length;
 
-  // ── Task sections (async: loads photos) ───────────────────────────────────
+  // ── Task sections (async: resize + compress each photo) ───────────────────
 
   const taskSections: string[] = [];
 
@@ -127,7 +169,6 @@ export async function generateProjectReportHtml(
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Helvetica Neue',Arial,sans-serif;background:#121212;color:#e0e0e0}
 
-/* ── Cover ── */
 .cover{
   background:linear-gradient(135deg,#1a1a2e 0%,#16213e 60%,#0f3460 100%);
   padding:56px 36px 48px;text-align:center;
@@ -142,7 +183,6 @@ body{font-family:'Helvetica Neue',Arial,sans-serif;background:#121212;color:#e0e
 .stat-val{font-size:26px;font-weight:700;color:#FFC107}
 .stat-lbl{font-size:10px;color:#757575;text-transform:uppercase;letter-spacing:1px}
 
-/* ── Content ── */
 .content{padding:0 28px 48px}
 
 .task-card{
