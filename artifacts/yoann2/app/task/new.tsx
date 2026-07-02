@@ -2,7 +2,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
-import { savePhotoToProject } from '@/utils/photoStorage';
+import { resolveProjectDirForBatch, savePhotoToProject } from '@/utils/photoStorage';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useMemo, useState } from 'react';
@@ -163,7 +163,10 @@ export default function NewTaskScreen() {
           if (!r.canceled) {
             const permanents = await Promise.all(r.assets.map(a => persistPhoto(a.uri)));
             setPhotos(prev => [...prev, ...permanents]);
-            r.assets.forEach(a => savePhotoToProject(a.uri, projectName, a.fileName));
+            // Resolve the project folder once for the whole batch — avoids
+            // repeated SAF directory creation that produces duplicate folders.
+            const batchDir = await resolveProjectDirForBatch(projectName);
+            r.assets.forEach(a => savePhotoToProject(a.uri, projectName, a.fileName, batchDir));
           }
         },
       },
