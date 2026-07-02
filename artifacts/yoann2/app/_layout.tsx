@@ -154,6 +154,8 @@ function RootLayoutNav() {
         <Stack.Screen name="marie" options={{ headerShown: false, presentation: 'card' }} />
         <Stack.Screen name="anna" options={{ headerShown: false, presentation: 'card' }} />
         <Stack.Screen name="vehicle-settings" options={{ headerShown: false, presentation: 'modal' }} />
+        <Stack.Screen name="project-reports" options={{ headerShown: false, presentation: 'modal' }} />
+        <Stack.Screen name="project-report/[id]" options={{ headerShown: false, presentation: 'card' }} />
       </Stack>
       <TripTagModal trip={pendingTrip} onTag={handleTag} />
     </>

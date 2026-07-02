@@ -161,13 +161,22 @@ export default function KanbanScreen() {
       <View style={[styles.header, { paddingTop: topPad + 12 }]}>
         <View style={styles.titleRow}>
           <Text style={[styles.title, { color: colors.foreground }]}>Kanban</Text>
-          <Pressable
-            onPress={() => router.push('/widget-settings')}
-            hitSlop={8}
-            style={[styles.widgetBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
-          >
-            <MaterialCommunityIcons name="widgets-outline" size={18} color={colors.primary} />
-          </Pressable>
+          <View style={styles.titleActions}>
+            <Pressable
+              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/project-reports' as any); }}
+              hitSlop={8}
+              style={[styles.widgetBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+            >
+              <MaterialCommunityIcons name="printer-outline" size={18} color={colors.primary} />
+            </Pressable>
+            <Pressable
+              onPress={() => router.push('/widget-settings')}
+              hitSlop={8}
+              style={[styles.widgetBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+            >
+              <MaterialCommunityIcons name="widgets-outline" size={18} color={colors.primary} />
+            </Pressable>
+          </View>
         </View>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.projectFilter} contentContainerStyle={{ gap: 6 }}>
           {[{ id: 'all', name: 'Tous' }, ...projects].map(p => (
@@ -300,6 +309,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+  },
+  titleActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   widgetBtn: {
     width: 36,
