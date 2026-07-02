@@ -3,6 +3,10 @@ import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 
 import { autoBackup } from '@/utils/locationBackup';
+import { haversineKm } from '@/utils/haversine';
+import { processPointForTrip } from '@/utils/tripDetection';
+
+export { haversineKm };
 
 export const LOCATION_TASK_NAME = 'background-location-task';
 const KEY_PREFIX = '@yoann2_location_';
@@ -23,23 +27,6 @@ function classifyActivity(speedMs: number | null | undefined): ActivityType {
   if (speedMs < 2) return 'walk';
   if (speedMs > 5) return 'car';
   return 'unknown';
-}
-
-// ── Haversine distance in km ──────────────────────────────────────────────────
-
-export function haversineKm(
-  lat1: number, lng1: number,
-  lat2: number, lng2: number,
-): number {
-  const R = 6371;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLng = ((lng2 - lng1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLng / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 // ── Key helpers ───────────────────────────────────────────────────────────────
@@ -303,6 +290,7 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
     };
 
     await appendPoint(point);
+    await processPointForTrip(point).catch(() => {});
     lastValid = point;
     try {
       await AsyncStorage.setItem(LAST_VALID_KEY, JSON.stringify(point));
