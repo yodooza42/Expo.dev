@@ -18,13 +18,16 @@ import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { AppProvider } from '@/contexts/AppContext';
 import { SplashProvider } from '@/contexts/SplashContext';
 import { ThemeProvider } from '@/contexts/ThemeContext';
-import { isTrackingPaused, requestLocationPermissions, startTracking } from '@/utils/locationTracking';
+import { isTrackingPaused, purgeOldData, requestLocationPermissions, startTracking } from '@/utils/locationTracking';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
 const queryClient = new QueryClient();
 
 async function bootstrapLocationTracking() {
+  // Purge au démarrage — garantit la rotation même si le tracking est pausé
+  purgeOldData().catch(() => {});
+
   try {
     const fg = await import('expo-location').then(m => m.getForegroundPermissionsAsync());
     if (fg.status !== 'granted') {

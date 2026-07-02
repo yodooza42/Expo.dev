@@ -6,7 +6,7 @@ import { autoBackup } from '@/utils/locationBackup';
 
 export const LOCATION_TASK_NAME = 'background-location-task';
 const KEY_PREFIX = '@yoann2_location_';
-const MAX_DAYS = 90;
+const MAX_DAYS = 7;
 
 export type ActivityType = 'walk' | 'car' | 'unknown';
 
