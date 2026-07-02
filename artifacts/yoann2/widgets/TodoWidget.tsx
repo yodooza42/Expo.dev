@@ -8,8 +8,8 @@ import type { ColorProp, ImageWidgetSource } from 'react-native-android-widget';
 
 import type { WidgetData } from './data';
 
-const CARD: ColorProp    = '#FF202020';
-const NAVBAR: ColorProp  = '#FF121212';
+const CARD: ColorProp    = '#202020';
+const NAVBAR: ColorProp  = '#121212';
 const TEXT: ColorProp    = '#FFFFFF';
 const MUTED: ColorProp   = '#9E9E9E';
 const SCHEME = 'yoann2';

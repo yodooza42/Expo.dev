@@ -2,3 +2,4 @@
 - [EAS Build fix — yoann2 (lockfile, minSdkVersion, VCS)](eas-build-fix.md) — `pnpm install` at root first; set minSdkVersion via `expo-build-properties` plugin (NOT bare `android.minSdkVersion`); use normal git flow (includes uncommitted changes), avoid slow `EAS_NO_VCS=1`.
 - [Expo Android crash diagnosis](expo-android-crash-diagnosis.md) — splash-then-close = uncaught JS error in index.js/root render before React (guard sync native calls); instant-close = native init crash; Reanimated 4 requires New Arch.
 - [EAS project coordinates — yoann-20](eas-project-coords.md) — slug `yoann-20`, owner `yozvfkzucbzbc`, projectId `6774b277-b066-4921-bcbb-b88f0959acb4`; old stpyoann48fbeocbekc account no longer works.
+- [react-native-android-widget color format](rn-android-widget-colors.md) — use 6-digit `#RRGGBB` hex only; 8-digit `#RRGGBBAA` = CSS format (alpha last), NOT Android `#AARRGGBB`; `#FF121212` is red at 7% opacity, not opaque black.

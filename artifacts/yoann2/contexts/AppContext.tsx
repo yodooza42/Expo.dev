@@ -240,6 +240,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   const dirtyRef = useRef(false);
+  const widgetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const projectsRef = useRef<Project[]>([]);
   const tasksRef = useRef<Task[]>([]);
   const expensesRef = useRef<Expense[]>([]);
@@ -260,8 +261,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!loading) {
-      updateTodoWidget(tasks, appointments);
+      if (widgetTimerRef.current) clearTimeout(widgetTimerRef.current);
+      widgetTimerRef.current = setTimeout(() => {
+        updateTodoWidget(tasks, appointments);
+      }, 800);
     }
+    return () => {
+      if (widgetTimerRef.current) clearTimeout(widgetTimerRef.current);
+    };
   }, [tasks, appointments, loading]);
 
   // Reschedule appointment reminder notifications when appointments change
