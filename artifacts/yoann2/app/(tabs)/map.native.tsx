@@ -342,7 +342,7 @@ export default function MapScreen() {
       <WebView
         key={mapKey}
         ref={webRef}
-        source={{ html: mapHtml }}
+        source={{ html: mapHtml, baseUrl: 'https://unpkg.com' }}
         style={styles.map}
         originWhitelist={['*']}
         javaScriptEnabled
@@ -351,6 +351,8 @@ export default function MapScreen() {
         scrollEnabled={false}
         showsVerticalScrollIndicator={false}
         showsHorizontalScrollIndicator={false}
+        mixedContentMode="always"
+        allowUniversalAccessFromFileURLs
         onMessage={handleWebViewMessage}
       />
 
