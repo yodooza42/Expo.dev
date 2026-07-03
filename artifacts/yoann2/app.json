@@ -86,12 +86,12 @@
               "name": "NavigationWidget",
               "label": "Yoann2.0 — Y aller",
               "minWidth": "180dp",
-              "minHeight": "110dp",
+              "minHeight": "74dp",
               "targetCellWidth": 4,
-              "targetCellHeight": 3,
+              "targetCellHeight": 1,
               "resizeMode": "horizontal|vertical",
               "minResizeWidth": "180dp",
-              "minResizeHeight": "80dp",
+              "minResizeHeight": "74dp",
               "description": "Raccourcis de navigation vers vos destinations",
               "updatePeriodMillis": 0
             }
