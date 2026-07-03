@@ -18,6 +18,20 @@ export interface Trip {
   endLon: number;
   /** Simplified GPS trace (Ramer-Douglas-Peucker, ~15m tolerance). Stored for future map display. */
   route?: RoutePoint[];
+  /** Optional reference to a TripCategory grouping similar routes. */
+  categoryId?: string;
+}
+
+/** A named group of trips with a similar start/end geography (within MATCH_RADIUS_M). */
+export interface TripCategory {
+  id: string;
+  name: string;
+  /** Anchor coordinates used for similarity matching */
+  startLat: number;
+  startLon: number;
+  endLat: number;
+  endLon: number;
+  createdAt: number;
 }
 
 export interface MaintenanceItem {
