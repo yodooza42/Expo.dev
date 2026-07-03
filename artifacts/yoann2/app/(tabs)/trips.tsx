@@ -612,12 +612,22 @@ export default function TripsScreen() {
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 8, backgroundColor: colors.background, borderBottomColor: colors.border }]}>
         <Text style={[styles.headerTitle, { color: colors.foreground }]}>Trajets & Km</Text>
-        <Pressable
-          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/vehicle-settings' as any); }}
-          hitSlop={12}
-        >
-          <MaterialCommunityIcons name="cog-outline" size={22} color={colors.mutedForeground} />
-        </Pressable>
+        <View style={styles.headerActions}>
+          <Pressable
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/(tabs)/navigation' as any); }}
+            hitSlop={8}
+            style={[styles.headerBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+          >
+            <MaterialCommunityIcons name="navigation-variant-outline" size={18} color={colors.primary} />
+          </Pressable>
+          <Pressable
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/vehicle-settings' as any); }}
+            hitSlop={8}
+            style={[styles.headerBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+          >
+            <MaterialCommunityIcons name="cog-outline" size={18} color={colors.mutedForeground} />
+          </Pressable>
+        </View>
       </View>
 
       <ScrollView
@@ -769,6 +779,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20, paddingBottom: 10, borderBottomWidth: StyleSheet.hairlineWidth,
   },
   headerTitle: { fontSize: 22, fontFamily: 'Inter_700Bold' },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  headerBtn: {
+    width: 34, height: 34, borderRadius: 10, borderWidth: 1,
+    alignItems: 'center', justifyContent: 'center',
+  },
   scroll: { padding: 16, gap: 16 },
   section: { gap: 10 },
   sectionTitle: { fontSize: 13, fontFamily: 'Inter_600SemiBold', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 },
