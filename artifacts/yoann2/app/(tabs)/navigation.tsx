@@ -1,5 +1,6 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { useLocalSearchParams } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -83,11 +84,17 @@ export default function NavigationScreen() {
 
   const nameRef = useRef<TextInput>(null);
 
+  const { action } = useLocalSearchParams<{ action?: string }>();
+
   const reload = useCallback(async () => {
     setShortcuts(await getNavShortcuts());
   }, []);
 
   useEffect(() => { reload(); }, [reload]);
+
+  useEffect(() => {
+    if (action === 'fuel') setFuelOpen(true);
+  }, [action]);
 
   // ── Navigation ──────────────────────────────────────────────────────────────
 

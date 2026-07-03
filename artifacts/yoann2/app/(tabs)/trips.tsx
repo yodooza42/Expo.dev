@@ -28,6 +28,7 @@ import {
 } from '@/utils/tripCategories';
 import {
   computeOdometer,
+  deleteTrip,
   getTrips,
   getVehicleSettings,
   updateTrip,
@@ -89,17 +90,26 @@ interface MaintenanceAlert {
   item: MaintenanceItem;
   kmOver: number;
   odometer: number;
+  type: 'km' | 'date';
+  daysOver?: number;
 }
 
 function getAlerts(trips: Trip[], settings: VehicleSettings): MaintenanceAlert[] {
   const alerts: MaintenanceAlert[] = [];
+  const now = Date.now();
   for (const v of ['car', 'moto'] as const) {
     const cfg = settings[v];
     const odo = computeOdometer(trips, v, cfg.odometerBaseKm);
     for (const item of cfg.maintenanceItems) {
       const since = odo - item.lastResetKm;
       if (since >= item.intervalKm) {
-        alerts.push({ vehicle: v, item, kmOver: Math.round(since - item.intervalKm), odometer: odo });
+        alerts.push({ vehicle: v, item, kmOver: Math.round(since - item.intervalKm), odometer: odo, type: 'km' });
+      }
+      if (item.intervalDays && item.lastResetDate) {
+        const daysSince = (now - item.lastResetDate) / (24 * 3_600_000);
+        if (daysSince >= item.intervalDays) {
+          alerts.push({ vehicle: v, item, kmOver: 0, odometer: odo, type: 'date', daysOver: Math.round(daysSince - item.intervalDays) });
+        }
       }
     }
   }
@@ -330,6 +340,10 @@ function CategoryCard({
   const motoCount = stats.trips.filter(t => t.vehicle === 'moto').length;
   const returnCount = stats.trips.filter(t => t.isReturn).length;
   const forwardCount = stats.total - returnCount;
+  const lastDurDiffMin = stats.total >= 2 && stats.trips.length > 0
+    ? Math.round(((stats.trips[0].endTime - stats.trips[0].startTime) - stats.avgDurationMs) / 60_000)
+    : 0;
+  const showSpeedChip = stats.total >= 2 && Math.abs(lastDurDiffMin) >= 1;
 
   return (
     <View style={[styles.catCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -370,6 +384,13 @@ function CategoryCard({
         <Text style={[styles.catMeta, { color: colors.mutedForeground }]}>
           ~{stats.avgKm.toFixed(1)} km · {fmtDuration(stats.avgDurationMs)} moy.
         </Text>
+        {showSpeedChip && (
+          <View style={[styles.chip, { backgroundColor: lastDurDiffMin < 0 ? '#4CAF5018' : '#FF980018' }]}>
+            <Text style={[styles.chipText, { color: lastDurDiffMin < 0 ? '#4CAF50' : '#FF9800' }]}>
+              {lastDurDiffMin > 0 ? '+' : ''}{lastDurDiffMin} min vs moy{lastDurDiffMin <= -5 ? ' 🔥' : ''}
+            </Text>
+          </View>
+        )}
       </View>
 
       {/* Vehicle breakdown */}
@@ -424,12 +445,14 @@ function TripRow({
   onUpdate,
   compact,
   onGroup,
+  onDelete,
 }: {
   trip: Trip;
   colors: ReturnType<typeof useColors>;
   onUpdate: () => void;
   compact?: boolean;
   onGroup?: (t: Trip) => void;
+  onDelete?: () => void;
 }) {
   const router = useRouter();
   const carColor = '#2196F3';
@@ -482,6 +505,23 @@ function TripRow({
             {fmtDuration(trip.endTime - trip.startTime)}
           </Text>
         </View>
+        {!compact && onDelete && (
+          <Pressable
+            onPress={() => Alert.alert(
+              'Supprimer ce trajet ?',
+              `${trip.distanceKm.toFixed(1)} km · ${fmtDate(trip.startTime)}`,
+              [
+                { text: 'Annuler', style: 'cancel' },
+                { text: 'Supprimer', style: 'destructive',
+                  onPress: async () => { await deleteTrip(trip.id); onDelete(); } },
+              ]
+            )}
+            hitSlop={8}
+            style={styles.tripDeleteBtn}
+          >
+            <MaterialCommunityIcons name="trash-can-outline" size={16} color={colors.mutedForeground} />
+          </Pressable>
+        )}
       </View>
 
       {isPending && !compact && (
@@ -607,6 +647,11 @@ export default function TripsScreen() {
     await load();
   }
 
+  async function handleDeleteTrip(id: string) {
+    await deleteTrip(id);
+    await load();
+  }
+
   // ── Derived data ─────────────────────────────────────────────────────────────
 
   const catIds = useMemo(() => new Set(categories.map(c => c.id)), [categories]);
@@ -667,6 +712,13 @@ export default function TripsScreen() {
             <MaterialCommunityIcons name="chart-bar" size={18} color={colors.mutedForeground} />
           </Pressable>
           <Pressable
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/(tabs)/map'); }}
+            hitSlop={8}
+            style={[styles.headerBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+          >
+            <MaterialCommunityIcons name="map-outline" size={18} color={colors.mutedForeground} />
+          </Pressable>
+          <Pressable
             onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/vehicle-settings' as any); }}
             hitSlop={8}
             style={[styles.headerBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
@@ -696,7 +748,9 @@ export default function TripsScreen() {
                     {a.item.name} — {a.vehicle === 'car' ? '🚗 Voiture' : '🏍 Moto'}
                   </Text>
                   <Text style={[styles.alertSub, { color: colors.mutedForeground }]}>
-                    +{a.kmOver} km depuis le seuil · {a.odometer.toFixed(0)} km total
+                    {a.type === 'date'
+                      ? `+${a.daysOver} jour${(a.daysOver ?? 0) > 1 ? 's' : ''} depuis l'échéance`
+                      : `+${a.kmOver} km depuis le seuil · ${a.odometer.toFixed(0)} km total`}
                   </Text>
                 </View>
                 <MaterialCommunityIcons name="chevron-right" size={18} color="#FF9800" />
@@ -807,6 +861,7 @@ export default function TripsScreen() {
                 colors={colors}
                 onUpdate={load}
                 onGroup={setGroupingTrip}
+                onDelete={() => handleDeleteTrip(trip.id)}
               />
             ))
           )}
@@ -900,6 +955,7 @@ const styles = StyleSheet.create({
   retagLabel: { fontSize: 11, fontFamily: 'Inter_600SemiBold' },
   groupBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 5, paddingTop: 4, borderTopWidth: StyleSheet.hairlineWidth },
   groupBtnText: { fontSize: 11, fontFamily: 'Inter_400Regular' },
+  tripDeleteBtn: { padding: 4, marginLeft: 2 },
 
   // GroupModal / RenameModal
   overlay: { flex: 1, backgroundColor: '#00000066', justifyContent: 'flex-end' },

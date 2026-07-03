@@ -473,14 +473,6 @@ export default function DashboardScreen() {
                 color={showPhotos ? colors.primary : colors.mutedForeground}
               />
             </Pressable>
-            {/* Map shortcut */}
-            <Pressable
-              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/(tabs)/map'); }}
-              hitSlop={6}
-              style={[styles.iconBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
-            >
-              <MaterialCommunityIcons name="map-outline" size={18} color={colors.mutedForeground} />
-            </Pressable>
           </View>
         </View>
 

@@ -41,6 +41,10 @@ export interface MaintenanceItem {
   name: string;
   intervalKm: number;
   lastResetKm: number;
+  /** Optional date-based alert: interval in days (e.g. 730 for CT tous les 2 ans) */
+  intervalDays?: number;
+  /** ISO timestamp of last reset for date-based tracking */
+  lastResetDate?: number;
 }
 
 export interface VehicleConfig {

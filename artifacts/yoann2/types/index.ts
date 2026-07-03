@@ -62,6 +62,12 @@ export interface Appointment {
   title: string;
   description: string;
   location: string;
+  /** Geocoded street address for navigation (e.g. "12 rue de la Paix, Paris") */
+  address?: string;
+  /** Latitude from geocoding, used for widget navigation */
+  addressLat?: number;
+  /** Longitude from geocoding, used for widget navigation */
+  addressLng?: number;
   date: string;
   time: string;
   category: string;

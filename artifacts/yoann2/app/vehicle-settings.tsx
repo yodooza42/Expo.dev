@@ -40,6 +40,8 @@ export default function VehicleSettingsScreen() {
   const [addModalVisible, setAddModalVisible] = useState(false);
   const [newItemName, setNewItemName] = useState('');
   const [newItemInterval, setNewItemInterval] = useState('');
+  const [newItemType, setNewItemType] = useState<'km' | 'date'>('km');
+  const [newItemDays, setNewItemDays] = useState('');
 
   const load = useCallback(async () => {
     const [s, trips] = await Promise.all([getVehicleSettings(), getTrips()]);
@@ -66,40 +68,52 @@ export default function VehicleSettingsScreen() {
   function openAddModal() {
     setNewItemName('');
     setNewItemInterval('');
+    setNewItemType('km');
+    setNewItemDays('');
     setAddModalVisible(true);
   }
 
   function confirmAddItem() {
     const name = newItemName.trim();
-    const interval = parseInt(newItemInterval, 10);
-    if (!name || isNaN(interval) || interval <= 0) return;
-    const item: MaintenanceItem = {
-      id: genId(),
-      name,
-      intervalKm: interval,
-      lastResetKm: odo,
-    };
-    update({ maintenanceItems: [...cfg.maintenanceItems, item] });
+    if (!name) return;
+    if (newItemType === 'km') {
+      const interval = parseInt(newItemInterval, 10);
+      if (isNaN(interval) || interval <= 0) return;
+      const item: MaintenanceItem = { id: genId(), name, intervalKm: interval, lastResetKm: odo };
+      update({ maintenanceItems: [...cfg.maintenanceItems, item] });
+    } else {
+      const days = parseInt(newItemDays, 10);
+      if (isNaN(days) || days <= 0) return;
+      const item: MaintenanceItem = {
+        id: genId(), name,
+        intervalKm: 0, lastResetKm: 0,
+        intervalDays: days, lastResetDate: Date.now(),
+      };
+      update({ maintenanceItems: [...cfg.maintenanceItems, item] });
+    }
     setAddModalVisible(false);
   }
 
   function resetItem(id: string) {
-    Alert.alert(
-      'Marquer l\'entretien effectué ?',
-      `Le kilométrage de référence sera mis à jour à ${odo.toFixed(0)} km.`,
-      [
-        { text: 'Annuler', style: 'cancel' },
-        {
-          text: 'Confirmer', onPress: () => {
-            update({
-              maintenanceItems: cfg.maintenanceItems.map(item =>
-                item.id === id ? { ...item, lastResetKm: odo } : item,
-              ),
-            });
-          },
+    const target = cfg.maintenanceItems.find(i => i.id === id);
+    const isDateBased = !!target?.intervalDays;
+    const msg = isDateBased
+      ? 'La date de référence sera mise à aujourd\'hui.'
+      : `Le kilométrage de référence sera mis à jour à ${odo.toFixed(0)} km.`;
+    Alert.alert('Marquer l\'entretien effectué ?', msg, [
+      { text: 'Annuler', style: 'cancel' },
+      {
+        text: 'Confirmer', onPress: () => {
+          update({
+            maintenanceItems: cfg.maintenanceItems.map(i =>
+              i.id === id
+                ? { ...i, lastResetKm: isDateBased ? i.lastResetKm : odo, ...(isDateBased ? { lastResetDate: Date.now() } : {}) }
+                : i,
+            ),
+          });
         },
-      ],
-    );
+      },
+    ]);
   }
 
   function deleteItem(id: string) {
@@ -227,17 +241,50 @@ export default function VehicleSettingsScreen() {
             </View>
           ) : (
             cfg.maintenanceItems.map(item => {
-              const kmSince = odo - item.lastResetKm;
-              const progress = Math.min(kmSince / item.intervalKm, 1);
-              const isOverdue = kmSince >= item.intervalKm;
-              const kmLeft = item.intervalKm - kmSince;
+              const isDateBased = !!item.intervalDays;
+              let progress: number;
+              let isOverdue: boolean;
+              let statusText: string;
+              let subText: string;
+
+              if (isDateBased) {
+                const daysSince = item.lastResetDate ? (Date.now() - item.lastResetDate) / (24 * 3_600_000) : 0;
+                const daysLeft = (item.intervalDays ?? 0) - daysSince;
+                progress = Math.min(daysSince / (item.intervalDays ?? 1), 1);
+                isOverdue = daysSince >= (item.intervalDays ?? Infinity);
+                const daysOver = Math.round(-daysLeft);
+                const daysLeftRounded = Math.round(daysLeft);
+                statusText = isOverdue
+                  ? `⚠️ Dépassé de ${daysOver} jour${daysOver > 1 ? 's' : ''}`
+                  : `${daysLeftRounded} jour${daysLeftRounded > 1 ? 's' : ''} restants / ${item.intervalDays} j`;
+                subText = item.lastResetDate
+                  ? `Dernier entretien : ${new Date(item.lastResetDate).toLocaleDateString('fr-FR')}`
+                  : 'Jamais effectué';
+              } else {
+                const kmSince = odo - item.lastResetKm;
+                const kmLeft = item.intervalKm - kmSince;
+                progress = Math.min(kmSince / item.intervalKm, 1);
+                isOverdue = kmSince >= item.intervalKm;
+                statusText = isOverdue
+                  ? `⚠️ Dépassé de ${Math.round(-kmLeft)} km`
+                  : `${Math.round(kmLeft)} km restants / ${item.intervalKm} km`;
+                subText = `Dernier entretien : ${item.lastResetKm.toFixed(0)} km`;
+              }
+
               return (
                 <View
                   key={item.id}
                   style={[styles.itemCard, { backgroundColor: colors.card, borderColor: isOverdue ? '#FF9800' : colors.border }]}
                 >
                   <View style={styles.itemHeader}>
-                    <Text style={[styles.itemName, { color: colors.foreground }]}>{item.name}</Text>
+                    <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <MaterialCommunityIcons
+                        name={isDateBased ? 'calendar-clock-outline' as any : 'speedometer'}
+                        size={13}
+                        color={isDateBased ? '#7C3AED' : tabColor}
+                      />
+                      <Text style={[styles.itemName, { color: colors.foreground }]}>{item.name}</Text>
+                    </View>
                     <View style={styles.itemActions}>
                       <Pressable
                         onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); resetItem(item.id); }}
@@ -258,18 +305,16 @@ export default function VehicleSettingsScreen() {
                     <View
                       style={[styles.progressFill, {
                         width: `${progress * 100}%` as any,
-                        backgroundColor: isOverdue ? '#FF9800' : tabColor,
+                        backgroundColor: isOverdue ? '#FF9800' : (isDateBased ? '#7C3AED' : tabColor),
                       }]}
                     />
                   </View>
 
                   <Text style={[styles.itemStatus, { color: isOverdue ? '#FF9800' : colors.mutedForeground }]}>
-                    {isOverdue
-                      ? `⚠️ Dépassé de ${Math.round(-kmLeft)} km`
-                      : `${Math.round(kmLeft)} km restants / ${item.intervalKm} km`}
+                    {statusText}
                   </Text>
                   <Text style={[styles.itemSub, { color: colors.mutedForeground }]}>
-                    Dernier entretien : {item.lastResetKm.toFixed(0)} km
+                    {subText}
                   </Text>
                 </View>
               );
@@ -284,27 +329,59 @@ export default function VehicleSettingsScreen() {
           <Pressable style={[styles.modalCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <Text style={[styles.modalTitle, { color: colors.foreground }]}>Nouveau rappel</Text>
 
+            {/* Type selector */}
+            <View style={styles.typeRow}>
+              <Pressable
+                onPress={() => setNewItemType('km')}
+                style={[styles.typeBtn, { backgroundColor: newItemType === 'km' ? tabColor + '30' : colors.muted, borderColor: newItemType === 'km' ? tabColor : colors.border }]}
+              >
+                <MaterialCommunityIcons name="speedometer" size={14} color={newItemType === 'km' ? tabColor : colors.mutedForeground} />
+                <Text style={[styles.typeBtnLabel, { color: newItemType === 'km' ? tabColor : colors.mutedForeground }]}>Kilométrage</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => setNewItemType('date')}
+                style={[styles.typeBtn, { backgroundColor: newItemType === 'date' ? '#7C3AED30' : colors.muted, borderColor: newItemType === 'date' ? '#7C3AED' : colors.border }]}
+              >
+                <MaterialCommunityIcons name={'calendar-clock-outline' as any} size={14} color={newItemType === 'date' ? '#7C3AED' : colors.mutedForeground} />
+                <Text style={[styles.typeBtnLabel, { color: newItemType === 'date' ? '#7C3AED' : colors.mutedForeground }]}>Date</Text>
+              </Pressable>
+            </View>
+
             <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Nom</Text>
             <TextInput
               style={[styles.input, { backgroundColor: colors.input, borderColor: colors.border, color: colors.foreground }]}
-              placeholder="ex: Vidange, Pneus, Révision…"
+              placeholder="ex: Vidange, CT, Révision…"
               placeholderTextColor={colors.mutedForeground}
               value={newItemName}
               onChangeText={setNewItemName}
               autoFocus
             />
 
-            <Text style={[styles.fieldLabel, { color: colors.mutedForeground, marginTop: 8 }]}>
-              Intervalle (km)
-            </Text>
-            <TextInput
-              style={[styles.input, { backgroundColor: colors.input, borderColor: colors.border, color: colors.foreground }]}
-              placeholder="ex: 5000"
-              placeholderTextColor={colors.mutedForeground}
-              keyboardType="numeric"
-              value={newItemInterval}
-              onChangeText={setNewItemInterval}
-            />
+            {newItemType === 'km' ? (
+              <>
+                <Text style={[styles.fieldLabel, { color: colors.mutedForeground, marginTop: 8 }]}>Intervalle (km)</Text>
+                <TextInput
+                  style={[styles.input, { backgroundColor: colors.input, borderColor: colors.border, color: colors.foreground }]}
+                  placeholder="ex: 5000"
+                  placeholderTextColor={colors.mutedForeground}
+                  keyboardType="numeric"
+                  value={newItemInterval}
+                  onChangeText={setNewItemInterval}
+                />
+              </>
+            ) : (
+              <>
+                <Text style={[styles.fieldLabel, { color: colors.mutedForeground, marginTop: 8 }]}>Intervalle (jours)</Text>
+                <TextInput
+                  style={[styles.input, { backgroundColor: colors.input, borderColor: colors.border, color: colors.foreground }]}
+                  placeholder="ex: 730 (CT tous les 2 ans)"
+                  placeholderTextColor={colors.mutedForeground}
+                  keyboardType="numeric"
+                  value={newItemDays}
+                  onChangeText={setNewItemDays}
+                />
+              </>
+            )}
 
             <View style={styles.modalBtns}>
               <Pressable
@@ -315,7 +392,7 @@ export default function VehicleSettingsScreen() {
               </Pressable>
               <Pressable
                 onPress={confirmAddItem}
-                style={[styles.modalBtn, { backgroundColor: tabColor }]}
+                style={[styles.modalBtn, { backgroundColor: newItemType === 'km' ? tabColor : '#7C3AED' }]}
               >
                 <Text style={styles.modalBtnLabel}>Ajouter</Text>
               </Pressable>
@@ -385,4 +462,10 @@ const styles = StyleSheet.create({
   modalBtns: { flexDirection: 'row', gap: 10, marginTop: 8 },
   modalBtn: { flex: 1, borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
   modalBtnLabel: { fontSize: 14, fontFamily: 'Inter_600SemiBold', color: '#FFF' },
+  typeRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
+  typeBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 6, borderRadius: 10, borderWidth: 1, paddingVertical: 8,
+  },
+  typeBtnLabel: { fontSize: 12, fontFamily: 'Inter_600SemiBold' },
 });

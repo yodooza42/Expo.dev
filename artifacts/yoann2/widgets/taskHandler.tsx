@@ -1,9 +1,11 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import React from 'react';
 import { requestWidgetUpdate } from 'react-native-android-widget';
 import type { WidgetTaskHandlerProps } from 'react-native-android-widget';
 
 import { getNavShortcuts } from '@/utils/navigationShortcuts';
 import { getWidgetDataFromStorage } from './data';
+import type { TodayApptNav } from './NavigationWidget';
 import { NavigationWidget } from './NavigationWidget';
 import { TodoWidget } from './TodoWidget';
 
@@ -22,8 +24,23 @@ export async function widgetTaskHandler(props: WidgetTaskHandlerProps): Promise<
       case 'WIDGET_UPDATE':
       case 'WIDGET_RESIZED':
       case 'WIDGET_CLICK': {
-        const shortcuts = await getNavShortcuts();
-        renderWidget(<NavigationWidget shortcuts={shortcuts} />);
+        const [shortcuts, rawAppts] = await Promise.all([
+          getNavShortcuts(),
+          AsyncStorage.getItem('@yoann2_appointments').then(r => r ? JSON.parse(r) as any[] : []).catch(() => [] as any[]),
+        ]);
+        const todayStr = new Date().toISOString().slice(0, 10);
+        const todayApptRaw = rawAppts.find(a => {
+          if (!a.addressLat || !a.addressLng) return false;
+          try {
+            const d = new Date(a.date);
+            const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+            return k === todayStr;
+          } catch { return false; }
+        });
+        const todayAppt: TodayApptNav | null = todayApptRaw
+          ? { title: todayApptRaw.title, time: todayApptRaw.time ?? '', lat: todayApptRaw.addressLat, lng: todayApptRaw.addressLng }
+          : null;
+        renderWidget(<NavigationWidget shortcuts={shortcuts} todayAppt={todayAppt} />);
         break;
       }
       default:

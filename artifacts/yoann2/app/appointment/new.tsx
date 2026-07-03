@@ -3,6 +3,7 @@ import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   Platform,
   Pressable,
@@ -16,6 +17,19 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useApp } from '@/contexts/AppContext';
 import { useColors } from '@/hooks/useColors';
+import { cancelDepartureAlert, scheduleDepartureAlert } from '@/utils/departureAlert';
+
+async function geocodeAddress(query: string): Promise<{ lat: number; lng: number; display: string } | null> {
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1&countrycodes=fr`;
+    const res = await fetch(url, { headers: { 'Accept-Language': 'fr', 'User-Agent': 'Yoann2App/1.0' } });
+    const data = await res.json();
+    if (!data || data.length === 0) return null;
+    return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon), display: data[0].display_name };
+  } catch {
+    return null;
+  }
+}
 
 export default function NewAppointmentScreen() {
   const colors = useColors();
@@ -42,11 +56,30 @@ export default function NewAppointmentScreen() {
   const [title, setTitle] = useState(existing?.title ?? '');
   const [description, setDescription] = useState(existing?.description ?? '');
   const [location, setLocation] = useState(existing?.location ?? '');
+  const [address, setAddress] = useState(existing?.address ?? '');
+  const [addressLat, setAddressLat] = useState<number | undefined>(existing?.addressLat);
+  const [addressLng, setAddressLng] = useState<number | undefined>(existing?.addressLng);
+  const [geocoding, setGeocoding] = useState(false);
   const [date, setDate] = useState(existing ? toFrDate(existing.date) : '');
   const [time, setTime] = useState(existing?.time ?? '');
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [alertScheduling, setAlertScheduling] = useState(false);
 
   const topPad = Platform.OS === 'web' ? 67 : insets.top;
+
+  async function handleGeocode() {
+    if (!address.trim()) return;
+    setGeocoding(true);
+    const result = await geocodeAddress(address.trim());
+    setGeocoding(false);
+    if (result) {
+      setAddressLat(result.lat);
+      setAddressLng(result.lng);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } else {
+      Alert.alert('Adresse introuvable', 'Essayez d\'être plus précis (ex: "12 rue de la Paix, Paris")');
+    }
+  }
 
   function validate() {
     const e: Record<string, string> = {};
@@ -62,6 +95,9 @@ export default function NewAppointmentScreen() {
       title: title.trim(),
       description: description.trim(),
       location: location.trim(),
+      address: address.trim() || undefined,
+      addressLat,
+      addressLng,
       date: parseFrDate(date),
       time: time.trim(),
       category: 'Rendez-vous',
@@ -94,6 +130,41 @@ export default function NewAppointmentScreen() {
       ]
     );
   }
+
+  async function handleScheduleAlert() {
+    if (!existing || addressLat === undefined || addressLng === undefined) return;
+    setAlertScheduling(true);
+    const result = await scheduleDepartureAlert({
+      id: existing.id,
+      title: existing.title,
+      date: existing.date,
+      time,
+      addressLat,
+      addressLng,
+    });
+    setAlertScheduling(false);
+    if (result.ok) {
+      const dep = result.departureTime;
+      const hh = String(dep.getHours()).padStart(2, '0');
+      const mm = String(dep.getMinutes()).padStart(2, '0');
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert(
+        '⏰ Alerte programmée',
+        `Départ conseillé à ${hh}:${mm} (trajet ~${result.travelMin} min + 10 min)`,
+      );
+    } else {
+      Alert.alert('Impossible de programmer l\'alerte', result.reason);
+    }
+  }
+
+  async function handleCancelAlert() {
+    if (!existing) return;
+    await cancelDepartureAlert(existing.id);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    Alert.alert('Alerte annulée', 'L\'alerte départ a été supprimée.');
+  }
+
+  const geocoded = addressLat !== undefined && addressLng !== undefined;
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -174,6 +245,74 @@ export default function NewAppointmentScreen() {
         </View>
 
         <View>
+          <Text style={[styles.label, { color: colors.mutedForeground }]}>Adresse (navigation)</Text>
+          <View style={styles.addressRow}>
+            <TextInput
+              value={address}
+              onChangeText={v => { setAddress(v); setAddressLat(undefined); setAddressLng(undefined); }}
+              placeholder="12 rue de la Paix, Paris"
+              placeholderTextColor={colors.mutedForeground}
+              style={[styles.input, styles.addressInput, {
+                backgroundColor: colors.card,
+                color: colors.foreground,
+                borderColor: geocoded ? '#4CAF50' : colors.border,
+              }]}
+              returnKeyType="search"
+              onSubmitEditing={handleGeocode}
+            />
+            <Pressable
+              onPress={handleGeocode}
+              style={[styles.geocodeBtn, { backgroundColor: geocoded ? '#4CAF5022' : colors.card, borderColor: geocoded ? '#4CAF50' : colors.border }]}
+              disabled={geocoding || !address.trim()}
+            >
+              {geocoding
+                ? <ActivityIndicator size="small" color={colors.primary} />
+                : <MaterialCommunityIcons
+                    name={geocoded ? 'check-circle' : 'map-search-outline'}
+                    size={20}
+                    color={geocoded ? '#4CAF50' : address.trim() ? colors.primary : colors.mutedForeground}
+                  />
+              }
+            </Pressable>
+          </View>
+          {geocoded && (
+            <Text style={[styles.geocodeHint, { color: '#4CAF50' }]}>
+              ✓ {addressLat!.toFixed(5)}, {addressLng!.toFixed(5)}
+            </Text>
+          )}
+          {!geocoded && address.trim().length > 0 && (
+            <Text style={[styles.geocodeHint, { color: colors.mutedForeground }]}>
+              Appuyez sur 🔍 pour géocoder (permet la navigation depuis le widget)
+            </Text>
+          )}
+
+          {/* Departure alert — only available when editing an appointment with coords + time */}
+          {isEditing && geocoded && time.trim().length > 0 && (
+            <View style={styles.alertRow}>
+              <Pressable
+                onPress={handleScheduleAlert}
+                disabled={alertScheduling}
+                style={[styles.alertBtn, { backgroundColor: '#FF980020', borderColor: '#FF9800' }]}
+              >
+                {alertScheduling
+                  ? <ActivityIndicator size="small" color="#FF9800" />
+                  : <MaterialCommunityIcons name="bell-ring-outline" size={16} color="#FF9800" />}
+                <Text style={[styles.alertBtnTxt, { color: '#FF9800' }]}>
+                  {alertScheduling ? 'Calcul…' : '⏰ Alerte départ'}
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={handleCancelAlert}
+                style={[styles.alertBtn, { backgroundColor: colors.muted, borderColor: colors.border }]}
+              >
+                <MaterialCommunityIcons name="bell-off-outline" size={16} color={colors.mutedForeground} />
+                <Text style={[styles.alertBtnTxt, { color: colors.mutedForeground }]}>Annuler</Text>
+              </Pressable>
+            </View>
+          )}
+        </View>
+
+        <View>
           <Text style={[styles.label, { color: colors.mutedForeground }]}>Description</Text>
           <TextInput
             value={description}
@@ -224,7 +363,24 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontFamily: 'Inter_400Regular',
   },
+  addressRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
+  addressInput: { flex: 1 },
+  geocodeBtn: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  geocodeHint: { fontSize: 11, fontFamily: 'Inter_400Regular', marginTop: 4 },
   textarea: { minHeight: 100, textAlignVertical: 'top' },
   error: { fontSize: 12, fontFamily: 'Inter_400Regular', marginTop: 4 },
   row: { flexDirection: 'row', gap: 10 },
+  alertRow: { flexDirection: 'row', gap: 8, marginTop: 8 },
+  alertBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 6, borderWidth: 1, borderRadius: 10, paddingVertical: 9,
+  },
+  alertBtnTxt: { fontSize: 13, fontFamily: 'Inter_600SemiBold' },
 });
