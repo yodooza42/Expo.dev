@@ -22,6 +22,7 @@ import { SplashProvider } from '@/contexts/SplashContext';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 import type { Trip, VehicleType } from '@/types/trips';
 import { isTrackingPaused, purgeOldData, requestLocationPermissions, startTracking } from '@/utils/locationTracking';
+import { updateNavWidget } from '@/widgets/updateNavWidget';
 import {
   computeOdometer,
   getTrips,
@@ -83,7 +84,10 @@ function RootLayoutNav() {
 
   useEffect(() => {
     const sub = AppState.addEventListener('change', nextState => {
-      if (nextState === 'active') checkPendingTrips();
+      if (nextState === 'active') {
+        checkPendingTrips();
+        updateNavWidget().catch(() => {});
+      }
     });
     return () => sub.remove();
   }, [checkPendingTrips]);

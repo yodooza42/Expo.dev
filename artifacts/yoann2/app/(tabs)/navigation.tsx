@@ -1,7 +1,7 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams } from 'expo-router';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -17,8 +17,10 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useApp } from '@/contexts/AppContext';
 import { useColors } from '@/hooks/useColors';
 import type { FuelEntry } from '@/types/fuel';
+import type { Appointment } from '@/types';
 import { saveFuelEntry } from '@/utils/fuelStorage';
 import {
   MAX_SHORTCUTS,
@@ -44,6 +46,19 @@ interface EditShortcut {
 export default function NavigationScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const { appointments } = useApp();
+
+  const todayAppt = useMemo<Appointment | null>(() => {
+    const todayStr = new Date().toISOString().slice(0, 10);
+    return appointments.find(a => {
+      if (!a.addressLat || !a.addressLng) return false;
+      try {
+        const d = new Date(a.date);
+        const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        return k === todayStr;
+      } catch { return false; }
+    }) ?? null;
+  }, [appointments]);
 
   const [shortcuts, setShortcuts] = useState<NavShortcut[]>([]);
   const [loadingId, setLoadingId] = useState<string | null>(null);
@@ -240,32 +255,40 @@ export default function NavigationScreen() {
         <Text style={[styles.sectionHeader, { color: colors.mutedForeground }]}>RACCOURCIS ({shortcuts.length}/{MAX_SHORTCUTS})</Text>
 
         <View style={styles.grid}>
-          {slots.map((slot, idx) =>
-            slot ? (
-              <ShortcutCard
-                key={slot.id}
-                shortcut={slot}
-                loading={loadingId === slot.id}
-                colors={colors}
-                onPress={() => handleShortcutPress(slot)}
-                onLongPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                  Alert.alert(slot.name, slot.address, [
-                    { text: 'Modifier', onPress: () => openEditModal({ shortcut: slot, slotIndex: idx }) },
-                    { text: 'Supprimer', style: 'destructive', onPress: () => handleDeleteShortcut(slot.id) },
-                    { text: 'Annuler', style: 'cancel' },
-                  ]);
-                }}
-              />
-            ) : (
-              <AddSlotCard
-                key={`empty-${idx}`}
-                colors={colors}
-                canAdd={shortcuts.length < MAX_SHORTCUTS}
-                onPress={() => openEditModal({ shortcut: null, slotIndex: idx })}
-              />
-            ),
+          {/* RDV du jour — position 0 quand actif, décale les autres */}
+          {todayAppt && (
+            <RdvCard appt={todayAppt} colors={colors} />
           )}
+
+          {/* Raccourcis normaux — on en affiche MAX_SHORTCUTS-1 si RDV actif */}
+          {slots
+            .slice(0, todayAppt ? MAX_SHORTCUTS - 1 : MAX_SHORTCUTS)
+            .map((slot, idx) =>
+              slot ? (
+                <ShortcutCard
+                  key={slot.id}
+                  shortcut={slot}
+                  loading={loadingId === slot.id}
+                  colors={colors}
+                  onPress={() => handleShortcutPress(slot)}
+                  onLongPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                    Alert.alert(slot.name, slot.address, [
+                      { text: 'Modifier', onPress: () => openEditModal({ shortcut: slot, slotIndex: idx }) },
+                      { text: 'Supprimer', style: 'destructive', onPress: () => handleDeleteShortcut(slot.id) },
+                      { text: 'Annuler', style: 'cancel' },
+                    ]);
+                  }}
+                />
+              ) : (
+                <AddSlotCard
+                  key={`empty-${idx}`}
+                  colors={colors}
+                  canAdd={shortcuts.length < MAX_SHORTCUTS}
+                  onPress={() => openEditModal({ shortcut: null, slotIndex: idx })}
+                />
+              ),
+            )}
         </View>
         <Text style={[styles.hintText, { color: colors.mutedForeground, textAlign: 'center', marginTop: 4 }]}>
           Appui long sur un raccourci pour modifier ou supprimer
@@ -466,6 +489,33 @@ function ShortcutCard({
       {!ready && (
         <Text style={[styles.cardSub, { color: '#F44336' }]}>Adresse à configurer</Text>
       )}
+    </Pressable>
+  );
+}
+
+function RdvCard({ appt, colors }: { appt: Appointment; colors: CardColors }) {
+  const [loading, setLoading] = useState(false);
+  return (
+    <Pressable
+      style={({ pressed }) => [
+        styles.card,
+        { backgroundColor: '#7C3AED20', borderColor: '#7C3AED', opacity: pressed ? 0.75 : 1 },
+      ]}
+      onPress={async () => {
+        setLoading(true);
+        await openNavigation(appt.addressLat!, appt.addressLng!);
+        setLoading(false);
+      }}
+    >
+      {loading
+        ? <ActivityIndicator size="small" color="#7C3AED" />
+        : <MaterialCommunityIcons name="calendar-clock" size={28} color="#7C3AED" />}
+      <Text style={[styles.cardName, { color: '#7C3AED' }]} numberOfLines={2}>
+        {appt.title}
+      </Text>
+      {appt.time ? (
+        <Text style={[styles.cardSub, { color: '#9D71FA' }]}>{appt.time}</Text>
+      ) : null}
     </Pressable>
   );
 }

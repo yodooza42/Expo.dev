@@ -18,6 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '@/contexts/AppContext';
 import { useColors } from '@/hooks/useColors';
 import { cancelDepartureAlert, scheduleDepartureAlert } from '@/utils/departureAlert';
+import { updateNavWidget } from '@/widgets/updateNavWidget';
 
 async function geocodeAddress(query: string): Promise<{ lat: number; lng: number; display: string } | null> {
   try {
@@ -107,6 +108,7 @@ export default function NewAppointmentScreen() {
     } else {
       addAppointment(data);
     }
+    updateNavWidget().catch(() => {});
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     router.back();
   }
