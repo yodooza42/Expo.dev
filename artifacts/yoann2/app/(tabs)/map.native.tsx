@@ -1,11 +1,10 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useRouter } from 'expo-router';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActionSheetIOS,
   ActivityIndicator,
   Alert,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -18,9 +17,9 @@ import WebView, { type WebViewMessageEvent } from 'react-native-webview';
 
 import { useColors } from '@/hooks/useColors';
 import { useLocationHistory } from '@/hooks/useLocationHistory';
-import { exportBackup, importBackup } from '@/utils/locationBackup';
-import { correctActivity, deleteDayPoints, loadMultiDayPoints } from '@/utils/locationTracking';
-import type { ActivityType, LocationPoint } from '@/utils/locationTracking';
+import type { Trip, Vehicle } from '@/types/trips';
+import { getTrips } from '@/utils/tripStorage';
+import { getVehicleSettings } from '@/utils/tripStorage';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -29,18 +28,26 @@ function formatDayLabel(day: string): string {
   return d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
 }
 
-function fmtReplayDay(day: string): string {
-  const d = new Date(day + 'T12:00:00');
-  const dd = String(d.getDate()).padStart(2, '0');
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const wd = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'][d.getDay()]!;
-  return `${wd} ${dd}/${mm}`;
-}
-
 function shiftDay(day: string, delta: number): string {
   const d = new Date(day + 'T12:00:00');
   d.setDate(d.getDate() + delta);
   return d.toISOString().slice(0, 10);
+}
+
+function tripDayKey(trip: Trip): string {
+  const d = new Date(trip.startTime);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function fmtTime(ts: number): string {
+  const d = new Date(ts);
+  return `${String(d.getHours()).padStart(2, '0')}h${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+function fmtDuration(ms: number): string {
+  const m = Math.round(ms / 60000);
+  if (m < 60) return `${m} min`;
+  return `${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}`;
 }
 
 const FR_MONTHS: Record<string, number> = {
@@ -49,109 +56,102 @@ const FR_MONTHS: Record<string, number> = {
   septembre: 9, octobre: 10, novembre: 11, décembre: 12, decembre: 12,
 };
 
-function parseSearchQuery(
-  q: string,
-  currentYear: number,
-): { dateKey?: string; time?: string } | null {
+function parseSearchQuery(q: string, currentYear: number): string | null {
   const norm = q.toLowerCase().trim();
-
-  const timeRe = /(\d{1,2})[h:](\d{2})|(\d{1,2})h$/;
   const slashRe = /^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?$/;
   const numMonthRe = /(?:lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)?\s*(\d{1,2})\s+([a-zéûôùèàâî]+)(?:\s+(\d{4}))?/;
-  const timeOnlyRe = /^(\d{1,2})[h:](\d{2})?$|^(\d{1,2})h$/;
-
-  if (timeOnlyRe.test(norm)) {
-    const m = norm.match(timeRe);
-    if (!m) return null;
-    const h = m[1] ?? m[3] ?? '0';
-    const min = m[2] ?? '00';
-    return { time: `${h.padStart(2, '0')}:${min}` };
-  }
-
-  let dateKey: string | undefined;
-  let time: string | undefined;
 
   const sm = norm.match(slashRe);
   if (sm) {
     const day = parseInt(sm[1]!, 10);
     const month = parseInt(sm[2]!, 10);
     const year = sm[3] ? parseInt(sm[3], 10) + (sm[3].length === 2 ? 2000 : 0) : currentYear;
-    dateKey = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
   }
 
-  if (!dateKey) {
-    const nm = norm.match(numMonthRe);
-    if (nm) {
-      const day = parseInt(nm[1]!, 10);
-      const monthNum = FR_MONTHS[nm[2]!];
-      if (monthNum) {
-        const year = nm[3] ? parseInt(nm[3], 10) : currentYear;
-        dateKey = `${year}-${String(monthNum).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-      }
+  const nm = norm.match(numMonthRe);
+  if (nm) {
+    const day = parseInt(nm[1]!, 10);
+    const monthNum = FR_MONTHS[nm[2]!];
+    if (monthNum) {
+      const year = nm[3] ? parseInt(nm[3], 10) : currentYear;
+      return `${year}-${String(monthNum).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     }
   }
 
-  const tm = norm.match(timeRe);
-  if (tm) {
-    const h = tm[1] ?? tm[3] ?? '0';
-    const min = tm[2] ?? '00';
-    time = `${h.padStart(2, '0')}:${min}`;
-  }
-
-  if (!dateKey && !time) return null;
-  return { dateKey, time };
+  return null;
 }
 
-// ── Leaflet HTML builders ─────────────────────────────────────────────────────
+// ── Vehicle helpers ───────────────────────────────────────────────────────────
 
-const ACTIVITY_COLORS: Record<string, string> = {
-  walk: '#4CAF50',
+const VEHICLE_COLORS: Record<string, string> = {
   car: '#2196F3',
-  unknown: '#FFC107',
+  moto: '#FF9800',
+  unknown: '#9E9E9E',
+  ignored: '#555555',
 };
+
+function vehicleColor(vehicle: string | undefined): string {
+  return VEHICLE_COLORS[vehicle ?? 'unknown'] ?? '#9E9E9E';
+}
+
+function vehicleIcon(vehicle: string | undefined): string {
+  if (vehicle === 'moto') return 'motorbike';
+  if (vehicle === 'car') return 'car';
+  return 'help-circle-outline';
+}
+
+// ── Leaflet HTML builder ──────────────────────────────────────────────────────
 
 const LEAFLET_HEAD = `
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>`;
 
-const LEAFLET_BASE_CSS = `
+function buildTripsMapHtml(dayTrips: Trip[], vehicles: Vehicle[]): string {
+  const vehicleMap: Record<string, string> = {};
+  vehicles.forEach(v => { vehicleMap[v.id] = v.name; });
+
+  const tripsData = dayTrips.map(t => {
+    const route = t.route && t.route.length >= 2
+      ? t.route.map(p => [p.lat, p.lng])
+      : (t.startLat && t.startLon && t.endLat && t.endLon)
+        ? [[t.startLat, t.startLon], [t.endLat, t.endLon]]
+        : null;
+    const color = vehicleColor(t.vehicle ?? undefined);
+    const vehicleName = vehicleMap[t.vehicle ?? ''] ?? (t.vehicle === 'car' ? 'Voiture' : t.vehicle === 'moto' ? 'Moto' : 'Inconnu');
+    const dashed = !t.route || t.route.length < 2;
+    return {
+      id: t.id,
+      route,
+      color,
+      dashed,
+      vehicle: vehicleName,
+      dist: t.distanceKm.toFixed(1),
+      start: fmtTime(t.startTime),
+      end: fmtTime(t.endTime),
+      dur: fmtDuration(t.endTime - t.startTime),
+    };
+  }).filter(t => t.route !== null);
+
+  const tripsJSON = JSON.stringify(tripsData);
+
+  return `<!DOCTYPE html>
+<html>
+<head>${LEAFLET_HEAD}
+<style>
   *{margin:0;padding:0;box-sizing:border-box}
   body{background:#121212}
   #map{width:100vw;height:100vh}
   .leaflet-control-zoom{margin:12px!important}
-  .leaflet-control-zoom a{background:#1E1E1E!important;color:#FFF!important;border-color:#333!important}`;
-
-function buildMapHtml(
-  points: LocationPoint[],
-  primaryColor: string,
-  highlightPt: LocationPoint | null,
-): string {
-  const ptsData = JSON.stringify(
-    points.map(p => ({
-      lat: p.lat,
-      lng: p.lng,
-      activity: p.activity ?? 'unknown',
-      ts: p.timestamp,
-      spd: p.speedKmh,
-    })),
-  );
-  const highlight = highlightPt ? JSON.stringify([highlightPt.lat, highlightPt.lng]) : 'null';
-  const highlightColor = highlightPt
-    ? (ACTIVITY_COLORS[highlightPt.activity ?? 'unknown'] ?? primaryColor)
-    : primaryColor;
-
-  return `<!DOCTYPE html>
-<html>
-<head>${LEAFLET_HEAD}
-<style>${LEAFLET_BASE_CSS}
-  .dark-popup .leaflet-popup-content-wrapper{background:#1E1E1E;color:#FFF;border:1px solid #FFC107;border-radius:10px;box-shadow:0 4px 16px #0008}
-  .dark-popup .leaflet-popup-tip{background:#1E1E1E}
-  .dark-popup .leaflet-popup-content{margin:10px 14px;font-family:sans-serif;font-size:13px;line-height:1.7}
-  .dark-popup .leaflet-popup-close-button{color:#999!important;font-size:16px!important;top:6px!important;right:8px!important}
-  .popup-act{font-size:15px;font-weight:700;margin-bottom:2px}
-  .popup-row{color:#CCC;font-size:12px}
-  .popup-spd{color:#FFC107;font-weight:600}
+  .leaflet-control-zoom a{background:#1E1E1E!important;color:#FFF!important;border-color:#333!important}
+  .dk .leaflet-popup-content-wrapper{background:#1E1E1E;color:#FFF;border:1px solid #444;border-radius:12px;box-shadow:0 4px 16px #0008}
+  .dk .leaflet-popup-tip{background:#1E1E1E}
+  .dk .leaflet-popup-content{margin:10px 14px;font-family:sans-serif;font-size:13px;line-height:1.8}
+  .dk .leaflet-popup-close-button{color:#666!important;font-size:16px!important;top:6px!important;right:8px!important}
+  .pt{font-weight:700;font-size:14px;margin-bottom:2px}
+  .pr{color:#AAA;font-size:12px}
+  .pb{margin-top:8px;background:#FFC107;color:#121212;border:none;border-radius:8px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer;width:100%}
 </style>
 </head>
 <body>
@@ -160,582 +160,180 @@ function buildMapHtml(
 var map=L.map('map',{zoomControl:true,attributionControl:false});
 L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{maxZoom:19}).addTo(map);
 
-var ptsData=${ptsData};
-var hl=${highlight};
-var hlColor='${highlightColor}';
+var trips=${tripsJSON};
+var tripLayers={};
 
-var COLORS={walk:'#4CAF50',car:'#2196F3',unknown:'#FFC107'};
-var ACT_LABELS={walk:'🚶 Marche',car:'🚗 Voiture',unknown:'❓ Inconnu'};
+function addTrip(t){
+  if(!t.route||t.route.length<2)return;
+  var col=t.color;
+  var opts={color:col,weight:5,opacity:0.85,interactive:false};
+  if(t.dashed)opts.dashArray='8,6';
 
-function colorFor(act){return COLORS[act]||'#FFC107';}
+  var hitLine=L.polyline(t.route,{color:col,weight:16,opacity:0,interactive:true}).addTo(map);
+  var visLine=L.polyline(t.route,opts).addTo(map);
 
-function fmtTime(ts){
-  var d=new Date(ts);
-  var h=String(d.getHours()).padStart(2,'0');
-  var m=String(d.getMinutes()).padStart(2,'0');
-  return h+'h'+m;
-}
+  var startPt=t.route[0];
+  var endPt=t.route[t.route.length-1];
+  var sm=L.circleMarker(startPt,{radius:7,color:'#4CAF50',fillColor:'#4CAF50',fillOpacity:1,weight:2,interactive:false}).addTo(map);
+  var em=L.circleMarker(endPt,{radius:7,color:col,fillColor:col,fillOpacity:1,weight:2,interactive:false}).addTo(map);
 
-function makeSeg(i){
-  var seg=[[ptsData[i].lat,ptsData[i].lng],[ptsData[i+1].lat,ptsData[i+1].lng]];
-  var col=colorFor(ptsData[i].activity);
-  var hitLine=L.polyline(seg,{color:col,weight:14,opacity:0,interactive:true}).addTo(map);
-  var lpTimer=null;
+  tripLayers[t.id]={line:visLine,start:sm,end:em,bounds:L.polyline(t.route).getBounds()};
+
   hitLine.on('click',function(e){
-    var p=ptsData[i];
-    var spd=p.spd!=null?'<span class="popup-spd">'+p.spd+' km/h</span>':'<span class="popup-row">Vitesse inconnue</span>';
-    var html='<div class="popup-act">'+(ACT_LABELS[p.activity]||'❓ Inconnu')+'</div>'
-      +'<div class="popup-row">🕐 '+fmtTime(p.ts)+'</div>'
-      +'<div class="popup-row">⚡ '+spd+'</div>';
-    L.popup({className:'dark-popup',offset:[0,-2],maxWidth:180}).setLatLng(e.latlng).setContent(html).openOn(map);
+    var html='<div class="pt">'+t.vehicle+'</div>'
+      +'<div class="pr">📍 '+t.dist+' km · '+t.dur+'</div>'
+      +'<div class="pr">🕐 '+t.start+' → '+t.end+'</div>'
+      +(t.dashed?'<div class="pr" style="color:#FFC107;margin-top:4px">Itinéraire estimé</div>':'')
+      +'<button class="pb" onclick="openTrip(\''+t.id+'\')">Voir le détail →</button>';
+    L.popup({className:'dk',offset:[0,-2],maxWidth:200}).setLatLng(e.latlng).setContent(html).openOn(map);
     L.DomEvent.stopPropagation(e);
   });
-  hitLine.on('touchstart',function(){
-    var p=ptsData[i];
-    lpTimer=setTimeout(function(){
-      lpTimer=null;
-      if(window.ReactNativeWebView){
-        window.ReactNativeWebView.postMessage(JSON.stringify({type:'longpress',ts:p.ts,activity:p.activity}));
-      }
-    },600);
-  });
-  hitLine.on('touchend touchmove',function(){
-    if(lpTimer){clearTimeout(lpTimer);lpTimer=null;}
-  });
-  L.polyline(seg,{color:col,weight:4,opacity:0.9,interactive:false}).addTo(map);
 }
 
-if(ptsData.length>0){
-  var latlngs=ptsData.map(function(p){return[p.lat,p.lng];});
-  for(var i=0;i<ptsData.length-1;i++){makeSeg(i);}
-  L.circleMarker(latlngs[0],{radius:8,color:'#4CAF50',fillColor:'#4CAF50',fillOpacity:1,weight:2}).addTo(map);
-  if(ptsData.length>1){L.circleMarker(latlngs[latlngs.length-1],{radius:8,color:'#F44336',fillColor:'#F44336',fillOpacity:1,weight:2}).addTo(map);}
-  if(hl){
-    L.circleMarker(hl,{radius:11,color:hlColor,fillColor:hlColor,fillOpacity:0.85,weight:3}).addTo(map);
-    map.setView(hl,16);
-  } else {
-    map.fitBounds(L.polyline(latlngs).getBounds().pad(0.15));
+function openTrip(id){
+  if(window.ReactNativeWebView){
+    window.ReactNativeWebView.postMessage(JSON.stringify({type:'open_trip',id:id}));
   }
-} else {
+}
+
+var allLatlngs=[];
+for(var i=0;i<trips.length;i++){
+  addTrip(trips[i]);
+  if(trips[i].route)allLatlngs=allLatlngs.concat(trips[i].route);
+}
+
+if(allLatlngs.length>0){
+  map.fitBounds(L.polyline(allLatlngs).getBounds().pad(0.2));
+}else{
   map.setView([46.2276,2.2137],6);
 }
+
+window.focusTrip=function(id){
+  var layer=tripLayers[id];
+  if(!layer)return;
+  map.fitBounds(layer.bounds.pad(0.25));
+};
 
 window.recenter=function(){
-  if(ptsData.length>0){
-    var ll=ptsData.map(function(p){return[p.lat,p.lng];});
-    map.fitBounds(L.polyline(ll).getBounds().pad(0.15));
-  } else {
-    map.setView([46.2276,2.2137],6);
+  if(allLatlngs.length>0){
+    map.fitBounds(L.polyline(allLatlngs).getBounds().pad(0.2));
   }
 };
 </script>
 </body>
 </html>`;
 }
-
-function buildReplayHtml(points: LocationPoint[]): string {
-  const ptsJSON = JSON.stringify(
-    points.map(p => ({ lat: p.lat, lng: p.lng, ts: p.timestamp, activity: p.activity ?? 'unknown' })),
-  );
-
-  return `<!DOCTYPE html>
-<html>
-<head>${LEAFLET_HEAD}
-<style>${LEAFLET_BASE_CSS}
-  #replay-time{
-    position:fixed;top:14px;left:50%;transform:translateX(-50%);
-    background:#1E1E1EE8;color:#FFC107;font-size:24px;font-weight:700;
-    font-family:sans-serif;padding:6px 20px;border-radius:28px;
-    border:1px solid #FFC10755;letter-spacing:3px;
-    pointer-events:none;display:none;z-index:9999;
-  }
-</style>
-</head>
-<body>
-<div id="map"></div>
-<div id="replay-time"></div>
-<script>
-var map=L.map('map',{zoomControl:true,attributionControl:false});
-L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{maxZoom:19}).addTo(map);
-
-var pts=${ptsJSON};
-var COLORS={walk:'#4CAF50',car:'#2196F3',unknown:'#FFC107'};
-
-function colorFor(a){return COLORS[a]||'#FFC107';}
-function fmtTs(ts){
-  var d=new Date(ts);
-  return String(d.getHours()).padStart(2,'0')+'h'+String(d.getMinutes()).padStart(2,'0');
-}
-
-var timeEl=document.getElementById('replay-time');
-
-if(pts.length>0){
-  var ghost=pts.map(function(p){return[p.lat,p.lng];});
-  L.polyline(ghost,{color:'#555',weight:2,opacity:0.35,interactive:false}).addTo(map);
-  map.fitBounds(L.polyline(ghost).getBounds().pad(0.15));
-  L.circleMarker(ghost[0],{radius:7,color:'#4CAF50',fillColor:'#4CAF50',fillOpacity:1,weight:2}).addTo(map);
-  if(ghost.length>1){
-    L.circleMarker(ghost[ghost.length-1],{radius:7,color:'#F44336',fillColor:'#F44336',fillOpacity:1,weight:2}).addTo(map);
-  }
-} else {
-  map.setView([46.2276,2.2137],6);
-}
-
-var mover=pts.length>0
-  ?L.circleMarker([pts[0].lat,pts[0].lng],{radius:11,color:'#FFC107',fillColor:'#FFC107',fillOpacity:1,weight:3}).addTo(map)
-  :null;
-
-var drawnUpTo=0;
-var startWall=null;
-var totalPausedMs=0;
-var pauseStartWall=null;
-var rafId=null;
-var isPlaying=false;
-var lastMsgMs=-9999;
-window._replayDur=30000;
-window._replayFollow=false;
-
-function tick(){
-  if(!isPlaying)return;
-  var now=performance.now();
-  var elapsed=now-startWall-totalPausedMs;
-  var progress=Math.min(elapsed/window._replayDur,1);
-
-  if(pts.length<2){progress=1;}
-
-  var minTs=pts[0].ts;
-  var maxTs=pts[pts.length-1].ts;
-  var simTs=minTs+progress*(maxTs-minTs);
-
-  while(drawnUpTo<pts.length-1&&pts[drawnUpTo+1].ts<=simTs){
-    var a=pts[drawnUpTo],b=pts[drawnUpTo+1];
-    L.polyline([[a.lat,a.lng],[b.lat,b.lng]],{
-      color:colorFor(a.activity),weight:4,opacity:0.95,interactive:false
-    }).addTo(map);
-    drawnUpTo++;
-  }
-
-  if(mover&&pts.length>=2){
-    var si=0;
-    for(var i=0;i<pts.length-1;i++){
-      if(pts[i].ts<=simTs)si=i;
-      else break;
-    }
-    var p0=pts[si],p1=pts[Math.min(si+1,pts.length-1)];
-    var sr=p1.ts-p0.ts;
-    var f=sr>0?(simTs-p0.ts)/sr:0;
-    var newLat=p0.lat+f*(p1.lat-p0.lat),newLng=p0.lng+f*(p1.lng-p0.lng);
-    mover.setLatLng([newLat,newLng]);
-    if(window._replayFollow){map.panTo([newLat,newLng],{animate:true,duration:0.3});}
-  }
-
-  var t=fmtTs(simTs);
-  if(timeEl){timeEl.style.display='block';timeEl.textContent=t;}
-
-  if(now-lastMsgMs>500&&window.ReactNativeWebView){
-    window.ReactNativeWebView.postMessage(JSON.stringify({type:'replay_progress',time:t}));
-    lastMsgMs=now;
-  }
-
-  if(progress>=1){
-    isPlaying=false;
-    if(timeEl)timeEl.style.display='none';
-    if(window.ReactNativeWebView){
-      window.ReactNativeWebView.postMessage(JSON.stringify({type:'replay_done'}));
-    }
-    return;
-  }
-  rafId=requestAnimationFrame(tick);
-}
-
-window.startReplay=function(dur){
-  window._replayDur=dur;
-  drawnUpTo=0;
-  startWall=performance.now();
-  totalPausedMs=0;
-  pauseStartWall=null;
-  lastMsgMs=-9999;
-  isPlaying=true;
-  rafId=requestAnimationFrame(tick);
-};
-window.pauseReplay=function(){
-  if(!isPlaying)return;
-  isPlaying=false;
-  pauseStartWall=performance.now();
-  if(rafId){cancelAnimationFrame(rafId);rafId=null;}
-};
-window.resumeReplay=function(){
-  if(isPlaying||pauseStartWall===null)return;
-  totalPausedMs+=performance.now()-pauseStartWall;
-  pauseStartWall=null;
-  isPlaying=true;
-  rafId=requestAnimationFrame(tick);
-};
-window.stopReplay=function(){
-  isPlaying=false;
-  if(rafId){cancelAnimationFrame(rafId);rafId=null;}
-  if(timeEl)timeEl.style.display='none';
-};
-</script>
-</body>
-</html>`;
-}
-
-// ── Sub-components ────────────────────────────────────────────────────────────
-
-function StatChip({
-  icon, color, label, value, colors,
-}: {
-  icon: string; color: string; label: string; value: string;
-  colors: ReturnType<typeof useColors>;
-}) {
-  return (
-    <View style={[styles.statChip, { backgroundColor: color + '18', borderColor: color + '44' }]}>
-      <MaterialCommunityIcons name={icon as any} size={18} color={color} />
-      <View>
-        <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>{label}</Text>
-        <Text style={[styles.statValue, { color: colors.foreground }]}>{value}</Text>
-      </View>
-    </View>
-  );
-}
-
-function Stepper({
-  label, onDec, onInc, colors,
-}: {
-  label: string; onDec: () => void; onInc: () => void;
-  colors: ReturnType<typeof useColors>;
-}) {
-  return (
-    <View style={styles.stepper}>
-      <Pressable onPress={onDec} hitSlop={10} style={styles.stepperBtn}>
-        <MaterialCommunityIcons name="chevron-left" size={22} color={colors.foreground} />
-      </Pressable>
-      <Text style={[styles.stepperVal, { color: colors.foreground }]}>{label}</Text>
-      <Pressable onPress={onInc} hitSlop={10} style={styles.stepperBtn}>
-        <MaterialCommunityIcons name="chevron-right" size={22} color={colors.foreground} />
-      </Pressable>
-    </View>
-  );
-}
-
-// ── Duration options ──────────────────────────────────────────────────────────
-
-const DURATIONS: { label: string; ms: number }[] = [
-  { label: '10 s', ms: 10_000 },
-  { label: '30 s', ms: 30_000 },
-  { label: '1 min', ms: 60_000 },
-  { label: '3 min', ms: 180_000 },
-];
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function MapScreen() {
-  const colors   = useColors();
-  const insets   = useSafeAreaInsets();
-  const webRef   = useRef<WebView>(null);
-  const [backupBusy, setBackupBusy] = useState(false);
+  const colors  = useColors();
+  const insets  = useSafeAreaInsets();
+  const router  = useRouter();
+  const webRef  = useRef<WebView>(null);
 
-  const {
-    selectedDay,
-    setSelectedDay,
-    dayStats,
-    periodAvg7,
-    periodAvg30,
-    paused,
-    hasPermission,
-    loading,
-    goToPrevDay,
-    goToNextDay,
-    enableTracking,
-    togglePause,
-    findPointByTime,
-    refresh,
-  } = useLocationHistory();
+  const { paused, hasPermission, togglePause, enableTracking } = useLocationHistory();
 
-  const [search, setSearch]                   = useState('');
-  const [highlightPt, setHighlightPt]         = useState<LocationPoint | null>(null);
-  const pendingTimeRef                         = useRef<string | null>(null);
-  const [correctionCount, setCorrectionCount] = useState(0);
+  const today      = new Date().toISOString().slice(0, 10);
+  const [selectedDay, setSelectedDay] = useState(today);
+  const [allTrips, setAllTrips]       = useState<Trip[]>([]);
+  const [vehicles, setVehicles]       = useState<Vehicle[]>([]);
+  const [loading, setLoading]         = useState(true);
+  const [search, setSearch]           = useState('');
 
-  // ── Replay state ────────────────────────────────────────────────────────────
-  const [replayOpen, setReplayOpen]           = useState(false);
-  const [replayStartDay, setReplayStartDay]   = useState('');
-  const [replayStartHour, setReplayStartHour] = useState(0);
-  const [replayEndDay, setReplayEndDay]       = useState('');
-  const [replayEndHour, setReplayEndHour]     = useState(23);
-  const [replayDurMs, setReplayDurMs]         = useState(30_000);
-  const [replayMode, setReplayMode]           = useState(false);
-  const [replayPlaying, setReplayPlaying]     = useState(false);
-  const [replayIsPaused, setReplayIsPaused]   = useState(false);
-  const [replayCurrentTime, setReplayCurrentTime] = useState('');
-  const [replayPoints, setReplayPoints]       = useState<LocationPoint[]>([]);
-  const [replayFollow, setReplayFollow]       = useState(false);
-  const pendingReplayRef = useRef<number | null>(null);
-
-  const today   = new Date().toISOString().slice(0, 10);
   const isToday = selectedDay === today;
 
-  useEffect(() => {
-    setHighlightPt(null);
-    const pendingTime = pendingTimeRef.current;
-    if (pendingTime && dayStats.points.length > 0) {
-      pendingTimeRef.current = null;
-      const pt = findPointByTime(pendingTime);
-      if (pt) setHighlightPt(pt);
-    }
-  }, [dayStats.points, findPointByTime]);
+  // ── Data loading ─────────────────────────────────────────────────────────────
+
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    const [trips, vSettings] = await Promise.all([getTrips(), getVehicleSettings()]);
+    setAllTrips(trips.filter(t => t.vehicle !== 'ignored'));
+    setVehicles(vSettings);
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { loadData(); }, [loadData]);
+
+  // ── Day trips ─────────────────────────────────────────────────────────────────
+
+  const dayTrips = useMemo(
+    () => allTrips
+      .filter(t => tripDayKey(t) === selectedDay)
+      .sort((a, b) => a.startTime - b.startTime),
+    [allTrips, selectedDay],
+  );
+
+  const vehicleMap = useMemo(() => {
+    const m: Record<string, string> = {};
+    vehicles.forEach(v => { m[v.id] = v.name; });
+    return m;
+  }, [vehicles]);
+
+  const carKm  = useMemo(() => dayTrips.filter(t => t.vehicle === 'car').reduce((s, t) => s + t.distanceKm, 0), [dayTrips]);
+  const motoKm = useMemo(() => dayTrips.filter(t => t.vehicle === 'moto').reduce((s, t) => s + t.distanceKm, 0), [dayTrips]);
+
+  // ── Map key (rebuild WebView when day or trips change) ────────────────────────
+
+  const mapHtml = useMemo(() => buildTripsMapHtml(dayTrips, vehicles), [dayTrips, vehicles]);
+  const mapKey  = `${selectedDay}-${dayTrips.length}`;
+
+  // ── Handlers ──────────────────────────────────────────────────────────────────
+
+  const goToPrevDay = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setSelectedDay(d => shiftDay(d, -1));
+  }, []);
+
+  const goToNextDay = useCallback(() => {
+    if (isToday) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setSelectedDay(d => shiftDay(d, 1));
+  }, [isToday]);
 
   const handleSearch = useCallback(() => {
     const q = search.trim();
     if (!q) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const parsed = parseSearchQuery(q, new Date().getFullYear());
-    if (!parsed) {
-      Alert.alert('Format non reconnu', 'Exemples : "16 juin", "14h30", "16/06"');
+    const dateKey = parseSearchQuery(q, new Date().getFullYear());
+    if (!dateKey) {
+      Alert.alert('Format non reconnu', 'Exemples : "16 juin", "16/06"');
       return;
     }
-    if (parsed.dateKey) {
-      if (parsed.time) pendingTimeRef.current = parsed.time;
-      setSelectedDay(parsed.dateKey);
-    } else if (parsed.time) {
-      const pt = findPointByTime(parsed.time);
-      if (pt) {
-        setHighlightPt(pt);
-      } else {
-        Alert.alert('Aucun point trouvé', 'Aucun point GPS enregistré à cet horaire.');
-      }
-    }
-  }, [search, findPointByTime, setSelectedDay]);
+    setSelectedDay(dateKey);
+    setSearch('');
+  }, [search]);
 
   const handleEnableTracking = useCallback(async () => {
     const ok = await enableTracking();
     if (!ok) {
-      Alert.alert(
-        'Permission refusée',
-        'Autorisez la localisation en arrière-plan dans les paramètres pour activer le suivi GPS.',
-      );
-    } else {
-      refresh();
+      Alert.alert('Permission refusée', 'Autorisez la localisation en arrière-plan dans les paramètres.');
     }
-  }, [enableTracking, refresh]);
+  }, [enableTracking]);
 
   const handleTogglePause = useCallback(async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     await togglePause();
   }, [togglePause]);
 
-  const handleExport = useCallback(async () => {
-    if (backupBusy) return;
-    setBackupBusy(true);
-    try {
-      await exportBackup();
-    } catch {
-      Alert.alert('Erreur', "Impossible d'exporter les données.");
-    } finally {
-      setBackupBusy(false);
-    }
-  }, [backupBusy]);
-
-  const handleImport = useCallback(async () => {
-    if (backupBusy) return;
-    setBackupBusy(true);
-    try {
-      const { restored, error } = await importBackup();
-      if (error) {
-        Alert.alert('Erreur', error);
-      } else if (restored > 0) {
-        Alert.alert('Importé', `${restored} jour${restored > 1 ? 's' : ''} restauré${restored > 1 ? 's' : ''}.`);
-        refresh();
-      }
-    } catch {
-      Alert.alert('Erreur', "Impossible d'importer le fichier.");
-    } finally {
-      setBackupBusy(false);
-    }
-  }, [backupBusy, refresh]);
-
-  const handleDeleteDay = useCallback(() => {
-    if (dayStats.points.length === 0) return;
-    const label = fmtReplayDay(selectedDay);
-    Alert.alert(
-      'Effacer ce jour',
-      `Effacer les ${dayStats.points.length} point${dayStats.points.length > 1 ? 's' : ''} du ${label} ?`,
-      [
-        { text: 'Annuler', style: 'cancel' },
-        {
-          text: 'Effacer',
-          style: 'destructive',
-          onPress: async () => {
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-            await deleteDayPoints(selectedDay);
-            refresh();
-          },
-        },
-      ],
-    );
-  }, [dayStats.points.length, selectedDay, refresh]);
-
-  // ── Replay handlers ─────────────────────────────────────────────────────────
-
-  const handleOpenReplay = useCallback(() => {
-    setReplayStartDay(selectedDay);
-    setReplayStartHour(0);
-    setReplayEndDay(selectedDay);
-    setReplayEndHour(23);
-    setReplayOpen(true);
-  }, [selectedDay]);
-
-  const handleCloseReplay = useCallback(() => {
-    setReplayOpen(false);
-  }, []);
-
-  const handleLancer = useCallback(async () => {
-    const startTs = new Date(
-      `${replayStartDay}T${String(replayStartHour).padStart(2, '0')}:00:00`,
-    ).getTime();
-    const endTs = new Date(
-      `${replayEndDay}T${String(replayEndHour).padStart(2, '0')}:59:59`,
-    ).getTime();
-
-    if (endTs <= startTs) {
-      Alert.alert('Période invalide', 'La fin doit être après le début.');
-      return;
-    }
-
-    const pts = await loadMultiDayPoints(startTs, endTs);
-    if (pts.length < 2) {
-      Alert.alert('Pas de données', 'Aucun point GPS enregistré dans cette période.');
-      return;
-    }
-
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    setReplayPoints(pts);
-    pendingReplayRef.current = replayDurMs;
-    setReplayMode(true);
-    setReplayPlaying(true);
-    setReplayIsPaused(false);
-    setReplayCurrentTime('');
-    setReplayOpen(false);
-  }, [replayStartDay, replayStartHour, replayEndDay, replayEndHour, replayDurMs]);
-
-  const handleWebViewLoad = useCallback(() => {
-    if (pendingReplayRef.current !== null) {
-      const dur = pendingReplayRef.current;
-      pendingReplayRef.current = null;
-      webRef.current?.injectJavaScript(`window.startReplay(${dur}); true;`);
-    }
-  }, []);
-
-  const handleReplayPause = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    webRef.current?.injectJavaScript('window.pauseReplay && window.pauseReplay(); true;');
-    setReplayIsPaused(true);
-    setReplayPlaying(false);
-  }, []);
-
-  const handleReplayResume = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    webRef.current?.injectJavaScript('window.resumeReplay && window.resumeReplay(); true;');
-    setReplayIsPaused(false);
-    setReplayPlaying(true);
-  }, []);
-
-  const handleToggleFollow = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setReplayFollow(f => {
-      const next = !f;
-      webRef.current?.injectJavaScript(`window._replayFollow=${next};true;`);
-      return next;
-    });
-  }, []);
-
-  const handleReplayStop = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    webRef.current?.injectJavaScript('window.stopReplay && window.stopReplay(); true;');
-    pendingReplayRef.current = null;
-    setReplayMode(false);
-    setReplayPlaying(false);
-    setReplayIsPaused(false);
-    setReplayCurrentTime('');
-    setReplayPoints([]);
-    setReplayFollow(false);
-  }, []);
-
-  // ── WebView message handler ─────────────────────────────────────────────────
+  // ── WebView messages ──────────────────────────────────────────────────────────
 
   const handleWebViewMessage = useCallback((event: WebViewMessageEvent) => {
     try {
-      const msg = JSON.parse(event.nativeEvent.data) as {
-        type: string;
-        ts?: number;
-        activity?: string;
-        time?: string;
-      };
-
-      if (msg.type === 'replay_progress') {
-        setReplayCurrentTime(msg.time ?? '');
-        return;
+      const msg = JSON.parse(event.nativeEvent.data) as { type: string; id?: string };
+      if (msg.type === 'open_trip' && msg.id) {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        router.push({ pathname: '/trip-map', params: { id: msg.id } } as any);
       }
-      if (msg.type === 'replay_done') {
-        setReplayPlaying(false);
-        setReplayIsPaused(false);
-        return;
-      }
-      if (msg.type !== 'longpress' || replayMode) return;
+    } catch {}
+  }, [router]);
 
-      const ts  = msg.ts!;
-      const day = selectedDay;
+  const focusTripOnMap = useCallback((id: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    webRef.current?.injectJavaScript(`window.focusTrip && window.focusTrip('${id}'); true;`);
+  }, []);
 
-      const applyCorrection = async (newActivity: ActivityType) => {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        const ok = await correctActivity(day, ts, newActivity);
-        if (ok) {
-          await refresh();
-          setCorrectionCount(c => c + 1);
-        } else {
-          Alert.alert('Erreur', 'Impossible de modifier ce point.');
-        }
-      };
-
-      if (Platform.OS === 'ios') {
-        ActionSheetIOS.showActionSheetWithOptions(
-          {
-            options: ['Annuler', 'Marquer comme Marche', 'Marquer comme Voiture'],
-            cancelButtonIndex: 0,
-          },
-          buttonIndex => {
-            if (buttonIndex === 1) applyCorrection('walk');
-            else if (buttonIndex === 2) applyCorrection('car');
-          },
-        );
-      } else {
-        Alert.alert(
-          "Corriger l'activité",
-          "Choisissez le type d'activité pour ce segment.",
-          [
-            { text: 'Annuler', style: 'cancel' },
-            { text: '🚶 Marquer comme Marche', onPress: () => applyCorrection('walk') },
-            { text: '🚗 Marquer comme Voiture', onPress: () => applyCorrection('car') },
-          ],
-        );
-      }
-    } catch {
-      // ignore malformed messages
-    }
-  }, [selectedDay, refresh, replayMode]);
-
-  // ── Map HTML / key ──────────────────────────────────────────────────────────
-
-  const mapHtml = replayMode
-    ? buildReplayHtml(replayPoints)
-    : buildMapHtml(dayStats.points, colors.primary, highlightPt);
-
-  const mapKey = replayMode
-    ? `replay-${replayPoints.length}-${replayPoints[0]?.timestamp ?? 0}`
-    : `${selectedDay}-${highlightPt?.timestamp ?? 'none'}-${correctionCount}`;
-
-  // ── Render ──────────────────────────────────────────────────────────────────
+  // ── Render ────────────────────────────────────────────────────────────────────
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -754,292 +352,95 @@ export default function MapScreen() {
         showsVerticalScrollIndicator={false}
         showsHorizontalScrollIndicator={false}
         onMessage={handleWebViewMessage}
-        onLoadEnd={handleWebViewLoad}
       />
 
-      {/* ── Top overlay (hidden during replay) ── */}
-      {!replayMode && (
-        <View
-          style={[
-            styles.topOverlay,
-            { top: insets.top + 8, backgroundColor: colors.card + 'F0', borderColor: colors.border },
-          ]}
-        >
-          <View style={styles.dayNav}>
-            <Pressable onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); goToPrevDay(); }} hitSlop={12}>
-              <MaterialCommunityIcons name="chevron-left" size={24} color={colors.foreground} />
-            </Pressable>
-            <Text style={[styles.dayLabel, { color: colors.foreground }]} numberOfLines={1}>
-              {formatDayLabel(selectedDay)}
-            </Text>
-            <Pressable
-              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); goToNextDay(); }}
-              hitSlop={12}
-              style={{ opacity: isToday ? 0.3 : 1 }}
-            >
-              <MaterialCommunityIcons name="chevron-right" size={24} color={colors.foreground} />
-            </Pressable>
-          </View>
-
-          <View style={[styles.searchRow, { borderColor: colors.border, backgroundColor: colors.background + 'CC' }]}>
-            <MaterialCommunityIcons name="magnify" size={16} color={colors.mutedForeground} />
-            <TextInput
-              style={[styles.searchInput, { color: colors.foreground }]}
-              placeholder="Heure (ex: 14h30)…"
-              placeholderTextColor={colors.mutedForeground}
-              value={search}
-              onChangeText={setSearch}
-              onSubmitEditing={handleSearch}
-              returnKeyType="search"
-            />
-            {search.length > 0 && (
-              <Pressable onPress={() => setSearch('')} hitSlop={8}>
-                <MaterialCommunityIcons name="close-circle" size={15} color={colors.mutedForeground} />
-              </Pressable>
-            )}
-            <Pressable
-              onPress={handleSearch}
-              hitSlop={8}
-              style={[styles.searchBtn, { backgroundColor: colors.primary }]}
-            >
-              <Text style={styles.searchBtnTxt}>OK</Text>
-            </Pressable>
-          </View>
+      {/* ── Top overlay ── */}
+      <View style={[styles.topOverlay, { top: insets.top + 8, backgroundColor: colors.card + 'F0', borderColor: colors.border }]}>
+        <View style={styles.dayNav}>
+          <Pressable onPress={goToPrevDay} hitSlop={12}>
+            <MaterialCommunityIcons name="chevron-left" size={24} color={colors.foreground} />
+          </Pressable>
+          <Text style={[styles.dayLabel, { color: colors.foreground }]} numberOfLines={1}>
+            {formatDayLabel(selectedDay)}
+          </Text>
+          <Pressable onPress={goToNextDay} hitSlop={12} style={{ opacity: isToday ? 0.3 : 1 }}>
+            <MaterialCommunityIcons name="chevron-right" size={24} color={colors.foreground} />
+          </Pressable>
         </View>
-      )}
+
+        <View style={[styles.searchRow, { borderColor: colors.border, backgroundColor: colors.background + 'CC' }]}>
+          <MaterialCommunityIcons name="magnify" size={16} color={colors.mutedForeground} />
+          <TextInput
+            style={[styles.searchInput, { color: colors.foreground }]}
+            placeholder="Date (ex: 16 juin, 16/06)…"
+            placeholderTextColor={colors.mutedForeground}
+            value={search}
+            onChangeText={setSearch}
+            onSubmitEditing={handleSearch}
+            returnKeyType="search"
+          />
+          {search.length > 0 && (
+            <Pressable onPress={() => setSearch('')} hitSlop={8}>
+              <MaterialCommunityIcons name="close-circle" size={15} color={colors.mutedForeground} />
+            </Pressable>
+          )}
+          <Pressable onPress={handleSearch} hitSlop={8} style={[styles.searchBtn, { backgroundColor: colors.primary }]}>
+            <Text style={styles.searchBtnTxt}>OK</Text>
+          </Pressable>
+        </View>
+      </View>
 
       {/* ── Recenter button ── */}
-      {!replayMode && (
-        <Pressable
-          style={[styles.recenterBtn, { backgroundColor: colors.card + 'F0', borderColor: colors.border }]}
-          onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            webRef.current?.injectJavaScript('window.recenter && window.recenter(); true;');
-          }}
-          hitSlop={8}
-        >
-          <MaterialCommunityIcons name="crosshairs-gps" size={20} color={colors.primary} />
-        </Pressable>
-      )}
+      <Pressable
+        style={[styles.recenterBtn, { backgroundColor: colors.card + 'F0', borderColor: colors.border }]}
+        onPress={() => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          webRef.current?.injectJavaScript('window.recenter && window.recenter(); true;');
+        }}
+        hitSlop={8}
+      >
+        <MaterialCommunityIcons name="crosshairs-gps" size={20} color={colors.primary} />
+      </Pressable>
 
       {/* ── Bottom panel ── */}
-      <View
-        style={[
-          styles.bottomPanel,
-          { backgroundColor: colors.card + 'F8', borderTopColor: colors.border, paddingBottom: insets.bottom + 8 },
-        ]}
-      >
-        {/* ── Replay playback controls ── */}
-        {replayMode ? (
-          <View style={styles.replayPlayContainer}>
-            <View style={styles.replayStatusRow}>
-              <MaterialCommunityIcons
-                name={replayPlaying ? 'play-circle' : replayIsPaused ? 'pause-circle' : 'check-circle'}
-                size={18}
-                color={replayPlaying ? '#F44336' : replayIsPaused ? '#FFC107' : '#4CAF50'}
-              />
-              <Text style={[styles.replayStatusTxt, { color: colors.foreground }]}>
-                {replayPlaying
-                  ? 'En lecture'
-                  : replayIsPaused
-                  ? 'En pause'
-                  : 'Terminé'}
-                {replayCurrentTime ? `  ·  ${replayCurrentTime}` : ''}
-              </Text>
-            </View>
-            <View style={styles.replayBtnRow}>
-              {replayPlaying && (
-                <Pressable
-                  style={[styles.replayCtrlBtn, { borderColor: '#FFC107', backgroundColor: '#FFC10715' }]}
-                  onPress={handleReplayPause}
-                >
-                  <MaterialCommunityIcons name="pause" size={18} color="#FFC107" />
-                  <Text style={[styles.replayCtrlTxt, { color: '#FFC107' }]}>Pause</Text>
-                </Pressable>
-              )}
-              {replayIsPaused && (
-                <Pressable
-                  style={[styles.replayCtrlBtn, { borderColor: '#4CAF50', backgroundColor: '#4CAF5015' }]}
-                  onPress={handleReplayResume}
-                >
-                  <MaterialCommunityIcons name="play" size={18} color="#4CAF50" />
-                  <Text style={[styles.replayCtrlTxt, { color: '#4CAF50' }]}>Reprendre</Text>
-                </Pressable>
-              )}
-              <Pressable
-                style={[styles.replayCtrlBtn, { borderColor: '#F44336', backgroundColor: '#F4433615' }]}
-                onPress={handleReplayStop}
-              >
-                <MaterialCommunityIcons name="stop" size={18} color="#F44336" />
-                <Text style={[styles.replayCtrlTxt, { color: '#F44336' }]}>Stop</Text>
-              </Pressable>
-            </View>
-            <Pressable
-              style={[
-                styles.replayFollowBtn,
-                {
-                  borderColor: replayFollow ? colors.primary : colors.border,
-                  backgroundColor: replayFollow ? colors.primary + '22' : 'transparent',
-                },
-              ]}
-              onPress={handleToggleFollow}
-            >
-              <MaterialCommunityIcons
-                name={replayFollow ? 'lock' : 'lock-open-variant-outline'}
-                size={15}
-                color={replayFollow ? colors.primary : colors.mutedForeground}
-              />
-              <Text style={[styles.replayFollowTxt, { color: replayFollow ? colors.primary : colors.mutedForeground }]}>
-                {replayFollow ? 'Suivi activé — carte suit le marqueur' : 'Suivi désactivé'}
-              </Text>
-            </Pressable>
-          </View>
+      <View style={[styles.bottomPanel, { backgroundColor: colors.card + 'F8', borderTopColor: colors.border, paddingBottom: insets.bottom + 6 }]}>
 
-        /* ── Replay settings panel ── */
-        ) : replayOpen ? (
-          <View style={styles.replayPanel}>
-            <View style={styles.replayPanelHeader}>
-              <MaterialCommunityIcons name="play-circle-outline" size={18} color={colors.primary} />
-              <Text style={[styles.replayPanelTitle, { color: colors.foreground }]}>Replay GPS</Text>
-              <Pressable onPress={handleCloseReplay} hitSlop={10}>
-                <MaterialCommunityIcons name="close" size={20} color={colors.mutedForeground} />
-              </Pressable>
-            </View>
-
-            <View style={styles.replayRow}>
-              <View style={styles.replayCol}>
-                <Text style={[styles.replayColLabel, { color: colors.mutedForeground }]}>Début</Text>
-                <Stepper
-                  label={fmtReplayDay(replayStartDay)}
-                  onDec={() => setReplayStartDay(d => shiftDay(d, -1))}
-                  onInc={() => setReplayStartDay(d => shiftDay(d, 1))}
-                  colors={colors}
-                />
-                <Stepper
-                  label={`${String(replayStartHour).padStart(2, '0')}h00`}
-                  onDec={() => setReplayStartHour(h => Math.max(0, h - 1))}
-                  onInc={() => setReplayStartHour(h => Math.min(23, h + 1))}
-                  colors={colors}
-                />
-              </View>
-              <View style={[styles.replayColDivider, { backgroundColor: colors.border }]} />
-              <View style={styles.replayCol}>
-                <Text style={[styles.replayColLabel, { color: colors.mutedForeground }]}>Fin</Text>
-                <Stepper
-                  label={fmtReplayDay(replayEndDay)}
-                  onDec={() => setReplayEndDay(d => shiftDay(d, -1))}
-                  onInc={() => setReplayEndDay(d => shiftDay(d, 1))}
-                  colors={colors}
-                />
-                <Stepper
-                  label={`${String(replayEndHour).padStart(2, '0')}h00`}
-                  onDec={() => setReplayEndHour(h => Math.max(0, h - 1))}
-                  onInc={() => setReplayEndHour(h => Math.min(23, h + 1))}
-                  colors={colors}
-                />
-              </View>
-            </View>
-
-            <View style={styles.replayDurRow}>
-              {DURATIONS.map(d => (
-                <Pressable
-                  key={d.ms}
-                  onPress={() => setReplayDurMs(d.ms)}
-                  style={[
-                    styles.replayDurBtn,
-                    {
-                      borderColor: replayDurMs === d.ms ? colors.primary : colors.border,
-                      backgroundColor: replayDurMs === d.ms ? colors.primary + '22' : 'transparent',
-                    },
-                  ]}
-                >
-                  <Text style={[
-                    styles.replayDurTxt,
-                    { color: replayDurMs === d.ms ? colors.primary : colors.mutedForeground },
-                  ]}>
-                    {d.label}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-
-            <Pressable
-              style={[styles.lancerBtn, { backgroundColor: colors.primary }]}
-              onPress={handleLancer}
-            >
-              <MaterialCommunityIcons name="play" size={16} color="#121212" />
-              <Text style={styles.lancerTxt}>Lancer</Text>
-            </Pressable>
-          </View>
-
-        /* ── Normal panel content ── */
-        ) : loading ? (
-          <ActivityIndicator color={colors.primary} style={{ marginVertical: 12 }} />
+        {loading ? (
+          <ActivityIndicator color={colors.primary} style={{ marginVertical: 14 }} />
         ) : (
           <>
+            {/* Permission banner */}
             {hasPermission === false && (
               <Pressable
                 style={[styles.permBanner, { backgroundColor: '#FFC10722', borderColor: '#FFC107' }]}
                 onPress={handleEnableTracking}
               >
-                <MaterialCommunityIcons name="map-marker-alert-outline" size={18} color="#FFC107" />
-                <Text style={[styles.permTxt, { color: '#FFC107' }]}>
-                  Activer la localisation en arrière-plan
-                </Text>
+                <MaterialCommunityIcons name="map-marker-alert-outline" size={16} color="#FFC107" />
+                <Text style={[styles.permTxt, { color: '#FFC107' }]}>Activer la localisation en arrière-plan</Text>
               </Pressable>
             )}
 
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.statsScroll}>
-              <View style={styles.statsRow}>
-                <StatChip icon="walk" color="#4CAF50" label="À pied" value={`${dayStats.walkKm} km`} colors={colors} />
-                <StatChip icon="car" color="#2196F3" label="Voiture" value={`${dayStats.carKm} km`} colors={colors} />
-                <StatChip icon="map-marker-multiple-outline" color="#9C27B0" label="Points" value={String(dayStats.points.length)} colors={colors} />
-                <StatChip icon="clock-start" color="#4CAF50" label="Premier" value={dayStats.firstTime ?? '—'} colors={colors} />
-                <StatChip icon="clock-end" color="#F44336" label="Dernier" value={dayStats.lastTime ?? '—'} colors={colors} />
+            {/* Stats row */}
+            <View style={styles.statsRow}>
+              <View style={styles.statChip}>
+                <MaterialCommunityIcons name="car" size={15} color="#2196F3" />
+                <Text style={[styles.statVal, { color: colors.foreground }]}>{carKm.toFixed(1)} km</Text>
+                <Text style={[styles.statLbl, { color: colors.mutedForeground }]}>Voiture</Text>
               </View>
-            </ScrollView>
+              <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
+              <View style={styles.statChip}>
+                <MaterialCommunityIcons name="motorbike" size={15} color="#FF9800" />
+                <Text style={[styles.statVal, { color: colors.foreground }]}>{motoKm.toFixed(1)} km</Text>
+                <Text style={[styles.statLbl, { color: colors.mutedForeground }]}>Moto</Text>
+              </View>
+              <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
+              <View style={styles.statChip}>
+                <MaterialCommunityIcons name="routes" size={15} color={colors.primary} />
+                <Text style={[styles.statVal, { color: colors.foreground }]}>{dayTrips.length}</Text>
+                <Text style={[styles.statLbl, { color: colors.mutedForeground }]}>Trajet{dayTrips.length > 1 ? 's' : ''}</Text>
+              </View>
 
-            <View style={styles.legendRow}>
-              <View style={styles.legendItem}>
-                <View style={[styles.legendDot, { backgroundColor: '#4CAF50' }]} />
-                <Text style={[styles.legendLabel, { color: colors.mutedForeground }]}>Marche</Text>
-              </View>
-              <View style={styles.legendItem}>
-                <View style={[styles.legendDot, { backgroundColor: '#2196F3' }]} />
-                <Text style={[styles.legendLabel, { color: colors.mutedForeground }]}>Voiture</Text>
-              </View>
-              <View style={styles.legendItem}>
-                <View style={[styles.legendDot, { backgroundColor: '#FFC107' }]} />
-                <Text style={[styles.legendLabel, { color: colors.mutedForeground }]}>Inconnu</Text>
-              </View>
-            </View>
-
-            <View style={[styles.avgSection, { borderTopColor: colors.border }]}>
-              <View style={styles.avgGrid}>
-                <View style={styles.avgCell}>
-                  <MaterialCommunityIcons name="walk" size={13} color="#4CAF50" />
-                  <Text style={[styles.avgPeriod, { color: colors.mutedForeground }]}>7 jours</Text>
-                  <Text style={[styles.avgVal, { color: colors.foreground }]}>{periodAvg7.walkAvgKmPerDay} km/j</Text>
-                </View>
-                <View style={[styles.avgDivider, { backgroundColor: colors.border }]} />
-                <View style={styles.avgCell}>
-                  <MaterialCommunityIcons name="car" size={13} color="#2196F3" />
-                  <Text style={[styles.avgPeriod, { color: colors.mutedForeground }]}>7 jours</Text>
-                  <Text style={[styles.avgVal, { color: colors.foreground }]}>{periodAvg7.carAvgKmPerDay} km/j</Text>
-                </View>
-                <View style={[styles.avgDivider, { backgroundColor: colors.border }]} />
-                <View style={styles.avgCell}>
-                  <MaterialCommunityIcons name="walk" size={13} color="#4CAF50" />
-                  <Text style={[styles.avgPeriod, { color: colors.mutedForeground }]}>30 jours</Text>
-                  <Text style={[styles.avgVal, { color: colors.foreground }]}>{periodAvg30.walkAvgKmPerDay} km/j</Text>
-                </View>
-                <View style={[styles.avgDivider, { backgroundColor: colors.border }]} />
-                <View style={styles.avgCell}>
-                  <MaterialCommunityIcons name="car" size={13} color="#2196F3" />
-                  <Text style={[styles.avgPeriod, { color: colors.mutedForeground }]}>30 jours</Text>
-                  <Text style={[styles.avgVal, { color: colors.foreground }]}>{periodAvg30.carAvgKmPerDay} km/j</Text>
-                </View>
-              </View>
+              {/* Pause/Resume button */}
               <Pressable
                 style={[
                   styles.pauseBtn,
@@ -1049,7 +450,7 @@ export default function MapScreen() {
               >
                 <MaterialCommunityIcons
                   name={paused ? 'play-circle-outline' : 'pause-circle-outline'}
-                  size={18}
+                  size={16}
                   color={paused ? '#4CAF50' : '#FF5722'}
                 />
                 <Text style={[styles.pauseTxt, { color: paused ? '#4CAF50' : '#FF5722' }]}>
@@ -1058,40 +459,49 @@ export default function MapScreen() {
               </Pressable>
             </View>
 
-            <View style={[styles.backupRow, { borderTopColor: colors.border }]}>
-              <Pressable
-                style={[styles.backupBtn, { borderColor: colors.border, opacity: backupBusy ? 0.5 : 1 }]}
-                onPress={handleExport}
-                disabled={backupBusy}
+            {/* Trip list */}
+            {dayTrips.length === 0 ? (
+              <View style={styles.emptyRow}>
+                <MaterialCommunityIcons name="map-marker-off-outline" size={20} color={colors.mutedForeground} />
+                <Text style={[styles.emptyTxt, { color: colors.mutedForeground }]}>Aucun trajet ce jour-là</Text>
+              </View>
+            ) : (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={styles.tripListScroll}
+                contentContainerStyle={styles.tripListContent}
               >
-                <MaterialCommunityIcons name="export-variant" size={15} color={colors.mutedForeground} />
-                <Text style={[styles.backupTxt, { color: colors.mutedForeground }]}>Exporter</Text>
-              </Pressable>
-              <Pressable
-                style={[styles.backupBtn, { borderColor: colors.border, opacity: backupBusy ? 0.5 : 1 }]}
-                onPress={handleImport}
-                disabled={backupBusy}
-              >
-                <MaterialCommunityIcons name="import" size={15} color={colors.mutedForeground} />
-                <Text style={[styles.backupTxt, { color: colors.mutedForeground }]}>Importer</Text>
-              </Pressable>
-              <Pressable
-                style={[styles.backupBtn, { borderColor: colors.primary + '88', backgroundColor: colors.primary + '12' }]}
-                onPress={handleOpenReplay}
-              >
-                <MaterialCommunityIcons name="play-circle-outline" size={15} color={colors.primary} />
-                <Text style={[styles.backupTxt, { color: colors.primary }]}>Replay</Text>
-              </Pressable>
-              {dayStats.points.length > 0 && (
-                <Pressable
-                  style={[styles.backupBtn, { borderColor: '#F4433688', backgroundColor: '#F4433612' }]}
-                  onPress={handleDeleteDay}
-                >
-                  <MaterialCommunityIcons name="trash-can-outline" size={15} color="#F44336" />
-                  <Text style={[styles.backupTxt, { color: '#F44336' }]}>Effacer</Text>
-                </Pressable>
-              )}
-            </View>
+                {dayTrips.map(trip => {
+                  const col = vehicleColor(trip.vehicle ?? undefined);
+                  const icon = vehicleIcon(trip.vehicle ?? undefined);
+                  const name = vehicleMap[trip.vehicle ?? ''] ?? (trip.vehicle === 'moto' ? 'Msx' : trip.vehicle === 'car' ? 'Doblo' : 'Inconnu');
+                  return (
+                    <Pressable
+                      key={trip.id}
+                      style={[styles.tripCard, { backgroundColor: colors.card, borderColor: col + '55' }]}
+                      onPress={() => focusTripOnMap(trip.id)}
+                      onLongPress={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                        router.push({ pathname: '/trip-map', params: { id: trip.id } } as any);
+                      }}
+                    >
+                      <MaterialCommunityIcons name={icon as any} size={16} color={col} />
+                      <Text style={[styles.tripCardName, { color: colors.foreground }]}>{name}</Text>
+                      <Text style={[styles.tripCardDist, { color: col }]}>{trip.distanceKm.toFixed(1)} km</Text>
+                      <Text style={[styles.tripCardTime, { color: colors.mutedForeground }]}>
+                        {fmtTime(trip.startTime)} → {fmtTime(trip.endTime)}
+                      </Text>
+                      {trip.source === 'manual' && (
+                        <View style={[styles.manualBadge, { borderColor: colors.primary + '88' }]}>
+                          <Text style={[styles.manualTxt, { color: colors.primary }]}>manuel</Text>
+                        </View>
+                      )}
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+            )}
           </>
         )}
       </View>
@@ -1127,6 +537,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: 'Inter_600SemiBold',
     paddingHorizontal: 8,
+    textTransform: 'capitalize',
   },
   searchRow: {
     flexDirection: 'row',
@@ -1156,231 +567,88 @@ const styles = StyleSheet.create({
 
   recenterBtn: {
     position: 'absolute',
-    right: 16,
-    bottom: 260,
+    right: 14,
+    bottom: 240,
     width: 40,
     height: 40,
     borderRadius: 20,
     borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
     justifyContent: 'center',
-    elevation: 4,
+    elevation: 3,
   },
 
   bottomPanel: {
     borderTopWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    gap: 10,
+    paddingTop: 10,
+    paddingHorizontal: 14,
+    gap: 8,
+    minHeight: 170,
   },
+
   permBanner: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    padding: 10,
-    borderRadius: 10,
     borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
   },
-  permTxt: { flex: 1, fontSize: 13, fontFamily: 'Inter_500Medium' },
+  permTxt: { fontSize: 13, fontFamily: 'Inter_500Medium', flex: 1 },
 
-  statsScroll: { flexGrow: 0 },
-  statsRow: { flexDirection: 'row', gap: 8, paddingRight: 4 },
-  statChip: {
+  statsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    borderRadius: 10,
-    borderWidth: 1,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
+    gap: 10,
   },
-  statLabel: { fontSize: 9, fontFamily: 'Inter_400Regular' },
-  statValue: { fontSize: 14, fontFamily: 'Inter_700Bold' },
-
-  avgSection: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    paddingTop: 10,
-    gap: 8,
-  },
-  avgGrid: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  avgCell: { flex: 1, alignItems: 'center', gap: 2 },
-  avgPeriod: { fontSize: 10, fontFamily: 'Inter_400Regular' },
-  avgVal: { fontSize: 13, fontFamily: 'Inter_700Bold' },
-  avgDivider: { width: 1, height: 34, marginHorizontal: 4 },
+  statChip: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  statVal: { fontSize: 14, fontFamily: 'Inter_600SemiBold' },
+  statLbl: { fontSize: 11, fontFamily: 'Inter_400Regular' },
+  statDivider: { width: StyleSheet.hairlineWidth, height: 20 },
 
   pauseBtn: {
+    marginLeft: 'auto',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
     paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
+    paddingVertical: 5,
+    borderRadius: 20,
     borderWidth: 1,
   },
   pauseTxt: { fontSize: 12, fontFamily: 'Inter_500Medium' },
 
-  backupRow: {
-    flexDirection: 'row',
-    gap: 8,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    paddingTop: 8,
-  },
-  backupBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 5,
-    paddingVertical: 6,
-    borderRadius: 8,
-    borderWidth: StyleSheet.hairlineWidth,
-  },
-  backupTxt: { fontSize: 11, fontFamily: 'Inter_500Medium' },
-
-  legendRow: {
-    flexDirection: 'row',
-    gap: 16,
-    alignItems: 'center',
-  },
-  legendItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-  },
-  legendDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-  },
-  legendLabel: {
-    fontSize: 11,
-    fontFamily: 'Inter_400Regular',
-  },
-
-  // ── Replay styles ────────────────────────────────────────────────────────────
-
-  replayPanel: { gap: 12 },
-
-  replayPanelHeader: {
+  emptyRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-  },
-  replayPanelTitle: {
-    flex: 1,
-    fontSize: 15,
-    fontFamily: 'Inter_600SemiBold',
-  },
-
-  replayRow: {
-    flexDirection: 'row',
-    gap: 0,
-  },
-  replayCol: {
-    flex: 1,
-    gap: 6,
-    alignItems: 'center',
-  },
-  replayColDivider: {
-    width: 1,
-    marginHorizontal: 8,
-    marginVertical: 4,
-  },
-  replayColLabel: {
-    fontSize: 10,
-    fontFamily: 'Inter_400Regular',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-
-  stepper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-  },
-  stepperBtn: {
-    padding: 4,
-  },
-  stepperVal: {
-    fontSize: 13,
-    fontFamily: 'Inter_600SemiBold',
-    minWidth: 72,
-    textAlign: 'center',
-  },
-
-  replayDurRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  replayDurBtn: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: 7,
-    borderRadius: 8,
-    borderWidth: 1,
-  },
-  replayDurTxt: {
-    fontSize: 12,
-    fontFamily: 'Inter_600SemiBold',
-  },
-
-  lancerBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
     paddingVertical: 10,
-    borderRadius: 10,
   },
-  lancerTxt: {
-    color: '#121212',
-    fontSize: 14,
-    fontFamily: 'Inter_700Bold',
-  },
+  emptyTxt: { fontSize: 13, fontFamily: 'Inter_400Regular' },
 
-  replayPlayContainer: { gap: 12 },
-  replayStatusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  replayStatusTxt: {
-    fontSize: 14,
-    fontFamily: 'Inter_600SemiBold',
-  },
-  replayBtnRow: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  replayCtrlBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 9,
-    borderRadius: 10,
-    borderWidth: 1,
-  },
-  replayCtrlTxt: {
-    fontSize: 13,
-    fontFamily: 'Inter_600SemiBold',
-  },
+  tripListScroll: { flexGrow: 0 },
+  tripListContent: { gap: 8, paddingBottom: 2, paddingTop: 2 },
 
-  replayFollowBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 7,
-    paddingVertical: 7,
-    borderRadius: 8,
+  tripCard: {
     borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    gap: 2,
+    minWidth: 130,
   },
-  replayFollowTxt: {
-    fontSize: 12,
-    fontFamily: 'Inter_500Medium',
+  tripCardName: { fontSize: 13, fontFamily: 'Inter_600SemiBold', marginTop: 3 },
+  tripCardDist: { fontSize: 18, fontFamily: 'Inter_700Bold' },
+  tripCardTime: { fontSize: 11, fontFamily: 'Inter_400Regular' },
+
+  manualBadge: {
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderRadius: 4,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    marginTop: 2,
   },
+  manualTxt: { fontSize: 9, fontFamily: 'Inter_500Medium' },
 });
