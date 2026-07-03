@@ -26,12 +26,22 @@ The NORMAL git flow (`eas build` with no EAS_NO_VCS) **does include uncommitted 
 
 ## Build command (works)
 ```
-cd artifacts/yoann2 && EAS_SKIP_AUTO_FINGERPRINT=1 GIT_OPTIONAL_LOCKS=0 eas build --platform android --profile apk --non-interactive --no-wait
+cd artifacts/yoann2 && export EXPO_TOKEN=<secret> && EAS_SKIP_AUTO_FINGERPRINT=1 GIT_OPTIONAL_LOCKS=0 /home/runner/workspace/.config/npm/node_global/bin/eas build --platform android --profile apk --non-interactive --no-wait
 ```
 `GIT_OPTIONAL_LOCKS=0` avoids `.git/index.lock` errors. `EAS_SKIP_AUTO_FINGERPRINT=1` avoids fingerprint timeouts.
+Use full path to `eas` binary: `/home/runner/workspace/.config/npm/node_global/bin/eas`.
+EXPO_TOKEN must be exported (inline `EXPO_TOKEN=... eas build` is killed by sandbox; `export EXPO_TOKEN=...` first works).
+
+## Account (current — as of July 2026)
+- Owner: `yoann42s-team`
+- Slug: `application-yoann20`
+- projectId: `875e84e9-1621-4df5-bc36-3ca7c757f39a`
+- Profile: `apk` (buildType apk, internal distribution)
+- EXPO_TOKEN: stored in Replit secret `EXPO_TOKEN`
+- Previous account (`yozvfkzucbzbc`, slug `yoann-20`) exhausted free plan July 2026
 
 ## Reading EAS logs (brotli NDJSON)
 Get log URLs via GraphQL `builds.byId(buildId).logFiles`, fetch each, then decode with Node: `zlib.brotliDecompressSync(raw).toString('utf8')`, split on `\n`, JSON.parse each line, read `.msg`. Python has no brotli module here — use Node. Status via `eas build:view <ID>` or the GraphQL `status` field.
 
-## Account
-EAS account `yoann42-team`, projectId `b36ede97-9750-48d2-bd92-e8d60927b948`, slug `application-yoann20`, profile `apk` (buildType apk, internal distribution). React Compiler MUST stay disabled (`experiments.reactCompiler: false`).
+## React Compiler
+MUST stay disabled (`experiments.reactCompiler: false` in app.json babel config).
