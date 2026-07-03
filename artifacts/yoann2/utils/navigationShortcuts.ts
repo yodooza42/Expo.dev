@@ -42,7 +42,7 @@ export function getShortcutMdi(icon?: string): string {
 }
 
 const SHORTCUTS_KEY = '@yoann2_nav_shortcuts';
-export const MAX_SHORTCUTS = 4;
+export const MAX_SHORTCUTS = 3;
 
 // ── Persistence ──────────────────────────────────────────────────────────────
 

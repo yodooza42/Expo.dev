@@ -26,7 +26,8 @@ export function NavigationWidget({
   shortcuts: NavShortcut[];
   todayAppt?: TodayApptNav | null;
 }) {
-  const slots: (NavShortcut | null)[] = Array.from({ length: 4 }, (_, i) => shortcuts[i] ?? null);
+  // 3 slots in a single row
+  const slots: (NavShortcut | null)[] = Array.from({ length: 3 }, (_, i) => shortcuts[i] ?? null);
 
   return (
     <FlexWidget
@@ -45,7 +46,7 @@ export function NavigationWidget({
           flexDirection: 'row',
           alignItems: 'center',
           width: 'match_parent',
-          height: 28,
+          height: 26,
           justifyContent: 'space-between',
         }}
       >
@@ -55,17 +56,16 @@ export function NavigationWidget({
         >
           <TextWidget
             text="Yoann 2.0"
-            style={{ fontSize: 14, color: PRIMARY, fontFamily: 'sans-serif-medium' }}
+            style={{ fontSize: 13, color: PRIMARY, fontFamily: 'sans-serif-medium' }}
           />
         </FlexWidget>
-        {/* Fuel shortcut button */}
         <FlexWidget
           clickAction="OPEN_URI"
           clickActionData={{ uri: `${SCHEME}:///navigation?action=fuel` }}
           style={{
             backgroundColor: SURFACE,
             borderRadius: 8,
-            paddingHorizontal: 10,
+            paddingHorizontal: 8,
             paddingVertical: 3,
             alignItems: 'center',
             justifyContent: 'center',
@@ -73,12 +73,12 @@ export function NavigationWidget({
         >
           <TextWidget
             text="⛽ Carburant"
-            style={{ fontSize: 11, color: MUTED, fontFamily: 'sans-serif' }}
+            style={{ fontSize: 10, color: MUTED, fontFamily: 'sans-serif' }}
           />
         </FlexWidget>
       </FlexWidget>
 
-      {/* Rdv du jour row (only when today appointment has geocoded address) */}
+      {/* RDV du jour */}
       {todayAppt != null && (
         <FlexWidget
           clickAction="OPEN_URI"
@@ -88,8 +88,8 @@ export function NavigationWidget({
             backgroundColor: '#7C3AED40',
             borderRadius: 10,
             paddingHorizontal: 10,
-            paddingVertical: 6,
-            marginTop: 6,
+            paddingVertical: 5,
+            marginTop: 5,
             flexDirection: 'row',
             alignItems: 'center',
           }}
@@ -102,7 +102,7 @@ export function NavigationWidget({
         </FlexWidget>
       )}
 
-      {/* Row 1: slots 0 + 1 */}
+      {/* Single row of 3 shortcuts */}
       <FlexWidget
         style={{
           flexDirection: 'row',
@@ -114,20 +114,7 @@ export function NavigationWidget({
       >
         <ShortcutButton slot={slots[0] ?? null} />
         <ShortcutButton slot={slots[1] ?? null} />
-      </FlexWidget>
-
-      {/* Row 2: slots 2 + 3 */}
-      <FlexWidget
-        style={{
-          flexDirection: 'row',
-          width: 'match_parent',
-          flex: 1,
-          flexGap: 6,
-          marginTop: 6,
-        }}
-      >
         <ShortcutButton slot={slots[2] ?? null} />
-        <ShortcutButton slot={slots[3] ?? null} />
       </FlexWidget>
     </FlexWidget>
   );
@@ -138,6 +125,9 @@ function ShortcutButton({ slot }: { slot: NavShortcut | null }) {
   const uri = ready && slot != null
     ? `waze://?ll=${slot.lat},${slot.lng}&navigate=yes`
     : `${SCHEME}:///navigation`;
+
+  const emoji = slot ? getShortcutEmoji(slot.icon) : '+';
+  const label = slot ? slot.name : 'Ajouter';
 
   return (
     <FlexWidget
@@ -150,21 +140,21 @@ function ShortcutButton({ slot }: { slot: NavShortcut | null }) {
         borderRadius: 10,
         alignItems: 'center',
         justifyContent: 'center',
-        padding: 6,
+        padding: 4,
       }}
     >
       <TextWidget
-        text={slot ? getShortcutEmoji(slot.icon) : '+'}
+        text={emoji}
         style={{
-          fontSize: 22,
+          fontSize: 20,
           color: ready ? PRIMARY : MUTED,
           fontFamily: 'sans-serif-medium',
         }}
       />
       <TextWidget
-        text={slot ? slot.name : 'Ajouter'}
-        style={{ fontSize: 11, color: slot ? TEXT : MUTED, fontFamily: 'sans-serif' }}
-        maxLines={2}
+        text={label}
+        style={{ fontSize: 10, color: slot ? TEXT : MUTED, fontFamily: 'sans-serif' }}
+        maxLines={1}
       />
     </FlexWidget>
   );

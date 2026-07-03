@@ -487,11 +487,14 @@ function TripRow({
   }
 
   return (
-    <View style={[
-      styles.tripCard,
-      { backgroundColor: colors.card, borderColor: isPending && !compact ? colors.primary + '66' : colors.border },
-      compact && styles.tripCardCompact,
-    ]}>
+    <Pressable
+      onPress={() => { Haptics.selectionAsync(); router.push({ pathname: '/trip-map', params: { id: trip.id } } as any); }}
+      style={[
+        styles.tripCard,
+        { backgroundColor: colors.card, borderColor: isPending && !compact ? colors.primary + '66' : colors.border },
+        compact && styles.tripCardCompact,
+      ]}
+    >
       <View style={styles.tripHeader}>
         <View style={[styles.tripIconWrap, { backgroundColor: vehicleColor + '22' }]}>
           <MaterialCommunityIcons name={vehicleIcon as any} size={16} color={vehicleColor} />
@@ -567,17 +570,7 @@ function TripRow({
         </Pressable>
       )}
 
-      {!compact && trip.route && trip.route.length > 1 && (
-        <Pressable
-          onPress={() => router.push({ pathname: '/trip-map', params: { id: trip.id } } as any)}
-          style={[styles.mapBtn, { borderColor: colors.border }]}
-          hitSlop={6}
-        >
-          <MaterialCommunityIcons name="map-outline" size={13} color={colors.mutedForeground} />
-          <Text style={[styles.mapBtnText, { color: colors.mutedForeground }]}>Voir carte</Text>
-        </Pressable>
-      )}
-    </View>
+    </Pressable>
   );
 }
 

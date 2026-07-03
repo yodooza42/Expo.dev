@@ -42,12 +42,47 @@ export default function TripMapScreen() {
   const [trip, setTrip] = useState<Trip | null>(null);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [loading, setLoading] = useState(true);
+  const [osrmRoute, setOsrmRoute] = useState<{ lat: number; lng: number }[] | null>(null);
+  const [loadingRoute, setLoadingRoute] = useState(false);
 
   useEffect(() => {
     Promise.all([getTrips(), getVehicleSettings()]).then(([trips, v]) => {
-      setTrip(trips.find(t => t.id === id) ?? null);
+      const found = trips.find(t => t.id === id) ?? null;
+      setTrip(found);
       setVehicles(v);
       setLoading(false);
+
+      // For manual trips without GPS trace: fetch OSRM route geometry
+      if (
+        found &&
+        found.source === 'manual' &&
+        (!found.route || found.route.length < 2) &&
+        found.startLat && found.startLon && found.endLat && found.endLon
+      ) {
+        setLoadingRoute(true);
+        const url = `https://router.project-osrm.org/route/v1/driving/${found.startLon},${found.startLat};${found.endLon},${found.endLat}?overview=full&geometries=geojson`;
+        fetch(url)
+          .then(r => r.json())
+          .then((data: { routes?: Array<{ geometry: { coordinates: [number, number][] } }> }) => {
+            const coords = data.routes?.[0]?.geometry?.coordinates;
+            if (coords && coords.length >= 2) {
+              setOsrmRoute(coords.map(([lng, lat]) => ({ lat, lng })));
+            } else {
+              // Fallback: straight line between start and end
+              setOsrmRoute([
+                { lat: found.startLat, lng: found.startLon },
+                { lat: found.endLat, lng: found.endLon },
+              ]);
+            }
+          })
+          .catch(() => {
+            setOsrmRoute([
+              { lat: found.startLat, lng: found.startLon },
+              { lat: found.endLat, lng: found.endLon },
+            ]);
+          })
+          .finally(() => setLoadingRoute(false));
+      }
     });
   }, [id]);
 
@@ -70,14 +105,30 @@ export default function TripMapScreen() {
           <View style={styles.center}>
             <ActivityIndicator color="#FFC107" />
           </View>
-        ) : !trip?.route || trip.route.length < 2 ? (
-          <View style={styles.center}>
-            <MaterialCommunityIcons name="map-marker-off-outline" size={48} color="#555" />
-            <Text style={styles.noRoute}>Tracé GPS non disponible</Text>
-          </View>
-        ) : (
-          <TripMapView route={trip.route} width={MAP_W} height={MAP_H} />
-        )}
+        ) : (() => {
+          const displayRoute = trip?.route && trip.route.length >= 2 ? trip.route : osrmRoute;
+          if (!displayRoute || displayRoute.length < 2) {
+            return loadingRoute ? (
+              <View style={styles.center}>
+                <ActivityIndicator color="#FFC107" />
+                <Text style={styles.noRoute}>Calcul de l'itinéraire…</Text>
+              </View>
+            ) : (
+              <View style={styles.center}>
+                <MaterialCommunityIcons name="map-marker-off-outline" size={48} color="#555" />
+                <Text style={styles.noRoute}>Tracé GPS non disponible</Text>
+              </View>
+            );
+          }
+          return (
+            <TripMapView
+              route={displayRoute}
+              width={MAP_W}
+              height={MAP_H}
+              lineColor={trip?.source === 'manual' ? '#2196F3' : '#FFC107'}
+            />
+          );
+        })()}
       </View>
 
       {/* Info card */}
@@ -102,8 +153,8 @@ export default function TripMapScreen() {
               color={colors.mutedForeground}
             />
             <StatItem
-              icon="navigation-variant-outline"
-              value={`${trip.pointCount} pts GPS`}
+              icon={trip.source === 'manual' ? 'pencil-outline' : 'navigation-variant-outline'}
+              value={trip.source === 'manual' ? 'Trajet manuel' : `${trip.pointCount} pts GPS`}
               color={colors.mutedForeground}
             />
             {trip.vehicle && trip.vehicle !== 'ignored' && (() => {
@@ -115,18 +166,18 @@ export default function TripMapScreen() {
             })()}
           </View>
 
-          {trip.route && (
+          {(trip.route || osrmRoute) && (
             <View style={styles.legendRow}>
               <View style={styles.legendItem}>
                 <View style={[styles.legendDot, { backgroundColor: '#4CAF50' }]} />
                 <Text style={[styles.legendText, { color: colors.mutedForeground }]}>Départ</Text>
               </View>
               <View style={styles.legendItem}>
-                <View style={[styles.legendDot, { backgroundColor: '#FFC107' }]} />
+                <View style={[styles.legendDot, { backgroundColor: trip.source === 'manual' ? '#2196F3' : '#FFC107' }]} />
                 <Text style={[styles.legendText, { color: colors.mutedForeground }]}>Arrivée</Text>
               </View>
               <Text style={[styles.legendText, { color: colors.mutedForeground }]}>
-                {trip.route.length} points (tracé simplifié)
+                {trip.source === 'manual' ? 'Itinéraire estimé (OSRM)' : `${trip.route?.length ?? 0} pts (tracé simplifié)`}
               </Text>
             </View>
           )}
