@@ -295,6 +295,15 @@ export default function SettingsScreen() {
           colors={colors}
         />
 
+        <Text style={[styles.section, { color: colors.mutedForeground }]}>Lieux</Text>
+        <SettingRow
+          icon="map-marker-multiple-outline"
+          label="Lieux connus"
+          sublabel="Maison, Magasins, Spots balades…"
+          onPress={() => router.push('/known-places' as any)}
+          colors={colors}
+        />
+
         <Text style={[styles.section, { color: colors.mutedForeground }]}>Localisation GPS</Text>
         <View style={[styles.row, { backgroundColor: colors.card, borderColor: colors.border }] }>
           <View style={[styles.rowIcon, { backgroundColor: colors.primary + '20' }]}>

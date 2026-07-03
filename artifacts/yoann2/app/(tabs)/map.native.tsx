@@ -5,6 +5,8 @@ import {
   ActionSheetIOS,
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -24,6 +26,8 @@ import type { ActivityType, LocationPoint } from '@/utils/locationTracking';
 import { haversineKm } from '@/utils/haversine';
 import { getTrips, updateTrip } from '@/utils/tripStorage';
 import type { Trip, RoutePoint } from '@/types/trips';
+import type { PlaceCategory } from '@/types/places';
+import { getPlaceCategories, saveKnownPlace } from '@/utils/placesStorage';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -210,6 +214,7 @@ function makeSeg(i){
   hitLine.on('touchend touchmove',function(){
     if(lpTimer){clearTimeout(lpTimer);lpTimer=null;}
   });
+  hitLine.on('contextmenu',function(e){L.DomEvent.stopPropagation(e);});
   L.polyline(seg,{color:col,weight:4,opacity:0.9,interactive:false}).addTo(map);
 }
 
@@ -236,6 +241,12 @@ window.recenter=function(){
     map.setView([46.2276,2.2137],6);
   }
 };
+
+map.on('contextmenu',function(e){
+  if(window.ReactNativeWebView){
+    window.ReactNativeWebView.postMessage(JSON.stringify({type:'mapLongPress',lat:e.latlng.lat,lng:e.latlng.lng}));
+  }
+});
 </script>
 </body>
 </html>`;
@@ -534,6 +545,13 @@ export default function MapScreen() {
   const [pendingRoute, setPendingRoute]        = useState<RoutePoint[] | null>(null);
   const [originalRoute, setOriginalRoute]     = useState<RoutePoint[] | null>(null);
 
+  // ── Place state ─────────────────────────────────────────────────────────────
+  const [longPressCoords, setLongPressCoords]   = useState<{ lat: number; lng: number } | null>(null);
+  const [placeSheetVisible, setPlaceSheetVisible] = useState(false);
+  const [placeCategories, setPlaceCategories]   = useState<PlaceCategory[]>([]);
+  const [newPlaceName, setNewPlaceName]         = useState('');
+  const [newPlaceCatId, setNewPlaceCatId]       = useState('');
+
   // ── Replay state ────────────────────────────────────────────────────────────
   const [replayOpen, setReplayOpen]           = useState(false);
   const [replayStartDay, setReplayStartDay]   = useState('');
@@ -814,6 +832,8 @@ export default function MapScreen() {
         activity?: string;
         time?: string;
         points?: Array<{ lat: number; lng: number }>;
+        lat?: number;
+        lng?: number;
       };
 
       if (msg.type === 'replay_progress') {
@@ -831,6 +851,19 @@ export default function MapScreen() {
         }
         return;
       }
+      if (msg.type === 'mapLongPress') {
+        if (replayMode) return;
+        getPlaceCategories().then(cats => {
+          setPlaceCategories(cats);
+          setNewPlaceCatId(cats[0]?.id ?? '');
+        });
+        setLongPressCoords({ lat: msg.lat!, lng: msg.lng! });
+        setNewPlaceName('');
+        setPlaceSheetVisible(true);
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+        return;
+      }
+
       if (msg.type !== 'longpress' || replayMode) return;
 
       const ts  = msg.ts!;
@@ -1309,6 +1342,84 @@ export default function MapScreen() {
           </>
         )}
       </View>
+
+      {/* ── Place creation sheet (map long-press) ── */}
+      <Modal visible={placeSheetVisible} animationType="slide" transparent>
+        <KeyboardAvoidingView
+          style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.65)' }]}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <Pressable style={{ flex: 1 }} onPress={() => setPlaceSheetVisible(false)} />
+          <View style={[styles.placeSheet, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.placeSheetTitle, { color: colors.foreground }]}>📍 Enregistrer ce lieu</Text>
+            {longPressCoords && (
+              <Text style={[styles.placeSheetCoords, { color: colors.mutedForeground }]}>
+                {longPressCoords.lat.toFixed(5)}, {longPressCoords.lng.toFixed(5)}
+              </Text>
+            )}
+            <TextInput
+              value={newPlaceName}
+              onChangeText={setNewPlaceName}
+              placeholder="Nom du lieu…"
+              placeholderTextColor={colors.mutedForeground}
+              style={[styles.placeSheetInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]}
+              autoFocus
+              returnKeyType="done"
+            />
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 14 }}>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                {placeCategories.map(cat => {
+                  const sel = newPlaceCatId === cat.id;
+                  return (
+                    <Pressable
+                      key={cat.id}
+                      onPress={() => setNewPlaceCatId(cat.id)}
+                      style={[
+                        styles.placeCatChip,
+                        {
+                          borderColor: sel ? cat.color : colors.border,
+                          backgroundColor: sel ? cat.color + '22' : colors.background,
+                        },
+                      ]}
+                    >
+                      <MaterialCommunityIcons name={cat.icon as any} size={14} color={sel ? cat.color : colors.mutedForeground} />
+                      <Text style={[styles.placeCatTxt, { color: sel ? cat.color : colors.mutedForeground }]}>{cat.name}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </ScrollView>
+            <View style={styles.placeSheetBtns}>
+              <Pressable
+                onPress={() => setPlaceSheetVisible(false)}
+                style={[styles.placeSheetCancel, { borderColor: colors.border }]}
+              >
+                <Text style={[styles.placeSheetCancelTxt, { color: colors.mutedForeground }]}>Annuler</Text>
+              </Pressable>
+              <Pressable
+                onPress={async () => {
+                  if (!newPlaceName.trim() || !longPressCoords) return;
+                  await saveKnownPlace({
+                    id: Date.now().toString(),
+                    name: newPlaceName.trim(),
+                    categoryId: newPlaceCatId,
+                    lat: longPressCoords.lat,
+                    lng: longPressCoords.lng,
+                    radiusM: 200,
+                    createdAt: Date.now(),
+                  });
+                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                  setPlaceSheetVisible(false);
+                }}
+                style={[styles.placeSheetSave, { backgroundColor: colors.primary, opacity: newPlaceName.trim() ? 1 : 0.4 }]}
+                disabled={!newPlaceName.trim()}
+              >
+                <Text style={[styles.placeSheetSaveTxt, { color: colors.primaryForeground }]}>Enregistrer</Text>
+              </Pressable>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
@@ -1662,4 +1773,62 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontFamily: 'Inter_400Regular',
   },
+
+  // ── Place sheet ───────────────────────────────────────────────────────────────
+  placeSheet: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: 20,
+    gap: 4,
+  },
+  placeSheetTitle: {
+    fontSize: 17,
+    fontFamily: 'Inter_700Bold',
+    marginBottom: 4,
+  },
+  placeSheetCoords: {
+    fontSize: 11,
+    fontFamily: 'Inter_400Regular',
+    marginBottom: 10,
+  },
+  placeSheetInput: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    fontSize: 14,
+    fontFamily: 'Inter_400Regular',
+    marginBottom: 12,
+  },
+  placeCatChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  placeCatTxt: { fontSize: 12, fontFamily: 'Inter_500Medium' },
+  placeSheetBtns: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 4,
+  },
+  placeSheetCancel: {
+    flex: 1,
+    paddingVertical: 11,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: 'center',
+  },
+  placeSheetCancelTxt: { fontSize: 14, fontFamily: 'Inter_500Medium' },
+  placeSheetSave: {
+    flex: 2,
+    paddingVertical: 11,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  placeSheetSaveTxt: { fontSize: 14, fontFamily: 'Inter_700Bold' },
 });
