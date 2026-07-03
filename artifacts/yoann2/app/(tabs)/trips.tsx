@@ -17,7 +17,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useColors } from '@/hooks/useColors';
-import type { MaintenanceItem, Trip, TripCategory, VehicleSettings, VehicleType } from '@/types/trips';
+import type { MaintenanceItem, Trip, TripCategory, Vehicle, VehicleType } from '@/types/trips';
 import {
   createCategoryAndGroupSimilar,
   deleteCategoryAndUnlink,
@@ -69,24 +69,30 @@ interface MonthStats {
   moto: { km: number; cost: number; count: number };
 }
 
-function computeMonthStats(trips: Trip[], settings: VehicleSettings): MonthStats[] {
+function computeMonthStats(trips: Trip[], vehicles: Vehicle[]): MonthStats[] {
+  const vehicleMap = new Map(vehicles.map(v => [v.id, v]));
   const map = new Map<string, MonthStats>();
   for (const t of trips) {
     if (!t.vehicle || t.vehicle === 'ignored') continue;
+    const veh = vehicleMap.get(t.vehicle);
+    if (!veh) continue;
     const mk = monthKey(t.startTime);
     if (!map.has(mk)) {
       map.set(mk, { key: mk, label: fmtMonth(mk), car: { km: 0, cost: 0, count: 0 }, moto: { km: 0, cost: 0, count: 0 } });
     }
     const e = map.get(mk)!;
-    e[t.vehicle].km += t.distanceKm;
-    e[t.vehicle].cost += t.distanceKm * settings[t.vehicle].costPerKm;
-    e[t.vehicle].count += 1;
+    const bucket = veh.type === 'moto' ? 'moto' : 'car';
+    e[bucket].km += t.distanceKm;
+    e[bucket].cost += t.distanceKm * veh.costPerKm;
+    e[bucket].count += 1;
   }
   return Array.from(map.values()).sort((a, b) => b.key.localeCompare(a.key));
 }
 
 interface MaintenanceAlert {
-  vehicle: 'car' | 'moto';
+  vehicleId: string;
+  vehicleName: string;
+  vehicleType: 'car' | 'moto' | 'other';
   item: MaintenanceItem;
   kmOver: number;
   odometer: number;
@@ -94,21 +100,22 @@ interface MaintenanceAlert {
   daysOver?: number;
 }
 
-function getAlerts(trips: Trip[], settings: VehicleSettings): MaintenanceAlert[] {
+function getAlerts(trips: Trip[], vehicles: Vehicle[]): MaintenanceAlert[] {
   const alerts: MaintenanceAlert[] = [];
   const now = Date.now();
-  for (const v of ['car', 'moto'] as const) {
-    const cfg = settings[v];
-    const odo = computeOdometer(trips, v, cfg.odometerBaseKm);
-    for (const item of cfg.maintenanceItems) {
-      const since = odo - item.lastResetKm;
-      if (since >= item.intervalKm) {
-        alerts.push({ vehicle: v, item, kmOver: Math.round(since - item.intervalKm), odometer: odo, type: 'km' });
+  for (const v of vehicles) {
+    const odo = computeOdometer(trips, v.id, v.odometerBaseKm);
+    for (const item of v.maintenanceItems) {
+      if (item.intervalKm > 0) {
+        const since = odo - item.lastResetKm;
+        if (since >= item.intervalKm) {
+          alerts.push({ vehicleId: v.id, vehicleName: v.name, vehicleType: v.type, item, kmOver: Math.round(since - item.intervalKm), odometer: odo, type: 'km' });
+        }
       }
       if (item.intervalDays && item.lastResetDate) {
         const daysSince = (now - item.lastResetDate) / (24 * 3_600_000);
         if (daysSince >= item.intervalDays) {
-          alerts.push({ vehicle: v, item, kmOver: 0, odometer: odo, type: 'date', daysOver: Math.round(daysSince - item.intervalDays) });
+          alerts.push({ vehicleId: v.id, vehicleName: v.name, vehicleType: v.type, item, kmOver: 0, odometer: odo, type: 'date', daysOver: Math.round(daysSince - item.intervalDays) });
         }
       }
     }
@@ -583,10 +590,7 @@ export default function TripsScreen() {
 
   const [trips, setTrips] = useState<Trip[]>([]);
   const [categories, setCategories] = useState<TripCategory[]>([]);
-  const [settings, setSettings] = useState<VehicleSettings>({
-    car: { costPerKm: 0.15, odometerBaseKm: 0, maintenanceItems: [] },
-    moto: { costPerKm: 0.10, odometerBaseKm: 0, maintenanceItems: [] },
-  });
+  const [settings, setSettings] = useState<Vehicle[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [groupingTrip, setGroupingTrip] = useState<Trip | null>(null);
   const [renameTarget, setRenameTarget] = useState<TripCategory | null>(null);
@@ -669,8 +673,6 @@ export default function TripsScreen() {
   const pending = uncategorized.filter(t => t.vehicle === null);
   const monthStats = useMemo(() => computeMonthStats(trips, settings), [trips, settings]);
   const alerts = useMemo(() => getAlerts(trips, settings), [trips, settings]);
-  const carOdo = computeOdometer(trips, 'car', settings.car.odometerBaseKm);
-  const motoOdo = computeOdometer(trips, 'moto', settings.moto.odometerBaseKm);
   const carColor = '#2196F3';
   const motoColor = '#FF9800';
 
@@ -738,14 +740,14 @@ export default function TripsScreen() {
           <View style={styles.section}>
             {alerts.map(a => (
               <Pressable
-                key={`${a.vehicle}-${a.item.id}`}
+                key={`${a.vehicleId}-${a.item.id}`}
                 onPress={() => router.push('/vehicle-settings' as any)}
                 style={[styles.alertCard, { backgroundColor: '#FF980020', borderColor: '#FF9800' }]}
               >
                 <MaterialCommunityIcons name="wrench-outline" size={18} color="#FF9800" />
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.alertTitle, { color: '#FF9800' }]}>
-                    {a.item.name} — {a.vehicle === 'car' ? '🚗 Voiture' : '🏍 Moto'}
+                    {a.item.name} — {a.vehicleType === 'moto' ? '🏍' : '🚗'} {a.vehicleName}
                   </Text>
                   <Text style={[styles.alertSub, { color: colors.mutedForeground }]}>
                     {a.type === 'date'
@@ -769,18 +771,19 @@ export default function TripsScreen() {
           </View>
         )}
 
-        {/* Odometers */}
+        {/* Odometers — dynamic per vehicle */}
         <View style={styles.odoRow}>
-          <View style={[styles.odoCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <MaterialCommunityIcons name="car" size={20} color={carColor} />
-            <Text style={[styles.odoVal, { color: colors.foreground }]}>{carOdo.toFixed(0)}</Text>
-            <Text style={[styles.odoLabel, { color: colors.mutedForeground }]}>km voiture</Text>
-          </View>
-          <View style={[styles.odoCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <MaterialCommunityIcons name="motorbike" size={20} color={motoColor} />
-            <Text style={[styles.odoVal, { color: colors.foreground }]}>{motoOdo.toFixed(0)}</Text>
-            <Text style={[styles.odoLabel, { color: colors.mutedForeground }]}>km moto</Text>
-          </View>
+          {settings.filter(v => v.type !== 'other').map(v => {
+            const odo = computeOdometer(trips, v.id, v.odometerBaseKm);
+            const color = v.type === 'moto' ? motoColor : carColor;
+            return (
+              <View key={v.id} style={[styles.odoCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <MaterialCommunityIcons name={v.type === 'moto' ? 'motorbike' : 'car'} size={20} color={color} />
+                <Text style={[styles.odoVal, { color: colors.foreground }]}>{odo.toFixed(0)}</Text>
+                <Text style={[styles.odoLabel, { color: colors.mutedForeground }]}>km {v.name}</Text>
+              </View>
+            );
+          })}
         </View>
 
         {/* ── Categories ── */}
@@ -867,6 +870,14 @@ export default function TripsScreen() {
           )}
         </View>
       </ScrollView>
+
+      {/* FAB — ajout manuel de trajet */}
+      <Pressable
+        style={[styles.fab, { backgroundColor: colors.primary }]}
+        onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); router.push('/trip/new' as any); }}
+      >
+        <MaterialCommunityIcons name="plus" size={26} color="#121212" />
+      </Pressable>
     </View>
   );
 }
@@ -903,6 +914,21 @@ const styles = StyleSheet.create({
   pendingBanner: { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 12, borderWidth: 1, padding: 14 },
   pendingText: { fontSize: 14, fontFamily: 'Inter_600SemiBold' },
 
+  fab: {
+    position: 'absolute',
+    bottom: 28,
+    right: 20,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+  },
   odoRow: { flexDirection: 'row', gap: 12 },
   odoCard: { flex: 1, borderRadius: 14, borderWidth: 1, padding: 16, alignItems: 'center', gap: 4 },
   odoVal: { fontSize: 24, fontFamily: 'Inter_700Bold' },

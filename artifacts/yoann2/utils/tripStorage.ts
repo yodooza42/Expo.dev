@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import type { Trip, TripDetectionState, VehicleSettings } from '@/types/trips';
+import type { Trip, TripDetectionState, Vehicle, VehicleSettings } from '@/types/trips';
 
 const KEY_TRIPS = '@yoann2_trips';
 const KEY_VEHICLE_SETTINGS = '@yoann2_vehicle_settings';
@@ -21,18 +21,10 @@ const DEFAULT_DETECTION_STATE: TripDetectionState = {
   routePoints: [],
 };
 
-export const DEFAULT_VEHICLE_SETTINGS: VehicleSettings = {
-  car: {
-    costPerKm: 0.15,
-    odometerBaseKm: 0,
-    maintenanceItems: [],
-  },
-  moto: {
-    costPerKm: 0.10,
-    odometerBaseKm: 0,
-    maintenanceItems: [],
-  },
-};
+export const DEFAULT_VEHICLES: Vehicle[] = [
+  { id: 'car',  name: 'Doblo', type: 'car',  costPerKm: 0.15, odometerBaseKm: 0, maintenanceItems: [] },
+  { id: 'moto', name: 'Msx',   type: 'moto', costPerKm: 0.10, odometerBaseKm: 0, maintenanceItems: [] },
+];
 
 export async function getTrips(): Promise<Trip[]> {
   try {
@@ -73,7 +65,6 @@ export async function getTripDetectionState(): Promise<TripDetectionState> {
     const raw = await AsyncStorage.getItem(KEY_DETECTION_STATE);
     if (!raw) return { ...DEFAULT_DETECTION_STATE };
     const parsed = JSON.parse(raw) as TripDetectionState;
-    // Migration: routePoints field was added later — ensure it always exists
     if (!Array.isArray(parsed.routePoints)) {
       parsed.routePoints = [];
     }
@@ -89,17 +80,71 @@ export async function saveTripDetectionState(state: TripDetectionState): Promise
   } catch {}
 }
 
-// ── Helpers used by UI components ────────────────────────────────────────────
+// ── Odometer helper ───────────────────────────────────────────────────────────
 
 export function computeOdometer(
   trips: Trip[],
-  vehicle: 'car' | 'moto',
+  vehicleId: string,
   baseKm: number,
 ): number {
   const accumulated = trips
-    .filter(t => t.vehicle === vehicle)
+    .filter(t => t.vehicle === vehicleId)
     .reduce((sum, t) => sum + t.distanceKm, 0);
   return Math.round((baseKm + accumulated) * 10) / 10;
+}
+
+// ── Vehicle settings with migration from legacy {car, moto} format ────────────
+
+export async function getVehicleSettings(): Promise<VehicleSettings> {
+  try {
+    const raw = await AsyncStorage.getItem(KEY_VEHICLE_SETTINGS);
+    if (!raw) return structuredClone(DEFAULT_VEHICLES);
+
+    const parsed: unknown = JSON.parse(raw);
+
+    // New format — array of Vehicle
+    if (Array.isArray(parsed)) {
+      return parsed as VehicleSettings;
+    }
+
+    // Legacy format — { car: VehicleConfig, moto: VehicleConfig }
+    const legacy = parsed as Record<string, {
+      costPerKm?: number;
+      odometerBaseKm?: number;
+      maintenanceItems?: Vehicle['maintenanceItems'];
+    }>;
+
+    const migrated: Vehicle[] = [
+      {
+        id: 'car',
+        name: 'Doblo',
+        type: 'car',
+        costPerKm: legacy['car']?.costPerKm ?? 0.15,
+        odometerBaseKm: legacy['car']?.odometerBaseKm ?? 0,
+        maintenanceItems: legacy['car']?.maintenanceItems ?? [],
+      },
+      {
+        id: 'moto',
+        name: 'Msx',
+        type: 'moto',
+        costPerKm: legacy['moto']?.costPerKm ?? 0.10,
+        odometerBaseKm: legacy['moto']?.odometerBaseKm ?? 0,
+        maintenanceItems: legacy['moto']?.maintenanceItems ?? [],
+      },
+    ];
+
+    // Save migrated format immediately
+    await AsyncStorage.setItem(KEY_VEHICLE_SETTINGS, JSON.stringify(migrated));
+    return migrated;
+  } catch {
+    return structuredClone(DEFAULT_VEHICLES);
+  }
+}
+
+export async function saveVehicleSettings(settings: VehicleSettings): Promise<void> {
+  try {
+    await AsyncStorage.setItem(KEY_VEHICLE_SETTINGS, JSON.stringify(settings));
+  } catch {}
 }
 
 export async function purgeOldTrips(maxAgeDays: number): Promise<void> {
@@ -110,20 +155,5 @@ export async function purgeOldTrips(maxAgeDays: number): Promise<void> {
     if (kept.length !== trips.length) {
       await AsyncStorage.setItem(KEY_TRIPS, JSON.stringify(kept));
     }
-  } catch {}
-}
-
-export async function getVehicleSettings(): Promise<VehicleSettings> {
-  try {
-    const raw = await AsyncStorage.getItem(KEY_VEHICLE_SETTINGS);
-    return raw ? (JSON.parse(raw) as VehicleSettings) : DEFAULT_VEHICLE_SETTINGS;
-  } catch {
-    return DEFAULT_VEHICLE_SETTINGS;
-  }
-}
-
-export async function saveVehicleSettings(settings: VehicleSettings): Promise<void> {
-  try {
-    await AsyncStorage.setItem(KEY_VEHICLE_SETTINGS, JSON.stringify(settings));
   } catch {}
 }

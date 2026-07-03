@@ -11,9 +11,9 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useColors } from '@/hooks/useColors';
-import type { Trip, TripCategory } from '@/types/trips';
+import type { Trip, TripCategory, Vehicle } from '@/types/trips';
 import { getCategories } from '@/utils/tripCategories';
-import { getTrips } from '@/utils/tripStorage';
+import { getTrips, getVehicleSettings } from '@/utils/tripStorage';
 
 // ── Data helpers ──────────────────────────────────────────────────────────────
 
@@ -54,7 +54,8 @@ function getWeeklyData(trips: Trip[]): WeekData[] {
   });
 }
 
-function getMonthlyData(trips: Trip[]): MonthData[] {
+function getMonthlyData(trips: Trip[], vehicles: Vehicle[]): MonthData[] {
+  const costMap = new Map(vehicles.map(v => [v.id, v.costPerKm]));
   const now = new Date();
   return Array.from({ length: 6 }, (_, i) => {
     const monthOffset = 5 - i;
@@ -63,7 +64,7 @@ function getMonthlyData(trips: Trip[]): MonthData[] {
     const slice = trips.filter(t => t.endTime >= start && t.endTime < end && t.vehicle && t.vehicle !== 'ignored');
     const car  = slice.filter(t => t.vehicle === 'car').reduce((s, t) => s + t.distanceKm, 0);
     const moto = slice.filter(t => t.vehicle === 'moto').reduce((s, t) => s + t.distanceKm, 0);
-    const cost = slice.reduce((s, t) => s + t.distanceKm * (t.vehicle === 'car' ? 0.15 : 0.10), 0);
+    const cost = slice.reduce((s, t) => s + t.distanceKm * (costMap.get(t.vehicle ?? '') ?? 0.15), 0);
     return { label: shortMonth(start), car, moto, total: car + moto, cost };
   });
 }
@@ -113,16 +114,18 @@ export default function TripStatsScreen() {
 
   const [trips, setTrips] = useState<Trip[]>([]);
   const [categories, setCategories] = useState<TripCategory[]>([]);
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
 
   useEffect(() => {
-    Promise.all([getTrips(), getCategories()]).then(([t, c]) => {
+    Promise.all([getTrips(), getCategories(), getVehicleSettings()]).then(([t, c, v]) => {
       setTrips(t);
       setCategories(c);
+      setVehicles(v);
     });
   }, []);
 
   const weeklyData  = useMemo(() => getWeeklyData(trips), [trips]);
-  const monthlyData = useMemo(() => getMonthlyData(trips), [trips]);
+  const monthlyData = useMemo(() => getMonthlyData(trips, vehicles), [trips, vehicles]);
 
   const maxWeeklyKm  = Math.max(...weeklyData.map(d => d.total), 1);
   const maxMonthlyKm = Math.max(...monthlyData.map(d => d.total), 1);

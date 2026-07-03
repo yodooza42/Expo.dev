@@ -49,10 +49,15 @@ export function NavigationWidget({
           justifyContent: 'space-between',
         }}
       >
-        <TextWidget
-          text="⬆ Y aller"
-          style={{ fontSize: 14, color: PRIMARY, fontFamily: 'sans-serif-medium' }}
-        />
+        <FlexWidget
+          clickAction="OPEN_URI"
+          clickActionData={{ uri: 'yoann2:///navigation' }}
+        >
+          <TextWidget
+            text="Yoann 2.0"
+            style={{ fontSize: 14, color: PRIMARY, fontFamily: 'sans-serif-medium' }}
+          />
+        </FlexWidget>
         {/* Fuel shortcut button */}
         <FlexWidget
           clickAction="OPEN_URI"

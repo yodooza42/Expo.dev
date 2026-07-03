@@ -17,11 +17,12 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { TripTagModal } from '@/components/TripTagModal';
-import { AppProvider } from '@/contexts/AppContext';
+import { AppProvider, useApp } from '@/contexts/AppContext';
 import { SplashProvider } from '@/contexts/SplashContext';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 import type { Trip, VehicleType } from '@/types/trips';
 import { isTrackingPaused, purgeOldData, requestLocationPermissions, startTracking } from '@/utils/locationTracking';
+import { runMaintenanceScheduler } from '@/utils/maintenanceScheduler';
 import { updateNavWidget } from '@/widgets/updateNavWidget';
 import {
   computeOdometer,
@@ -80,6 +81,8 @@ function RootLayoutNav() {
   useEffect(() => {
     bootstrapLocationTracking();
     checkPendingTrips();
+    runScheduler();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [checkPendingTrips]);
 
   useEffect(() => {
@@ -87,9 +90,11 @@ function RootLayoutNav() {
       if (nextState === 'active') {
         checkPendingTrips();
         updateNavWidget().catch(() => {});
+        runScheduler();
       }
     });
     return () => sub.remove();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [checkPendingTrips]);
 
   useEffect(() => {
@@ -100,6 +105,15 @@ function RootLayoutNav() {
     });
     return () => sub.remove();
   }, [router]);
+
+  const { addTask, updateTask, projects, tasks } = useApp();
+
+  async function runScheduler() {
+    try {
+      const trips = await getTrips();
+      await runMaintenanceScheduler({ trips, projects, tasks, addTask, updateTask });
+    } catch {}
+  }
 
   async function handleTag(vehicle: VehicleType) {
     if (!pendingTrip) return;
@@ -112,21 +126,23 @@ function RootLayoutNav() {
       try {
         const [trips, settings] = await Promise.all([getTrips(), getVehicleSettings()]);
         const updatedTrips = trips.map(t => t.id === tripId ? { ...t, vehicle } : t);
-        const config = settings[vehicle];
-        const odometer = computeOdometer(updatedTrips, vehicle, config.odometerBaseKm);
-        const overdue = config.maintenanceItems.filter(
-          item => odometer - item.lastResetKm >= item.intervalKm,
-        );
-        if (overdue.length > 0) {
-          const lines = overdue.map(item => {
-            const kmOver = Math.round(odometer - item.lastResetKm - item.intervalKm);
-            return `• ${item.name} — +${kmOver} km dépassés`;
-          });
-          Alert.alert(
-            '⚠️ Entretien requis',
-            lines.join('\n'),
-            [{ text: 'OK', style: 'default' }],
+        const config = settings.find(v => v.id === vehicle);
+        if (config) {
+          const odometer = computeOdometer(updatedTrips, vehicle, config.odometerBaseKm);
+          const overdue = config.maintenanceItems.filter(
+            item => item.intervalKm > 0 && odometer - item.lastResetKm >= item.intervalKm,
           );
+          if (overdue.length > 0) {
+            const lines = overdue.map(item => {
+              const kmOver = Math.round(odometer - item.lastResetKm - item.intervalKm);
+              return `• ${item.name} — +${kmOver} km dépassés`;
+            });
+            Alert.alert(
+              '⚠️ Entretien requis',
+              lines.join('\n'),
+              [{ text: 'OK', style: 'default' }],
+            );
+          }
         }
       } catch {}
     }
@@ -160,6 +176,7 @@ function RootLayoutNav() {
         <Stack.Screen name="vehicle-settings" options={{ headerShown: false, presentation: 'modal' }} />
         <Stack.Screen name="project-reports" options={{ headerShown: false, presentation: 'modal' }} />
         <Stack.Screen name="project-report/[id]" options={{ headerShown: false, presentation: 'card' }} />
+        <Stack.Screen name="trip/new" options={{ headerShown: false, presentation: 'modal' }} />
       </Stack>
       <TripTagModal trip={pendingTrip} onTag={handleTag} />
     </>

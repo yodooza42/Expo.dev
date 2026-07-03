@@ -16,19 +16,20 @@ export interface Trip {
   startLon: number;
   endLat: number;
   endLon: number;
-  /** Simplified GPS trace (Ramer-Douglas-Peucker, ~15m tolerance). Stored for future map display. */
+  /** Simplified GPS trace stored for map display. */
   route?: RoutePoint[];
-  /** Optional reference to a TripCategory grouping similar routes. */
+  /** Reference to a TripCategory grouping similar routes. */
   categoryId?: string;
-  /** True when this trip is a return journey relative to its category (start/end swapped). */
+  /** True when this trip is a return journey relative to its category. */
   isReturn?: boolean;
+  /** How the trip was created. */
+  source?: 'auto' | 'manual';
 }
 
-/** A named group of trips with a similar start/end geography (within MATCH_RADIUS_M). */
+/** A named group of trips with a similar start/end geography. */
 export interface TripCategory {
   id: string;
   name: string;
-  /** Anchor coordinates used for similarity matching */
   startLat: number;
   startLon: number;
   endLat: number;
@@ -45,18 +46,23 @@ export interface MaintenanceItem {
   intervalDays?: number;
   /** ISO timestamp of last reset for date-based tracking */
   lastResetDate?: number;
+  /** ID of the task created by the maintenance scheduler (avoids duplicates) */
+  linkedTaskId?: string;
 }
 
-export interface VehicleConfig {
+export interface Vehicle {
+  id: string;
+  name: string;
+  type: 'car' | 'moto' | 'other';
   costPerKm: number;
   odometerBaseKm: number;
   maintenanceItems: MaintenanceItem[];
+  /** Project ID where maintenance tasks are auto-created */
+  maintenanceProjectId?: string;
 }
 
-export interface VehicleSettings {
-  car: VehicleConfig;
-  moto: VehicleConfig;
-}
+/** Array of vehicles — replaces the old {car, moto} fixed object */
+export type VehicleSettings = Vehicle[];
 
 export interface TripDetectionState {
   status: 'idle' | 'candidate' | 'active' | 'ending';

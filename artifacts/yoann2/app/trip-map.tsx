@@ -13,8 +13,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { TripMapView } from '@/components/TripMapView';
 import { useColors } from '@/hooks/useColors';
-import type { Trip } from '@/types/trips';
-import { getTrips } from '@/utils/tripStorage';
+import type { Trip, Vehicle } from '@/types/trips';
+import { getTrips, getVehicleSettings } from '@/utils/tripStorage';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
@@ -40,11 +40,13 @@ export default function TripMapScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
 
   const [trip, setTrip] = useState<Trip | null>(null);
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    getTrips().then(trips => {
+    Promise.all([getTrips(), getVehicleSettings()]).then(([trips, v]) => {
       setTrip(trips.find(t => t.id === id) ?? null);
+      setVehicles(v);
       setLoading(false);
     });
   }, [id]);
@@ -104,13 +106,13 @@ export default function TripMapScreen() {
               value={`${trip.pointCount} pts GPS`}
               color={colors.mutedForeground}
             />
-            {trip.vehicle && trip.vehicle !== 'ignored' && (
-              <StatItem
-                icon={trip.vehicle === 'car' ? 'car' : 'motorbike'}
-                value={trip.vehicle === 'car' ? 'Voiture' : 'Moto'}
-                color={trip.vehicle === 'car' ? '#2196F3' : '#FF9800'}
-              />
-            )}
+            {trip.vehicle && trip.vehicle !== 'ignored' && (() => {
+              const veh = vehicles.find(v => v.id === trip.vehicle);
+              const name = veh?.name ?? (trip.vehicle === 'moto' ? 'Moto' : 'Voiture');
+              const color = veh?.type === 'moto' || trip.vehicle === 'moto' ? '#FF9800' : '#2196F3';
+              const icon = veh?.type === 'moto' || trip.vehicle === 'moto' ? 'motorbike' : 'car';
+              return <StatItem icon={icon} value={name} color={color} />;
+            })()}
           </View>
 
           {trip.route && (
