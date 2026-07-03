@@ -2,6 +2,7 @@ import React from 'react';
 import { FlexWidget, TextWidget } from 'react-native-android-widget';
 import type { ColorProp } from 'react-native-android-widget';
 
+import { getShortcutEmoji } from '@/utils/navigationShortcuts';
 import type { NavShortcut } from '@/utils/navigationShortcuts';
 
 const BG: ColorProp      = '#1A1A1A';
@@ -148,9 +149,9 @@ function ShortcutButton({ slot }: { slot: NavShortcut | null }) {
       }}
     >
       <TextWidget
-        text={slot ? '⬆' : '+'}
+        text={slot ? getShortcutEmoji(slot.icon) : '+'}
         style={{
-          fontSize: 16,
+          fontSize: 22,
           color: ready ? PRIMARY : MUTED,
           fontFamily: 'sans-serif-medium',
         }}

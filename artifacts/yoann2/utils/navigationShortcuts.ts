@@ -8,6 +8,37 @@ export interface NavShortcut {
   address: string;
   lat: number | null;
   lng: number | null;
+  icon?: string;
+}
+
+export interface ShortcutIconDef {
+  key: string;
+  emoji: string;
+  mdi: string;
+  label: string;
+}
+
+export const SHORTCUT_ICONS: ShortcutIconDef[] = [
+  { key: 'home',       emoji: '🏠', mdi: 'home',                    label: 'Maison'     },
+  { key: 'work',       emoji: '💼', mdi: 'briefcase',               label: 'Travail'    },
+  { key: 'rdv',        emoji: '📅', mdi: 'calendar-clock',          label: 'RDV'        },
+  { key: 'medical',    emoji: '🏥', mdi: 'hospital-box-outline',    label: 'Médecin'    },
+  { key: 'gym',        emoji: '🏋', mdi: 'dumbbell',                label: 'Sport'      },
+  { key: 'shop',       emoji: '🛒', mdi: 'cart-outline',            label: 'Courses'    },
+  { key: 'school',     emoji: '🏫', mdi: 'school-outline',          label: 'École'      },
+  { key: 'restaurant', emoji: '🍽', mdi: 'silverware-fork-knife',   label: 'Restaurant' },
+  { key: 'parking',    emoji: '🅿',  mdi: 'parking',                label: 'Parking'    },
+  { key: 'airport',    emoji: '✈',  mdi: 'airplane',               label: 'Aéroport'  },
+];
+
+export function getShortcutEmoji(icon?: string): string {
+  if (!icon) return '⬆';
+  return SHORTCUT_ICONS.find(i => i.key === icon)?.emoji ?? '⬆';
+}
+
+export function getShortcutMdi(icon?: string): string {
+  if (!icon) return 'navigation-variant';
+  return SHORTCUT_ICONS.find(i => i.key === icon)?.mdi ?? 'navigation-variant';
 }
 
 const SHORTCUTS_KEY = '@yoann2_nav_shortcuts';

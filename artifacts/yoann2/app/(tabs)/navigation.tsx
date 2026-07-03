@@ -25,10 +25,12 @@ import { saveFuelEntry } from '@/utils/fuelStorage';
 import {
   MAX_SHORTCUTS,
   NavShortcut,
+  SHORTCUT_ICONS,
   createShortcut,
   deleteNavShortcut,
   geocodeAddress,
   getNavShortcuts,
+  getShortcutMdi,
   openNavigation,
   saveNavShortcuts,
   upsertNavShortcut,
@@ -71,6 +73,7 @@ export default function NavigationScreen() {
   const [editing, setEditing] = useState<EditShortcut | null>(null);
   const [editName, setEditName] = useState('');
   const [editAddress, setEditAddress] = useState('');
+  const [editIcon, setEditIcon] = useState<string | undefined>(undefined);
   const [editGeocoding, setEditGeocoding] = useState(false);
   const [editError, setEditError] = useState('');
 
@@ -150,6 +153,7 @@ export default function NavigationScreen() {
     setEditing(target);
     setEditName(target.shortcut?.name ?? '');
     setEditAddress(target.shortcut?.address ?? '');
+    setEditIcon(target.shortcut?.icon);
     setEditError('');
     setTimeout(() => nameRef.current?.focus(), 150);
   }
@@ -158,6 +162,7 @@ export default function NavigationScreen() {
     setEditing(null);
     setEditName('');
     setEditAddress('');
+    setEditIcon(undefined);
     setEditError('');
   }
 
@@ -176,8 +181,8 @@ export default function NavigationScreen() {
       }
       const existing = editing?.shortcut;
       const updated: NavShortcut = existing
-        ? { ...existing, name: editName.trim(), address: editAddress.trim(), lat: coords.lat, lng: coords.lng }
-        : createShortcut(editName.trim(), editAddress.trim(), coords.lat, coords.lng);
+        ? { ...existing, name: editName.trim(), address: editAddress.trim(), lat: coords.lat, lng: coords.lng, icon: editIcon }
+        : { ...createShortcut(editName.trim(), editAddress.trim(), coords.lat, coords.lng), icon: editIcon };
 
       await upsertNavShortcut(updated);
       await reload();
@@ -322,6 +327,46 @@ export default function NavigationScreen() {
               maxLength={20}
               returnKeyType="next"
             />
+
+            <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Icône</Text>
+            <View style={styles.iconPickerRow}>
+              {/* Default — flèche navigation */}
+              <Pressable
+                onPress={() => setEditIcon(undefined)}
+                style={[
+                  styles.iconPickerBtn,
+                  {
+                    backgroundColor: !editIcon ? colors.primary + '30' : colors.background,
+                    borderColor: !editIcon ? colors.primary : colors.border,
+                  },
+                ]}
+              >
+                <MaterialCommunityIcons
+                  name="navigation-variant"
+                  size={22}
+                  color={!editIcon ? colors.primary : colors.mutedForeground}
+                />
+              </Pressable>
+              {SHORTCUT_ICONS.map(ic => (
+                <Pressable
+                  key={ic.key}
+                  onPress={() => setEditIcon(ic.key)}
+                  style={[
+                    styles.iconPickerBtn,
+                    {
+                      backgroundColor: editIcon === ic.key ? colors.primary + '30' : colors.background,
+                      borderColor: editIcon === ic.key ? colors.primary : colors.border,
+                    },
+                  ]}
+                >
+                  <MaterialCommunityIcons
+                    name={ic.mdi as any}
+                    size={22}
+                    color={editIcon === ic.key ? colors.primary : colors.mutedForeground}
+                  />
+                </Pressable>
+              ))}
+            </View>
 
             <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Adresse</Text>
             <TextInput
@@ -478,7 +523,7 @@ function ShortcutCard({
         <ActivityIndicator size="small" color={colors.primary} />
       ) : (
         <MaterialCommunityIcons
-          name={ready ? 'navigation-variant' : 'map-marker-question'}
+          name={(ready ? getShortcutMdi(shortcut.icon) : 'map-marker-question') as any}
           size={28}
           color={ready ? colors.primary : colors.mutedForeground}
         />
@@ -684,4 +729,17 @@ const styles = StyleSheet.create({
   },
   fuelVehicleText: { fontSize: 14, fontFamily: 'Inter_500Medium' },
   fuelTotal: { fontSize: 15, fontFamily: 'Inter_700Bold', textAlign: 'center', marginTop: 2 },
+  iconPickerRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  iconPickerBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 });
