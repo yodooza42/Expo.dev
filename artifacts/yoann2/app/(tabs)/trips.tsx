@@ -422,6 +422,10 @@ function TripRow({
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     await updateTrip(trip.id, { vehicle });
     onUpdate();
+    // After tagging a real vehicle, auto-open category picker if not yet grouped
+    if (vehicle !== 'ignored' && !trip.categoryId && onGroup) {
+      onGroup(trip);
+    }
   }
 
   return (

@@ -4,12 +4,10 @@ import * as Notifications from 'expo-notifications';
 import type { LocationPoint } from '@/utils/locationTracking';
 import { haversineKm } from '@/utils/haversine';
 import { simplifyRoute } from '@/utils/routeSimplification';
-import { findMatchingCategory } from '@/utils/tripCategories';
 import {
   getTripDetectionState,
   saveTrip,
   saveTripDetectionState,
-  updateTrip,
 } from '@/utils/tripStorage';
 import type { RoutePoint, Trip, TripDetectionState } from '@/types/trips';
 
@@ -149,16 +147,10 @@ export async function processPointForTrip(point: LocationPoint): Promise<Trip | 
   if (completedTrip) {
     await saveTrip(completedTrip);
 
-    // Auto-assign to an existing category if the route matches one.
-    const matchedCat = await findMatchingCategory(completedTrip);
-    if (matchedCat) {
-      await updateTrip(completedTrip.id, { categoryId: matchedCat.id });
-    }
-
     await Notifications.scheduleNotificationAsync({
       content: {
         title: 'Trajet terminé — Yoann 2.0',
-        body: `${completedTrip.distanceKm.toFixed(1)} km · Tapez pour taguer le véhicule`,
+        body: `${completedTrip.distanceKm.toFixed(1)} km · Tapez pour choisir le véhicule et la catégorie`,
         data: { url: '/(tabs)/trips', type: 'trip_completed' },
       },
       trigger: null,
