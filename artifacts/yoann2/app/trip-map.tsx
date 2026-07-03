@@ -1,0 +1,177 @@
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import React, { useEffect, useState } from 'react';
+import {
+  ActivityIndicator,
+  Dimensions,
+  StyleSheet,
+  Text,
+  View,
+  Pressable,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { TripMapView } from '@/components/TripMapView';
+import { useColors } from '@/hooks/useColors';
+import type { Trip } from '@/types/trips';
+import { getTrips } from '@/utils/tripStorage';
+
+const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
+
+function fmtDate(ts: number): string {
+  return new Date(ts).toLocaleDateString('fr-FR', {
+    weekday: 'long', day: 'numeric', month: 'long',
+  });
+}
+function fmtTime(ts: number): string {
+  return new Date(ts).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+}
+function fmtDuration(ms: number): string {
+  const m = Math.round(ms / 60_000);
+  if (m < 60) return `${m} min`;
+  const h = Math.floor(m / 60);
+  return `${h}h${String(m % 60).padStart(2, '0')}`;
+}
+
+export default function TripMapScreen() {
+  const colors = useColors();
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const { id } = useLocalSearchParams<{ id: string }>();
+
+  const [trip, setTrip] = useState<Trip | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    getTrips().then(trips => {
+      setTrip(trips.find(t => t.id === id) ?? null);
+      setLoading(false);
+    });
+  }, [id]);
+
+  const MAP_H = SCREEN_H * 0.62;
+  const MAP_W = SCREEN_W;
+
+  return (
+    <View style={[styles.root, { backgroundColor: '#121212' }]}>
+      {/* Back button */}
+      <Pressable
+        onPress={() => router.back()}
+        style={[styles.backBtn, { top: insets.top + 10 }]}
+      >
+        <MaterialCommunityIcons name="chevron-left" size={26} color="#fff" />
+      </Pressable>
+
+      {/* Map area */}
+      <View style={{ width: MAP_W, height: MAP_H, overflow: 'hidden' }}>
+        {loading ? (
+          <View style={styles.center}>
+            <ActivityIndicator color="#FFC107" />
+          </View>
+        ) : !trip?.route || trip.route.length < 2 ? (
+          <View style={styles.center}>
+            <MaterialCommunityIcons name="map-marker-off-outline" size={48} color="#555" />
+            <Text style={styles.noRoute}>Tracé GPS non disponible</Text>
+          </View>
+        ) : (
+          <TripMapView route={trip.route} width={MAP_W} height={MAP_H} />
+        )}
+      </View>
+
+      {/* Info card */}
+      {trip && (
+        <View style={[styles.card, { backgroundColor: colors.card, borderTopColor: colors.border }]}>
+          <Text style={[styles.dateText, { color: colors.foreground }]}>
+            {fmtDate(trip.startTime)}
+          </Text>
+          <Text style={[styles.timeText, { color: colors.mutedForeground }]}>
+            {fmtTime(trip.startTime)} → {fmtTime(trip.endTime)}
+          </Text>
+
+          <View style={styles.statsRow}>
+            <StatItem
+              icon="map-marker-distance"
+              value={`${trip.distanceKm.toFixed(1)} km`}
+              color="#FFC107"
+            />
+            <StatItem
+              icon="clock-outline"
+              value={fmtDuration(trip.endTime - trip.startTime)}
+              color={colors.mutedForeground}
+            />
+            <StatItem
+              icon="navigation-variant-outline"
+              value={`${trip.pointCount} pts GPS`}
+              color={colors.mutedForeground}
+            />
+            {trip.vehicle && trip.vehicle !== 'ignored' && (
+              <StatItem
+                icon={trip.vehicle === 'car' ? 'car' : 'motorbike'}
+                value={trip.vehicle === 'car' ? 'Voiture' : 'Moto'}
+                color={trip.vehicle === 'car' ? '#2196F3' : '#FF9800'}
+              />
+            )}
+          </View>
+
+          {trip.route && (
+            <View style={styles.legendRow}>
+              <View style={styles.legendItem}>
+                <View style={[styles.legendDot, { backgroundColor: '#4CAF50' }]} />
+                <Text style={[styles.legendText, { color: colors.mutedForeground }]}>Départ</Text>
+              </View>
+              <View style={styles.legendItem}>
+                <View style={[styles.legendDot, { backgroundColor: '#FFC107' }]} />
+                <Text style={[styles.legendText, { color: colors.mutedForeground }]}>Arrivée</Text>
+              </View>
+              <Text style={[styles.legendText, { color: colors.mutedForeground }]}>
+                {trip.route.length} points (tracé simplifié)
+              </Text>
+            </View>
+          )}
+        </View>
+      )}
+    </View>
+  );
+}
+
+function StatItem({ icon, value, color }: { icon: string; value: string; color: string }) {
+  return (
+    <View style={styles.statItem}>
+      <MaterialCommunityIcons name={icon as any} size={16} color={color} />
+      <Text style={[styles.statValue, { color }]}>{value}</Text>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  root: { flex: 1 },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
+  backBtn: {
+    position: 'absolute',
+    left: 16,
+    zIndex: 10,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#00000088',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  noRoute: { color: '#555', fontSize: 14, fontFamily: 'Inter_400Regular', textAlign: 'center' },
+  card: {
+    flex: 1,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    gap: 6,
+  },
+  dateText: { fontSize: 17, fontFamily: 'Inter_600SemiBold', textTransform: 'capitalize' },
+  timeText: { fontSize: 13, fontFamily: 'Inter_400Regular' },
+  statsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 14, marginTop: 8 },
+  statItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  statValue: { fontSize: 14, fontFamily: 'Inter_500Medium' },
+  legendRow: { flexDirection: 'row', alignItems: 'center', gap: 14, marginTop: 4 },
+  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  legendDot: { width: 8, height: 8, borderRadius: 4 },
+  legendText: { fontSize: 11, fontFamily: 'Inter_400Regular' },
+});

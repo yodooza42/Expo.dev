@@ -27,6 +27,14 @@ export function tripMatchesCategory(trip: Trip, cat: TripCategory): boolean {
   );
 }
 
+/** True when trip start≈cat.end AND trip end≈cat.start (reverse route). */
+export function tripIsReturnOf(trip: Trip, cat: TripCategory): boolean {
+  return (
+    haversineM(trip.startLat, trip.startLon, cat.endLat, cat.endLon) <= MATCH_RADIUS_M &&
+    haversineM(trip.endLat, trip.endLon, cat.startLat, cat.startLon) <= MATCH_RADIUS_M
+  );
+}
+
 // ── CRUD ─────────────────────────────────────────────────────────────────────
 
 export async function getCategories(): Promise<TripCategory[]> {
@@ -97,8 +105,11 @@ export async function createCategoryAndGroupSimilar(
 
   await Promise.all(
     allTrips
-      .filter(t => !t.categoryId && tripMatchesCategory(t, cat))
-      .map(t => updateTrip(t.id, { categoryId: cat.id })),
+      .filter(t => !t.categoryId && (tripMatchesCategory(t, cat) || tripIsReturnOf(t, cat)))
+      .map(t => updateTrip(t.id, {
+        categoryId: cat.id,
+        isReturn: !tripMatchesCategory(t, cat) && tripIsReturnOf(t, cat),
+      })),
   );
 
   return cat;

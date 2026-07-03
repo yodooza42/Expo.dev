@@ -17,6 +17,8 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useColors } from '@/hooks/useColors';
+import type { FuelEntry } from '@/types/fuel';
+import { saveFuelEntry } from '@/utils/fuelStorage';
 import {
   MAX_SHORTCUTS,
   NavShortcut,
@@ -55,6 +57,29 @@ export default function NavigationScreen() {
   const [editAddress, setEditAddress] = useState('');
   const [editGeocoding, setEditGeocoding] = useState(false);
   const [editError, setEditError] = useState('');
+
+  // Fuel log modal
+  const [fuelOpen, setFuelOpen] = useState(false);
+  const [fuelVehicle, setFuelVehicle] = useState<'car' | 'moto'>('car');
+  const [fuelLiters, setFuelLiters] = useState('');
+  const [fuelPrice, setFuelPrice] = useState('');
+
+  async function handleSaveFuel() {
+    const l = parseFloat(fuelLiters.replace(',', '.'));
+    const p = parseFloat(fuelPrice.replace(',', '.'));
+    if (isNaN(l) || isNaN(p) || l <= 0 || p <= 0) return;
+    const entry: FuelEntry = {
+      id: `fuel_${Date.now()}`,
+      timestamp: Date.now(),
+      vehicle: fuelVehicle,
+      liters: l,
+      pricePerLiter: p,
+    };
+    await saveFuelEntry(entry);
+    setFuelLiters('');
+    setFuelPrice('');
+    setFuelOpen(false);
+  }
 
   const nameRef = useRef<TextInput>(null);
 
@@ -163,7 +188,14 @@ export default function NavigationScreen() {
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 12, backgroundColor: colors.card, borderBottomColor: colors.border }]}>
         <MaterialCommunityIcons name="navigation-variant" size={24} color={colors.primary} />
-        <Text style={[styles.headerTitle, { color: colors.foreground }]}>Y aller</Text>
+        <Text style={[styles.headerTitle, { color: colors.foreground, flex: 1 }]}>Y aller</Text>
+        <Pressable
+          onPress={() => setFuelOpen(true)}
+          hitSlop={8}
+          style={[styles.fuelBtn, { backgroundColor: colors.background, borderColor: colors.border }]}
+        >
+          <MaterialCommunityIcons name="gas-station" size={20} color={colors.primary} />
+        </Pressable>
       </View>
 
       <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 24 }]}>
@@ -289,6 +321,87 @@ export default function NavigationScreen() {
                 {editGeocoding
                   ? <ActivityIndicator size="small" color="#121212" />
                   : <Text style={[styles.modalBtnText, { color: '#121212', fontFamily: 'Inter_600SemiBold' }]}>Enregistrer</Text>}
+              </Pressable>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* ── Fuel log modal ── */}
+      <Modal visible={fuelOpen} transparent animationType="slide" onRequestClose={() => setFuelOpen(false)}>
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <View style={[styles.modalSheet, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.modalTitle, { color: colors.foreground }]}>⛽ Passage à la pompe</Text>
+
+            {/* Vehicle selector */}
+            <View style={styles.fuelVehicleRow}>
+              <Pressable
+                onPress={() => setFuelVehicle('car')}
+                style={[styles.fuelVehicleBtn, {
+                  backgroundColor: fuelVehicle === 'car' ? '#2196F322' : colors.muted,
+                  borderColor: fuelVehicle === 'car' ? '#2196F3' : colors.border,
+                  borderWidth: 1,
+                }]}
+              >
+                <MaterialCommunityIcons name="car" size={18} color={fuelVehicle === 'car' ? '#2196F3' : colors.mutedForeground} />
+                <Text style={[styles.fuelVehicleText, { color: fuelVehicle === 'car' ? '#2196F3' : colors.mutedForeground }]}>Voiture</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => setFuelVehicle('moto')}
+                style={[styles.fuelVehicleBtn, {
+                  backgroundColor: fuelVehicle === 'moto' ? '#FF980022' : colors.muted,
+                  borderColor: fuelVehicle === 'moto' ? '#FF9800' : colors.border,
+                  borderWidth: 1,
+                }]}
+              >
+                <MaterialCommunityIcons name="motorbike" size={18} color={fuelVehicle === 'moto' ? '#FF9800' : colors.mutedForeground} />
+                <Text style={[styles.fuelVehicleText, { color: fuelVehicle === 'moto' ? '#FF9800' : colors.mutedForeground }]}>Moto</Text>
+              </Pressable>
+            </View>
+
+            <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Litres</Text>
+            <TextInput
+              style={[styles.fieldInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]}
+              placeholder="Ex : 35.5"
+              placeholderTextColor={colors.mutedForeground}
+              value={fuelLiters}
+              onChangeText={setFuelLiters}
+              keyboardType="decimal-pad"
+            />
+
+            <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Prix / litre (€)</Text>
+            <TextInput
+              style={[styles.fieldInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]}
+              placeholder="Ex : 1.89"
+              placeholderTextColor={colors.mutedForeground}
+              value={fuelPrice}
+              onChangeText={setFuelPrice}
+              keyboardType="decimal-pad"
+              returnKeyType="done"
+              onSubmitEditing={handleSaveFuel}
+            />
+
+            {fuelLiters.length > 0 && fuelPrice.length > 0 && (
+              <Text style={[styles.fuelTotal, { color: colors.primary }]}>
+                Total : {(parseFloat(fuelLiters.replace(',', '.') || '0') * parseFloat(fuelPrice.replace(',', '.') || '0')).toFixed(2)} €
+              </Text>
+            )}
+
+            <View style={styles.modalActions}>
+              <Pressable style={[styles.modalBtn, { borderColor: colors.border }]} onPress={() => setFuelOpen(false)}>
+                <Text style={[styles.modalBtnText, { color: colors.mutedForeground }]}>Annuler</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.modalBtn, styles.modalBtnPrimary, {
+                  backgroundColor: colors.primary,
+                  opacity: (parseFloat(fuelLiters) > 0 && parseFloat(fuelPrice) > 0) ? 1 : 0.4,
+                }]}
+                onPress={handleSaveFuel}
+              >
+                <Text style={[styles.modalBtnText, { color: '#121212', fontFamily: 'Inter_600SemiBold' }]}>Enregistrer</Text>
               </Pressable>
             </View>
           </View>
@@ -503,4 +616,15 @@ const styles = StyleSheet.create({
   },
   modalBtnPrimary: { borderWidth: 0 },
   modalBtnText: { fontSize: 15, fontFamily: 'Inter_500Medium' },
+  fuelBtn: {
+    width: 34, height: 34, borderRadius: 10, borderWidth: 1,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  fuelVehicleRow: { flexDirection: 'row', gap: 10 },
+  fuelVehicleBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 7, borderRadius: 10, paddingVertical: 10,
+  },
+  fuelVehicleText: { fontSize: 14, fontFamily: 'Inter_500Medium' },
+  fuelTotal: { fontSize: 15, fontFamily: 'Inter_700Bold', textAlign: 'center', marginTop: 2 },
 });

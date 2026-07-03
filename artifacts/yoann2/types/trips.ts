@@ -20,6 +20,8 @@ export interface Trip {
   route?: RoutePoint[];
   /** Optional reference to a TripCategory grouping similar routes. */
   categoryId?: string;
+  /** True when this trip is a return journey relative to its category (start/end swapped). */
+  isReturn?: boolean;
 }
 
 /** A named group of trips with a similar start/end geography (within MATCH_RADIUS_M). */

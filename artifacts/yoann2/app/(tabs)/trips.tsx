@@ -23,6 +23,7 @@ import {
   deleteCategoryAndUnlink,
   getCategories,
   renameCategory,
+  tripIsReturnOf,
   tripMatchesCategory,
 } from '@/utils/tripCategories';
 import {
@@ -153,14 +154,21 @@ function GroupModal({
   colors: ReturnType<typeof useColors>;
   onClose: () => void;
   onCreate: (name: string) => void;
-  onAssign: (catId: string) => void;
+  onAssign: (catId: string, isReturn: boolean) => void;
 }) {
   const [name, setName] = useState('');
 
-  const matching = useMemo(() => {
+  const forwardMatches = useMemo(() => {
     if (!trip) return [];
     return categories.filter(c => tripMatchesCategory(trip, c));
   }, [trip, categories]);
+
+  const returnMatches = useMemo(() => {
+    if (!trip) return [];
+    return categories.filter(c => !tripMatchesCategory(trip, c) && tripIsReturnOf(trip, c));
+  }, [trip, categories]);
+
+  const hasMatches = forwardMatches.length > 0 || returnMatches.length > 0;
 
   function handleCreate() {
     if (!name.trim()) return;
@@ -174,19 +182,31 @@ function GroupModal({
         <Pressable style={[styles.sheet, { backgroundColor: colors.card }]}>
           <Text style={[styles.sheetTitle, { color: colors.foreground }]}>Grouper ce trajet</Text>
 
-          {matching.length > 0 && (
+          {hasMatches && (
             <>
               <Text style={[styles.sheetSub, { color: colors.mutedForeground }]}>
                 Catégories similaires existantes :
               </Text>
-              {matching.map(c => (
+              {forwardMatches.map(c => (
                 <Pressable
                   key={c.id}
-                  onPress={() => { onAssign(c.id); setName(''); }}
+                  onPress={() => { onAssign(c.id, false); setName(''); }}
                   style={[styles.matchBtn, { backgroundColor: colors.muted, borderColor: colors.border }]}
                 >
                   <MaterialCommunityIcons name="folder-outline" size={16} color={colors.primary} />
                   <Text style={[styles.matchBtnText, { color: colors.foreground }]}>{c.name}</Text>
+                  <Text style={[styles.matchBtnBadge, { color: colors.primary }]}>→</Text>
+                </Pressable>
+              ))}
+              {returnMatches.map(c => (
+                <Pressable
+                  key={c.id}
+                  onPress={() => { onAssign(c.id, true); setName(''); }}
+                  style={[styles.matchBtn, { backgroundColor: colors.muted, borderColor: colors.border }]}
+                >
+                  <MaterialCommunityIcons name="folder-outline" size={16} color={colors.mutedForeground} />
+                  <Text style={[styles.matchBtnText, { color: colors.foreground }]}>{c.name}</Text>
+                  <Text style={[styles.matchBtnBadge, { color: colors.mutedForeground }]}>← Retour</Text>
                 </Pressable>
               ))}
               <View style={styles.dividerRow}>
@@ -207,7 +227,7 @@ function GroupModal({
               borderColor: colors.border,
               backgroundColor: colors.background,
             }]}
-            autoFocus={matching.length === 0}
+            autoFocus={!hasMatches}
             returnKeyType="done"
             onSubmitEditing={handleCreate}
           />
@@ -308,6 +328,8 @@ function CategoryCard({
 
   const carCount = stats.trips.filter(t => t.vehicle === 'car').length;
   const motoCount = stats.trips.filter(t => t.vehicle === 'moto').length;
+  const returnCount = stats.trips.filter(t => t.isReturn).length;
+  const forwardCount = stats.total - returnCount;
 
   return (
     <View style={[styles.catCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -365,6 +387,11 @@ function CategoryCard({
               <Text style={[styles.catVehText, { color: colors.mutedForeground }]}>{motoCount}</Text>
             </View>
           )}
+          {returnCount > 0 && forwardCount > 0 && (
+            <Text style={[styles.catReturnText, { color: colors.mutedForeground }]}>
+              · {forwardCount}→ {returnCount}←
+            </Text>
+          )}
         </View>
       )}
 
@@ -404,6 +431,7 @@ function TripRow({
   compact?: boolean;
   onGroup?: (t: Trip) => void;
 }) {
+  const router = useRouter();
   const carColor = '#2196F3';
   const motoColor = '#FF9800';
   const isPending = trip.vehicle === null;
@@ -491,6 +519,17 @@ function TripRow({
           <Text style={[styles.groupBtnText, { color: colors.mutedForeground }]}>Grouper</Text>
         </Pressable>
       )}
+
+      {!compact && trip.route && trip.route.length > 1 && (
+        <Pressable
+          onPress={() => router.push({ pathname: '/trip-map', params: { id: trip.id } } as any)}
+          style={[styles.mapBtn, { borderColor: colors.border }]}
+          hitSlop={6}
+        >
+          <MaterialCommunityIcons name="map-outline" size={13} color={colors.mutedForeground} />
+          <Text style={[styles.mapBtnText, { color: colors.mutedForeground }]}>Voir carte</Text>
+        </Pressable>
+      )}
     </View>
   );
 }
@@ -538,10 +577,10 @@ export default function TripsScreen() {
     await load();
   }
 
-  async function handleGroupAssign(catId: string) {
+  async function handleGroupAssign(catId: string, isReturn: boolean) {
     if (!groupingTrip) return;
     setGroupingTrip(null);
-    await updateTrip(groupingTrip.id, { categoryId: catId });
+    await updateTrip(groupingTrip.id, { categoryId: catId, isReturn });
     await load();
   }
 
@@ -619,6 +658,13 @@ export default function TripsScreen() {
             style={[styles.headerBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
           >
             <MaterialCommunityIcons name="navigation-variant-outline" size={18} color={colors.primary} />
+          </Pressable>
+          <Pressable
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/trip-stats' as any); }}
+            hitSlop={8}
+            style={[styles.headerBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+          >
+            <MaterialCommunityIcons name="chart-bar" size={18} color={colors.mutedForeground} />
           </Pressable>
           <Pressable
             onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/vehicle-settings' as any); }}
@@ -784,6 +830,13 @@ const styles = StyleSheet.create({
     width: 34, height: 34, borderRadius: 10, borderWidth: 1,
     alignItems: 'center', justifyContent: 'center',
   },
+  matchBtnBadge: { marginLeft: 'auto' as any, fontSize: 12, fontFamily: 'Inter_600SemiBold' },
+  mapBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 5,
+    paddingTop: 6, borderTopWidth: StyleSheet.hairlineWidth, marginTop: 2,
+  },
+  mapBtnText: { fontSize: 11, fontFamily: 'Inter_400Regular' },
+  catReturnText: { fontSize: 11, fontFamily: 'Inter_400Regular' },
   scroll: { padding: 16, gap: 16 },
   section: { gap: 10 },
   sectionTitle: { fontSize: 13, fontFamily: 'Inter_600SemiBold', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 },
