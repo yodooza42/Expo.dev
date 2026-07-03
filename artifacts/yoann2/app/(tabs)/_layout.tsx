@@ -23,6 +23,7 @@ export default function TabLayout() {
       <Tabs.Screen name="kanban" />
       <Tabs.Screen name="expenses" />
       <Tabs.Screen name="trips" />
+      <Tabs.Screen name="navigation" />
       <Tabs.Screen name="index" />
       <Tabs.Screen name="settings" options={{ href: null }} />
     </Tabs>

@@ -20,7 +20,7 @@
     "android": {
       "backgroundColor": "#121212",
       "package": "com.yoann2.app",
-      "versionCode": 53,
+      "versionCode": 54,
       "permissions": [
         "android.permission.RECORD_AUDIO",
         "android.permission.ACCESS_COARSE_LOCATION",
@@ -81,6 +81,19 @@
               "minResizeHeight": "110dp",
               "description": "Tâches et rendez-vous du jour",
               "updatePeriodMillis": 1800000
+            },
+            {
+              "name": "NavigationWidget",
+              "label": "Yoann2.0 — Y aller",
+              "minWidth": "180dp",
+              "minHeight": "110dp",
+              "targetCellWidth": 4,
+              "targetCellHeight": 3,
+              "resizeMode": "horizontal|vertical",
+              "minResizeWidth": "180dp",
+              "minResizeHeight": "80dp",
+              "description": "Raccourcis de navigation vers vos destinations",
+              "updatePeriodMillis": 0
             }
           ]
         }

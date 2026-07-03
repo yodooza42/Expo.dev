@@ -4,7 +4,7 @@ import * as TaskManager from 'expo-task-manager';
 
 import { autoBackup } from '@/utils/locationBackup';
 import { haversineKm } from '@/utils/haversine';
-import { processPointForTrip } from '@/utils/tripDetection';
+import { processPointForTrip, TRACKING_MODE_KEY } from '@/utils/tripDetection';
 
 export { haversineKm };
 
@@ -127,7 +127,7 @@ export async function loadMultiDayPoints(
   return all.filter(p => p.timestamp >= startTs && p.timestamp <= endTs);
 }
 
-// ── Purge old data (>90 days) ─────────────────────────────────────────────────
+// ── Purge old data (>7 days) ──────────────────────────────────────────────────
 
 export async function purgeOldData(): Promise<void> {
   try {
@@ -155,7 +155,13 @@ export async function purgeOldData(): Promise<void> {
 const PAUSED_KEY = '@yoann2_location_paused';
 const GPS_INTERVAL_KEY = '@yoann2_gps_interval';
 const LAST_VALID_KEY = '@yoann2_last_valid_point';
+const TRACKING_STARTED_MODE_KEY = '@yoann2_tracking_started_mode';
 
+// GPS accuracy filter: ignore points with horizontal accuracy worse than this.
+// 20m is a good threshold — below this the point adds GPS noise to the trace.
+const MAX_ACCURACY_METERS = 20;
+
+// Speed sanity filter: ignore points implying faster than 200 km/h
 const MIN_DISTANCE_METERS = 15;
 const MAX_SPEED_MS = 55.56; // 200 km/h
 
@@ -197,6 +203,31 @@ export async function setTrackingPaused(paused: boolean): Promise<void> {
   await AsyncStorage.setItem(PAUSED_KEY, paused ? '1' : '0');
 }
 
+// ── Adaptive interval helpers ─────────────────────────────────────────────────
+
+// Returns the Location options adapted to current trip phase.
+// - idle  → economy mode (user-selected interval, balanced accuracy)
+// - active → dense mode (3s / 2m, high accuracy) for precise trace + distance
+async function buildLocationOptions(
+  tripPhase: 'active' | 'idle',
+): Promise<Location.LocationTaskOptions> {
+  const baseInterval = await getGpsInterval();
+  const isActive = tripPhase === 'active';
+  return {
+    accuracy: isActive ? Location.Accuracy.High : Location.Accuracy.Balanced,
+    timeInterval: isActive ? 3_000 : baseInterval.timeIntervalMs,
+    distanceInterval: isActive ? 2 : baseInterval.distanceIntervalM,
+    showsBackgroundLocationIndicator: true,
+    foregroundService: {
+      notificationTitle: isActive ? 'Yoann2.0 — Trajet en cours' : 'Yoann2.0',
+      notificationBody: isActive
+        ? 'Suivi GPS actif — trajet en cours'
+        : 'Surveillance des déplacements en arrière-plan',
+      notificationColor: '#FFC107',
+    },
+  };
+}
+
 // ── Permission request ────────────────────────────────────────────────────────
 
 export async function requestLocationPermissions(): Promise<boolean> {
@@ -212,24 +243,18 @@ export async function startTracking(): Promise<void> {
   const paused = await isTrackingPaused();
   if (paused) return;
 
-  const hasPerms = await Location.hasServicesEnabledAsync();
-  if (!hasPerms) return;
+  const hasServices = await Location.hasServicesEnabledAsync();
+  if (!hasServices) return;
 
   const isRegistered = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME).catch(() => false);
   if (isRegistered) return;
 
-  const interval = await getGpsInterval();
-  await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
-    accuracy: Location.Accuracy.Balanced,
-    timeInterval: interval.timeIntervalMs,
-    distanceInterval: interval.distanceIntervalM,
-    showsBackgroundLocationIndicator: true,
-    foregroundService: {
-      notificationTitle: 'Yoann2.0',
-      notificationBody: 'Enregistrement de la position en arrière-plan',
-      notificationColor: '#FFC107',
-    },
-  });
+  const mode = (await AsyncStorage.getItem(TRACKING_MODE_KEY).catch(() => null)) ?? 'idle';
+  const tripPhase = mode === 'active' ? 'active' : 'idle';
+
+  await AsyncStorage.setItem(TRACKING_STARTED_MODE_KEY, tripPhase).catch(() => {});
+  const opts = await buildLocationOptions(tripPhase);
+  await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, opts);
 }
 
 export async function restartTracking(): Promise<void> {
@@ -254,6 +279,24 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
   if (!data) return;
   const { locations } = data as { locations: Location.LocationObject[] };
 
+  // ── Adaptive interval check ─────────────────────────────────────────────────
+  // tripDetection signals the desired mode via TRACKING_MODE_KEY.
+  // If the mode has changed since the task was last started, restart now.
+  try {
+    const wantedMode = (await AsyncStorage.getItem(TRACKING_MODE_KEY)) ?? 'idle';
+    const startedMode = (await AsyncStorage.getItem(TRACKING_STARTED_MODE_KEY)) ?? 'idle';
+    if (wantedMode !== startedMode) {
+      await AsyncStorage.setItem(TRACKING_STARTED_MODE_KEY, wantedMode);
+      const tripPhase = wantedMode === 'active' ? 'active' : 'idle';
+      const opts = await buildLocationOptions(tripPhase);
+      await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME).catch(() => {});
+      await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, opts).catch(() => {});
+      // Return — the newly-started task will process the next batch of locations
+      return;
+    }
+  } catch {}
+
+  // ── Load last valid point ───────────────────────────────────────────────────
   let lastValid: LocationPoint | null = null;
   try {
     const raw = await AsyncStorage.getItem(LAST_VALID_KEY);
@@ -267,17 +310,24 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
     } catch {}
   }
 
+  // ── Process each location ───────────────────────────────────────────────────
   for (const loc of locations) {
     const lat = loc.coords.latitude;
     const lng = loc.coords.longitude;
     const timestamp = loc.timestamp;
     const speedMs = loc.coords.speed;
+    const accuracy = loc.coords.accuracy;
 
+    // 1. Precision filter: skip points with degraded horizontal accuracy
+    if (accuracy != null && accuracy > MAX_ACCURACY_METERS) continue;
+
+    // 2. Distance filter: skip micro-movements
     if (lastValid) {
       const distM = haversineKm(lastValid.lat, lastValid.lng, lat, lng) * 1000;
       const timeS = (timestamp - lastValid.timestamp) / 1000;
 
       if (distM < MIN_DISTANCE_METERS) continue;
+      // 3. Speed sanity filter: skip physically impossible jumps
       if (timeS > 0 && distM / timeS > MAX_SPEED_MS) continue;
     }
 

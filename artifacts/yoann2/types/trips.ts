@@ -1,5 +1,10 @@
 export type VehicleType = 'car' | 'moto' | 'ignored';
 
+export interface RoutePoint {
+  lat: number;
+  lng: number;
+}
+
 export interface Trip {
   id: string;
   startTime: number;
@@ -11,6 +16,8 @@ export interface Trip {
   startLon: number;
   endLat: number;
   endLon: number;
+  /** Simplified GPS trace (Ramer-Douglas-Peucker, ~15m tolerance). Stored for future map display. */
+  route?: RoutePoint[];
 }
 
 export interface MaintenanceItem {
@@ -43,4 +50,6 @@ export interface TripDetectionState {
   lastMovingTime: number;
   distanceKm: number;
   pointCount: number;
+  /** Raw GPS points accumulated during the current trip (capped at 3 000). */
+  routePoints: RoutePoint[];
 }

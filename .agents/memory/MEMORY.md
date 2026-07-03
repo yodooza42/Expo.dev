@@ -3,3 +3,4 @@
 - [Expo Android crash diagnosis](expo-android-crash-diagnosis.md) — splash-then-close = uncaught JS error in index.js/root render before React (guard sync native calls); instant-close = native init crash; Reanimated 4 requires New Arch.
 - [EAS project coordinates — yoann-20](eas-project-coords.md) — slug `yoann-20`, owner `yozvfkzucbzbc`, projectId `6774b277-b066-4921-bcbb-b88f0959acb4`; old stpyoann48fbeocbekc account no longer works.
 - [react-native-android-widget color format](rn-android-widget-colors.md) — use 6-digit `#RRGGBB` hex only; 8-digit `#RRGGBBAA` = CSS format (alpha last), NOT Android `#AARRGGBB`; `#FF121212` is red at 7% opacity, not opaque black.
+- [react-native-android-widget style API constraints](rn-android-widget-styles.md) — FlexWidgetStyle: use `flexGap` not `gap`; no `flexWrap`, no percentage widths ("47%"); TextWidgetStyle has no `flex`. WidgetTaskHandlerProps: widget name is at `widgetInfo.widgetName`, not top-level `widgetName`.

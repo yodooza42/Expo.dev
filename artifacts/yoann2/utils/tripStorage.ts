@@ -18,6 +18,7 @@ const DEFAULT_DETECTION_STATE: TripDetectionState = {
   lastMovingTime: 0,
   distanceKm: 0,
   pointCount: 0,
+  routePoints: [],
 };
 
 export const DEFAULT_VEHICLE_SETTINGS: VehicleSettings = {
@@ -67,40 +68,16 @@ export async function deleteTrip(id: string): Promise<void> {
   } catch {}
 }
 
-export async function purgeOldTrips(keepDays = 90): Promise<void> {
-  try {
-    const cutoff = Date.now() - keepDays * 24 * 60 * 60 * 1000;
-    const trips = await getTrips();
-    const kept = trips.filter(t => t.endTime > cutoff);
-    await AsyncStorage.setItem(KEY_TRIPS, JSON.stringify(kept));
-  } catch {}
-}
-
-export async function getVehicleSettings(): Promise<VehicleSettings> {
-  try {
-    const raw = await AsyncStorage.getItem(KEY_VEHICLE_SETTINGS);
-    if (!raw) return DEFAULT_VEHICLE_SETTINGS;
-    const parsed = JSON.parse(raw) as Partial<VehicleSettings>;
-    return {
-      car: { ...DEFAULT_VEHICLE_SETTINGS.car, ...(parsed.car ?? {}) },
-      moto: { ...DEFAULT_VEHICLE_SETTINGS.moto, ...(parsed.moto ?? {}) },
-    };
-  } catch {
-    return DEFAULT_VEHICLE_SETTINGS;
-  }
-}
-
-export async function saveVehicleSettings(settings: VehicleSettings): Promise<void> {
-  try {
-    await AsyncStorage.setItem(KEY_VEHICLE_SETTINGS, JSON.stringify(settings));
-  } catch {}
-}
-
 export async function getTripDetectionState(): Promise<TripDetectionState> {
   try {
     const raw = await AsyncStorage.getItem(KEY_DETECTION_STATE);
     if (!raw) return { ...DEFAULT_DETECTION_STATE };
-    return { ...DEFAULT_DETECTION_STATE, ...(JSON.parse(raw) as Partial<TripDetectionState>) };
+    const parsed = JSON.parse(raw) as TripDetectionState;
+    // Migration: routePoints field was added later — ensure it always exists
+    if (!Array.isArray(parsed.routePoints)) {
+      parsed.routePoints = [];
+    }
+    return parsed;
   } catch {
     return { ...DEFAULT_DETECTION_STATE };
   }
@@ -112,7 +89,41 @@ export async function saveTripDetectionState(state: TripDetectionState): Promise
   } catch {}
 }
 
-export function computeOdometer(trips: Trip[], vehicle: 'car' | 'moto', baseKm: number): number {
-  const tagged = trips.filter(t => t.vehicle === vehicle).reduce((s, t) => s + t.distanceKm, 0);
-  return Math.round((baseKm + tagged) * 10) / 10;
+// ── Helpers used by UI components ────────────────────────────────────────────
+
+export function computeOdometer(
+  trips: Trip[],
+  vehicle: 'car' | 'moto',
+  baseKm: number,
+): number {
+  const accumulated = trips
+    .filter(t => t.vehicle === vehicle)
+    .reduce((sum, t) => sum + t.distanceKm, 0);
+  return Math.round((baseKm + accumulated) * 10) / 10;
+}
+
+export async function purgeOldTrips(maxAgeDays: number): Promise<void> {
+  try {
+    const cutoff = Date.now() - maxAgeDays * 24 * 60 * 60 * 1000;
+    const trips = await getTrips();
+    const kept = trips.filter(t => t.endTime >= cutoff);
+    if (kept.length !== trips.length) {
+      await AsyncStorage.setItem(KEY_TRIPS, JSON.stringify(kept));
+    }
+  } catch {}
+}
+
+export async function getVehicleSettings(): Promise<VehicleSettings> {
+  try {
+    const raw = await AsyncStorage.getItem(KEY_VEHICLE_SETTINGS);
+    return raw ? (JSON.parse(raw) as VehicleSettings) : DEFAULT_VEHICLE_SETTINGS;
+  } catch {
+    return DEFAULT_VEHICLE_SETTINGS;
+  }
+}
+
+export async function saveVehicleSettings(settings: VehicleSettings): Promise<void> {
+  try {
+    await AsyncStorage.setItem(KEY_VEHICLE_SETTINGS, JSON.stringify(settings));
+  } catch {}
 }
