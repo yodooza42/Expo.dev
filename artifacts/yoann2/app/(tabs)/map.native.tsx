@@ -21,12 +21,20 @@ import { useLocationHistory } from '@/hooks/useLocationHistory';
 import { exportBackup, importBackup } from '@/utils/locationBackup';
 import { correctActivity, deleteDayPoints, loadMultiDayPoints } from '@/utils/locationTracking';
 import type { ActivityType, LocationPoint } from '@/utils/locationTracking';
+import { haversineKm } from '@/utils/haversine';
+import { getTrips, updateTrip } from '@/utils/tripStorage';
+import type { Trip, RoutePoint } from '@/types/trips';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function formatDayLabel(day: string): string {
   const d = new Date(day + 'T12:00:00');
   return d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+}
+
+function fmtTripTime(ts: number): string {
+  const d = new Date(ts);
+  return String(d.getHours()).padStart(2, '0') + 'h' + String(d.getMinutes()).padStart(2, '0');
 }
 
 function fmtReplayDay(day: string): string {
@@ -381,6 +389,68 @@ window.stopReplay=function(){
 </html>`;
 }
 
+// ── Trip route injection (Leaflet JS) ─────────────────────────────────────────
+
+function buildTripInjectScript(
+  points: Array<{ lat: number; lng: number }>,
+  color: string,
+  editable: boolean,
+): string {
+  const ptsJSON = JSON.stringify(points);
+  const editFlag = editable ? 'true' : 'false';
+  return '(function(){'
+    + 'if(window._tripLayers){window._tripLayers.forEach(function(l){l.remove();});}'
+    + 'window._tripLayers=[];'
+    + 'window._tripEditPts=' + ptsJSON + ';'
+    + "var C='" + color + "';"
+    + 'var EDIT=' + editFlag + ';'
+
+    + 'function mkHandleIcon(){'
+    + "return L.divIcon({className:'',html:'<div style=\"width:16px;height:16px;background:#fff;border-radius:50%;border:2.5px solid "+color+";box-shadow:0 2px 6px rgba(0,0,0,0.55);margin:-8px 0 0 -8px\"></div>',iconSize:[16,16],iconAnchor:[8,8]});}"
+
+    + 'function mkGhostIcon(){'
+    + "return L.divIcon({className:'',html:'<div style=\"width:10px;height:10px;background:rgba(255,255,255,0.4);border-radius:50%;border:1.5px solid "+color+";margin:-5px 0 0 -5px\"></div>',iconSize:[10,10],iconAnchor:[5,5]});}"
+
+    + 'function sendEdited(){'
+    + 'if(window.ReactNativeWebView){'
+    + "window.ReactNativeWebView.postMessage(JSON.stringify({type:'routeEdited',points:window._tripEditPts}));}}"
+
+    + 'function redraw(){'
+    + 'window._tripLayers.forEach(function(l){l.remove();});window._tripLayers=[];'
+    + 'var pts=window._tripEditPts;if(!pts||pts.length<1)return;'
+    + 'var ll=pts.map(function(p){return[p.lat,p.lng];});'
+    + 'var poly=L.polyline(ll,{color:C,weight:5,opacity:0.95,interactive:false}).addTo(map);window._tripLayers.push(poly);'
+    + 'var sm=L.circleMarker(ll[0],{radius:8,color:"#4CAF50",fillColor:"#4CAF50",fillOpacity:1,weight:2,interactive:false}).addTo(map);window._tripLayers.push(sm);'
+    + 'if(pts.length>1){var em=L.circleMarker(ll[ll.length-1],{radius:8,color:C,fillColor:C,fillOpacity:1,weight:2,interactive:false}).addTo(map);window._tripLayers.push(em);}'
+
+    + 'if(!EDIT)return;'
+
+    + 'for(var j=0;j<pts.length-1;j++){'
+    + '(function(si){'
+    + 'var ml=(pts[si].lat+pts[si+1].lat)/2,mlg=(pts[si].lng+pts[si+1].lng)/2;'
+    + 'var gm=L.marker([ml,mlg],{icon:mkGhostIcon(),interactive:true,keyboard:false,zIndexOffset:-100}).addTo(map);'
+    + 'window._tripLayers.push(gm);'
+    + 'gm.on("click",function(e){L.DomEvent.stopPropagation(e);window._tripEditPts.splice(si+1,0,{lat:ml,lng:mlg});redraw();sendEdited();});'
+    + '})(j);}'
+
+    + 'for(var i=0;i<pts.length;i++){'
+    + '(function(idx){'
+    + 'var mk=L.marker([pts[idx].lat,pts[idx].lng],{icon:mkHandleIcon(),draggable:true,keyboard:false}).addTo(map);'
+    + 'window._tripLayers.push(mk);'
+    + 'var lpT=null;'
+    + 'mk.on("mousedown",function(){lpT=setTimeout(function(){lpT=null;if(window._tripEditPts.length<=2)return;window._tripEditPts.splice(idx,1);redraw();sendEdited();},700);});'
+    + 'mk.on("mouseup",function(){if(lpT){clearTimeout(lpT);lpT=null;}});'
+    + 'mk.on("dragstart",function(){if(lpT){clearTimeout(lpT);lpT=null;}});'
+    + 'mk.on("dragend",function(e){var ll=e.target.getLatLng();window._tripEditPts[idx]={lat:ll.lat,lng:ll.lng};redraw();sendEdited();});'
+    + '})(i);}}'
+
+    + 'redraw();'
+    + 'if(window._tripEditPts&&window._tripEditPts.length>0){'
+    + 'var b=L.polyline(window._tripEditPts.map(function(p){return[p.lat,p.lng];})).getBounds();'
+    + 'map.fitBounds(b.pad(0.15));}'
+    + '})();true;';
+}
+
 // ── Sub-components ────────────────────────────────────────────────────────────
 
 function StatChip({
@@ -458,6 +528,12 @@ export default function MapScreen() {
   const pendingTimeRef                         = useRef<string | null>(null);
   const [correctionCount, setCorrectionCount] = useState(0);
 
+  // ── Trip state ───────────────────────────────────────────────────────────────
+  const [dayTrips, setDayTrips]               = useState<Trip[]>([]);
+  const [selectedTripId, setSelectedTripId]   = useState<string | null>(null);
+  const [pendingRoute, setPendingRoute]        = useState<RoutePoint[] | null>(null);
+  const [originalRoute, setOriginalRoute]     = useState<RoutePoint[] | null>(null);
+
   // ── Replay state ────────────────────────────────────────────────────────────
   const [replayOpen, setReplayOpen]           = useState(false);
   const [replayStartDay, setReplayStartDay]   = useState('');
@@ -485,6 +561,17 @@ export default function MapScreen() {
       if (pt) setHighlightPt(pt);
     }
   }, [dayStats.points, findPointByTime]);
+
+  useEffect(() => {
+    setSelectedTripId(null);
+    setPendingRoute(null);
+    setOriginalRoute(null);
+    getTrips().then(trips => {
+      const dayStart = new Date(selectedDay + 'T00:00:00').getTime();
+      const dayEnd   = new Date(selectedDay + 'T23:59:59').getTime();
+      setDayTrips(trips.filter(t => t.startTime >= dayStart && t.startTime <= dayEnd));
+    }).catch(() => setDayTrips([]));
+  }, [selectedDay]);
 
   const handleSearch = useCallback(() => {
     const q = search.trim();
@@ -575,6 +662,61 @@ export default function MapScreen() {
       ],
     );
   }, [dayStats.points.length, selectedDay, refresh]);
+
+  // ── Trip handlers ───────────────────────────────────────────────────────────
+
+  const handleTripSelect = useCallback((trip: Trip) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (selectedTripId === trip.id) {
+      setSelectedTripId(null);
+      setPendingRoute(null);
+      setOriginalRoute(null);
+      webRef.current?.injectJavaScript(
+        'if(window._tripLayers){window._tripLayers.forEach(function(l){l.remove();});window._tripLayers=null;}true;',
+      );
+      return;
+    }
+    const route  = trip.route ?? [];
+    const color  = trip.vehicle === 'moto' ? '#FFC107' : '#2196F3';
+    setSelectedTripId(trip.id);
+    setPendingRoute(null);
+    setOriginalRoute(route);
+    if (route.length >= 2) {
+      webRef.current?.injectJavaScript(buildTripInjectScript(route, color, true));
+    }
+  }, [selectedTripId]);
+
+  const handleConfirmEdit = useCallback(async () => {
+    if (!pendingRoute || !selectedTripId) return;
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    let distKm = 0;
+    for (let i = 0; i < pendingRoute.length - 1; i++) {
+      distKm += haversineKm(
+        pendingRoute[i]!.lat, pendingRoute[i]!.lng,
+        pendingRoute[i + 1]!.lat, pendingRoute[i + 1]!.lng,
+      );
+    }
+    distKm = Math.round(distKm * 10) / 10;
+    await updateTrip(selectedTripId, { route: pendingRoute, distanceKm: distKm });
+    setDayTrips(prev =>
+      prev.map(t =>
+        t.id === selectedTripId ? { ...t, route: pendingRoute, distanceKm: distKm } : t,
+      ),
+    );
+    setOriginalRoute(pendingRoute);
+    setPendingRoute(null);
+  }, [pendingRoute, selectedTripId]);
+
+  const handleCancelEdit = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setPendingRoute(null);
+    if (!selectedTripId || !originalRoute) return;
+    const trip = dayTrips.find(t => t.id === selectedTripId);
+    if (trip) {
+      const color = trip.vehicle === 'moto' ? '#FFC107' : '#2196F3';
+      webRef.current?.injectJavaScript(buildTripInjectScript(originalRoute, color, true));
+    }
+  }, [selectedTripId, originalRoute, dayTrips]);
 
   // ── Replay handlers ─────────────────────────────────────────────────────────
 
@@ -671,6 +813,7 @@ export default function MapScreen() {
         ts?: number;
         activity?: string;
         time?: string;
+        points?: Array<{ lat: number; lng: number }>;
       };
 
       if (msg.type === 'replay_progress') {
@@ -680,6 +823,12 @@ export default function MapScreen() {
       if (msg.type === 'replay_done') {
         setReplayPlaying(false);
         setReplayIsPaused(false);
+        return;
+      }
+      if (msg.type === 'routeEdited') {
+        if (msg.points && msg.points.length >= 2) {
+          setPendingRoute(msg.points as RoutePoint[]);
+        }
         return;
       }
       if (msg.type !== 'longpress' || replayMode) return;
@@ -820,6 +969,28 @@ export default function MapScreen() {
         >
           <MaterialCommunityIcons name="crosshairs-gps" size={20} color={colors.primary} />
         </Pressable>
+      )}
+
+      {/* ── Edit confirm bandeau ── */}
+      {!!pendingRoute && !replayMode && (
+        <View style={[styles.editBandeau, { borderTopColor: colors.border }]}>
+          <MaterialCommunityIcons name="pencil-outline" size={15} color="#FFC107" />
+          <Text style={styles.editBandeauTxt}>Trajet modifié</Text>
+          <Pressable
+            style={[styles.editBandeauBtn, { borderColor: '#4CAF50', backgroundColor: '#4CAF5018' }]}
+            onPress={handleConfirmEdit}
+          >
+            <MaterialCommunityIcons name="check" size={14} color="#4CAF50" />
+            <Text style={[styles.editBandeauBtnTxt, { color: '#4CAF50' }]}>Confirmer</Text>
+          </Pressable>
+          <Pressable
+            style={[styles.editBandeauBtn, { borderColor: '#F44336', backgroundColor: '#F4433618' }]}
+            onPress={handleCancelEdit}
+          >
+            <MaterialCommunityIcons name="close" size={14} color="#F44336" />
+            <Text style={[styles.editBandeauBtnTxt, { color: '#F44336' }]}>Annuler</Text>
+          </Pressable>
+        </View>
       )}
 
       {/* ── Bottom panel ── */}
@@ -998,6 +1169,49 @@ export default function MapScreen() {
                 <StatChip icon="clock-end" color="#F44336" label="Dernier" value={dayStats.lastTime ?? '—'} colors={colors} />
               </View>
             </ScrollView>
+
+            {dayTrips.length > 0 && (
+              <View style={[styles.tripSection, { borderTopColor: colors.border }]}>
+                <Text style={[styles.tripSectionLabel, { color: colors.mutedForeground }]}>
+                  Trajets du jour
+                </Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.statsScroll}>
+                  <View style={styles.tripChipRow}>
+                    {dayTrips.map(trip => {
+                      const isSel   = selectedTripId === trip.id;
+                      const vColor  = trip.vehicle === 'moto' ? '#FFC107' : '#2196F3';
+                      const vIcon   = trip.vehicle === 'moto' ? 'motorbike' : 'car';
+                      const hasRoute = (trip.route?.length ?? 0) >= 2;
+                      return (
+                        <Pressable
+                          key={trip.id}
+                          onPress={() => handleTripSelect(trip)}
+                          style={[
+                            styles.tripChip,
+                            {
+                              borderColor: isSel ? vColor : colors.border,
+                              backgroundColor: isSel ? vColor + '22' : colors.background,
+                              opacity: hasRoute ? 1 : 0.55,
+                            },
+                          ]}
+                        >
+                          <MaterialCommunityIcons name={vIcon as any} size={14} color={vColor} />
+                          <Text style={[styles.tripChipDist, { color: colors.foreground }]}>
+                            {trip.distanceKm.toFixed(1)} km
+                          </Text>
+                          <Text style={[styles.tripChipTime, { color: colors.mutedForeground }]}>
+                            {fmtTripTime(trip.startTime)}→{fmtTripTime(trip.endTime)}
+                          </Text>
+                          {!hasRoute && (
+                            <MaterialCommunityIcons name="map-marker-off-outline" size={12} color={colors.mutedForeground} />
+                          )}
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </ScrollView>
+              </View>
+            )}
 
             <View style={styles.legendRow}>
               <View style={styles.legendItem}>
@@ -1382,5 +1596,70 @@ const styles = StyleSheet.create({
   replayFollowTxt: {
     fontSize: 12,
     fontFamily: 'Inter_500Medium',
+  },
+
+  // ── Edit confirm bandeau ─────────────────────────────────────────────────────
+  editBandeau: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    backgroundColor: '#1C1C1CF2',
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  editBandeauTxt: {
+    flex: 1,
+    fontSize: 13,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#FFC107',
+  },
+  editBandeauBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  editBandeauBtnTxt: {
+    fontSize: 12,
+    fontFamily: 'Inter_600SemiBold',
+  },
+
+  // ── Trip chips ───────────────────────────────────────────────────────────────
+  tripSection: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingTop: 8,
+    gap: 6,
+  },
+  tripSectionLabel: {
+    fontSize: 10,
+    fontFamily: 'Inter_400Regular',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+  },
+  tripChipRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingRight: 4,
+  },
+  tripChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  tripChipDist: {
+    fontSize: 13,
+    fontFamily: 'Inter_700Bold',
+  },
+  tripChipTime: {
+    fontSize: 10,
+    fontFamily: 'Inter_400Regular',
   },
 });
