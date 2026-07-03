@@ -18,8 +18,8 @@ import WebView, { type WebViewMessageEvent } from 'react-native-webview';
 import { useColors } from '@/hooks/useColors';
 import { useLocationHistory } from '@/hooks/useLocationHistory';
 import type { Trip, Vehicle } from '@/types/trips';
-import { getTrips } from '@/utils/tripStorage';
-import { getVehicleSettings } from '@/utils/tripStorage';
+import { LEAFLET_CSS, LEAFLET_JS } from '@/utils/leafletBundle';
+import { getTrips, getVehicleSettings } from '@/utils/tripStorage';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -101,12 +101,7 @@ function vehicleIcon(vehicle: string | undefined): string {
   return 'help-circle-outline';
 }
 
-// ── Leaflet HTML builder ──────────────────────────────────────────────────────
-
-const LEAFLET_HEAD = `
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>`;
+// ── Leaflet HTML builder (Leaflet bundled locally — no CDN) ───────────────────
 
 function buildTripsMapHtml(dayTrips: Trip[], vehicles: Vehicle[]): string {
   const vehicleMap: Record<string, string> = {};
@@ -138,8 +133,9 @@ function buildTripsMapHtml(dayTrips: Trip[], vehicles: Vehicle[]): string {
 
   return `<!DOCTYPE html>
 <html>
-<head>${LEAFLET_HEAD}
-<style>
+<head>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
+<style>${LEAFLET_CSS}
   *{margin:0;padding:0;box-sizing:border-box}
   body{background:#121212}
   #map{width:100vw;height:100vh}
@@ -153,6 +149,7 @@ function buildTripsMapHtml(dayTrips: Trip[], vehicles: Vehicle[]): string {
   .pr{color:#AAA;font-size:12px}
   .pb{margin-top:8px;background:#FFC107;color:#121212;border:none;border-radius:8px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer;width:100%}
 </style>
+<script>${LEAFLET_JS}</script>
 </head>
 <body>
 <div id="map"></div>
@@ -342,7 +339,7 @@ export default function MapScreen() {
       <WebView
         key={mapKey}
         ref={webRef}
-        source={{ html: mapHtml, baseUrl: 'https://unpkg.com' }}
+        source={{ html: mapHtml }}
         style={styles.map}
         originWhitelist={['*']}
         javaScriptEnabled
@@ -351,8 +348,6 @@ export default function MapScreen() {
         scrollEnabled={false}
         showsVerticalScrollIndicator={false}
         showsHorizontalScrollIndicator={false}
-        mixedContentMode="always"
-        allowUniversalAccessFromFileURLs
         onMessage={handleWebViewMessage}
       />
 
