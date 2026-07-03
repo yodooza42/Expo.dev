@@ -74,15 +74,10 @@ function ShortcutButton({ slot }: { slot: NavShortcut | null }) {
       <TextWidget
         text={emoji}
         style={{
-          fontSize: 20,
+          fontSize: 24,
           color: ready ? PRIMARY : MUTED,
           fontFamily: 'sans-serif-medium',
         }}
-      />
-      <TextWidget
-        text={label}
-        style={{ fontSize: 9, color: slot ? TEXT : MUTED, fontFamily: 'sans-serif' }}
-        maxLines={1}
       />
     </FlexWidget>
   );
@@ -105,12 +100,7 @@ function FuelButton() {
     >
       <TextWidget
         text="⛽"
-        style={{ fontSize: 20, color: MUTED, fontFamily: 'sans-serif-medium' }}
-      />
-      <TextWidget
-        text="Carbu"
-        style={{ fontSize: 9, color: MUTED, fontFamily: 'sans-serif' }}
-        maxLines={1}
+        style={{ fontSize: 24, color: MUTED, fontFamily: 'sans-serif-medium' }}
       />
     </FlexWidget>
   );
