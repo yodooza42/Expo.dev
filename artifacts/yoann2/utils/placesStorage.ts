@@ -4,7 +4,7 @@ import type { KnownPlace, PlaceCategory } from '@/types/places';
 import { DEFAULT_PLACE_CATEGORIES } from '@/types/places';
 import { haversineKm } from '@/utils/haversine';
 
-const KEY_CATEGORIES = '@yoann2_known_place_categories';
+const KEY_CATEGORIES = '@yoann2_place_categories';
 const KEY_PLACES     = '@yoann2_known_places';
 
 // ── Categories ────────────────────────────────────────────────────────────────

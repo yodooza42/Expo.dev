@@ -3,6 +3,7 @@ import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
   Modal,
@@ -23,6 +24,7 @@ import {
   type KnownPlace,
   type PlaceCategory,
 } from '@/types/places';
+import { forwardGeocode } from '@/utils/nominatim';
 import {
   deletePlaceCategory,
   deleteKnownPlace,
@@ -56,30 +58,57 @@ function PlaceModal({
   onSave: (p: KnownPlace) => void;
   onClose: () => void;
 }) {
-  const [name, setName]         = useState('');
-  const [catId, setCatId]       = useState('');
-  const [radius, setRadius]     = useState('200');
+  const [name, setName]               = useState('');
+  const [catId, setCatId]             = useState('');
+  const [radius, setRadius]           = useState('200');
+  const [address, setAddress]         = useState('');
+  const [geocoding, setGeocoding]     = useState(false);
+  const [resolvedLat, setResolvedLat] = useState<number | null>(null);
+  const [resolvedLng, setResolvedLng] = useState<number | null>(null);
 
   useEffect(() => {
     if (visible) {
       setName(initial?.name ?? '');
       setCatId(initial?.categoryId ?? categories[0]?.id ?? '');
       setRadius(String(initial?.radiusM ?? 200));
+      setAddress(initial?.address ?? '');
+      const hasCoords = initial?.lat !== undefined && initial.lat !== 0;
+      setResolvedLat(hasCoords ? initial!.lat! : null);
+      setResolvedLng(hasCoords ? initial!.lng! : null);
+      setGeocoding(false);
     }
   }, [visible, initial, categories]);
 
+  async function handleGeocode() {
+    const q = address.trim();
+    if (!q) return;
+    setGeocoding(true);
+    const result = await forwardGeocode(q);
+    setGeocoding(false);
+    if (result) {
+      setResolvedLat(result.lat);
+      setResolvedLng(result.lng);
+      if (!address.trim() || address === initial?.address) {
+        setAddress(result.displayName);
+      }
+    } else {
+      Alert.alert('Adresse introuvable', 'Essayez une formulation plus précise (ex: "14 rue de la Paix, Paris").');
+    }
+  }
+
+  const canSave = !!name.trim() && resolvedLat !== null;
+
   function handleSave() {
-    const trimmed = name.trim();
-    if (!trimmed) return;
+    if (!canSave || resolvedLat === null || resolvedLng === null) return;
     const r = parseInt(radius, 10);
     onSave({
       id:         initial?.id ?? Date.now().toString(),
-      name:       trimmed,
+      name:       name.trim(),
       categoryId: catId,
-      lat:        initial?.lat ?? 0,
-      lng:        initial?.lng ?? 0,
+      lat:        resolvedLat,
+      lng:        resolvedLng,
       radiusM:    isNaN(r) || r < 50 ? 200 : r,
-      address:    initial?.address,
+      address:    address.trim() || undefined,
       createdAt:  initial?.createdAt ?? Date.now(),
     });
   }
@@ -106,6 +135,39 @@ function PlaceModal({
             autoFocus
             returnKeyType="done"
           />
+
+          <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Adresse</Text>
+          <View style={styles.geocodeRow}>
+            <TextInput
+              value={address}
+              onChangeText={t => { setAddress(t); setResolvedLat(null); setResolvedLng(null); }}
+              placeholder="Ex: 14 rue de la Paix, Paris"
+              placeholderTextColor={colors.mutedForeground}
+              style={[styles.geocodeInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]}
+              returnKeyType="search"
+              onSubmitEditing={handleGeocode}
+            />
+            <Pressable
+              onPress={handleGeocode}
+              disabled={geocoding || !address.trim()}
+              style={[styles.geocodeBtn, { backgroundColor: colors.primary, opacity: address.trim() ? 1 : 0.4 }]}
+            >
+              {geocoding
+                ? <ActivityIndicator size="small" color={colors.primaryForeground} />
+                : <MaterialCommunityIcons name="map-search" size={18} color={colors.primaryForeground} />
+              }
+            </Pressable>
+          </View>
+          {resolvedLat !== null && (
+            <Text style={[styles.coordHint, { color: '#4CAF50' }]}>
+              ✓ {resolvedLat.toFixed(5)}, {resolvedLng?.toFixed(5)}
+            </Text>
+          )}
+          {resolvedLat === null && !(initial?.lat) && (
+            <Text style={[styles.coordHint, { color: colors.mutedForeground }]}>
+              Saisissez une adresse puis appuyez sur 🔍 pour localiser
+            </Text>
+          )}
 
           <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Catégorie</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
@@ -142,20 +204,14 @@ function PlaceModal({
             style={[styles.input, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]}
           />
 
-          {(initial?.lat !== undefined && initial.lat !== 0) && (
-            <Text style={[styles.coordHint, { color: colors.mutedForeground }]}>
-              📍 {initial.lat.toFixed(5)}, {initial.lng?.toFixed(5)}
-            </Text>
-          )}
-
           <View style={styles.sheetBtns}>
             <Pressable onPress={onClose} style={[styles.cancelBtn, { borderColor: colors.border }]}>
               <Text style={[styles.cancelTxt, { color: colors.mutedForeground }]}>Annuler</Text>
             </Pressable>
             <Pressable
               onPress={handleSave}
-              style={[styles.saveBtn, { backgroundColor: colors.primary, opacity: name.trim() ? 1 : 0.4 }]}
-              disabled={!name.trim()}
+              style={[styles.saveBtn, { backgroundColor: colors.primary, opacity: canSave ? 1 : 0.4 }]}
+              disabled={!canSave}
             >
               <Text style={[styles.saveTxt, { color: colors.primaryForeground }]}>Enregistrer</Text>
             </Pressable>
@@ -622,6 +678,26 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: 'Inter_400Regular',
     marginBottom: 4,
+  },
+  geocodeRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 4,
+  },
+  geocodeInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    fontSize: 14,
+    fontFamily: 'Inter_400Regular',
+  },
+  geocodeBtn: {
+    width: 42,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   coordHint: {
     fontSize: 11,

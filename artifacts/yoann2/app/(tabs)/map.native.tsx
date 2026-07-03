@@ -28,6 +28,7 @@ import { getTrips, updateTrip } from '@/utils/tripStorage';
 import type { Trip, RoutePoint } from '@/types/trips';
 import type { PlaceCategory } from '@/types/places';
 import { getPlaceCategories, saveKnownPlace } from '@/utils/placesStorage';
+import { reverseGeocode } from '@/utils/nominatim';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -551,6 +552,7 @@ export default function MapScreen() {
   const [placeCategories, setPlaceCategories]   = useState<PlaceCategory[]>([]);
   const [newPlaceName, setNewPlaceName]         = useState('');
   const [newPlaceCatId, setNewPlaceCatId]       = useState('');
+  const [placeSheetSaving, setPlaceSheetSaving] = useState(false);
 
   // ── Replay state ────────────────────────────────────────────────────────────
   const [replayOpen, setReplayOpen]           = useState(false);
@@ -1398,7 +1400,9 @@ export default function MapScreen() {
               </Pressable>
               <Pressable
                 onPress={async () => {
-                  if (!newPlaceName.trim() || !longPressCoords) return;
+                  if (!newPlaceName.trim() || !longPressCoords || placeSheetSaving) return;
+                  setPlaceSheetSaving(true);
+                  const addr = await reverseGeocode(longPressCoords.lat, longPressCoords.lng);
                   await saveKnownPlace({
                     id: Date.now().toString(),
                     name: newPlaceName.trim(),
@@ -1406,15 +1410,20 @@ export default function MapScreen() {
                     lat: longPressCoords.lat,
                     lng: longPressCoords.lng,
                     radiusM: 200,
+                    address: addr,
                     createdAt: Date.now(),
                   });
+                  setPlaceSheetSaving(false);
                   Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
                   setPlaceSheetVisible(false);
                 }}
-                style={[styles.placeSheetSave, { backgroundColor: colors.primary, opacity: newPlaceName.trim() ? 1 : 0.4 }]}
-                disabled={!newPlaceName.trim()}
+                style={[styles.placeSheetSave, { backgroundColor: colors.primary, opacity: (newPlaceName.trim() && !placeSheetSaving) ? 1 : 0.4 }]}
+                disabled={!newPlaceName.trim() || placeSheetSaving}
               >
-                <Text style={[styles.placeSheetSaveTxt, { color: colors.primaryForeground }]}>Enregistrer</Text>
+                {placeSheetSaving
+                  ? <ActivityIndicator size="small" color={colors.primaryForeground} />
+                  : <Text style={[styles.placeSheetSaveTxt, { color: colors.primaryForeground }]}>Enregistrer</Text>
+                }
               </Pressable>
             </View>
           </View>
