@@ -20,7 +20,7 @@ export interface ShortcutIconDef {
 
 export const SHORTCUT_ICONS: ShortcutIconDef[] = [
   { key: 'home',       emoji: '🏠', mdi: 'home',                    label: 'Maison'     },
-  { key: 'work',       emoji: '💼', mdi: 'briefcase',               label: 'Travail'    },
+  { key: 'work',       emoji: '🦬', mdi: 'briefcase',               label: 'Travail'    },
   { key: 'rdv',        emoji: '📅', mdi: 'calendar-clock',          label: 'RDV'        },
   { key: 'medical',    emoji: '🏥', mdi: 'hospital-box-outline',    label: 'Médecin'    },
   { key: 'gym',        emoji: '🏋', mdi: 'dumbbell',                label: 'Sport'      },
