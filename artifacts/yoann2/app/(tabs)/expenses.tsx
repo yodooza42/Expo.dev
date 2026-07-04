@@ -570,16 +570,16 @@ export default function FinanceScreen() {
             {/* Montant + Date */}
             <View style={{ flexDirection: 'row', gap: 10 }}>
               {/* Montant avec suffixe € */}
-              <View style={[styles.input, { flex: 1, flexDirection: 'row', alignItems: 'center', paddingVertical: 0, backgroundColor: colors.background, borderColor: colors.border }]}>
+              <View style={[styles.amountBox, { backgroundColor: colors.background, borderColor: colors.border }]}>
                 <TextInput
                   value={form.amount}
                   onChangeText={v => setForm(f => ({ ...f, amount: v }))}
                   placeholder="0,00"
                   placeholderTextColor={colors.mutedForeground}
                   keyboardType="numeric"
-                  style={{ flex: 1, color: colors.foreground, fontSize: 14, fontFamily: 'Inter_400Regular', paddingVertical: 12 }}
+                  style={[styles.amountInput, { color: colors.foreground }]}
                 />
-                <Text style={{ color: colors.mutedForeground, fontSize: 14, fontFamily: 'Inter_500Medium', paddingRight: 4 }}>€</Text>
+                <Text style={[styles.amountEuro, { color: colors.mutedForeground }]}>€</Text>
               </View>
               {/* Date */}
               <TextInput
@@ -588,7 +588,7 @@ export default function FinanceScreen() {
                 placeholder="JJ/MM/AAAA"
                 placeholderTextColor={colors.mutedForeground}
                 keyboardType="numeric"
-                style={[styles.input, { flex: 1.3, color: colors.foreground, backgroundColor: colors.background, borderColor: colors.border, fontSize: 13 }]}
+                style={[styles.dateInput, { color: colors.foreground, backgroundColor: colors.background, borderColor: colors.border }]}
               />
             </View>
 
@@ -863,6 +863,35 @@ const styles = StyleSheet.create({
   handle: { width: 40, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: 4 },
   formTitle: { fontSize: 16, fontFamily: 'Inter_600SemiBold' },
   projPickerLabel: { fontSize: 11, fontFamily: 'Inter_500Medium', textTransform: 'uppercase', letterSpacing: 0.6 },
+
+  amountBox: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+  },
+  amountInput: {
+    flex: 1,
+    paddingVertical: 12,
+    fontSize: 14,
+    fontFamily: 'Inter_400Regular',
+  },
+  amountEuro: {
+    fontSize: 14,
+    fontFamily: 'Inter_500Medium',
+    paddingLeft: 4,
+  },
+  dateInput: {
+    flex: 1.3,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 13,
+    fontFamily: 'Inter_400Regular',
+  },
 
   typeChip: {
     flexDirection: 'row',
