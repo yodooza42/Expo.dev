@@ -1,6 +1,6 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -22,6 +22,12 @@ import { useColors } from '@/hooks/useColors';
 import type { FuelEntry } from '@/types/fuel';
 import type { Appointment } from '@/types';
 import { saveFuelEntry } from '@/utils/fuelStorage';
+import {
+  getGpsInterval,
+  setGpsInterval,
+  GPS_INTERVALS,
+  restartTracking,
+} from '@/utils/locationTracking';
 import {
   MAX_SHORTCUTS,
   NavShortcut,
@@ -64,6 +70,8 @@ export default function NavigationScreen() {
 
   const [shortcuts, setShortcuts] = useState<NavShortcut[]>([]);
   const [loadingId, setLoadingId] = useState<string | null>(null);
+  const [gpsIntervalIdx, setGpsIntervalIdx] = useState(0);
+  const router = useRouter();
 
   // Free search
   const [searchAddress, setSearchAddress] = useState('');
@@ -104,11 +112,25 @@ export default function NavigationScreen() {
 
   const { action } = useLocalSearchParams<{ action?: string }>();
 
+  async function handleGpsIntervalChange(idx: number) {
+    setGpsIntervalIdx(idx);
+    await setGpsInterval(idx);
+    await restartTracking();
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  }
+
   const reload = useCallback(async () => {
     setShortcuts(await getNavShortcuts());
   }, []);
 
   useEffect(() => { reload(); }, [reload]);
+
+  useEffect(() => {
+    getGpsInterval().then(interval => {
+      const idx = GPS_INTERVALS.findIndex(g => g.label === interval.label);
+      setGpsIntervalIdx(idx >= 0 ? idx : 0);
+    });
+  }, []);
 
   useEffect(() => {
     if (action === 'fuel') setFuelOpen(true);
@@ -298,6 +320,56 @@ export default function NavigationScreen() {
         <Text style={[styles.hintText, { color: colors.mutedForeground, textAlign: 'center', marginTop: 4 }]}>
           Appui long sur un raccourci pour modifier ou supprimer
         </Text>
+
+        {/* ── Lieux connus ── */}
+        <Text style={[styles.sectionHeader, { color: colors.mutedForeground, marginTop: 8 }]}>LIEUX</Text>
+        <Pressable
+          onPress={() => router.push('/known-places' as any)}
+          style={({ pressed }) => [
+            styles.settingsRow,
+            { backgroundColor: colors.card, borderColor: colors.border },
+            pressed && { opacity: 0.75 },
+          ]}
+        >
+          <View style={[styles.settingsRowIcon, { backgroundColor: colors.primary + '20' }]}>
+            <MaterialCommunityIcons name="map-marker-multiple-outline" size={18} color={colors.primary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.settingsRowLabel, { color: colors.foreground }]}>Lieux connus</Text>
+            <Text style={[styles.settingsRowSub, { color: colors.mutedForeground }]}>Maison, Magasins, Spots balades…</Text>
+          </View>
+          <MaterialCommunityIcons name="chevron-right" size={18} color={colors.mutedForeground} />
+        </Pressable>
+
+        {/* ── Fréquence GPS ── */}
+        <Text style={[styles.sectionHeader, { color: colors.mutedForeground, marginTop: 8 }]}>LOCALISATION GPS</Text>
+        <View style={[styles.settingsRow, { backgroundColor: colors.card, borderColor: colors.border }] }>
+          <View style={[styles.settingsRowIcon, { backgroundColor: colors.primary + '20' }]}>
+            <MaterialCommunityIcons name="map-marker-radius" size={18} color={colors.primary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.settingsRowLabel, { color: colors.foreground }]}>Fréquence de rafraîchissement</Text>
+            <Text style={[styles.settingsRowSub, { color: colors.mutedForeground }]}>Plus fréquent = plus précis, plus de batterie</Text>
+          </View>
+        </View>
+        {GPS_INTERVALS.map((g, i) => (
+          <Pressable
+            key={g.label}
+            onPress={() => handleGpsIntervalChange(i)}
+            style={({ pressed }) => [
+              styles.settingsRow,
+              { backgroundColor: colors.card, borderColor: colors.border, paddingLeft: 52 },
+              pressed && { opacity: 0.75 },
+            ]}
+          >
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.settingsRowLabel, { color: colors.foreground }]}>{g.label}</Text>
+            </View>
+            {gpsIntervalIdx === i && (
+              <MaterialCommunityIcons name="check-circle" size={18} color={colors.primary} />
+            )}
+          </Pressable>
+        ))}
       </ScrollView>
 
       {/* ── Edit modal ── */}
@@ -524,7 +596,7 @@ function ShortcutCard({
       ) : (
         <MaterialCommunityIcons
           name={(ready ? getShortcutMdi(shortcut.icon) : 'map-marker-question') as any}
-          size={28}
+          size={22}
           color={ready ? colors.primary : colors.mutedForeground}
         />
       )}
@@ -554,7 +626,7 @@ function RdvCard({ appt, colors }: { appt: Appointment; colors: CardColors }) {
     >
       {loading
         ? <ActivityIndicator size="small" color="#7C3AED" />
-        : <MaterialCommunityIcons name="calendar-clock" size={28} color="#7C3AED" />}
+        : <MaterialCommunityIcons name="calendar-clock" size={22} color="#7C3AED" />}
       <Text style={[styles.cardName, { color: '#7C3AED' }]} numberOfLines={2}>
         {appt.title}
       </Text>
@@ -586,7 +658,7 @@ function AddSlotCard({
       ]}
       onPress={onPress}
     >
-      <MaterialCommunityIcons name="plus-circle-outline" size={28} color={colors.mutedForeground} />
+      <MaterialCommunityIcons name="plus-circle-outline" size={22} color={colors.mutedForeground} />
       <Text style={[styles.cardSub, { color: colors.mutedForeground }]}>Ajouter</Text>
     </Pressable>
   );
@@ -650,30 +722,54 @@ const styles = StyleSheet.create({
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
+    gap: 10,
   },
   card: {
-    width: '46%',
-    minHeight: 110,
-    borderRadius: 14,
+    width: '30%',
+    minHeight: 80,
+    borderRadius: 12,
     borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 14,
-    gap: 8,
+    padding: 10,
+    gap: 4,
   },
   cardEmpty: {
     borderStyle: 'dashed',
   },
   cardName: {
-    fontSize: 14,
+    fontSize: 12,
     fontFamily: 'Inter_600SemiBold',
     textAlign: 'center',
   },
   cardSub: {
-    fontSize: 11,
+    fontSize: 10,
     fontFamily: 'Inter_400Regular',
     textAlign: 'center',
+  },
+  settingsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  settingsRowIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  settingsRowLabel: {
+    fontSize: 14,
+    fontFamily: 'Inter_500Medium',
+  },
+  settingsRowSub: {
+    fontSize: 11,
+    fontFamily: 'Inter_400Regular',
   },
   modalOverlay: {
     flex: 1,
