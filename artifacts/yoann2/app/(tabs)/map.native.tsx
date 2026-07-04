@@ -554,6 +554,9 @@ export default function MapScreen() {
   const [newPlaceCatId, setNewPlaceCatId]       = useState('');
   const [placeSheetSaving, setPlaceSheetSaving] = useState(false);
 
+  // ── Panel collapse state ─────────────────────────────────────────────────────
+  const [panelExpanded, setPanelExpanded] = useState(false);
+
   // ── Replay state ────────────────────────────────────────────────────────────
   const [replayOpen, setReplayOpen]           = useState(false);
   const [replayStartDay, setReplayStartDay]   = useState('');
@@ -696,13 +699,24 @@ export default function MapScreen() {
       );
       return;
     }
-    const route  = trip.route ?? [];
-    const color  = trip.vehicle === 'moto' ? '#FFC107' : '#2196F3';
+    const route = trip.route ?? [];
+    const color = trip.vehicle === 'moto' ? '#FFC107' : '#2196F3';
     setSelectedTripId(trip.id);
     setPendingRoute(null);
-    setOriginalRoute(route);
+
     if (route.length >= 2) {
+      setOriginalRoute(route);
       webRef.current?.injectJavaScript(buildTripInjectScript(route, color, true));
+    } else if (trip.startLat && trip.startLon && trip.endLat && trip.endLon) {
+      // Manual trip with no stored route — show editable 2-point line from coords
+      const fallback: RoutePoint[] = [
+        { lat: trip.startLat, lng: trip.startLon },
+        { lat: trip.endLat, lng: trip.endLon },
+      ];
+      setOriginalRoute(fallback);
+      webRef.current?.injectJavaScript(buildTripInjectScript(fallback, color, true));
+    } else {
+      setOriginalRoute(route);
     }
   }, [selectedTripId]);
 
@@ -1183,6 +1197,21 @@ export default function MapScreen() {
           <ActivityIndicator color={colors.primary} style={{ marginVertical: 12 }} />
         ) : (
           <>
+            {/* Toggle arrow */}
+            {!replayMode && (
+              <Pressable
+                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setPanelExpanded(e => !e); }}
+                style={styles.panelToggle}
+                hitSlop={10}
+              >
+                <MaterialCommunityIcons
+                  name={panelExpanded ? 'chevron-down' : 'chevron-up'}
+                  size={20}
+                  color={colors.mutedForeground}
+                />
+              </Pressable>
+            )}
+
             {hasPermission === false && (
               <Pressable
                 style={[styles.permBanner, { backgroundColor: '#FFC10722', borderColor: '#FFC107' }]}
@@ -1195,15 +1224,17 @@ export default function MapScreen() {
               </Pressable>
             )}
 
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.statsScroll}>
-              <View style={styles.statsRow}>
-                <StatChip icon="walk" color="#4CAF50" label="À pied" value={`${dayStats.walkKm} km`} colors={colors} />
-                <StatChip icon="car" color="#2196F3" label="Voiture" value={`${dayStats.carKm} km`} colors={colors} />
-                <StatChip icon="map-marker-multiple-outline" color="#9C27B0" label="Points" value={String(dayStats.points.length)} colors={colors} />
-                <StatChip icon="clock-start" color="#4CAF50" label="Premier" value={dayStats.firstTime ?? '—'} colors={colors} />
-                <StatChip icon="clock-end" color="#F44336" label="Dernier" value={dayStats.lastTime ?? '—'} colors={colors} />
-              </View>
-            </ScrollView>
+            {panelExpanded && (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.statsScroll}>
+                <View style={styles.statsRow}>
+                  <StatChip icon="walk" color="#4CAF50" label="À pied" value={`${dayStats.walkKm} km`} colors={colors} />
+                  <StatChip icon="car" color="#2196F3" label="Voiture" value={`${dayStats.carKm} km`} colors={colors} />
+                  <StatChip icon="map-marker-multiple-outline" color="#9C27B0" label="Points" value={String(dayStats.points.length)} colors={colors} />
+                  <StatChip icon="clock-start" color="#4CAF50" label="Premier" value={dayStats.firstTime ?? '—'} colors={colors} />
+                  <StatChip icon="clock-end" color="#F44336" label="Dernier" value={dayStats.lastTime ?? '—'} colors={colors} />
+                </View>
+              </ScrollView>
+            )}
 
             {dayTrips.length > 0 && (
               <View style={[styles.tripSection, { borderTopColor: colors.border }]}>
@@ -1216,7 +1247,8 @@ export default function MapScreen() {
                       const isSel   = selectedTripId === trip.id;
                       const vColor  = trip.vehicle === 'moto' ? '#FFC107' : '#2196F3';
                       const vIcon   = trip.vehicle === 'moto' ? 'motorbike' : 'car';
-                      const hasRoute = (trip.route?.length ?? 0) >= 2;
+                      const hasRoute = (trip.route?.length ?? 0) >= 2
+                        || !!(trip.startLat && trip.startLon && trip.endLat && trip.endLon);
                       return (
                         <Pressable
                           key={trip.id}
@@ -1248,99 +1280,103 @@ export default function MapScreen() {
               </View>
             )}
 
-            <View style={styles.legendRow}>
-              <View style={styles.legendItem}>
-                <View style={[styles.legendDot, { backgroundColor: '#4CAF50' }]} />
-                <Text style={[styles.legendLabel, { color: colors.mutedForeground }]}>Marche</Text>
-              </View>
-              <View style={styles.legendItem}>
-                <View style={[styles.legendDot, { backgroundColor: '#2196F3' }]} />
-                <Text style={[styles.legendLabel, { color: colors.mutedForeground }]}>Voiture</Text>
-              </View>
-              <View style={styles.legendItem}>
-                <View style={[styles.legendDot, { backgroundColor: '#FFC107' }]} />
-                <Text style={[styles.legendLabel, { color: colors.mutedForeground }]}>Inconnu</Text>
-              </View>
-            </View>
+            {panelExpanded && (
+              <>
+                <View style={styles.legendRow}>
+                  <View style={styles.legendItem}>
+                    <View style={[styles.legendDot, { backgroundColor: '#4CAF50' }]} />
+                    <Text style={[styles.legendLabel, { color: colors.mutedForeground }]}>Marche</Text>
+                  </View>
+                  <View style={styles.legendItem}>
+                    <View style={[styles.legendDot, { backgroundColor: '#2196F3' }]} />
+                    <Text style={[styles.legendLabel, { color: colors.mutedForeground }]}>Voiture</Text>
+                  </View>
+                  <View style={styles.legendItem}>
+                    <View style={[styles.legendDot, { backgroundColor: '#FFC107' }]} />
+                    <Text style={[styles.legendLabel, { color: colors.mutedForeground }]}>Inconnu</Text>
+                  </View>
+                </View>
 
-            <View style={[styles.avgSection, { borderTopColor: colors.border }]}>
-              <View style={styles.avgGrid}>
-                <View style={styles.avgCell}>
-                  <MaterialCommunityIcons name="walk" size={13} color="#4CAF50" />
-                  <Text style={[styles.avgPeriod, { color: colors.mutedForeground }]}>7 jours</Text>
-                  <Text style={[styles.avgVal, { color: colors.foreground }]}>{periodAvg7.walkAvgKmPerDay} km/j</Text>
+                <View style={[styles.avgSection, { borderTopColor: colors.border }]}>
+                  <View style={styles.avgGrid}>
+                    <View style={styles.avgCell}>
+                      <MaterialCommunityIcons name="walk" size={13} color="#4CAF50" />
+                      <Text style={[styles.avgPeriod, { color: colors.mutedForeground }]}>7 jours</Text>
+                      <Text style={[styles.avgVal, { color: colors.foreground }]}>{periodAvg7.walkAvgKmPerDay} km/j</Text>
+                    </View>
+                    <View style={[styles.avgDivider, { backgroundColor: colors.border }]} />
+                    <View style={styles.avgCell}>
+                      <MaterialCommunityIcons name="car" size={13} color="#2196F3" />
+                      <Text style={[styles.avgPeriod, { color: colors.mutedForeground }]}>7 jours</Text>
+                      <Text style={[styles.avgVal, { color: colors.foreground }]}>{periodAvg7.carAvgKmPerDay} km/j</Text>
+                    </View>
+                    <View style={[styles.avgDivider, { backgroundColor: colors.border }]} />
+                    <View style={styles.avgCell}>
+                      <MaterialCommunityIcons name="walk" size={13} color="#4CAF50" />
+                      <Text style={[styles.avgPeriod, { color: colors.mutedForeground }]}>30 jours</Text>
+                      <Text style={[styles.avgVal, { color: colors.foreground }]}>{periodAvg30.walkAvgKmPerDay} km/j</Text>
+                    </View>
+                    <View style={[styles.avgDivider, { backgroundColor: colors.border }]} />
+                    <View style={styles.avgCell}>
+                      <MaterialCommunityIcons name="car" size={13} color="#2196F3" />
+                      <Text style={[styles.avgPeriod, { color: colors.mutedForeground }]}>30 jours</Text>
+                      <Text style={[styles.avgVal, { color: colors.foreground }]}>{periodAvg30.carAvgKmPerDay} km/j</Text>
+                    </View>
+                  </View>
+                  <Pressable
+                    style={[
+                      styles.pauseBtn,
+                      { backgroundColor: paused ? '#4CAF5022' : '#FF572222', borderColor: paused ? '#4CAF50' : '#FF5722' },
+                    ]}
+                    onPress={handleTogglePause}
+                  >
+                    <MaterialCommunityIcons
+                      name={paused ? 'play-circle-outline' : 'pause-circle-outline'}
+                      size={18}
+                      color={paused ? '#4CAF50' : '#FF5722'}
+                    />
+                    <Text style={[styles.pauseTxt, { color: paused ? '#4CAF50' : '#FF5722' }]}>
+                      {paused ? 'Reprendre' : 'Pause'}
+                    </Text>
+                  </Pressable>
                 </View>
-                <View style={[styles.avgDivider, { backgroundColor: colors.border }]} />
-                <View style={styles.avgCell}>
-                  <MaterialCommunityIcons name="car" size={13} color="#2196F3" />
-                  <Text style={[styles.avgPeriod, { color: colors.mutedForeground }]}>7 jours</Text>
-                  <Text style={[styles.avgVal, { color: colors.foreground }]}>{periodAvg7.carAvgKmPerDay} km/j</Text>
-                </View>
-                <View style={[styles.avgDivider, { backgroundColor: colors.border }]} />
-                <View style={styles.avgCell}>
-                  <MaterialCommunityIcons name="walk" size={13} color="#4CAF50" />
-                  <Text style={[styles.avgPeriod, { color: colors.mutedForeground }]}>30 jours</Text>
-                  <Text style={[styles.avgVal, { color: colors.foreground }]}>{periodAvg30.walkAvgKmPerDay} km/j</Text>
-                </View>
-                <View style={[styles.avgDivider, { backgroundColor: colors.border }]} />
-                <View style={styles.avgCell}>
-                  <MaterialCommunityIcons name="car" size={13} color="#2196F3" />
-                  <Text style={[styles.avgPeriod, { color: colors.mutedForeground }]}>30 jours</Text>
-                  <Text style={[styles.avgVal, { color: colors.foreground }]}>{periodAvg30.carAvgKmPerDay} km/j</Text>
-                </View>
-              </View>
-              <Pressable
-                style={[
-                  styles.pauseBtn,
-                  { backgroundColor: paused ? '#4CAF5022' : '#FF572222', borderColor: paused ? '#4CAF50' : '#FF5722' },
-                ]}
-                onPress={handleTogglePause}
-              >
-                <MaterialCommunityIcons
-                  name={paused ? 'play-circle-outline' : 'pause-circle-outline'}
-                  size={18}
-                  color={paused ? '#4CAF50' : '#FF5722'}
-                />
-                <Text style={[styles.pauseTxt, { color: paused ? '#4CAF50' : '#FF5722' }]}>
-                  {paused ? 'Reprendre' : 'Pause'}
-                </Text>
-              </Pressable>
-            </View>
 
-            <View style={[styles.backupRow, { borderTopColor: colors.border }]}>
-              <Pressable
-                style={[styles.backupBtn, { borderColor: colors.border, opacity: backupBusy ? 0.5 : 1 }]}
-                onPress={handleExport}
-                disabled={backupBusy}
-              >
-                <MaterialCommunityIcons name="export-variant" size={15} color={colors.mutedForeground} />
-                <Text style={[styles.backupTxt, { color: colors.mutedForeground }]}>Exporter</Text>
-              </Pressable>
-              <Pressable
-                style={[styles.backupBtn, { borderColor: colors.border, opacity: backupBusy ? 0.5 : 1 }]}
-                onPress={handleImport}
-                disabled={backupBusy}
-              >
-                <MaterialCommunityIcons name="import" size={15} color={colors.mutedForeground} />
-                <Text style={[styles.backupTxt, { color: colors.mutedForeground }]}>Importer</Text>
-              </Pressable>
-              <Pressable
-                style={[styles.backupBtn, { borderColor: colors.primary + '88', backgroundColor: colors.primary + '12' }]}
-                onPress={handleOpenReplay}
-              >
-                <MaterialCommunityIcons name="play-circle-outline" size={15} color={colors.primary} />
-                <Text style={[styles.backupTxt, { color: colors.primary }]}>Replay</Text>
-              </Pressable>
-              {dayStats.points.length > 0 && (
-                <Pressable
-                  style={[styles.backupBtn, { borderColor: '#F4433688', backgroundColor: '#F4433612' }]}
-                  onPress={handleDeleteDay}
-                >
-                  <MaterialCommunityIcons name="trash-can-outline" size={15} color="#F44336" />
-                  <Text style={[styles.backupTxt, { color: '#F44336' }]}>Effacer</Text>
-                </Pressable>
-              )}
-            </View>
+                <View style={[styles.backupRow, { borderTopColor: colors.border }]}>
+                  <Pressable
+                    style={[styles.backupBtn, { borderColor: colors.border, opacity: backupBusy ? 0.5 : 1 }]}
+                    onPress={handleExport}
+                    disabled={backupBusy}
+                  >
+                    <MaterialCommunityIcons name="export-variant" size={15} color={colors.mutedForeground} />
+                    <Text style={[styles.backupTxt, { color: colors.mutedForeground }]}>Exporter</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.backupBtn, { borderColor: colors.border, opacity: backupBusy ? 0.5 : 1 }]}
+                    onPress={handleImport}
+                    disabled={backupBusy}
+                  >
+                    <MaterialCommunityIcons name="import" size={15} color={colors.mutedForeground} />
+                    <Text style={[styles.backupTxt, { color: colors.mutedForeground }]}>Importer</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.backupBtn, { borderColor: colors.primary + '88', backgroundColor: colors.primary + '12' }]}
+                    onPress={handleOpenReplay}
+                  >
+                    <MaterialCommunityIcons name="play-circle-outline" size={15} color={colors.primary} />
+                    <Text style={[styles.backupTxt, { color: colors.primary }]}>Replay</Text>
+                  </Pressable>
+                  {dayStats.points.length > 0 && (
+                    <Pressable
+                      style={[styles.backupBtn, { borderColor: '#F4433688', backgroundColor: '#F4433612' }]}
+                      onPress={handleDeleteDay}
+                    >
+                      <MaterialCommunityIcons name="trash-can-outline" size={15} color="#F44336" />
+                      <Text style={[styles.backupTxt, { color: '#F44336' }]}>Effacer</Text>
+                    </Pressable>
+                  )}
+                </View>
+              </>
+            )}
           </>
         )}
       </View>
@@ -1504,8 +1540,13 @@ const styles = StyleSheet.create({
   bottomPanel: {
     borderTopWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: 16,
-    paddingTop: 12,
+    paddingTop: 8,
     gap: 10,
+  },
+  panelToggle: {
+    alignSelf: 'center',
+    paddingVertical: 2,
+    paddingHorizontal: 16,
   },
   permBanner: {
     flexDirection: 'row',
