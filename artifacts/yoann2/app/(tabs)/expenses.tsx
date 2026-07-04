@@ -48,6 +48,7 @@ import {
   updateTransaction,
 } from '@/utils/bankStorage';
 import { fmtDateShort } from '@/utils/date';
+import { getMarketBalance, processMarketRecurrings } from '@/utils/marketStorage';
 
 const SHOW_AMOUNTS_KEY = '@yoann2/finance_show_amounts';
 
@@ -112,6 +113,7 @@ export default function FinanceScreen() {
 
   const [transactions, setTransactions]   = useState<BankTransaction[]>([]);
   const [savingsBalance, setSavingsBal]   = useState(0);
+  const [marketBalance, setMarketBal]     = useState(0);
   const [showAmounts, setShowAmounts]     = useState(false);
   const [filter, setFilter]               = useState<FilterType>('all');
   const [showForm, setShowForm]           = useState(false);
@@ -140,16 +142,18 @@ export default function FinanceScreen() {
   const slideAnim = useRef(new Animated.Value(0)).current;
 
   async function load() {
-    await Promise.all([processRecurringTransfers(), processRecurringExpenses()]);
-    const [txs, sav, shown, recs, recExps] = await Promise.all([
+    await Promise.all([processRecurringTransfers(), processRecurringExpenses(), processMarketRecurrings()]);
+    const [txs, sav, shown, recs, recExps, mktBal] = await Promise.all([
       getTransactions(),
       getSavingsBalance(),
       AsyncStorage.getItem(SHOW_AMOUNTS_KEY),
       getRecurringTransfers(),
       getRecurringExpenses(),
+      getMarketBalance(),
     ]);
     setTransactions(txs);
     setSavingsBal(sav);
+    setMarketBal(mktBal);
     setRecurringList(recs);
     setRecurringExpenseList(recExps);
     if (shown === 'true') setShowAmounts(true);
@@ -558,6 +562,24 @@ export default function FinanceScreen() {
               >
                 <MaterialCommunityIcons name="bank-transfer" size={15} color="#2196F3" />
                 <Text style={[styles.transferBtnTxt, { color: '#2196F3' }]}>Virer</Text>
+              </Pressable>
+            </View>
+
+            {/* Marché */}
+            <View style={[styles.savingsRow, { borderTopColor: colors.border }]}>
+              <View style={styles.savingsLeft}>
+                <Text style={styles.marketEmoji}>📈</Text>
+                <Text style={[styles.savingsLbl, { color: colors.mutedForeground }]}>Marché</Text>
+              </View>
+              <Text style={[styles.savingsAmount, { color: '#10B981' }]}>
+                {showAmounts ? `${marketBalance.toFixed(2).replace('.', ',')} €` : '••••'}
+              </Text>
+              <Pressable
+                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/market-manager'); }}
+                style={[styles.transferBtn, { backgroundColor: '#10B98118', borderColor: '#10B98140' }]}
+              >
+                <MaterialCommunityIcons name="chart-line" size={15} color="#10B981" />
+                <Text style={[styles.transferBtnTxt, { color: '#10B981' }]}>Gérer</Text>
               </Pressable>
             </View>
           </View>
@@ -1183,6 +1205,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
   },
   savingsLeft: { flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 },
+  marketEmoji: { fontSize: 15, lineHeight: 18 },
   savingsLbl: { fontSize: 14, fontFamily: 'Inter_500Medium' },
   savingsAmount: { fontSize: 16, fontFamily: 'Inter_700Bold' },
   transferBtn: {
