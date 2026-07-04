@@ -55,35 +55,26 @@ const DAY_ROWS: { label: string; idx: number }[] = [
   { label: 'Dimanche', idx: 0 },
 ];
 
-/** 3 jours affichés : demain (gris) · aujourd'hui (jaune) · hier (blanc) */
-function getCurrentWeekDates(): string[] {
-  const today     = new Date();
-  const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
-  const tomorrow  = new Date(today); tomorrow.setDate(today.getDate() + 1);
-  return [
-    tomorrow.toISOString().slice(0, 10),   // index 0 — futur / gris
-    today.toISOString().slice(0, 10),      // index 1 — aujourd'hui / jaune
-    yesterday.toISOString().slice(0, 10),  // index 2 — hier / blanc
-  ];
-}
-
-/** Lundi→Dim complet pour le calcul du total semaine */
-function getFullWeekDates(): string[] {
+/** 7 jours de la semaine sélectionnée, du dimanche au lundi (newest first).
+ *  offset=0 → semaine en cours, offset=-1 → semaine passée, etc. */
+function getWeekDatesForOffset(offset: number): string[] {
   const today = new Date();
   const dow   = today.getDay();
   const mon   = new Date(today);
-  mon.setDate(today.getDate() - (dow === 0 ? 6 : dow - 1));
+  mon.setDate(today.getDate() - (dow === 0 ? 6 : dow - 1) + offset * 7);
+  // Sun (index 6) → Mon (index 0), du plus récent au plus ancien
   return Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(mon); d.setDate(mon.getDate() + i);
+    const d = new Date(mon);
+    d.setDate(mon.getDate() + 6 - i);
     return d.toISOString().slice(0, 10);
   });
 }
 
-function weekRangeLabel(): string {
+function getWeekRangeLabelForOffset(offset: number): string {
   const today = new Date();
   const dow   = today.getDay();
   const mon   = new Date(today);
-  mon.setDate(today.getDate() - (dow === 0 ? 6 : dow - 1));
+  mon.setDate(today.getDate() - (dow === 0 ? 6 : dow - 1) + offset * 7);
   const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
   return `${mon.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })} – ${sun.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}`;
 }
@@ -147,9 +138,9 @@ export default function WorkScreen() {
   const [generatingReport, setGeneratingReport] = useState(false);
   const [mayImportDone,    setMayImportDone]    = useState(true); // true = caché par défaut
 
-  // ── Displayed days (tomorrow / today / yesterday) + full-week for totals ──
-  const weekDates    = getCurrentWeekDates();          // [tomorrow, today, yesterday]
-  const fullWeekDates = getFullWeekDates();            // Mon→Sun for 35h calc
+  // ── Semaine sélectionnée (0 = en cours, -1 = précédente, …) ──
+  const [weekOffset, setWeekOffset] = useState(0);
+  const displayDates = getWeekDatesForOffset(weekOffset);
   const todayStr     = new Date().toISOString().slice(0, 10);
 
   // ── Check if historical import is needed ──
@@ -235,14 +226,24 @@ export default function WorkScreen() {
     if (!start && !end) {
       await deleteWorkSession(date);
       setWorkSessions(s => { const n = { ...s }; delete n[date]; return n; });
-      return;
-    }
-    if (start && end) {
+    } else if (start && end) {
       const session: WorkSession = { date, startTime: start, endTime: end };
       await saveWorkSession(session);
       setWorkSessions(s => ({ ...s, [date]: session }));
       setSessionInputs(s => ({ ...s, [date]: { start, end } }));
+    } else {
+      return;
     }
+    // Régénération automatique du rapport mensuel pour ce mois
+    const month = date.slice(0, 7);
+    try {
+      const all    = await loadWorkSessions();
+      const report = generateMonthlyReport(month, all);
+      await saveMonthlyReport(report);
+      setReports(prev =>
+        [report, ...prev.filter(r => r.month !== month)].sort((a, b) => b.month.localeCompare(a.month))
+      );
+    } catch {}
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionInputs]);
 
@@ -387,8 +388,8 @@ export default function WorkScreen() {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   }
 
-  // ── Weekly total (full Mon→Sun, not just the 3 displayed rows) ──
-  const weekTotalMins = fullWeekDates.reduce((acc, d) => {
+  // ── Weekly total (7 jours de la semaine affichée) ──
+  const weekTotalMins = displayDates.reduce((acc, d) => {
     const s = workSessions[d];
     return acc + (s ? calcSessionMinutes(s.startTime, s.endTime) : 0);
   }, 0);
@@ -542,9 +543,27 @@ export default function WorkScreen() {
             2. TEMPS RÉALISÉ — semaine en cours seulement
         ══════════════════════════════════════════════ */}
         <View style={styles.weekTitleRow}>
-          <View>
+          <View style={{ flex: 1 }}>
             <Text style={[styles.section, { color: colors.mutedForeground, marginTop: 0 }]}>Temps réalisé</Text>
-            <Text style={[styles.weekRangeLabel, { color: colors.mutedForeground }]}>{weekRangeLabel()}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <Pressable
+                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setWeekOffset(o => o - 1); }}
+                hitSlop={12}
+              >
+                <MaterialCommunityIcons name="chevron-left" size={20} color={colors.foreground} />
+              </Pressable>
+              <Text style={[styles.weekRangeLabel, { color: colors.mutedForeground }]}>
+                {getWeekRangeLabelForOffset(weekOffset)}
+              </Text>
+              <Pressable
+                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setWeekOffset(o => Math.min(o + 1, 0)); }}
+                hitSlop={12}
+                style={{ opacity: weekOffset >= 0 ? 0.25 : 1 }}
+                disabled={weekOffset >= 0}
+              >
+                <MaterialCommunityIcons name="chevron-right" size={20} color={colors.foreground} />
+              </Pressable>
+            </View>
           </View>
           {weekTotalMins > 0 && (
             <View style={styles.weekTotals}>
@@ -559,10 +578,9 @@ export default function WorkScreen() {
         </View>
 
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border, gap: 0, padding: 0, overflow: 'hidden' }]}>
-          {weekDates.map((date, di) => {
-            // di=0 → demain (gris), di=1 → aujourd'hui (jaune), di=2 → hier (blanc)
-            const isTomorrow = di === 0;
-            const isToday    = di === 1;
+          {displayDates.map((date, di) => {
+            const isTomorrow = date > todayStr;
+            const isToday    = date === todayStr;
             // isYesterday = di === 2  (normal blanc)
 
             const sched      = getScheduledForDay(date);
