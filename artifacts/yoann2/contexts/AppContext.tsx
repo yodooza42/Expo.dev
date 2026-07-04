@@ -206,7 +206,7 @@ interface AppContextValue {
   addTask: (t: Omit<Task, 'id' | 'createdAt' | 'eisenhower'>) => void;
   updateTask: (id: string, updates: Partial<Task>) => void;
   deleteTask: (id: string) => void;
-  addExpense: (e: Omit<Expense, 'id'>) => void;
+  addExpense: (e: Omit<Expense, 'id'>) => Expense;
   updateExpense: (id: string, updates: Partial<Expense>) => void;
   deleteExpense: (id: string) => void;
   getTaskExpenses: (taskId: string) => Expense[];
@@ -510,7 +510,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
-  const addExpense = useCallback((e: Omit<Expense, 'id'>) => {
+  const addExpense = useCallback((e: Omit<Expense, 'id'>): Expense => {
     const newE: Expense = { ...e, id: genId() };
     setExpenses(prev => {
       const next = [...prev, newE];
@@ -518,6 +518,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       markDirty();
       return next;
     });
+    return newE;
   }, []);
 
   const updateExpense = useCallback((id: string, updates: Partial<Expense>) => {

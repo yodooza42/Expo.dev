@@ -108,7 +108,7 @@ export default function FinanceScreen() {
   const colors  = useColors();
   const insets  = useSafeAreaInsets();
   const router  = useRouter();
-  const { expenses, projects, tasks, updateExpense } = useApp();
+  const { expenses, projects, tasks, addExpense, updateExpense, deleteExpense } = useApp();
 
   const [transactions, setTransactions]   = useState<BankTransaction[]>([]);
   const [savingsBalance, setSavingsBal]   = useState(0);
@@ -120,6 +120,7 @@ export default function FinanceScreen() {
   const [showTransfer, setShowTransfer]   = useState(false);
   const [showOcr, setShowOcr]             = useState(false);
   const [noteProjId, setNoteProjId]       = useState<string | null>(null);
+  const [noteTaskId, setNoteTaskId]       = useState<string | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [isRecurring, setIsRecurring]     = useState(false);
   const [recurringFreq, setRecurringFreq] = useState<RecurringFrequency>('monthly');
@@ -231,6 +232,14 @@ export default function FinanceScreen() {
       const noteVal = tx.note ?? '';
       const matchedProj = projects.find(p => noteVal === p.name || noteVal.startsWith(p.name + ' · '));
       setNoteProjId(matchedProj?.id ?? null);
+      // Restore linked task if any
+      if (matchedProj) {
+        const suffix = noteVal.slice(matchedProj.name.length + 3); // ' · '
+        const matchedTask = tasks.find(t => t.projectId === matchedProj.id && t.title === suffix);
+        setNoteTaskId(matchedTask?.id ?? null);
+      } else {
+        setNoteTaskId(null);
+      }
       setForm({
         type: tx.type,
         amount: tx.amount.toString(),
@@ -256,6 +265,7 @@ export default function FinanceScreen() {
     setShowForm(false);
     setEditId(null);
     setNoteProjId(null);
+    setNoteTaskId(null);
     setShowDatePicker(false);
     setIsRecurringExpense(false);
     setForm(EMPTY_FORM);
@@ -284,9 +294,12 @@ export default function FinanceScreen() {
 
     if (editId) {
       if (editId.startsWith('proj_')) {
+        // Transaction is a project expense displayed as a fake Finance row
         const originalId = editId.slice(5);
         updateExpense(originalId, { name: label, amount, date: isoDate, category: cat });
       } else {
+        // Real bank transaction — update it
+        const existingTx = transactions.find(t => t.id === editId);
         await updateTransaction(editId, {
           type:     form.type,
           amount,
@@ -297,13 +310,32 @@ export default function FinanceScreen() {
           userNote: userNoteVal,
           hidden:   form.hidden || undefined,
         });
+        // If it has a linked project expense, sync it too
+        if (existingTx?.fromExpenseId) {
+          const linkedExp = expenses.find(e => e.id === existingTx.fromExpenseId);
+          if (linkedExp) {
+            updateExpense(existingTx.fromExpenseId, {
+              name:      label,
+              amount,
+              date:      isoDate,
+              category:  cat,
+              projectId: noteProjId ?? linkedExp.projectId,
+              taskId:    noteTaskId ?? undefined,
+            });
+          }
+        }
       }
     } else {
+      // Build common project expense data when a project is linked
+      const projExpenseData = noteProjId && form.type === 'expense'
+        ? { projectId: noteProjId, taskId: noteTaskId ?? undefined, name: label, amount, date: isoDate, category: cat }
+        : null;
+
       // If recurring expense (abonnement), save template + first occurrence
       if (isRecurringExpense && (form.type === 'expense' || form.type === 'income')) {
         const nextDate = new Date(recurringExpenseStart);
-        nextDate.setMonth(nextDate.getMonth() + (recurringExpenseFreq === 'monthly' ? 1 : 0));
-        if (recurringExpenseFreq === 'weekly') nextDate.setDate(nextDate.getDate() + 7);
+        if (recurringExpenseFreq === 'monthly') nextDate.setMonth(nextDate.getMonth() + 1);
+        else nextDate.setDate(nextDate.getDate() + 7);
         await addRecurringExpense({
           type: form.type as 'expense' | 'income',
           label,
@@ -313,27 +345,32 @@ export default function FinanceScreen() {
           nextDate: nextDate.toISOString(),
           userNote: userNoteVal,
         });
-        // Also add the first transaction now (for the current date)
+        // First occurrence
+        const projExp = projExpenseData ? addExpense({ ...projExpenseData, date: recurringExpenseStart.toISOString() }) : null;
         await addTransaction({
-          type:     form.type,
+          type:            form.type,
           amount,
           label,
-          category: cat,
-          date:     recurringExpenseStart.toISOString(),
-          note:     `Récurrent · ${recurringExpenseFreq === 'monthly' ? 'mensuel' : 'hebdomadaire'}`,
-          userNote: userNoteVal,
-          hidden:   form.hidden || undefined,
+          category:        cat,
+          date:            recurringExpenseStart.toISOString(),
+          note:            `Récurrent · ${recurringExpenseFreq === 'monthly' ? 'mensuel' : 'hebdomadaire'}`,
+          userNote:        userNoteVal,
+          hidden:          form.hidden || undefined,
+          fromExpenseId:   projExp?.id,
         });
       } else {
+        // One-shot transaction
+        const projExp = projExpenseData ? addExpense(projExpenseData) : null;
         await addTransaction({
-          type:     form.type,
+          type:          form.type,
           amount,
           label,
-          category: cat,
-          date:     isoDate,
-          note:     form.note.trim() || undefined,
-          userNote: userNoteVal,
-          hidden:   form.hidden || undefined,
+          category:      cat,
+          date:          isoDate,
+          note:          form.note.trim() || undefined,
+          userNote:      userNoteVal,
+          hidden:        form.hidden || undefined,
+          fromExpenseId: projExp?.id,
         });
       }
     }
@@ -343,12 +380,15 @@ export default function FinanceScreen() {
   }
 
   async function handleDelete(id: string) {
+    const tx = transactions.find(t => t.id === id);
     Alert.alert('Supprimer', 'Supprimer cette transaction ?', [
       { text: 'Annuler', style: 'cancel' },
       {
         text: 'Supprimer', style: 'destructive',
         onPress: async () => {
           await deleteTransaction(id);
+          // Also remove the linked project expense (if any)
+          if (tx?.fromExpenseId) deleteExpense(tx.fromExpenseId);
           closeForm();
           load();
         },
@@ -773,7 +813,7 @@ export default function FinanceScreen() {
                 <Text style={[styles.projPickerLabel, { color: colors.mutedForeground }]}>Projet lié (optionnel)</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
                   <Pressable
-                    onPress={() => { setNoteProjId(null); setForm(f => ({ ...f, note: '' })); }}
+                    onPress={() => { setNoteProjId(null); setNoteTaskId(null); setForm(f => ({ ...f, note: '' })); }}
                     style={[
                       styles.catChip,
                       !noteProjId
@@ -790,6 +830,7 @@ export default function FinanceScreen() {
                         key={p.id}
                         onPress={() => {
                           setNoteProjId(p.id);
+                          setNoteTaskId(null);
                           setForm(f => ({ ...f, note: p.name }));
                         }}
                         style={[
@@ -817,10 +858,13 @@ export default function FinanceScreen() {
                         return (
                           <Pressable
                             key={t.id}
-                            onPress={() => setForm(f => ({
-                              ...f,
-                              note: active ? projName : projName + ' · ' + t.title,
-                            }))}
+                            onPress={() => {
+                              setNoteTaskId(active ? null : t.id);
+                              setForm(f => ({
+                                ...f,
+                                note: active ? projName : projName + ' · ' + t.title,
+                              }));
+                            }}
                             style={[
                               styles.catChip,
                               active
