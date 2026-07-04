@@ -436,6 +436,14 @@ export default function DashboardScreen() {
             <View style={[styles.wordmarkLine, { backgroundColor: colors.primary }]} />
           </Pressable>
           <View style={styles.headerActions}>
+            {/* Settings */}
+            <Pressable
+              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/(tabs)/settings' as any); }}
+              hitSlop={6}
+              style={[styles.iconBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+            >
+              <MaterialCommunityIcons name="cog-outline" size={18} color={colors.mutedForeground} />
+            </Pressable>
             {/* Appointments toggle */}
             <Pressable
               onPress={() => { setShowAppts(v => !v); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
