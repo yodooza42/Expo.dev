@@ -1237,10 +1237,7 @@ export default function MapScreen() {
             )}
 
             {dayTrips.length > 0 && (
-              <View style={[styles.tripSection, { borderTopColor: colors.border }]}>
-                <Text style={[styles.tripSectionLabel, { color: colors.mutedForeground }]}>
-                  Trajets du jour
-                </Text>
+              <View style={[styles.tripSection, { borderTopColor: colors.border, borderTopWidth: panelExpanded ? StyleSheet.hairlineWidth : 0 }]}>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.statsScroll}>
                   <View style={styles.tripChipRow}>
                     {dayTrips.map(trip => {
@@ -1540,8 +1537,8 @@ const styles = StyleSheet.create({
   bottomPanel: {
     borderTopWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: 16,
-    paddingTop: 2,
-    gap: 4,
+    paddingTop: 0,
+    gap: 2,
   },
   panelToggle: {
     alignSelf: 'center',
@@ -1574,8 +1571,8 @@ const styles = StyleSheet.create({
 
   avgSection: {
     borderTopWidth: StyleSheet.hairlineWidth,
-    paddingTop: 10,
-    gap: 8,
+    paddingTop: 6,
+    gap: 6,
   },
   avgGrid: {
     flexDirection: 'row',
@@ -1601,7 +1598,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
     borderTopWidth: StyleSheet.hairlineWidth,
-    paddingTop: 8,
+    paddingTop: 6,
   },
   backupBtn: {
     flex: 1,
@@ -1617,7 +1614,7 @@ const styles = StyleSheet.create({
 
   legendRow: {
     flexDirection: 'row',
-    gap: 16,
+    gap: 12,
     alignItems: 'center',
   },
   legendItem: {
@@ -1791,9 +1788,8 @@ const styles = StyleSheet.create({
 
   // ── Trip chips ───────────────────────────────────────────────────────────────
   tripSection: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    paddingTop: 4,
-    gap: 4,
+    paddingTop: 2,
+    gap: 2,
   },
   tripSectionLabel: {
     fontSize: 10,
