@@ -727,7 +727,7 @@ export default function TripsScreen() {
             hitSlop={8}
             style={[styles.headerBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
           >
-            <MaterialCommunityIcons name="cog-outline" size={18} color={colors.mutedForeground} />
+            <MaterialCommunityIcons name="wrench" size={18} color={colors.mutedForeground} />
           </Pressable>
         </View>
       </View>
