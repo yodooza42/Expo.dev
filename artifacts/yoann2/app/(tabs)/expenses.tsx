@@ -568,20 +568,16 @@ export default function FinanceScreen() {
             />
 
             {/* Montant + Date */}
-            <View style={{ flexDirection: 'row', gap: 10 }}>
-              {/* Montant avec suffixe € */}
-              <View style={[styles.amountBox, { backgroundColor: colors.background, borderColor: colors.border }]}>
-                <TextInput
-                  value={form.amount}
-                  onChangeText={v => setForm(f => ({ ...f, amount: v }))}
-                  placeholder="0,00"
-                  placeholderTextColor={colors.mutedForeground}
-                  keyboardType="numeric"
-                  style={[styles.amountInput, { color: colors.foreground }]}
-                />
-                <Text style={[styles.amountEuro, { color: colors.mutedForeground }]}>€</Text>
-              </View>
-              {/* Date */}
+            <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
+              <TextInput
+                value={form.amount}
+                onChangeText={v => setForm(f => ({ ...f, amount: v }))}
+                placeholder="0,00"
+                placeholderTextColor={colors.mutedForeground}
+                keyboardType="numeric"
+                style={[styles.amountInput, { color: colors.foreground, backgroundColor: colors.background, borderColor: colors.border }]}
+              />
+              <Text style={[styles.amountEuro, { color: colors.mutedForeground }]}>€</Text>
               <TextInput
                 value={form.date}
                 onChangeText={v => setForm(f => ({ ...f, date: v }))}
@@ -864,24 +860,18 @@ const styles = StyleSheet.create({
   formTitle: { fontSize: 16, fontFamily: 'Inter_600SemiBold' },
   projPickerLabel: { fontSize: 11, fontFamily: 'Inter_500Medium', textTransform: 'uppercase', letterSpacing: 0.6 },
 
-  amountBox: {
+  amountInput: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
     borderRadius: 12,
     borderWidth: 1,
     paddingHorizontal: 14,
-  },
-  amountInput: {
-    flex: 1,
     paddingVertical: 12,
     fontSize: 14,
     fontFamily: 'Inter_400Regular',
   },
   amountEuro: {
-    fontSize: 14,
+    fontSize: 15,
     fontFamily: 'Inter_500Medium',
-    paddingLeft: 4,
   },
   dateInput: {
     flex: 1.3,
