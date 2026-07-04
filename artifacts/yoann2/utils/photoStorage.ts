@@ -5,6 +5,7 @@ import { Alert } from 'react-native';
 const SAF            = FileSystem.StorageAccessFramework;
 const SAF_KEY        = '@yoann2_saf_photos_uri';
 export const SAF_BACKUP_KEY = '@yoann2_saf_backup_uri';
+export const SAF_ROOT_KEY   = '@yoann2_saf_root_uri';
 
 // Per-project dir URIs — keyed by sanitized project name
 const PROJECT_DIR_PREFIX = '@yoann2_saf_proj_';
@@ -54,6 +55,7 @@ export async function getOrRequestPhotosDir(): Promise<string | null> {
               const backupDir  = await _makeDir(yoann2, 'Sauvegarde');
               const photosDir  = await _makeDir(yoann2, 'Photos');
 
+              await AsyncStorage.setItem(SAF_ROOT_KEY, yoann2);
               await AsyncStorage.setItem(SAF_BACKUP_KEY, backupDir);
               await AsyncStorage.setItem(SAF_KEY, photosDir);
               _pendingPermission = null;
@@ -74,6 +76,57 @@ export async function getOrRequestPhotosDir(): Promise<string | null> {
 export async function resetPhotosDir(): Promise<void> {
   await AsyncStorage.removeItem(SAF_KEY);
   _pendingPermission = null;
+}
+
+// ── Find an existing subfolder in a SAF tree, or create it ───────────────────
+//
+// readDirectoryAsync returns opaque content URIs. For ExternalStorageProvider,
+// each URI encodes the document path (e.g. primary%3AYoann2.0%2FPhotos).
+// We decode and check whether the URI ends with the folder name before falling
+// back to makeDirectoryAsync to avoid duplicate creation.
+
+async function _findOrCreateSubfolder(treeUri: string, name: string): Promise<string> {
+  try {
+    const children = await SAF.readDirectoryAsync(treeUri);
+    const nameLower = name.toLowerCase();
+    const found = children.find(uri => {
+      const decoded = decodeURIComponent(uri).toLowerCase();
+      return decoded.endsWith('/' + nameLower);
+    });
+    if (found) return found;
+  } catch { /* fall through to create */ }
+  return SAF.makeDirectoryAsync(treeUri, name);
+}
+
+// ── Public: (re)configure the Yoann2.0 root folder ──────────────────────────
+//
+// Call when the user taps "Configurer le dossier Yoann2.0" in settings.
+// Works for first install AND reinstall: existing subfolders are found, not
+// duplicated. Returns true on success, false if the user cancelled.
+
+export async function reconfigureStorage(): Promise<boolean> {
+  try {
+    const perm = await SAF.requestDirectoryPermissionsAsync();
+    if (!perm.granted) return false;
+
+    const treeUri = perm.directoryUri;
+    await AsyncStorage.setItem(SAF_ROOT_KEY, treeUri);
+
+    const [backupDir, photosDir] = await Promise.all([
+      _findOrCreateSubfolder(treeUri, 'Sauvegarde'),
+      _findOrCreateSubfolder(treeUri, 'Photos'),
+    ]);
+
+    await AsyncStorage.setItem(SAF_BACKUP_KEY, backupDir);
+    await AsyncStorage.setItem(SAF_KEY, photosDir);
+
+    // Clear per-project dir cache so next photo use re-resolves against new root
+    _projectDirCache.clear();
+
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // ── Project-dir resolution ────────────────────────────────────────────────────

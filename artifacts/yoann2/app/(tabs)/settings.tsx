@@ -32,6 +32,9 @@ import {
   scheduleWeeklyReport,
   setApptReminderPref,
 } from '@/utils/notificationScheduler';
+import { listBackups } from '@/utils/backup';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { reconfigureStorage, SAF_ROOT_KEY } from '@/utils/photoStorage';
 
 const COLOR_PALETTE = [
   '#FFC107', '#FF9800', '#FF5722', '#F44336', '#E91E63',
@@ -112,6 +115,10 @@ export default function SettingsScreen() {
   const [weeklyNotif, setWeeklyNotif] = useState(false);
   const [monthlyNotif, setMonthlyNotif] = useState(false);
   const [apptReminder, setApptReminder] = useState(false);
+  const [folderConfigured, setFolderConfigured] = useState(false);
+  const [lastBackupDate, setLastBackupDate] = useState<Date | null>(null);
+  const [backupCount, setBackupCount] = useState(0);
+  const [configuringFolder, setConfiguringFolder] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -120,7 +127,29 @@ export default function SettingsScreen() {
       setMonthlyNotif(prefs.monthly);
     });
     getApptReminderPref().then(setApptReminder);
+    loadStorageStatus();
   }, []);
+
+  async function loadStorageStatus() {
+    const [root, backups] = await Promise.all([
+      AsyncStorage.getItem(SAF_ROOT_KEY),
+      listBackups(),
+    ]);
+    setFolderConfigured(!!root);
+    setBackupCount(backups.length);
+    setLastBackupDate(backups.length > 0 ? new Date(backups[0].ts) : null);
+  }
+
+  async function handleConfigureFolder() {
+    setConfiguringFolder(true);
+    const ok = await reconfigureStorage();
+    setConfiguringFolder(false);
+    if (ok) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert('Dossier configuré', 'Les dossiers Photos et Sauvegarde sont prêts.');
+      loadStorageStatus();
+    }
+  }
 
   async function handleWeeklyToggle(value: boolean) {
     setWeeklyNotif(value);
@@ -342,13 +371,54 @@ export default function SettingsScreen() {
         </View>
 
         <Text style={[styles.section, { color: colors.mutedForeground }]}>Sauvegarde locale</Text>
+
+        {/* Dossier Yoann2.0 */}
+        <Pressable
+          onPress={handleConfigureFolder}
+          disabled={configuringFolder}
+          style={({ pressed }) => [
+            styles.row,
+            { backgroundColor: colors.card, borderColor: colors.border },
+            pressed && { opacity: 0.75 },
+          ]}
+        >
+          <View style={[styles.rowIcon, { backgroundColor: '#2196F320' }]}>
+            <MaterialCommunityIcons name="folder-cog-outline" size={20} color="#2196F3" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.rowLabel, { color: colors.foreground }]}>Dossier Yoann2.0</Text>
+            <Text style={[styles.rowSub, { color: colors.mutedForeground }]}>
+              {configuringFolder
+                ? 'Sélection en cours…'
+                : folderConfigured
+                  ? 'Configuré · toucher pour reconfigurer (réinstallation, nouveau téléphone)'
+                  : 'Non configuré — toucher pour choisir ou créer le dossier'}
+            </Text>
+          </View>
+          <View style={[
+            styles.folderBadge,
+            { backgroundColor: folderConfigured ? '#4CAF5020' : '#FF980020' },
+          ]}>
+            <MaterialCommunityIcons
+              name={folderConfigured ? 'check-circle-outline' : 'alert-outline'}
+              size={16}
+              color={folderConfigured ? '#4CAF50' : '#FF9800'}
+            />
+          </View>
+        </Pressable>
+
+        {/* Statut sauvegarde automatique */}
         <View style={[styles.row, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <View style={[styles.rowIcon, { backgroundColor: '#4CAF5020' }]}>
             <MaterialCommunityIcons name="shield-check-outline" size={20} color="#4CAF50" />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={[styles.rowLabel, { color: colors.foreground }]}>Sauvegarde automatique</Text>
-            <Text style={[styles.rowSub, { color: colors.mutedForeground }]}>Fichier JSON sauvegardé à la fermeture · 5 archives conservées</Text>
+            <Text style={[styles.rowSub, { color: colors.mutedForeground }]}>
+              {lastBackupDate
+                ? `Dernière : ${lastBackupDate.toLocaleDateString('fr-FR', { day: '2-digit', month: 'long' })} à ${lastBackupDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })} · ${backupCount}/5 archive${backupCount > 1 ? 's' : ''}`
+                : 'Aucune sauvegarde encore · se déclenche à 10h chaque jour'}
+            </Text>
           </View>
         </View>
 
@@ -583,6 +653,13 @@ const styles = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  folderBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
   },
