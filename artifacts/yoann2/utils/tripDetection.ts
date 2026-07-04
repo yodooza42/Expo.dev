@@ -76,15 +76,21 @@ export async function processPointForTrip(point: LocationPoint): Promise<Trip | 
       if (speedKmh >= VEHICLE_SPEED_KMH) {
         addDistance(state, lat, lng, now);
         state.lastMovingTime = now;
+        state.candidatePauseSince = 0;
         if (now - state.candidateSince >= CANDIDATE_DURATION_MS) {
           state.status = 'active';
         }
       } else {
-        state.status = 'idle';
-        state.distanceKm = 0;
-        state.pointCount = 0;
-        state.lastTimestamp = 0;
-        state.routePoints = [];
+        if (state.candidatePauseSince === 0) {
+          state.candidatePauseSince = now;
+        } else if (now - state.candidatePauseSince >= 30_000) {
+          state.status = 'idle';
+          state.distanceKm = 0;
+          state.pointCount = 0;
+          state.lastTimestamp = 0;
+          state.routePoints = [];
+          state.candidatePauseSince = 0;
+        }
       }
       break;
     }

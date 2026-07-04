@@ -81,6 +81,7 @@ export type VehicleSettings = Vehicle[];
 export interface TripDetectionState {
   status: 'idle' | 'candidate' | 'active' | 'ending';
   candidateSince: number;
+  candidatePauseSince: number;
   startTime: number;
   startLat: number;
   startLon: number;

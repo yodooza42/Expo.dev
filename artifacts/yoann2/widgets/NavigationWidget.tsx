@@ -10,6 +10,8 @@ const SURFACE: ColorProp = '#202020';
 const PRIMARY: ColorProp = '#FFC107';
 const TEXT: ColorProp    = '#FFFFFF';
 const MUTED: ColorProp   = '#9E9E9E';
+const GREEN: ColorProp   = '#4CAF50';
+const RED: ColorProp     = '#F44336';
 const SCHEME = 'yoann2';
 
 export interface TodayApptNav {
@@ -21,12 +23,14 @@ export interface TodayApptNav {
 
 export function NavigationWidget({
   shortcuts,
+  manualTripActive = false,
 }: {
   shortcuts: NavShortcut[];
   todayAppt?: TodayApptNav | null;
+  manualTripActive?: boolean;
 }) {
-  // 3 shortcut slots + 1 fuel button = 4 columns
-  const slots: (NavShortcut | null)[] = Array.from({ length: 3 }, (_, i) => shortcuts[i] ?? null);
+  // 2 shortcut slots + TripButton + FuelButton = 4 columns
+  const slots: (NavShortcut | null)[] = Array.from({ length: 2 }, (_, i) => shortcuts[i] ?? null);
 
   return (
     <FlexWidget
@@ -42,7 +46,7 @@ export function NavigationWidget({
     >
       <ShortcutButton slot={slots[0] ?? null} />
       <ShortcutButton slot={slots[1] ?? null} />
-      <ShortcutButton slot={slots[2] ?? null} />
+      <TripButton active={manualTripActive} />
       <FuelButton />
     </FlexWidget>
   );
@@ -86,6 +90,42 @@ function ShortcutButton({ slot }: { slot: NavShortcut | null }) {
         style={{
           fontSize: 10,
           color: ready ? TEXT : MUTED,
+          fontFamily: 'sans-serif',
+        }}
+      />
+    </FlexWidget>
+  );
+}
+
+function TripButton({ active }: { active: boolean }) {
+  return (
+    <FlexWidget
+      clickAction={active ? 'MANUAL_TRIP_END' : 'MANUAL_TRIP_START'}
+      style={{
+        flex: 1,
+        height: 'match_parent',
+        backgroundColor: active ? '#1A2A1A' : '#1A1A2A',
+        borderRadius: 10,
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexDirection: 'column',
+        padding: 4,
+        flexGap: 2,
+      }}
+    >
+      <TextWidget
+        text={active ? '⏹' : '▶'}
+        style={{
+          fontSize: 22,
+          color: active ? RED : GREEN,
+          fontFamily: 'sans-serif-medium',
+        }}
+      />
+      <TextWidget
+        text={active ? 'Fin' : 'Départ'}
+        style={{
+          fontSize: 10,
+          color: active ? RED : GREEN,
           fontFamily: 'sans-serif',
         }}
       />

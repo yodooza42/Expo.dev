@@ -9,6 +9,7 @@ const KEY_DETECTION_STATE = '@yoann2_trip_detection_state';
 const DEFAULT_DETECTION_STATE: TripDetectionState = {
   status: 'idle',
   candidateSince: 0,
+  candidatePauseSince: 0,
   startTime: 0,
   startLat: 0,
   startLon: 0,

@@ -1,9 +1,26 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Location from 'expo-location';
+import * as Notifications from 'expo-notifications';
 import React from 'react';
 import { requestWidgetUpdate } from 'react-native-android-widget';
 import type { WidgetTaskHandlerProps } from 'react-native-android-widget';
 
+import type { RoutePoint, Trip } from '@/types/trips';
+import { reverseGeocode } from '@/utils/geocoding';
+import { haversineKm } from '@/utils/haversine';
+import { genId } from '@/utils/ids';
+import { dateKey, loadDayPoints, startManualTracking, stopTracking } from '@/utils/locationTracking';
+import {
+  clearManualTripState,
+  getManualTripState,
+  isManualTripActive,
+  saveManualTripState,
+} from '@/utils/manualTripStorage';
 import { getNavShortcuts } from '@/utils/navigationShortcuts';
+import { matchRouteOSRM, computeRouteDistanceKm } from '@/utils/osrmMatching';
+import { findNearestPlace } from '@/utils/placesStorage';
+import { simplifyRoute } from '@/utils/routeSimplification';
+import { saveTrip } from '@/utils/tripStorage';
 import { getWidgetDataFromStorage } from './data';
 import type { TodayApptNav } from './NavigationWidget';
 import { NavigationWidget } from './NavigationWidget';
@@ -12,6 +29,166 @@ import { TodoWidget } from './TodoWidget';
 const SPIN_FRAMES   = 8;    // frames
 const SPIN_INTERVAL = 250;  // ms per frame  →  8 × 250 = 2 s
 const SPIN_TOTAL    = 720;  // degrees  →  2 full rotations
+
+async function renderNavWidget(
+  renderWidget: WidgetTaskHandlerProps['renderWidget'],
+  manualTripActive: boolean,
+): Promise<void> {
+  const [shortcuts, rawAppts] = await Promise.all([
+    getNavShortcuts(),
+    AsyncStorage.getItem('@yoann2_appointments')
+      .then(r => (r ? (JSON.parse(r) as any[]) : []))
+      .catch(() => [] as any[]),
+  ]);
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayApptRaw = rawAppts.find((a: any) => {
+    if (!a.addressLat || !a.addressLng) return false;
+    try {
+      const d = new Date(a.date);
+      const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      return k === todayStr;
+    } catch { return false; }
+  });
+  const todayAppt: TodayApptNav | null = todayApptRaw
+    ? { title: todayApptRaw.title, time: todayApptRaw.time ?? '', lat: todayApptRaw.addressLat, lng: todayApptRaw.addressLng }
+    : null;
+  renderWidget(<NavigationWidget shortcuts={shortcuts} todayAppt={todayAppt} manualTripActive={manualTripActive} />);
+}
+
+async function handleManualTripStart(
+  renderWidget: WidgetTaskHandlerProps['renderWidget'],
+): Promise<void> {
+  try {
+    const loc = await Promise.race<Location.LocationObject | null>([
+      Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+      new Promise<null>(resolve => setTimeout(() => resolve(null), 8_000)),
+    ]);
+
+    await saveManualTripState({
+      active: true,
+      startTime: Date.now(),
+      startLat: loc?.coords.latitude ?? 0,
+      startLon: loc?.coords.longitude ?? 0,
+    });
+
+    await startManualTracking();
+  } catch {
+    // ignore — trip state saved, GPS best-effort
+  }
+  await renderNavWidget(renderWidget, true);
+}
+
+async function handleManualTripEnd(
+  renderWidget: WidgetTaskHandlerProps['renderWidget'],
+): Promise<void> {
+  const manualState = await getManualTripState();
+
+  // Arrêt GPS en tout état de cause
+  await stopTracking().catch(() => {});
+
+  if (!manualState) {
+    await clearManualTripState();
+    await renderNavWidget(renderWidget, false);
+    return;
+  }
+
+  const endTime = Date.now();
+
+  // Position de fin
+  const endLoc = await Promise.race<Location.LocationObject | null>([
+    Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+    new Promise<null>(resolve => setTimeout(() => resolve(null), 8_000)),
+  ]).catch(() => null);
+
+  const endLat = endLoc?.coords.latitude ?? manualState.startLat;
+  const endLon = endLoc?.coords.longitude ?? manualState.startLon;
+
+  // Récupération des points GPS enregistrés entre Start et End
+  const today = dateKey(new Date());
+  const yesterday = dateKey(new Date(endTime - 86_400_000));
+  const [todayPts, yesterdayPts] = await Promise.all([
+    loadDayPoints(today),
+    loadDayPoints(yesterday),
+  ]);
+
+  const rawPts = [...yesterdayPts, ...todayPts]
+    .filter(p => p.timestamp >= manualState.startTime && p.timestamp <= endTime)
+    .sort((a, b) => a.timestamp - b.timestamp);
+
+  // Construction de la route (points GPS + fix de départ/arrivée)
+  let routePoints: RoutePoint[] = rawPts.map(p => ({ lat: p.lat, lng: p.lng }));
+  if (routePoints.length === 0 || routePoints[0]!.lat !== manualState.startLat) {
+    routePoints = [{ lat: manualState.startLat, lng: manualState.startLon }, ...routePoints];
+  }
+  if (routePoints.length <= 1 || routePoints[routePoints.length - 1]!.lat !== endLat) {
+    routePoints = [...routePoints, { lat: endLat, lng: endLon }];
+  }
+
+  // OSRM match → distance réelle sur la route
+  let osrmRoute: RoutePoint[] | null = null;
+  let distanceKm: number;
+  try {
+    if (routePoints.length >= 2) {
+      osrmRoute = await matchRouteOSRM(routePoints);
+    }
+  } catch {}
+
+  if (osrmRoute && osrmRoute.length >= 2) {
+    distanceKm = computeRouteDistanceKm(osrmRoute);
+  } else {
+    distanceKm = haversineKm(manualState.startLat, manualState.startLon, endLat, endLon);
+  }
+
+  const finalRoute = simplifyRoute(osrmRoute ?? routePoints);
+
+  const trip: Trip = {
+    id: genId(),
+    startTime: manualState.startTime,
+    endTime,
+    distanceKm: Math.round(distanceKm * 100) / 100,
+    pointCount: rawPts.length,
+    vehicle: null,
+    startLat: manualState.startLat,
+    startLon: manualState.startLon,
+    endLat,
+    endLon,
+    route: finalRoute,
+    routeSource: osrmRoute ? 'osrm' : 'gps',
+  };
+
+  // Géocodage start + end
+  const [startPlace, endPlace] = await Promise.all([
+    findNearestPlace(trip.startLat, trip.startLon).catch(() => null),
+    findNearestPlace(trip.endLat, trip.endLon).catch(() => null),
+  ]);
+
+  if (startPlace) {
+    trip.startAddress = startPlace.name;
+    trip.startPlaceId = startPlace.id;
+  } else {
+    trip.startAddress = await reverseGeocode(trip.startLat, trip.startLon).catch(() => null) ?? undefined;
+  }
+  if (endPlace) {
+    trip.endAddress = endPlace.name;
+    trip.endPlaceId = endPlace.id;
+  } else {
+    trip.endAddress = await reverseGeocode(trip.endLat, trip.endLon).catch(() => null) ?? undefined;
+  }
+
+  await saveTrip(trip);
+
+  await Notifications.scheduleNotificationAsync({
+    content: {
+      title: 'Trajet terminé — Yoann 2.0',
+      body: `${trip.distanceKm.toFixed(1)} km · Tapez pour choisir le véhicule et la catégorie`,
+      data: { url: '/(tabs)/trips', type: 'trip_completed' },
+    },
+    trigger: null,
+  }).catch(() => {});
+
+  await clearManualTripState();
+  await renderNavWidget(renderWidget, false);
+}
 
 export async function widgetTaskHandler(props: WidgetTaskHandlerProps): Promise<void> {
   const { widgetInfo, widgetAction, clickAction, renderWidget } = props;
@@ -22,27 +199,24 @@ export async function widgetTaskHandler(props: WidgetTaskHandlerProps): Promise<
     switch (widgetAction) {
       case 'WIDGET_ADDED':
       case 'WIDGET_UPDATE':
-      case 'WIDGET_RESIZED':
-      case 'WIDGET_CLICK': {
-        const [shortcuts, rawAppts] = await Promise.all([
-          getNavShortcuts(),
-          AsyncStorage.getItem('@yoann2_appointments').then(r => r ? JSON.parse(r) as any[] : []).catch(() => [] as any[]),
-        ]);
-        const todayStr = new Date().toISOString().slice(0, 10);
-        const todayApptRaw = rawAppts.find(a => {
-          if (!a.addressLat || !a.addressLng) return false;
-          try {
-            const d = new Date(a.date);
-            const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-            return k === todayStr;
-          } catch { return false; }
-        });
-        const todayAppt: TodayApptNav | null = todayApptRaw
-          ? { title: todayApptRaw.title, time: todayApptRaw.time ?? '', lat: todayApptRaw.addressLat, lng: todayApptRaw.addressLng }
-          : null;
-        renderWidget(<NavigationWidget shortcuts={shortcuts} todayAppt={todayAppt} />);
+      case 'WIDGET_RESIZED': {
+        const manualTripActive = await isManualTripActive();
+        await renderNavWidget(renderWidget, manualTripActive);
         break;
       }
+
+      case 'WIDGET_CLICK': {
+        if (clickAction === 'MANUAL_TRIP_START') {
+          await handleManualTripStart(renderWidget);
+        } else if (clickAction === 'MANUAL_TRIP_END') {
+          await handleManualTripEnd(renderWidget);
+        } else {
+          const manualTripActive = await isManualTripActive();
+          await renderNavWidget(renderWidget, manualTripActive);
+        }
+        break;
+      }
+
       default:
         break;
     }

@@ -273,6 +273,28 @@ export async function stopTracking(): Promise<void> {
   }
 }
 
+export async function startManualTracking(): Promise<void> {
+  const hasServices = await Location.hasServicesEnabledAsync();
+  if (!hasServices) return;
+
+  const isRegistered = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME).catch(() => false);
+  if (isRegistered) {
+    await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME);
+  }
+
+  await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
+    accuracy: Location.Accuracy.Balanced,
+    timeInterval: 15_000,
+    distanceInterval: 50,
+    showsBackgroundLocationIndicator: true,
+    foregroundService: {
+      notificationTitle: 'Yoann2.0 — Trajet en cours',
+      notificationBody: 'Suivi GPS manuel actif',
+      notificationColor: '#FFC107',
+    },
+  });
+}
+
 // ── Background task definition ────────────────────────────────────────────────
 
 TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
@@ -293,6 +315,12 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
       if (pts.length > 0) lastValid = pts[pts.length - 1]!;
     } catch {}
   }
+
+  // ── Vérification trajet manuel (une seule lecture par batch) ─────────────────
+  const manualRaw = await AsyncStorage.getItem('@yoann2_manual_trip').catch(() => null);
+  const manualActive = manualRaw
+    ? (JSON.parse(manualRaw) as { active?: boolean }).active === true
+    : false;
 
   // ── Process each location ───────────────────────────────────────────────────
   for (const loc of locations) {
@@ -324,7 +352,10 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
     };
 
     await appendPoint(point);
-    await processPointForTrip(point).catch(() => {});
+    // Pas de détection auto si un trajet manuel est en cours
+    if (!manualActive) {
+      await processPointForTrip(point).catch(() => {});
+    }
     lastValid = point;
     try {
       await AsyncStorage.setItem(LAST_VALID_KEY, JSON.stringify(point));

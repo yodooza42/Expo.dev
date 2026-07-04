@@ -22,7 +22,8 @@ import { SplashProvider } from '@/contexts/SplashContext';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 import type { Trip, VehicleType } from '@/types/trips';
 import { runDailyBackupIfNeeded } from '@/utils/backup';
-import { isTrackingPaused, purgeOldData, requestLocationPermissions, startTracking } from '@/utils/locationTracking';
+import { purgeOldData, requestLocationPermissions, startManualTracking, LOCATION_TASK_NAME } from '@/utils/locationTracking';
+import { isManualTripActive } from '@/utils/manualTripStorage';
 import { runMaintenanceScheduler } from '@/utils/maintenanceScheduler';
 import { updateNavWidget } from '@/widgets/updateNavWidget';
 import {
@@ -53,8 +54,11 @@ async function bootstrapLocationTracking() {
         if (!granted) return;
       }
     }
-    const paused = await isTrackingPaused();
-    if (!paused) await startTracking();
+    // Mode manuel : le GPS ne démarre que si un trajet manuel est en cours
+    // (ex : l'app a été tuée pendant un trajet actif)
+    if (await isManualTripActive()) {
+      await startManualTracking();
+    }
   } catch {
     // silently ignore — tracking is optional
   }
@@ -94,13 +98,12 @@ function RootLayoutNav() {
         updateNavWidget().catch(() => {});
         runScheduler();
         runDailyBackupIfNeeded().catch(() => {});
-        // Watchdog: restart location tracking if it was killed by the OS
-        import('@/utils/locationTracking').then(async ({ isTrackingPaused, startTracking, LOCATION_TASK_NAME }) => {
-          const paused = await isTrackingPaused();
-          if (paused) return;
+        // Watchdog: redémarre le GPS si l'OS l'a tué et qu'un trajet manuel est actif
+        import('@/utils/locationTracking').then(async ({ startManualTracking, LOCATION_TASK_NAME }) => {
+          if (!(await isManualTripActive())) return;
           const Location = await import('expo-location');
           const running = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME).catch(() => false);
-          if (!running) await startTracking().catch(() => {});
+          if (!running) await startManualTracking().catch(() => {});
         }).catch(() => {});
       }
     });
