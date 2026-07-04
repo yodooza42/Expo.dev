@@ -17,7 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { TripMapView } from '@/components/TripMapView';
 import { useColors } from '@/hooks/useColors';
-import type { PlaceCategory } from '@/types/places';
+import type { KnownPlace, PlaceCategory } from '@/types/places';
 import type { Trip, Vehicle } from '@/types/trips';
 import {
   getAddressUsage,
@@ -222,7 +222,7 @@ export default function TripMapScreen() {
   const [osrmRoute, setOsrmRoute] = useState<{ lat: number; lng: number }[] | null>(null);
   const [loadingRoute, setLoadingRoute] = useState(false);
   const [placeCategories, setPlaceCategories] = useState<PlaceCategory[]>([]);
-  const [knownPlaces, setKnownPlaces] = useState<Array<{ id: string; name: string; categoryId?: string }>>([]);
+  const [knownPlaces, setKnownPlaces] = useState<KnownPlace[]>([]);
 
   const [editingField, setEditingField] = useState<'start' | 'end' | null>(null);
   const [addressUsage, setAddressUsage] = useState<Record<string, number>>({});
@@ -232,6 +232,27 @@ export default function TripMapScreen() {
     getKnownPlaces().then(setKnownPlaces).catch(() => {});
     getAddressUsage().then(setAddressUsage).catch(() => {});
   }, []);
+
+  function fetchOsrmRoute(t: Trip) {
+    if (!t.startLat || !t.startLon || !t.endLat || !t.endLon) return;
+    setLoadingRoute(true);
+    setOsrmRoute(null);
+    const url = `https://router.project-osrm.org/route/v1/driving/${t.startLon},${t.startLat};${t.endLon},${t.endLat}?overview=full&geometries=geojson`;
+    fetch(url)
+      .then(r => r.json())
+      .then((data: { routes?: Array<{ geometry: { coordinates: [number, number][] } }> }) => {
+        const coords = data.routes?.[0]?.geometry?.coordinates;
+        if (coords && coords.length >= 2) {
+          setOsrmRoute(coords.map(([lng, lat]) => ({ lat, lng })));
+        } else {
+          setOsrmRoute([{ lat: t.startLat, lng: t.startLon }, { lat: t.endLat, lng: t.endLon }]);
+        }
+      })
+      .catch(() => {
+        setOsrmRoute([{ lat: t.startLat, lng: t.startLon }, { lat: t.endLat, lng: t.endLon }]);
+      })
+      .finally(() => setLoadingRoute(false));
+  }
 
   useEffect(() => {
     Promise.all([getTrips(), getVehicleSettings()]).then(([trips, v]) => {
@@ -246,55 +267,53 @@ export default function TripMapScreen() {
         (!found.route || found.route.length < 2) &&
         found.startLat && found.startLon && found.endLat && found.endLon
       ) {
-        setLoadingRoute(true);
-        const url = `https://router.project-osrm.org/route/v1/driving/${found.startLon},${found.startLat};${found.endLon},${found.endLat}?overview=full&geometries=geojson`;
-        fetch(url)
-          .then(r => r.json())
-          .then((data: { routes?: Array<{ geometry: { coordinates: [number, number][] } }> }) => {
-            const coords = data.routes?.[0]?.geometry?.coordinates;
-            if (coords && coords.length >= 2) {
-              setOsrmRoute(coords.map(([lng, lat]) => ({ lat, lng })));
-            } else {
-              setOsrmRoute([
-                { lat: found.startLat, lng: found.startLon },
-                { lat: found.endLat, lng: found.endLon },
-              ]);
-            }
-          })
-          .catch(() => {
-            setOsrmRoute([
-              { lat: found.startLat, lng: found.startLon },
-              { lat: found.endLat, lng: found.endLon },
-            ]);
-          })
-          .finally(() => setLoadingRoute(false));
+        fetchOsrmRoute(found);
       }
     });
   }, [id]);
 
   async function handleSaveAddress(value: string) {
     if (!trip || !editingField) return;
-    const field = editingField === 'start' ? 'startAddress' : 'endAddress';
-    const updated: Trip = { ...trip, [field]: value || undefined };
+
+    const isStart = editingField === 'start';
+    const addressField = isStart ? 'startAddress' : 'endAddress';
+    const placeIdField = isStart ? 'startPlaceId' : 'endPlaceId';
+    const latField    = isStart ? 'startLat'     : 'endLat';
+    const lonField    = isStart ? 'startLon'      : 'endLon';
+
+    // Look up matching known place to get GPS coordinates
+    const matchedPlace = value ? knownPlaces.find(p => p.name === value) : undefined;
+
+    const coordsChanged =
+      matchedPlace &&
+      (matchedPlace.lat !== trip[latField] || matchedPlace.lng !== trip[lonField]);
+
+    const patch: Partial<Trip> = {
+      [addressField]: value || undefined,
+      [placeIdField]: matchedPlace?.id ?? undefined,
+      ...(coordsChanged ? { [latField]: matchedPlace.lat, [lonField]: matchedPlace.lng } : {}),
+    };
+
+    const updated: Trip = { ...trip, ...patch };
     setTrip(updated);
     setEditingField(null);
-    await updateTrip(trip.id, { [field]: value || undefined });
+    await updateTrip(trip.id, patch);
     tripEvents.emitTripUpdated();
+
+    // Re-fetch OSRM route if coordinates changed on a manual trip
+    if (coordsChanged && trip.source === 'manual') {
+      fetchOsrmRoute(updated);
+    }
+
     if (value) {
       await incrementAddressUsage(value);
-      setAddressUsage(prev => ({
-        ...prev,
-        [value]: (prev[value] ?? 0) + 1,
-      }));
+      setAddressUsage(prev => ({ ...prev, [value]: (prev[value] ?? 0) + 1 }));
     }
   }
 
   async function handleChipUsed(name: string) {
     await incrementAddressUsage(name);
-    setAddressUsage(prev => ({
-      ...prev,
-      [name]: (prev[name] ?? 0) + 1,
-    }));
+    setAddressUsage(prev => ({ ...prev, [name]: (prev[name] ?? 0) + 1 }));
   }
 
   const MAP_H = SCREEN_H * 0.62;
