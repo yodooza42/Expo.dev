@@ -22,6 +22,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useApp } from '@/contexts/AppContext';
 import { useColors } from '@/hooks/useColors';
 import { exportExpensesCSV, exportExpensesPDF } from '@/utils/expenseExport';
+import { fmtDateSlash } from '@/utils/date';
 
 const SHOW_AMOUNTS_KEY = '@yoann2/show_amounts';
 
@@ -127,7 +128,7 @@ export default function ExpensesScreen() {
   });
   const [customEnd, setCustomEnd] = useState(() => {
     const d = new Date();
-    return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+    return fmtDateSlash(d);
   });
 
   useFocusEffect(

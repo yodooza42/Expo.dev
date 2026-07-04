@@ -5,6 +5,7 @@ import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useColors } from '@/hooks/useColors';
 import type { Trip, VehicleType } from '@/types/trips';
+import { fmtDayLong, fmtHHMM } from '@/utils/date';
 
 interface TripTagModalProps {
   trip: Trip | null;
@@ -19,17 +20,6 @@ function fmtDuration(ms: number): string {
   return rem > 0 ? `${h}h${String(rem).padStart(2, '0')}` : `${h}h`;
 }
 
-function fmtTime(ts: number): string {
-  return new Date(ts).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-}
-
-function fmtDate(ts: number): string {
-  return new Date(ts).toLocaleDateString('fr-FR', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-  });
-}
 
 export function TripTagModal({ trip, onTag }: TripTagModalProps) {
   const colors = useColors();
@@ -53,10 +43,10 @@ export function TripTagModal({ trip, onTag }: TripTagModalProps) {
 
           <Text style={[styles.title, { color: colors.foreground }]}>Trajet terminé</Text>
           <Text style={[styles.dateLine, { color: colors.mutedForeground }]}>
-            {fmtDate(trip.startTime)}
+            {fmtDayLong(trip.startTime)}
           </Text>
           <Text style={[styles.timeLine, { color: colors.mutedForeground }]}>
-            {fmtTime(trip.startTime)} → {fmtTime(trip.endTime)}
+            {fmtHHMM(trip.startTime)} → {fmtHHMM(trip.endTime)}
           </Text>
 
           <View style={styles.statsRow}>

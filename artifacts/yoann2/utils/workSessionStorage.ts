@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { fmtWeekdayShort } from '@/utils/date';
 
 const SESSIONS_KEY = '@work_sessions_v1';
 const REPORTS_KEY  = '@work_reports_v1';
@@ -251,8 +252,7 @@ export function getRecentDates(n: number): string[] {
 
 /** "2026-06-16" → "Lun 16 juin" */
 export function formatShortDate(dateStr: string): string {
-  const d = new Date(dateStr + 'T12:00:00');
-  return d.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
+  return fmtWeekdayShort(new Date(dateStr + 'T12:00:00'));
 }
 
 /** "2026-06-16" → numéro du jour JS (0=dim) */

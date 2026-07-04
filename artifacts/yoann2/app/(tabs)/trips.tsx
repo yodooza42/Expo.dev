@@ -18,6 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useColors } from '@/hooks/useColors';
 import type { MaintenanceItem, Trip, TripCategory, Vehicle, VehicleType } from '@/types/trips';
+import { fmtHHMM, fmtWeekdayShort } from '@/utils/date';
 import {
   createCategoryAndGroupSimilar,
   deleteCategoryAndUnlink,
@@ -36,15 +37,6 @@ import {
 } from '@/utils/tripStorage';
 
 // ── Format helpers ────────────────────────────────────────────────────────────
-
-function fmtDate(ts: number): string {
-  return new Date(ts).toLocaleDateString('fr-FR', {
-    weekday: 'short', day: 'numeric', month: 'short',
-  });
-}
-function fmtTime(ts: number): string {
-  return new Date(ts).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-}
 function fmtDuration(ms: number): string {
   const m = Math.round(ms / 60_000);
   if (m < 60) return `${m} min`;
@@ -502,10 +494,10 @@ function TripRow({
         </View>
         <View style={{ flex: 1 }}>
           <Text style={[styles.tripDate, { color: colors.foreground }]}>
-            {fmtDate(trip.startTime)}
+            {fmtWeekdayShort(trip.startTime)}
           </Text>
           <Text style={[styles.tripTime, { color: colors.mutedForeground }]}>
-            {fmtTime(trip.startTime)} → {fmtTime(trip.endTime)}
+            {fmtHHMM(trip.startTime)} → {fmtHHMM(trip.endTime)}
           </Text>
         </View>
         <View style={styles.tripRight}>
@@ -520,7 +512,7 @@ function TripRow({
           <Pressable
             onPress={() => Alert.alert(
               'Supprimer ce trajet ?',
-              `${trip.distanceKm.toFixed(1)} km · ${fmtDate(trip.startTime)}`,
+              `${trip.distanceKm.toFixed(1)} km · ${fmtWeekdayShort(trip.startTime)}`,
               [
                 { text: 'Annuler', style: 'cancel' },
                 { text: 'Supprimer', style: 'destructive',

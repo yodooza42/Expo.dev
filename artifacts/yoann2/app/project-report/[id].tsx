@@ -22,6 +22,7 @@ import { useApp } from '@/contexts/AppContext';
 import { useColors } from '@/hooks/useColors';
 import type { Task } from '@/types';
 import { generateProjectReportHtml } from '@/utils/reportGenerator';
+import { fmtDateLong } from '@/utils/date';
 
 const SUMMARY_KEY_PREFIX = '@yoann2_report_summary_';
 
@@ -44,9 +45,9 @@ function photoTimestamp(uri: string): number | null {
 
 function fmtDate(ts: number | string | null | undefined): string {
   if (!ts) return '';
-  const d = typeof ts === 'number' ? new Date(ts) : new Date(ts);
+  const d = new Date(ts);
   if (isNaN(d.getTime())) return String(ts);
-  return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+  return fmtDateLong(d);
 }
 
 // ── Screen ────────────────────────────────────────────────────────────────────

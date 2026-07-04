@@ -3,6 +3,7 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import { Image as RNImage } from 'react-native';
 
 import type { Project, Task } from '@/types';
+import { fmtDateLong } from '@/utils/date';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -17,9 +18,9 @@ function esc(s: string): string {
 
 function fmtDate(value: string | number | null | undefined): string {
   if (!value) return '';
-  const d = typeof value === 'number' ? new Date(value) : new Date(value);
+  const d = new Date(value);
   if (isNaN(d.getTime())) return String(value);
-  return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+  return fmtDateLong(d);
 }
 
 /** Extract timestamp embedded in photo filename: photo_1234567890_abc.jpg */
