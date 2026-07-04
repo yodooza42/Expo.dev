@@ -13,6 +13,7 @@ export default function TabLayout() {
   return (
     <Tabs
       tabBar={props => <CustomTabBar {...props} />}
+      backBehavior="initialRoute"
       screenOptions={{
         headerShown: false,
       }}
