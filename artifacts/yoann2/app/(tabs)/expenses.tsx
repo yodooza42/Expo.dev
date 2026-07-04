@@ -755,7 +755,7 @@ export default function FinanceScreen() {
 
             {/* Type selector */}
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingBottom: 4 }}>
-              {(['income', 'expense', 'transfer_to_savings', 'transfer_from_savings'] as TransactionType[]).map(type => {
+              {(['income', 'expense', 'transfer_to_savings', 'transfer_from_savings', 'transfer_to_market', 'transfer_from_market'] as TransactionType[]).map(type => {
                 const cfg = TYPE_CONFIG[type];
                 const active = form.type === type;
                 return (
@@ -860,7 +860,7 @@ export default function FinanceScreen() {
             </ScrollView>
 
             {/* Lier à un projet */}
-            {form.type !== 'transfer_to_savings' && form.type !== 'transfer_from_savings' && (
+            {form.type !== 'transfer_to_savings' && form.type !== 'transfer_from_savings' && form.type !== 'transfer_to_market' && form.type !== 'transfer_from_market' && (
               <View style={{ gap: 6 }}>
                 <Text style={[styles.projPickerLabel, { color: colors.mutedForeground }]}>Projet lié (optionnel)</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
