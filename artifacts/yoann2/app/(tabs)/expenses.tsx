@@ -92,7 +92,7 @@ export default function FinanceScreen() {
   const colors  = useColors();
   const insets  = useSafeAreaInsets();
   const router  = useRouter();
-  const { expenses, projects } = useApp();
+  const { expenses, projects, updateExpense } = useApp();
 
   const [transactions, setTransactions]   = useState<BankTransaction[]>([]);
   const [savingsBalance, setSavingsBal]   = useState(0);
@@ -193,7 +193,10 @@ export default function FinanceScreen() {
         label: tx.label,
         category: tx.category,
         note: tx.note ?? '',
-        date: new Date(tx.date).toLocaleDateString('fr-FR'),
+        date: (() => {
+          const d = new Date(tx.date);
+          return isNaN(d.getTime()) ? new Date().toLocaleDateString('fr-FR') : d.toLocaleDateString('fr-FR');
+        })(),
       });
     } else {
       setEditId(null);
@@ -224,18 +227,38 @@ export default function FinanceScreen() {
       Alert.alert('Champs manquants', 'Renseigne un libellé et un montant valide.');
       return;
     }
-    const payload = {
-      type: form.type,
-      amount,
-      label: form.label.trim(),
-      category: form.category || (form.type === 'income' ? 'Autre revenu' : 'Autre'),
-      date: parseFrDate(form.date),
-      note: form.note.trim() || undefined,
-    };
+    const isoDate = parseFrDate(form.date);
+    const label   = form.label.trim();
+    const cat     = form.category || (form.type === 'income' ? 'Autre revenu' : 'Autre');
+
     if (editId) {
-      await updateTransaction(editId, payload);
+      if (editId.startsWith('proj_')) {
+        const originalId = editId.slice(5);
+        updateExpense(originalId, {
+          name:     label,
+          amount,
+          date:     isoDate,
+          category: cat,
+        });
+      } else {
+        await updateTransaction(editId, {
+          type:     form.type,
+          amount,
+          label,
+          category: cat,
+          date:     isoDate,
+          note:     form.note.trim() || undefined,
+        });
+      }
     } else {
-      await addTransaction(payload);
+      await addTransaction({
+        type:     form.type,
+        amount,
+        label,
+        category: cat,
+        date:     isoDate,
+        note:     form.note.trim() || undefined,
+      });
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     closeForm();
@@ -249,6 +272,7 @@ export default function FinanceScreen() {
         text: 'Supprimer', style: 'destructive',
         onPress: async () => {
           await deleteTransaction(id);
+          closeForm();
           load();
         },
       },
@@ -283,18 +307,9 @@ export default function FinanceScreen() {
 
   function renderTransaction({ item: tx }: { item: BankTransaction }) {
     const cfg = TYPE_CONFIG[tx.type];
-    const isProjTx = tx.id.startsWith('proj_');
     return (
       <Pressable
-        onLongPress={() => {
-          if (isProjTx) return;
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-          Alert.alert(tx.label, undefined, [
-            { text: 'Modifier', onPress: () => openForm(tx.type, tx) },
-            { text: 'Supprimer', style: 'destructive', onPress: () => handleDelete(tx.id) },
-            { text: 'Annuler', style: 'cancel' },
-          ]);
-        }}
+        onPress={() => openForm(tx.type, tx)}
         style={({ pressed }) => [styles.txRow, { backgroundColor: colors.card, borderColor: colors.border, opacity: pressed ? 0.75 : 1 }]}
       >
         <View style={[styles.txIcon, { backgroundColor: cfg.color + '20' }]}>
@@ -487,6 +502,22 @@ export default function FinanceScreen() {
           <View style={[styles.formSheet, { backgroundColor: colors.card, borderColor: colors.border }]}>
             {/* Handle */}
             <View style={[styles.handle, { backgroundColor: colors.border }]} />
+
+            {/* Form header: title + delete button */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+              <Text style={[styles.formTitle, { color: colors.foreground }]}>
+                {editId ? 'Modifier la transaction' : 'Nouvelle transaction'}
+              </Text>
+              {editId && !editId.startsWith('proj_') && (
+                <Pressable
+                  onPress={() => handleDelete(editId)}
+                  hitSlop={8}
+                  style={{ padding: 6, borderRadius: 8, backgroundColor: '#EF444420' }}
+                >
+                  <MaterialCommunityIcons name="trash-can-outline" size={20} color="#EF4444" />
+                </Pressable>
+              )}
+            </View>
 
             {/* Type selector */}
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingBottom: 4 }}>
@@ -745,6 +776,7 @@ const styles = StyleSheet.create({
     gap: 14,
   },
   handle: { width: 40, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: 4 },
+  formTitle: { fontSize: 16, fontFamily: 'Inter_600SemiBold' },
 
   typeChip: {
     flexDirection: 'row',
