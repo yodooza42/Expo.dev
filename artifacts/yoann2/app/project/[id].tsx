@@ -1,4 +1,5 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
 import { Image } from 'expo-image';
 import * as Haptics from 'expo-haptics';
@@ -26,6 +27,7 @@ import { TaskCard } from '@/components/TaskCard';
 import { useApp } from '@/contexts/AppContext';
 import { useColors } from '@/hooks/useColors';
 import type { Expense, ProjectStatus, Task } from '@/types';
+import { resolveProjectDirForBatch, savePhotoToProject } from '@/utils/photoStorage';
 
 const { width } = Dimensions.get('window');
 
@@ -109,6 +111,16 @@ export default function ProjectDetailScreen() {
   const dueDate = new Date(project.dueDate);
   const isOverdue = dueDate < new Date() && project.status !== 'done';
 
+  async function persistPhoto(tempUri: string): Promise<string> {
+    const dir = FileSystem.documentDirectory + 'project_photos/';
+    const dirInfo = await FileSystem.getInfoAsync(dir);
+    if (!dirInfo.exists) await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
+    const ext  = tempUri.split('.').pop()?.split('?')[0] ?? 'jpg';
+    const dest = dir + Date.now() + '_' + Math.random().toString(36).slice(2) + '.' + ext;
+    await FileSystem.copyAsync({ from: tempUri, to: dest });
+    return dest;
+  }
+
   async function pickPhoto() {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) {
@@ -116,7 +128,10 @@ export default function ProjectDetailScreen() {
       if (!cam.granted) { Alert.alert('Permission refusée'); return; }
       const result = await ImagePicker.launchCameraAsync({ quality: 0.7 });
       if (!result.canceled && result.assets[0]) {
-        updateProject(project.id, { photos: [...project.photos, result.assets[0].uri] });
+        const asset = result.assets[0];
+        const local = await persistPhoto(asset.uri);
+        updateProject(project.id, { photos: [...project.photos, local] });
+        savePhotoToProject(asset.uri, project.name, asset.fileName);
       }
       return;
     }
@@ -125,14 +140,24 @@ export default function ProjectDetailScreen() {
         text: 'Appareil photo',
         onPress: async () => {
           const r = await ImagePicker.launchCameraAsync({ quality: 0.7 });
-          if (!r.canceled && r.assets[0]) updateProject(project.id, { photos: [...project.photos, r.assets[0].uri] });
+          if (!r.canceled && r.assets[0]) {
+            const asset = r.assets[0];
+            const local = await persistPhoto(asset.uri);
+            updateProject(project.id, { photos: [...project.photos, local] });
+            savePhotoToProject(asset.uri, project.name, asset.fileName);
+          }
         },
       },
       {
         text: 'Galerie (multi-sélection)',
         onPress: async () => {
           const r = await ImagePicker.launchImageLibraryAsync({ quality: 0.7, allowsMultipleSelection: true });
-          if (!r.canceled) updateProject(project.id, { photos: [...project.photos, ...r.assets.map(a => a.uri)] });
+          if (!r.canceled) {
+            const locals = await Promise.all(r.assets.map(a => persistPhoto(a.uri)));
+            updateProject(project.id, { photos: [...project.photos, ...locals] });
+            const batchDir = await resolveProjectDirForBatch(project.name);
+            r.assets.forEach(a => savePhotoToProject(a.uri, project.name, a.fileName, batchDir));
+          }
         },
       },
       { text: 'Annuler', style: 'cancel' },
