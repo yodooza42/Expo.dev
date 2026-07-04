@@ -37,7 +37,9 @@ EXPO_TOKEN must be exported (inline `EXPO_TOKEN=... eas build` is killed by sand
 - Slug: `application-yoann20`
 - projectId: `875e84e9-1621-4df5-bc36-3ca7c757f39a`
 - Profile: `apk` (buildType apk, internal distribution)
-- EXPO_TOKEN: stored in Replit secret `EXPO_TOKEN`
+- EXPO_TOKEN: stored in Replit secret `EXPO_TOKEN` — must be a **robot token created from yoann42s-team org settings**, NOT a personal account token
+- To create: expo.dev → avatar → switch to yoann42s-team → Settings → Robot users → Create robot user → generate token
+- Verify with `eas whoami` — must show `yoann42s-team (Role: Admin)`, not `yozvfkzucbzbc`
 - Previous account (`yozvfkzucbzbc`, slug `yoann-20`) exhausted free plan July 2026
 
 ## Reading EAS logs (brotli NDJSON)
