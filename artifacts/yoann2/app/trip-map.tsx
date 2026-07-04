@@ -1,4 +1,6 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import {
@@ -220,6 +222,50 @@ export default function TripMapScreen() {
   const [editingField, setEditingField] = useState<'start' | 'end' | null>(null);
   const [addressUsage, setAddressUsage] = useState<Record<string, number>>({});
 
+  const [dtPickerStep, setDtPickerStep] = useState<'date' | 'startTime' | 'endTime' | null>(null);
+  const [draftStart, setDraftStart] = useState<Date>(new Date());
+  const [draftEnd, setDraftEnd] = useState<Date>(new Date());
+
+  function handleOpenDtPicker() {
+    if (!trip) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setDraftStart(new Date(trip.startTime));
+    setDraftEnd(new Date(trip.endTime));
+    setDtPickerStep('date');
+  }
+
+  function handleDateChange(_: unknown, selected?: Date) {
+    if (!selected) { setDtPickerStep(null); return; }
+    const newStart = new Date(draftStart);
+    newStart.setFullYear(selected.getFullYear(), selected.getMonth(), selected.getDate());
+    const newEnd = new Date(draftEnd);
+    newEnd.setFullYear(selected.getFullYear(), selected.getMonth(), selected.getDate());
+    setDraftStart(newStart);
+    setDraftEnd(newEnd);
+    setDtPickerStep('startTime');
+  }
+
+  function handleStartTimeChange(_: unknown, selected?: Date) {
+    if (!selected) { setDtPickerStep(null); return; }
+    const newStart = new Date(draftStart);
+    newStart.setHours(selected.getHours(), selected.getMinutes(), 0, 0);
+    setDraftStart(newStart);
+    setDtPickerStep('endTime');
+  }
+
+  async function handleEndTimeChange(_: unknown, selected?: Date) {
+    setDtPickerStep(null);
+    if (!selected || !trip) return;
+    const newEnd = new Date(draftEnd);
+    newEnd.setHours(selected.getHours(), selected.getMinutes(), 0, 0);
+    const newStartTs = draftStart.getTime();
+    const newEndTs   = newEnd.getTime();
+    const updated: Trip = { ...trip, startTime: newStartTs, endTime: newEndTs };
+    setTrip(updated);
+    await updateTrip(trip.id, { startTime: newStartTs, endTime: newEndTs });
+    tripEvents.emitTripUpdated();
+  }
+
   useEffect(() => {
     getPlaceCategories().then(setPlaceCategories).catch(() => {});
     getKnownPlaces().then(setKnownPlaces).catch(() => {});
@@ -387,12 +433,21 @@ export default function TripMapScreen() {
             />
           </View>
 
-          <Text style={[styles.dateText, { color: colors.foreground }]}>
-            {fmtDayLong(trip.startTime)}
-          </Text>
-          <Text style={[styles.timeText, { color: colors.mutedForeground }]}>
-            {fmtHHMM(trip.startTime)} → {fmtHHMM(trip.endTime)}
-          </Text>
+          <Pressable
+            onPress={handleOpenDtPicker}
+            style={({ pressed }) => [styles.dtRow, pressed && { opacity: 0.65 }]}
+            hitSlop={6}
+          >
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.dateText, { color: colors.foreground }]}>
+                {fmtDayLong(trip.startTime)}
+              </Text>
+              <Text style={[styles.timeText, { color: colors.mutedForeground }]}>
+                {fmtHHMM(trip.startTime)} → {fmtHHMM(trip.endTime)}
+              </Text>
+            </View>
+            <MaterialCommunityIcons name="pencil-outline" size={15} color={colors.mutedForeground} />
+          </Pressable>
 
           <View style={styles.statsRow}>
             <StatItem
@@ -453,6 +508,35 @@ export default function TripMapScreen() {
             </View>
           )}
         </View>
+      )}
+
+      {/* Date / time pickers */}
+      {dtPickerStep === 'date' && (
+        <DateTimePicker
+          value={draftStart}
+          mode="date"
+          display="calendar"
+          maximumDate={new Date()}
+          onChange={handleDateChange}
+        />
+      )}
+      {dtPickerStep === 'startTime' && (
+        <DateTimePicker
+          value={draftStart}
+          mode="time"
+          display="clock"
+          is24Hour
+          onChange={handleStartTimeChange}
+        />
+      )}
+      {dtPickerStep === 'endTime' && (
+        <DateTimePicker
+          value={draftEnd}
+          mode="time"
+          display="clock"
+          is24Hour
+          onChange={handleEndTimeChange}
+        />
       )}
 
       {/* Edit-address modal */}
@@ -542,6 +626,7 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     gap: 6,
   },
+  dtRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   dateText: { fontSize: 17, fontFamily: 'Inter_600SemiBold', textTransform: 'capitalize' },
   timeText: { fontSize: 13, fontFamily: 'Inter_400Regular' },
   statsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 14, marginTop: 8 },
