@@ -6,6 +6,7 @@ const KEYS = {
   TRANSACTIONS: '@yoann2/bank_transactions',
   SAVINGS_BALANCE: '@yoann2/bank_savings_balance',
   RECURRING: '@yoann2/bank_recurring_transfers',
+  RECURRING_EXPENSES: '@yoann2/bank_recurring_expenses',
 };
 
 export type TransactionType = 'income' | 'expense' | 'transfer_to_savings' | 'transfer_from_savings';
@@ -18,10 +19,25 @@ export interface BankTransaction {
   category: string;
   date: string;
   note?: string;
+  userNote?: string;
+  hidden?: boolean;
   fromExpenseId?: string;
+  fromRecurringExpenseId?: string;
 }
 
 export type RecurringFrequency = 'weekly' | 'monthly';
+
+export interface RecurringExpense {
+  id: string;
+  type: 'income' | 'expense';
+  label: string;
+  amount: number;
+  category: string;
+  frequency: RecurringFrequency;
+  nextDate: string;
+  userNote?: string;
+  createdAt: string;
+}
 
 export interface RecurringTransfer {
   id: string;
@@ -82,13 +98,15 @@ export async function setSavingsBalance(balance: number): Promise<void> {
 }
 
 export function computeCurrentBalance(txs: BankTransaction[]): number {
-  return txs.reduce((sum, tx) => {
-    if (tx.type === 'income') return sum + tx.amount;
-    if (tx.type === 'expense') return sum - tx.amount;
-    if (tx.type === 'transfer_to_savings') return sum - tx.amount;
-    if (tx.type === 'transfer_from_savings') return sum + tx.amount;
-    return sum;
-  }, 0);
+  return txs
+    .filter(tx => !tx.hidden)
+    .reduce((sum, tx) => {
+      if (tx.type === 'income') return sum + tx.amount;
+      if (tx.type === 'expense') return sum - tx.amount;
+      if (tx.type === 'transfer_to_savings') return sum - tx.amount;
+      if (tx.type === 'transfer_from_savings') return sum + tx.amount;
+      return sum;
+    }, 0);
 }
 
 // ── RecurringTransfer ────────────────────────────────────────────────────────
@@ -165,6 +183,69 @@ export async function processRecurringTransfers(): Promise<number> {
 
   if (executed > 0) {
     await saveRecurringTransfers(recs);
+  }
+  return executed;
+}
+
+// ── RecurringExpense ─────────────────────────────────────────────────────────
+
+export async function getRecurringExpenses(): Promise<RecurringExpense[]> {
+  try {
+    const raw = await AsyncStorage.getItem(KEYS.RECURRING_EXPENSES);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+async function saveRecurringExpenses(recs: RecurringExpense[]): Promise<void> {
+  await AsyncStorage.setItem(KEYS.RECURRING_EXPENSES, JSON.stringify(recs));
+}
+
+export async function addRecurringExpense(
+  rec: Omit<RecurringExpense, 'id' | 'createdAt'>
+): Promise<RecurringExpense> {
+  const recs = await getRecurringExpenses();
+  const newRec: RecurringExpense = {
+    ...rec,
+    id: genId(),
+    createdAt: new Date().toISOString(),
+  };
+  await saveRecurringExpenses([...recs, newRec]);
+  return newRec;
+}
+
+export async function deleteRecurringExpense(id: string): Promise<void> {
+  const recs = await getRecurringExpenses();
+  await saveRecurringExpenses(recs.filter(r => r.id !== id));
+}
+
+export async function processRecurringExpenses(): Promise<number> {
+  const recs = await getRecurringExpenses();
+  const now = new Date();
+  let executed = 0;
+
+  for (const rec of recs) {
+    let nextDate = new Date(rec.nextDate);
+    while (nextDate <= now) {
+      await addTransaction({
+        type: rec.type,
+        amount: rec.amount,
+        label: rec.label,
+        category: rec.category,
+        date: nextDate.toISOString(),
+        note: `Récurrent · ${rec.frequency === 'monthly' ? 'mensuel' : 'hebdomadaire'}`,
+        userNote: rec.userNote,
+        fromRecurringExpenseId: rec.id,
+      });
+      nextDate = nextOccurrence(nextDate, rec.frequency);
+      executed++;
+    }
+    rec.nextDate = nextDate.toISOString();
+  }
+
+  if (executed > 0) {
+    await saveRecurringExpenses(recs);
   }
   return executed;
 }

@@ -24,18 +24,23 @@ import { OcrScanModal } from '@/components/OcrScanModal';
 import { useApp } from '@/contexts/AppContext';
 import { useColors } from '@/hooks/useColors';
 import {
+  addRecurringExpense,
   addRecurringTransfer,
   addTransaction,
   BankTransaction,
   computeCurrentBalance,
+  deleteRecurringExpense,
   deleteRecurringTransfer,
   deleteTransaction,
   EXPENSE_CATEGORIES,
+  getRecurringExpenses,
   getRecurringTransfers,
   getSavingsBalance,
   getTransactions,
   INCOME_CATEGORIES,
+  processRecurringExpenses,
   processRecurringTransfers,
+  RecurringExpense,
   RecurringFrequency,
   RecurringTransfer,
   setSavingsBalance,
@@ -83,6 +88,8 @@ interface FormState {
   label: string;
   category: string;
   note: string;
+  userNote: string;
+  hidden: boolean;
   date: string;
 }
 
@@ -92,6 +99,8 @@ const EMPTY_FORM: FormState = {
   label: '',
   category: '',
   note: '',
+  userNote: '',
+  hidden: false,
   date: new Date().toLocaleDateString('fr-FR'),
 };
 
@@ -120,19 +129,28 @@ export default function FinanceScreen() {
   const [transferAmount, setTransferAmount] = useState('');
   const [transferDir, setTransferDir]     = useState<'to' | 'from'>('to');
 
+  // Recurring expenses (abonnements)
+  const [recurringExpenseList, setRecurringExpenseList] = useState<RecurringExpense[]>([]);
+  const [isRecurringExpense, setIsRecurringExpense]     = useState(false);
+  const [recurringExpenseFreq, setRecurringExpenseFreq] = useState<RecurringFrequency>('monthly');
+  const [recurringExpenseStart, setRecurringExpenseStart] = useState<Date>(new Date());
+  const [showRecExpDatePicker, setShowRecExpDatePicker] = useState(false);
+
   const slideAnim = useRef(new Animated.Value(0)).current;
 
   async function load() {
-    await processRecurringTransfers();
-    const [txs, sav, shown, recs] = await Promise.all([
+    await Promise.all([processRecurringTransfers(), processRecurringExpenses()]);
+    const [txs, sav, shown, recs, recExps] = await Promise.all([
       getTransactions(),
       getSavingsBalance(),
       AsyncStorage.getItem(SHOW_AMOUNTS_KEY),
       getRecurringTransfers(),
+      getRecurringExpenses(),
     ]);
     setTransactions(txs);
     setSavingsBal(sav);
     setRecurringList(recs);
+    setRecurringExpenseList(recExps);
     if (shown === 'true') setShowAmounts(true);
   }
 
@@ -184,7 +202,8 @@ export default function FinanceScreen() {
     return allTransactions
       .filter(t => {
         const d = new Date(t.date);
-        return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
+        return !t.hidden
+          && d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
           && (t.type === 'income' || t.type === 'transfer_from_savings');
       })
       .reduce((s, t) => s + t.amount, 0);
@@ -195,7 +214,8 @@ export default function FinanceScreen() {
     return allTransactions
       .filter(t => {
         const d = new Date(t.date);
-        return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
+        return !t.hidden
+          && d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
           && (t.type === 'expense' || t.type === 'transfer_to_savings');
       })
       .reduce((s, t) => s + t.amount, 0);
@@ -203,6 +223,9 @@ export default function FinanceScreen() {
 
   function openForm(type: TransactionType = 'expense', tx?: BankTransaction) {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setIsRecurringExpense(false);
+    setRecurringExpenseFreq('monthly');
+    setRecurringExpenseStart(new Date());
     if (tx) {
       setEditId(tx.id);
       const noteVal = tx.note ?? '';
@@ -214,6 +237,8 @@ export default function FinanceScreen() {
         label: tx.label,
         category: tx.category,
         note: noteVal,
+        userNote: tx.userNote ?? '',
+        hidden: tx.hidden ?? false,
         date: (() => {
           const d = new Date(tx.date);
           return isNaN(d.getTime()) ? new Date().toLocaleDateString('fr-FR') : d.toLocaleDateString('fr-FR');
@@ -232,6 +257,7 @@ export default function FinanceScreen() {
     setEditId(null);
     setNoteProjId(null);
     setShowDatePicker(false);
+    setIsRecurringExpense(false);
     setForm(EMPTY_FORM);
   }
 
@@ -254,16 +280,12 @@ export default function FinanceScreen() {
     const isoDate = parseFrDate(form.date);
     const label   = form.label.trim();
     const cat     = form.category || (form.type === 'income' ? 'Autre revenu' : 'Autre');
+    const userNoteVal = form.userNote.trim() || undefined;
 
     if (editId) {
       if (editId.startsWith('proj_')) {
         const originalId = editId.slice(5);
-        updateExpense(originalId, {
-          name:     label,
-          amount,
-          date:     isoDate,
-          category: cat,
-        });
+        updateExpense(originalId, { name: label, amount, date: isoDate, category: cat });
       } else {
         await updateTransaction(editId, {
           type:     form.type,
@@ -272,17 +294,48 @@ export default function FinanceScreen() {
           category: cat,
           date:     isoDate,
           note:     form.note.trim() || undefined,
+          userNote: userNoteVal,
+          hidden:   form.hidden || undefined,
         });
       }
     } else {
-      await addTransaction({
-        type:     form.type,
-        amount,
-        label,
-        category: cat,
-        date:     isoDate,
-        note:     form.note.trim() || undefined,
-      });
+      // If recurring expense (abonnement), save template + first occurrence
+      if (isRecurringExpense && (form.type === 'expense' || form.type === 'income')) {
+        const nextDate = new Date(recurringExpenseStart);
+        nextDate.setMonth(nextDate.getMonth() + (recurringExpenseFreq === 'monthly' ? 1 : 0));
+        if (recurringExpenseFreq === 'weekly') nextDate.setDate(nextDate.getDate() + 7);
+        await addRecurringExpense({
+          type: form.type as 'expense' | 'income',
+          label,
+          amount,
+          category: cat,
+          frequency: recurringExpenseFreq,
+          nextDate: nextDate.toISOString(),
+          userNote: userNoteVal,
+        });
+        // Also add the first transaction now (for the current date)
+        await addTransaction({
+          type:     form.type,
+          amount,
+          label,
+          category: cat,
+          date:     recurringExpenseStart.toISOString(),
+          note:     `Récurrent · ${recurringExpenseFreq === 'monthly' ? 'mensuel' : 'hebdomadaire'}`,
+          userNote: userNoteVal,
+          hidden:   form.hidden || undefined,
+        });
+      } else {
+        await addTransaction({
+          type:     form.type,
+          amount,
+          label,
+          category: cat,
+          date:     isoDate,
+          note:     form.note.trim() || undefined,
+          userNote: userNoteVal,
+          hidden:   form.hidden || undefined,
+        });
+      }
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     closeForm();
@@ -349,24 +402,37 @@ export default function FinanceScreen() {
     return (
       <Pressable
         onPress={() => openForm(tx.type, tx)}
-        style={({ pressed }) => [styles.txRow, { backgroundColor: colors.card, borderColor: colors.border, opacity: pressed ? 0.75 : 1 }]}
+        style={({ pressed }) => [
+          styles.txRow,
+          { backgroundColor: colors.card, borderColor: colors.border, opacity: pressed ? 0.75 : (tx.hidden ? 0.45 : 1) },
+        ]}
       >
         <View style={[styles.txIcon, { backgroundColor: cfg.color + '20' }]}>
           <MaterialCommunityIcons name={cfg.icon as any} size={20} color={cfg.color} />
         </View>
         <View style={styles.txBody}>
-          <Text style={[styles.txLabel, { color: colors.foreground }]} numberOfLines={1}>{tx.label}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+            <Text style={[styles.txLabel, { color: colors.foreground }]} numberOfLines={1}>{tx.label}</Text>
+            {tx.hidden && (
+              <MaterialCommunityIcons name="eye-off-outline" size={12} color={colors.mutedForeground} />
+            )}
+            {tx.fromRecurringExpenseId && (
+              <MaterialCommunityIcons name="repeat" size={12} color={colors.mutedForeground} />
+            )}
+          </View>
           <View style={styles.txMeta}>
             {tx.category ? (
               <Text style={[styles.txCat, { color: colors.mutedForeground }]}>{tx.category}</Text>
             ) : null}
-            {tx.note ? (
+            {tx.userNote ? (
+              <Text style={[styles.txNote, { color: colors.mutedForeground }]} numberOfLines={1}>· {tx.userNote}</Text>
+            ) : tx.note ? (
               <Text style={[styles.txNote, { color: colors.mutedForeground }]} numberOfLines={1}>· {tx.note}</Text>
             ) : null}
           </View>
           <Text style={[styles.txDate, { color: colors.mutedForeground }]}>{fmtDateShort(tx.date)}</Text>
         </View>
-        <Text style={[styles.txAmount, { color: cfg.color }]}>
+        <Text style={[styles.txAmount, { color: tx.hidden ? colors.mutedForeground : cfg.color }]}>
           {cfg.sign}{formatAmount(tx.amount, !showAmounts)}
         </Text>
       </Pressable>
@@ -537,6 +603,36 @@ export default function FinanceScreen() {
             ))}
           </View>
         ))}
+
+        {/* ── Abonnements récurrents ── */}
+        {recurringExpenseList.length > 0 && (
+          <View style={{ paddingHorizontal: 16, marginTop: 8 }}>
+            <Text style={[styles.sectionHeader, { color: colors.mutedForeground }]}>ABONNEMENTS RÉCURRENTS</Text>
+            {recurringExpenseList.map(rec => (
+              <View key={rec.id} style={[styles.recurringRow, { backgroundColor: colors.card, borderColor: colors.border, marginBottom: 6 }]}>
+                <MaterialCommunityIcons name="repeat" size={16} color={rec.type === 'expense' ? '#EF4444' : '#4CAF50'} />
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.recurringRowLabel, { color: colors.foreground }]}>{rec.label}</Text>
+                  <Text style={[styles.recurringRowSub, { color: colors.mutedForeground }]}>
+                    {showAmounts ? `${rec.amount.toFixed(2).replace('.', ',')} € · ` : '•••• · '}
+                    {rec.frequency === 'monthly' ? 'Mensuel' : 'Hebdomadaire'} · prochain : {new Date(rec.nextDate).toLocaleDateString('fr-FR')}
+                  </Text>
+                </View>
+                <Pressable
+                  onPress={() => {
+                    Alert.alert('Supprimer', 'Arrêter cet abonnement récurrent ?', [
+                      { text: 'Annuler', style: 'cancel' },
+                      { text: 'Supprimer', style: 'destructive', onPress: async () => { await deleteRecurringExpense(rec.id); load(); } },
+                    ]);
+                  }}
+                  hitSlop={8}
+                >
+                  <MaterialCommunityIcons name="trash-can-outline" size={18} color="#EF4444" />
+                </Pressable>
+              </View>
+            ))}
+          </View>
+        )}
 
         <View style={{ height: 120 }} />
       </ScrollView>
@@ -741,6 +837,92 @@ export default function FinanceScreen() {
                 })()}
               </View>
             )}
+
+            {/* Note libre */}
+            <TextInput
+              value={form.userNote}
+              onChangeText={v => setForm(f => ({ ...f, userNote: v }))}
+              placeholder="Note (optionnel)…"
+              placeholderTextColor={colors.mutedForeground}
+              style={[styles.input, { color: colors.foreground, backgroundColor: colors.background, borderColor: colors.border, minHeight: 40 }]}
+              multiline
+            />
+
+            {/* Abonnement récurrent (income/expense uniquement, nouvelle transaction) */}
+            {!editId && (form.type === 'expense' || form.type === 'income') && (
+              <View style={{ gap: 6 }}>
+                <Pressable
+                  onPress={() => { Haptics.selectionAsync(); setIsRecurringExpense(v => !v); }}
+                  style={[styles.toggleRow, { backgroundColor: colors.background, borderColor: isRecurringExpense ? colors.primary : colors.border }]}
+                >
+                  <MaterialCommunityIcons name="repeat" size={16} color={isRecurringExpense ? colors.primary : colors.mutedForeground} />
+                  <Text style={[styles.toggleRowTxt, { color: isRecurringExpense ? colors.primary : colors.mutedForeground }]}>
+                    Abonnement récurrent
+                  </Text>
+                  <View style={[styles.toggleDot, { backgroundColor: isRecurringExpense ? colors.primary : colors.border }]} />
+                </Pressable>
+
+                {isRecurringExpense && (
+                  <View style={{ gap: 6 }}>
+                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                      {(['monthly', 'weekly'] as RecurringFrequency[]).map(freq => (
+                        <Pressable
+                          key={freq}
+                          onPress={() => setRecurringExpenseFreq(freq)}
+                          style={[
+                            styles.freqChip,
+                            recurringExpenseFreq === freq
+                              ? { backgroundColor: colors.primary + '20', borderColor: colors.primary }
+                              : { backgroundColor: colors.background, borderColor: colors.border },
+                          ]}
+                        >
+                          <MaterialCommunityIcons
+                            name={freq === 'monthly' ? 'calendar-month-outline' : 'calendar-week-outline'}
+                            size={14}
+                            color={recurringExpenseFreq === freq ? colors.primary : colors.mutedForeground}
+                          />
+                          <Text style={[styles.freqChipTxt, { color: recurringExpenseFreq === freq ? colors.primary : colors.mutedForeground }]}>
+                            {freq === 'monthly' ? 'Mensuel' : 'Hebdomadaire'}
+                          </Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <Text style={[styles.recurringHint, { color: colors.mutedForeground }]}>Premier :</Text>
+                      <Pressable
+                        onPress={() => setShowRecExpDatePicker(true)}
+                        style={[styles.recurringDateBtn, { backgroundColor: colors.background, borderColor: colors.primary }]}
+                      >
+                        <Text style={[styles.recurringDateTxt, { color: colors.primary }]}>
+                          {recurringExpenseStart.toLocaleDateString('fr-FR', { day: '2-digit', month: 'long' })}
+                        </Text>
+                        <MaterialCommunityIcons name="calendar-outline" size={13} color={colors.primary} />
+                      </Pressable>
+                      {showRecExpDatePicker && (
+                        <DateTimePicker
+                          value={recurringExpenseStart}
+                          mode="date"
+                          display="calendar"
+                          onChange={(_e, d) => { setShowRecExpDatePicker(false); if (d) setRecurringExpenseStart(d); }}
+                        />
+                      )}
+                    </View>
+                  </View>
+                )}
+              </View>
+            )}
+
+            {/* Masquer du budget */}
+            <Pressable
+              onPress={() => { Haptics.selectionAsync(); setForm(f => ({ ...f, hidden: !f.hidden })); }}
+              style={[styles.toggleRow, { backgroundColor: colors.background, borderColor: form.hidden ? '#9E9E9E' : colors.border }]}
+            >
+              <MaterialCommunityIcons name="eye-off-outline" size={16} color={form.hidden ? colors.foreground : colors.mutedForeground} />
+              <Text style={[styles.toggleRowTxt, { color: form.hidden ? colors.foreground : colors.mutedForeground, flex: 1 }]}>
+                Masquer du budget
+              </Text>
+              <View style={[styles.toggleDot, { backgroundColor: form.hidden ? colors.foreground : colors.border }]} />
+            </Pressable>
 
             {/* Actions */}
             <View style={{ flexDirection: 'row', gap: 10 }}>
@@ -1158,4 +1340,32 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   recurringDateTxt: { fontSize: 13, fontFamily: 'Inter_500Medium' },
+
+  sectionHeader: {
+    fontSize: 11,
+    fontFamily: 'Inter_600SemiBold',
+    letterSpacing: 0.8,
+    marginBottom: 8,
+    marginTop: 4,
+  },
+
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  toggleRowTxt: {
+    fontSize: 13,
+    fontFamily: 'Inter_500Medium',
+    flex: 1,
+  },
+  toggleDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
 });
