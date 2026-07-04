@@ -20,6 +20,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '@/contexts/AppContext';
 import { useColors } from '@/hooks/useColors';
 import type { MaintenanceItem, Vehicle } from '@/types/trips';
+import { computeAutoCostPerKm } from '@/utils/costPerKm';
 import { computeOdometer, getTrips, getVehicleSettings, saveVehicleSettings } from '@/utils/tripStorage';
 
 function genId(): string {
@@ -41,6 +42,7 @@ export default function VehicleSettingsScreen() {
   const [newItemInterval, setNewItemInterval] = useState('');
   const [newItemType, setNewItemType] = useState<'km' | 'date'>('km');
   const [newItemDays, setNewItemDays] = useState('');
+  const [newItemCost, setNewItemCost] = useState('');
 
   const [addVehicleVisible, setAddVehicleVisible] = useState(false);
   const [newVehicleName, setNewVehicleName] = useState('');
@@ -89,17 +91,20 @@ export default function VehicleSettingsScreen() {
     if (!selected) return;
     const name = newItemName.trim();
     if (!name) return;
+    const cost = parseFloat(newItemCost.replace(',', '.'));
+    const itemCost = isNaN(cost) || cost <= 0 ? undefined : cost;
     let item: MaintenanceItem;
     if (newItemType === 'km') {
       const interval = parseInt(newItemInterval, 10);
       if (isNaN(interval) || interval <= 0) return;
-      item = { id: genId(), name, intervalKm: interval, lastResetKm: odo };
+      item = { id: genId(), name, intervalKm: interval, lastResetKm: odo, cost: itemCost };
     } else {
       const days = parseInt(newItemDays, 10);
       if (isNaN(days) || days <= 0) return;
-      item = { id: genId(), name, intervalKm: 0, lastResetKm: 0, intervalDays: days, lastResetDate: Date.now() };
+      item = { id: genId(), name, intervalKm: 0, lastResetKm: 0, intervalDays: days, lastResetDate: Date.now(), cost: itemCost };
     }
     updateSelected({ maintenanceItems: [...selected.maintenanceItems, item] });
+    setNewItemCost('');
     setAddModalVisible(false);
   }
 
@@ -278,18 +283,40 @@ export default function VehicleSettingsScreen() {
 
           {/* Cost per km */}
           <View style={styles.section}>
-            <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>COÛT AU KM (€)</Text>
-            <TextInput
-              style={[styles.input, { backgroundColor: colors.input, borderColor: colors.border, color: colors.foreground }]}
-              value={selected.costPerKm.toString()}
-              onChangeText={t => {
-                const v = parseFloat(t);
-                if (!isNaN(v)) updateSelected({ costPerKm: v });
-              }}
-              keyboardType="decimal-pad"
-              placeholderTextColor={colors.mutedForeground}
-              placeholder="0.15"
-            />
+            <View style={styles.sectionRow}>
+              <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>COÛT AU KM (€)</Text>
+              <View style={[styles.modeChip, { backgroundColor: selected.costMode === 'auto' ? colors.primary + '22' : colors.muted }]}
+                <Pressable
+                  onPress={() => updateSelected({ costMode: selected.costMode === 'auto' ? 'manual' : 'auto' })}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4 }}
+                >
+                  <MaterialCommunityIcons
+                    name={selected.costMode === 'auto' ? 'calculator-variant' : 'pencil-outline'}
+                    size={12}
+                    color={selected.costMode === 'auto' ? colors.primary : colors.mutedForeground}
+                  />
+                  <Text style={{ fontSize: 11, fontFamily: 'Inter_500Medium', color: selected.costMode === 'auto' ? colors.primary : colors.mutedForeground }}>
+                    {selected.costMode === 'auto' ? 'Auto' : 'Manuel'}
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+
+            {selected.costMode === 'auto' ? (
+              <AutoCostDisplay vehicle={selected} colors={colors} />
+            ) : (
+              <TextInput
+                style={[styles.input, { backgroundColor: colors.input, borderColor: colors.border, color: colors.foreground }]}
+                value={selected.costPerKm.toString()}
+                onChangeText={t => {
+                  const v = parseFloat(t);
+                  if (!isNaN(v)) updateSelected({ costPerKm: v });
+                }}
+                keyboardType="decimal-pad"
+                placeholderTextColor={colors.mutedForeground}
+                placeholder="0.15"
+              />
+            )}
           </View>
 
           {/* Odometer base */}

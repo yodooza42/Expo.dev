@@ -58,6 +58,8 @@ export interface MaintenanceItem {
   lastResetDate?: number;
   /** ID of the task created by the maintenance scheduler (avoids duplicates) */
   linkedTaskId?: string;
+  /** Estimated cost of this maintenance operation in EUR */
+  cost?: number;
 }
 
 export interface Vehicle {
@@ -69,6 +71,8 @@ export interface Vehicle {
   maintenanceItems: MaintenanceItem[];
   /** Project ID where maintenance tasks are auto-created */
   maintenanceProjectId?: string;
+  /** Whether costPerKm is manually entered or auto-calculated from fuel + maintenance */
+  costMode?: 'manual' | 'auto';
 }
 
 /** Array of vehicles — replaces the old {car, moto} fixed object */

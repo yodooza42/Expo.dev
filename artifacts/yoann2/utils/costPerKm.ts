@@ -1,0 +1,89 @@
+/**
+ * Coût/km auto-calculé : carburant + entretien.
+ *
+ * Période : depuis le premier plein/entretien enregistré, ou les 12 derniers mois
+ * si aucun plein/entretien.
+ */
+
+import type { FuelEntry } from '@/types/fuel';
+import type { MaintenanceItem, Trip, Vehicle } from '@/types/trips';
+import { getFuelEntries } from '@/utils/fuelStorage';
+import { getTrips } from '@/utils/tripStorage';
+import { computeOdometer } from '@/utils/tripStorage';
+
+const MS_12_MONTHS = 365 * 24 * 3_600_000;
+
+interface CostBreakdown {
+  fuelCostPerKm: number;
+  maintenanceCostPerKm: number;
+  totalCostPerKm: number;
+  kmInPeriod: number;
+  fuelTotalEUR: number;
+  maintenanceTotalEUR: number;
+  periodStartMs: number;
+}
+
+/**
+ * Calculate auto cost-per-km for a vehicle.
+ * Returns null when there is no trip data to compute against.
+ */
+export async function computeAutoCostPerKm(vehicle: Vehicle): Promise<CostBreakdown | null> {
+  const [trips, fuelEntries] = await Promise.all([getTrips(), getFuelEntries()]);
+
+  const vehicleTrips = trips.filter(t => t.vehicle === vehicle.id);
+  const vehicleFuel  = fuelEntries.filter(e => e.vehicle === vehicle.id);
+
+  // Determine period start: earliest fuel entry or earliest maintenance reset, or 12 months ago
+  const firstFuelMs   = vehicleFuel.length > 0 ? Math.min(...vehicleFuel.map(e => e.timestamp)) : Infinity;
+  const maintResets   = vehicle.maintenanceItems
+    .filter(i => i.lastResetDate && i.cost != null && i.cost > 0)
+    .map(i => i.lastResetDate!);
+  const firstMaintMs  = maintResets.length > 0 ? Math.min(...maintResets) : Infinity;
+
+  let periodStartMs = Math.min(firstFuelMs, firstMaintMs);
+  if (periodStartMs === Infinity) {
+    periodStartMs = Date.now() - MS_12_MONTHS;
+  }
+
+  // KM in period: use odometer delta from period start to now
+  const odoNow    = computeOdometer(trips, vehicle.id, vehicle.odometerBaseKm);
+  const tripsBefore = vehicleTrips.filter(t => t.endTime < periodStartMs);
+  const kmBefore  = tripsBefore.reduce((s, t) => s + t.distanceKm, 0);
+  const kmInPeriod = Math.max(0, odoNow - vehicle.odometerBaseKm - kmBefore);
+
+  if (kmInPeriod <= 0) return null;
+
+  // Fuel cost in period
+  const fuelInPeriod = vehicleFuel.filter(e => e.timestamp >= periodStartMs);
+  const fuelTotalEUR = fuelInPeriod.reduce((s, e) => s + e.liters * e.pricePerLiter, 0);
+
+  // Maintenance cost in period (items with a cost that were reset within the period)
+  const maintInPeriod = vehicle.maintenanceItems.filter(
+    i => i.cost != null && i.cost > 0 && i.lastResetDate && i.lastResetDate >= periodStartMs,
+  );
+  const maintenanceTotalEUR = maintInPeriod.reduce((s, i) => s + (i.cost ?? 0), 0);
+
+  const fuelCostPerKm       = fuelTotalEUR / kmInPeriod;
+  const maintenanceCostPerKm = maintenanceTotalEUR / kmInPeriod;
+
+  return {
+    fuelCostPerKm,
+    maintenanceCostPerKm,
+    totalCostPerKm: fuelCostPerKm + maintenanceCostPerKm,
+    kmInPeriod,
+    fuelTotalEUR,
+    maintenanceTotalEUR,
+    periodStartMs,
+  };
+}
+
+/**
+ * Convenience: returns the effective cost-per-km for a vehicle.
+ * - Manual mode (or no mode set) → returns the stored costPerKm.
+ * - Auto mode → computes fuel + maintenance / km.
+ */
+export async function getEffectiveCostPerKm(vehicle: Vehicle): Promise<number> {
+  if (vehicle.costMode !== 'auto') return vehicle.costPerKm;
+  const computed = await computeAutoCostPerKm(vehicle);
+  return computed?.totalCostPerKm ?? vehicle.costPerKm;
+}
