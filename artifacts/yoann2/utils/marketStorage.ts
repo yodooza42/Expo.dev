@@ -93,6 +93,23 @@ export async function addMarketOperation(op: Omit<MarketOperation, 'id'>): Promi
   return newItem;
 }
 
+export async function updateMarketOperation(
+  id: string,
+  updates: Partial<Omit<MarketOperation, 'id' | 'assetId'>>,
+): Promise<void> {
+  const list = await getMarketOperations();
+  const newList = list.map(op => {
+    if (op.id !== id) return op;
+    const merged = { ...op, ...updates };
+    // Recompute qty if pricePerShare changed
+    const qty = merged.pricePerShare && merged.pricePerShare > 0
+      ? merged.amount / merged.pricePerShare
+      : merged.qty;
+    return { ...merged, qty };
+  });
+  await AsyncStorage.setItem(KEYS.OPS, JSON.stringify(newList));
+}
+
 export async function deleteMarketOperation(id: string): Promise<void> {
   const list = await getMarketOperations();
   await AsyncStorage.setItem(KEYS.OPS, JSON.stringify(list.filter(o => o.id !== id)));

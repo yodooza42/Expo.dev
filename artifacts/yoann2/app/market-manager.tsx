@@ -39,6 +39,7 @@ import {
   getMarketRecurrings,
   processMarketRecurrings,
   updateMarketAsset,
+  updateMarketOperation,
 } from '@/utils/marketStorage';
 import { type LivePrice, fetchLivePrices } from '@/utils/marketPrices';
 
@@ -76,6 +77,7 @@ export default function MarketManagerScreen() {
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
   const [opType, setOpType]   = useState<'buy' | 'sell'>('buy');
   const [editAsset, setEditAsset] = useState<MarketAsset | null>(null);
+  const [editOpId, setEditOpId]   = useState<string | null>(null);
 
   // Form fields
   const [fAmount, setFAmount]   = useState('');
@@ -114,13 +116,25 @@ export default function MarketManagerScreen() {
     setModalMode('edit_asset');
   }
   function openAddOp(assetId: string, type: 'buy' | 'sell') {
-    setSelectedAssetId(assetId); setOpType(type);
+    setSelectedAssetId(assetId); setOpType(type); setEditOpId(null);
     setFAmount(''); setFFees(''); setFPrice(''); setFDate(todayIso()); setFNote('');
     // Pre-fill current price from live data if available
     const asset = assets.find(a => a.id === assetId);
     if (asset?.ticker && prices[asset.ticker]) {
       setFPrice(prices[asset.ticker].price.toString());
     }
+    setModalMode('add_op');
+  }
+
+  function openEditOp(op: MarketOperation) {
+    setSelectedAssetId(op.assetId);
+    setOpType(op.type);
+    setEditOpId(op.id);
+    setFAmount(op.amount.toString());
+    setFFees(op.fees > 0 ? op.fees.toString() : '');
+    setFPrice(op.pricePerShare ? op.pricePerShare.toString() : '');
+    setFDate(op.date);
+    setFNote(op.note ?? '');
     setModalMode('add_op');
   }
   function openAddRecurring(assetId: string) {
@@ -159,38 +173,22 @@ export default function MarketManagerScreen() {
     const fees = parseFloat(fFees.replace(',', '.')) || 0;
     const pricePerShare = parseFloat(fPrice.replace(',', '.')) || undefined;
     const opDate = fDate || todayIso();
-    const assetName = assets.find(a => a.id === selectedAssetId)?.name ?? 'Actif';
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    await addMarketOperation({
-      assetId: selectedAssetId,
-      type: opType,
-      amount,
-      fees,
-      pricePerShare,
-      date: opDate,
-      note: fNote.trim() || undefined,
-    });
-    // Virement automatique vers/depuis le compte courant
-    if (opType === 'buy') {
-      await addTransaction({
-        type: 'transfer_to_market',
-        amount: amount + fees,
-        label: `Achat ${assetName}`,
-        category: 'Marché',
-        date: opDate,
-        note: fNote.trim() || undefined,
-      });
+
+    if (editOpId) {
+      // Modification : on met à jour l'op sans créer de virement
+      await updateMarketOperation(editOpId, { amount, fees, pricePerShare, date: opDate, note: fNote.trim() || undefined });
     } else {
-      const net = Math.max(0, amount - fees);
-      if (net > 0) {
-        await addTransaction({
-          type: 'transfer_from_market',
-          amount: net,
-          label: `Vente ${assetName}`,
-          category: 'Marché',
-          date: opDate,
-          note: fNote.trim() || undefined,
-        });
+      // Création : op + virement automatique
+      const assetName = assets.find(a => a.id === selectedAssetId)?.name ?? 'Actif';
+      await addMarketOperation({ assetId: selectedAssetId, type: opType, amount, fees, pricePerShare, date: opDate, note: fNote.trim() || undefined });
+      if (opType === 'buy') {
+        await addTransaction({ type: 'transfer_to_market', amount: amount + fees, label: `Achat ${assetName}`, category: 'Marché', date: opDate, note: fNote.trim() || undefined });
+      } else {
+        const net = Math.max(0, amount - fees);
+        if (net > 0) {
+          await addTransaction({ type: 'transfer_from_market', amount: net, label: `Vente ${assetName}`, category: 'Marché', date: opDate, note: fNote.trim() || undefined });
+        }
       }
     }
     closeModal();
@@ -412,7 +410,10 @@ export default function MarketManagerScreen() {
                             <Text style={[styles.opRowAmount, { color }]}>
                               {isBuy ? '+' : '-'}{fmt(Math.abs(total))}
                             </Text>
-                            <Pressable onPress={() => handleDeleteOp(op.id)} hitSlop={10} style={{ paddingLeft: 4 }}>
+                            <Pressable onPress={() => openEditOp(op)} hitSlop={10} style={{ paddingLeft: 2 }}>
+                              <MaterialCommunityIcons name="pencil-outline" size={14} color={colors.mutedForeground} />
+                            </Pressable>
+                            <Pressable onPress={() => handleDeleteOp(op.id)} hitSlop={10} style={{ paddingLeft: 2 }}>
                               <MaterialCommunityIcons name="trash-can-outline" size={14} color={colors.mutedForeground} />
                             </Pressable>
                           </View>
@@ -468,7 +469,7 @@ export default function MarketManagerScreen() {
             {modalMode === 'add_op' && (
               <>
                 <Text style={[styles.modalTitle, { color: colors.foreground }]}>
-                  {opType === 'buy' ? '📈 Achat' : '📉 Vente'}
+                  {editOpId ? '✏️ Modifier opération' : opType === 'buy' ? '📈 Achat' : '📉 Vente'}
                   {selectedAssetId ? `  —  ${assets.find(a => a.id === selectedAssetId)?.name ?? ''}` : ''}
                 </Text>
                 <View style={styles.row}>
