@@ -26,7 +26,7 @@ import {
   type KnownPlace,
   type PlaceCategory,
 } from '@/types/places';
-import { forwardGeocode } from '@/utils/nominatim';
+import { forwardGeocode } from '@/utils/geocoding';
 import {
   deletePlaceCategory,
   deleteKnownPlace,

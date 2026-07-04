@@ -28,17 +28,10 @@ import {
 } from '@/utils/placesStorage';
 import { tripEvents } from '@/utils/tripEvents';
 import { getTrips, getVehicleSettings, updateTrip } from '@/utils/tripStorage';
+import { fmtDayLong, fmtHHMM } from '@/utils/date';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
-function fmtDate(ts: number): string {
-  return new Date(ts).toLocaleDateString('fr-FR', {
-    weekday: 'long', day: 'numeric', month: 'long',
-  });
-}
-function fmtTime(ts: number): string {
-  return new Date(ts).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-}
 function fmtDuration(ms: number): string {
   const m = Math.round(ms / 60_000);
   if (m < 60) return `${m} min`;
@@ -395,10 +388,10 @@ export default function TripMapScreen() {
           </View>
 
           <Text style={[styles.dateText, { color: colors.foreground }]}>
-            {fmtDate(trip.startTime)}
+            {fmtDayLong(trip.startTime)}
           </Text>
           <Text style={[styles.timeText, { color: colors.mutedForeground }]}>
-            {fmtTime(trip.startTime)} → {fmtTime(trip.endTime)}
+            {fmtHHMM(trip.startTime)} → {fmtHHMM(trip.endTime)}
           </Text>
 
           <View style={styles.statsRow}>

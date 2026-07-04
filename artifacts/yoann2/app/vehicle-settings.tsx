@@ -22,10 +22,7 @@ import { useColors } from '@/hooks/useColors';
 import type { MaintenanceItem, Vehicle } from '@/types/trips';
 import { computeAutoCostPerKm } from '@/utils/costPerKm';
 import { computeOdometer, getTrips, getVehicleSettings, saveVehicleSettings } from '@/utils/tripStorage';
-
-function genId(): string {
-  return Date.now().toString() + Math.random().toString(36).slice(2, 9);
-}
+import { genId } from '@/utils/ids';
 
 export default function VehicleSettingsScreen() {
   const colors = useColors();

@@ -28,7 +28,7 @@ import { getTrips, updateTrip } from '@/utils/tripStorage';
 import type { Trip, RoutePoint } from '@/types/trips';
 import type { PlaceCategory } from '@/types/places';
 import { getPlaceCategories, saveKnownPlace } from '@/utils/placesStorage';
-import { reverseGeocode } from '@/utils/nominatim';
+import { reverseGeocode } from '@/utils/geocoding';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -1446,7 +1446,7 @@ export default function MapScreen() {
                     lat: longPressCoords.lat,
                     lng: longPressCoords.lng,
                     radiusM: 200,
-                    address: addr,
+                    address: addr ?? undefined,
                     createdAt: Date.now(),
                   });
                   setPlaceSheetSaving(false);

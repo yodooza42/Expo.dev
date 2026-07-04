@@ -1,5 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import { genId } from '@/utils/ids';
+
 const KEYS = {
   TRANSACTIONS: '@yoann2/bank_transactions',
   SAVINGS_BALANCE: '@yoann2/bank_savings_balance',
@@ -31,9 +33,6 @@ export interface RecurringTransfer {
   createdAt: string;
 }
 
-function genId(): string {
-  return Date.now().toString() + Math.random().toString(36).substr(2, 9);
-}
 
 // ── BankTransaction ──────────────────────────────────────────────────────────
 

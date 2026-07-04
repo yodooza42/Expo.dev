@@ -73,3 +73,41 @@ export async function reverseGeocode(lat: number, lng: number): Promise<string |
   if (result) cache.set(key, result);
   return result;
 }
+
+// ── Forward geocoding ─────────────────────────────────────────────────────────
+
+export interface GeoResult {
+  lat: number;
+  lng: number;
+  displayName: string;
+}
+
+/**
+ * Forward-geocode: address string → first matching GPS point.
+ * Returns null when no result found or on network failure.
+ */
+export async function forwardGeocode(query: string): Promise<GeoResult | null> {
+  const gap = Date.now() - lastCallMs;
+  if (gap < 1_100) await sleep(1_100 - gap);
+  lastCallMs = Date.now();
+
+  try {
+    const url =
+      `${BASE}/search?format=jsonv2&q=${encodeURIComponent(query)}&limit=1&accept-language=fr`;
+    const res = await fetch(url, { headers: HEADERS });
+    if (!res.ok) return null;
+    const data = await res.json() as Array<{
+      lat: string;
+      lon: string;
+      display_name: string;
+    }>;
+    if (!data.length) return null;
+    return {
+      lat: parseFloat(data[0]!.lat),
+      lng: parseFloat(data[0]!.lon),
+      displayName: data[0]!.display_name,
+    };
+  } catch {
+    return null;
+  }
+}

@@ -4,6 +4,7 @@ import { AppState } from 'react-native';
 
 import type { Appointment, AppStats, Category, Expense, Priority, Project, ProjectStatus, Task, TaskStatus } from '@/types';
 import { saveBackup } from '@/utils/backup';
+import { genId } from '@/utils/ids';
 import {
   SEED_APPOINTMENTS,
   SEED_CATEGORIES,
@@ -55,9 +56,6 @@ const DEFAULT_CATEGORIES: Category[] = [
   { id: 'cat_perso', name: 'Personnel' },
 ];
 
-function genId(): string {
-  return Date.now().toString() + Math.random().toString(36).substr(2, 9);
-}
 
 function computeEisenhower(urgency: number, importance: number): Task['eisenhower'] {
   const isUrgent = urgency >= 2;

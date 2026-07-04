@@ -5,6 +5,7 @@ import type { LocationPoint } from '@/utils/locationTracking';
 import { haversineKm } from '@/utils/haversine';
 import { matchRouteOSRM, computeRouteDistanceKm } from '@/utils/osrmMatching';
 import { reverseGeocode } from '@/utils/geocoding';
+import { genId } from '@/utils/ids';
 import { simplifyRoute } from '@/utils/routeSimplification';
 import {
   getTripDetectionState,
@@ -24,9 +25,6 @@ const MAX_RAW_ROUTE_POINTS = 3_000;
 // Key shared with locationTracking to signal desired GPS frequency
 export const TRACKING_MODE_KEY = '@yoann2_tracking_mode';
 
-function genId(): string {
-  return Date.now().toString() + Math.random().toString(36).substr(2, 9);
-}
 
 function addDistance(
   s: TripDetectionState,

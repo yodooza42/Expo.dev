@@ -4,6 +4,7 @@ import * as ImagePicker from 'expo-image-picker';
 import React, { useCallback, useState } from 'react';
 
 import { CameraOcrIcon } from '@/components/CameraOcrIcon';
+import { genId } from '@/utils/ids';
 import {
   ActivityIndicator,
   Alert,
@@ -30,9 +31,6 @@ interface Props {
   onClose: () => void;
 }
 
-function genId() {
-  return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-}
 
 export function OcrScanModal({ visible, onClose }: Props) {
   const colors = useColors();

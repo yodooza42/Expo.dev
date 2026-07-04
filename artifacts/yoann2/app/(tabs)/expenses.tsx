@@ -42,6 +42,7 @@ import {
   TransactionType,
   updateTransaction,
 } from '@/utils/bankStorage';
+import { fmtDateShort } from '@/utils/date';
 
 const SHOW_AMOUNTS_KEY = '@yoann2/finance_show_amounts';
 
@@ -57,9 +58,6 @@ function formatAmount(amount: number, masked: boolean): string {
   return `${amount.toFixed(2).replace('.', ',')} €`;
 }
 
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' });
-}
 
 function groupByMonth(txs: BankTransaction[]): { label: string; items: BankTransaction[] }[] {
   const map = new Map<string, BankTransaction[]>();
@@ -366,7 +364,7 @@ export default function FinanceScreen() {
               <Text style={[styles.txNote, { color: colors.mutedForeground }]} numberOfLines={1}>· {tx.note}</Text>
             ) : null}
           </View>
-          <Text style={[styles.txDate, { color: colors.mutedForeground }]}>{formatDate(tx.date)}</Text>
+          <Text style={[styles.txDate, { color: colors.mutedForeground }]}>{fmtDateShort(tx.date)}</Text>
         </View>
         <Text style={[styles.txAmount, { color: cfg.color }]}>
           {cfg.sign}{formatAmount(tx.amount, !showAmounts)}
