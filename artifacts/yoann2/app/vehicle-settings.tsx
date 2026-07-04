@@ -285,7 +285,7 @@ export default function VehicleSettingsScreen() {
           <View style={styles.section}>
             <View style={styles.sectionRow}>
               <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>COÛT AU KM (€)</Text>
-              <View style={[styles.modeChip, { backgroundColor: selected.costMode === 'auto' ? colors.primary + '22' : colors.muted }]}
+              <View style={[styles.modeChip, { backgroundColor: selected.costMode === 'auto' ? colors.primary + '22' : colors.muted }]}>
                 <Pressable
                   onPress={() => updateSelected({ costMode: selected.costMode === 'auto' ? 'manual' : 'auto' })}
                   style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4 }}
@@ -303,7 +303,9 @@ export default function VehicleSettingsScreen() {
             </View>
 
             {selected.costMode === 'auto' ? (
-              <AutoCostDisplay vehicle={selected} colors={colors} />
+              <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 13, marginTop: 4 }}>
+                Calcul auto depuis les pleins et entretiens enregistrés.
+              </Text>
             ) : (
               <TextInput
                 style={[styles.input, { backgroundColor: colors.input, borderColor: colors.border, color: colors.foreground }]}
