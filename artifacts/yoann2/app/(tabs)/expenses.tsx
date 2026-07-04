@@ -66,8 +66,8 @@ const TYPE_CONFIG: Record<TransactionType, { label: string; icon: string; color:
   expense:                 { label: 'Sortie',           icon: 'arrow-up-circle-outline',    color: '#EF4444', sign: '-' },
   transfer_to_savings:     { label: 'Vers épargne',     icon: 'piggy-bank-outline',         color: '#2196F3', sign: '-' },
   transfer_from_savings:   { label: 'Depuis épargne',   icon: 'bank-transfer',              color: '#FF9800', sign: '+' },
-  transfer_to_market:      { label: 'Vers marché',      icon: 'chart-areaspline',           color: '#10B981', sign: '-' },
-  transfer_from_market:    { label: 'Depuis marché',    icon: 'chart-areaspline',           color: '#10B981', sign: '+' },
+  transfer_to_market:      { label: 'Vers marché',      icon: 'chart-areaspline',           color: '#8B5CF6', sign: '-' },
+  transfer_from_market:    { label: 'Depuis marché',    icon: 'chart-areaspline',           color: '#8B5CF6', sign: '+' },
 };
 
 function formatAmount(amount: number, masked: boolean): string {
@@ -635,18 +635,18 @@ export default function FinanceScreen() {
               {/* Marché */}
               <View style={[styles.savingsRow, { borderTopColor: colors.border }]}>
                 <View style={styles.savingsLeft}>
-                  <MaterialCommunityIcons name="chart-areaspline" size={16} color="#10B981" />
+                  <MaterialCommunityIcons name="chart-areaspline" size={16} color="#8B5CF6" />
                   <Text style={[styles.savingsLbl, { color: colors.mutedForeground }]}>Marché</Text>
                 </View>
-                <Text style={[styles.savingsAmount, { color: '#10B981' }]}>
+                <Text style={[styles.savingsAmount, { color: '#8B5CF6' }]}>
                   {showAmounts ? fmtEuro(marketBalance) : '••••'}
                 </Text>
                 <Pressable
                   onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/market-manager'); }}
-                  style={[styles.transferBtn, { backgroundColor: '#10B98118', borderColor: '#10B98140' }]}
+                  style={[styles.transferBtn, { backgroundColor: '#8B5CF618', borderColor: '#8B5CF640' }]}
                 >
-                  <MaterialCommunityIcons name="chart-line" size={15} color="#10B981" />
-                  <Text style={[styles.transferBtnTxt, { color: '#10B981' }]}>Gérer</Text>
+                  <MaterialCommunityIcons name="chart-line" size={15} color="#8B5CF6" />
+                  <Text style={[styles.transferBtnTxt, { color: '#8B5CF6' }]}>Gérer</Text>
                 </Pressable>
               </View>
             </View>

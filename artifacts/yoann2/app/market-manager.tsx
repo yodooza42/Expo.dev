@@ -44,7 +44,7 @@ import {
 import { type LivePrice, fetchLivePrices, resolveYahooSymbol } from '@/utils/marketPrices';
 import { fmtEuro } from '@/utils/money';
 
-const MKT_GREEN = '#10B981';
+const MKT_GREEN = '#8B5CF6';
 
 function fmt(n: number) { return fmtEuro(n); }
 
