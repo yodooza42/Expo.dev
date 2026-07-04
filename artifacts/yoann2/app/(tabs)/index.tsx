@@ -108,6 +108,11 @@ export default function DashboardScreen() {
   const now      = new Date();
   const todayStart = startOfDay(now);
   const todayKey   = isoDate(todayStart);
+  const upcomingAppts = appointments.filter(a => {
+    if (!a.date) return false;
+    const d = new Date(a.date);
+    return !isNaN(d.getTime()) && d >= todayStart;
+  }).length;
 
   // Next appointment
   const nextAppointment = useMemo(() => appointments
@@ -483,27 +488,6 @@ export default function DashboardScreen() {
           </View>
         </View>
 
-        {/* Compact stats */}
-        <View style={styles.statsRow}>
-          <View style={styles.statPill}>
-            <MaterialCommunityIcons name="folder-multiple-outline" size={13} color={colors.primary} />
-            <Text style={[styles.statPillTxt, { color: colors.mutedForeground }]}>{stats.totalProjects} projets</Text>
-          </View>
-          <View style={styles.statPill}>
-            <MaterialCommunityIcons name="format-list-checks" size={13} color="#2196F3" />
-            <Text style={[styles.statPillTxt, { color: colors.mutedForeground }]}>{stats.totalTasks} tâches</Text>
-          </View>
-          {stats.overdueTasks > 0 && (
-            <View style={[styles.statPill, { backgroundColor: '#F4433318' }]}>
-              <MaterialCommunityIcons name="clock-alert-outline" size={13} color="#F44336" />
-              <Text style={[styles.statPillTxt, { color: '#F44336' }]}>{stats.overdueTasks} en retard</Text>
-            </View>
-          )}
-          <View style={styles.statPill}>
-            <MaterialCommunityIcons name="check-circle-outline" size={13} color="#4CAF50" />
-            <Text style={[styles.statPillTxt, { color: colors.mutedForeground }]}>{stats.completedTasks} terminées</Text>
-          </View>
-        </View>
       </LinearGradient>
 
       {/* SCROLL BODY */}
@@ -655,6 +639,24 @@ export default function DashboardScreen() {
             </Text>
           </View>
           <View style={[styles.todayLine, { backgroundColor: colors.primary }]} />
+        </View>
+        <View style={[styles.statsRow, { justifyContent: 'center', marginTop: -6, marginBottom: 10 }]}>
+          <View style={[styles.statPill, { backgroundColor: '#7C4DFF18' }]}>
+            <MaterialCommunityIcons name="calendar-clock-outline" size={12} color="#7C4DFF" />
+            <Text style={[styles.statPillTxt, { color: '#7C4DFF' }]}>{upcomingAppts}</Text>
+          </View>
+          <View style={[styles.statPill, { backgroundColor: colors.primary + '18' }]}>
+            <MaterialCommunityIcons name="folder-multiple-outline" size={12} color={colors.primary} />
+            <Text style={[styles.statPillTxt, { color: colors.primary }]}>{stats.totalProjects}</Text>
+          </View>
+          <View style={[styles.statPill, { backgroundColor: '#2196F318' }]}>
+            <MaterialCommunityIcons name="format-list-checks" size={12} color="#2196F3" />
+            <Text style={[styles.statPillTxt, { color: '#2196F3' }]}>{stats.totalTasks}</Text>
+          </View>
+          <View style={[styles.statPill, { backgroundColor: '#4CAF5018' }]}>
+            <MaterialCommunityIcons name="check-circle-outline" size={12} color="#4CAF50" />
+            <Text style={[styles.statPillTxt, { color: '#4CAF50' }]}>{stats.completedTasks}</Text>
+          </View>
         </View>
 
         {/* Empty state */}
