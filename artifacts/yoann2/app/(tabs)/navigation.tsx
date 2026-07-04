@@ -22,6 +22,7 @@ import { useColors } from '@/hooks/useColors';
 import type { FuelEntry } from '@/types/fuel';
 import type { Appointment } from '@/types';
 import { saveFuelEntry } from '@/utils/fuelStorage';
+import { addTransaction } from '@/utils/bankStorage';
 import {
   getGpsInterval,
   setGpsInterval,
@@ -102,7 +103,18 @@ export default function NavigationScreen() {
       liters: l,
       pricePerLiter: p,
     };
-    await saveFuelEntry(entry);
+    const vehicleName = fuelVehicle === 'car' ? 'Voiture' : 'Moto';
+    const label = `Essence ${vehicleName} - ${l} L - ${p.toFixed(3)} €/L`;
+    await Promise.all([
+      saveFuelEntry(entry),
+      addTransaction({
+        type: 'expense',
+        amount: parseFloat((l * p).toFixed(2)),
+        label,
+        category: 'Carburant',
+        date: new Date().toISOString(),
+      }),
+    ]);
     setFuelLiters('');
     setFuelPrice('');
     setFuelOpen(false);
