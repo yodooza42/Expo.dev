@@ -4,12 +4,14 @@ import * as Notifications from 'expo-notifications';
 import type { LocationPoint } from '@/utils/locationTracking';
 import { haversineKm } from '@/utils/haversine';
 import { matchRouteOSRM, computeRouteDistanceKm } from '@/utils/osrmMatching';
+import { reverseGeocode } from '@/utils/geocoding';
 import { simplifyRoute } from '@/utils/routeSimplification';
 import {
   getTripDetectionState,
   saveTrip,
   saveTripDetectionState,
 } from '@/utils/tripStorage';
+import { findNearestPlace } from '@/utils/placesStorage';
 import type { RoutePoint, Trip, TripDetectionState } from '@/types/trips';
 
 const VEHICLE_SPEED_KMH = 15;
@@ -151,6 +153,29 @@ export async function processPointForTrip(point: LocationPoint): Promise<Trip | 
   }
 
   if (completedTrip) {
+    // Resolve start/end addresses — known places first, Nominatim fallback
+    const [startPlace, endPlace] = await Promise.all([
+      findNearestPlace(completedTrip.startLat, completedTrip.startLon).catch(() => null),
+      findNearestPlace(completedTrip.endLat, completedTrip.endLon).catch(() => null),
+    ]);
+
+    if (startPlace) {
+      completedTrip.startAddress = startPlace.name;
+      completedTrip.startPlaceId = startPlace.id;
+    } else {
+      completedTrip.startAddress =
+        await reverseGeocode(completedTrip.startLat, completedTrip.startLon).catch(() => null) ?? undefined;
+    }
+
+    if (endPlace) {
+      completedTrip.endAddress = endPlace.name;
+      completedTrip.endPlaceId = endPlace.id;
+    } else {
+      // reverseGeocode enforces ≥1.1 s gap internally when Nominatim is called
+      completedTrip.endAddress =
+        await reverseGeocode(completedTrip.endLat, completedTrip.endLon).catch(() => null) ?? undefined;
+    }
+
     await saveTrip(completedTrip);
 
     await Notifications.scheduleNotificationAsync({

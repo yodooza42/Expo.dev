@@ -534,6 +534,15 @@ function TripRow({
         )}
       </View>
 
+      {(trip.startAddress || trip.endAddress) && !compact && (
+        <View style={styles.tripAddrRow}>
+          <MaterialCommunityIcons name="map-marker-outline" size={11} color={colors.mutedForeground} />
+          <Text style={[styles.tripAddr, { color: colors.mutedForeground }]} numberOfLines={1}>
+            {trip.startAddress ?? '…'} → {trip.endAddress ?? '…'}
+          </Text>
+        </View>
+      )}
+
       {isPending && !compact && (
         <View style={styles.retagRow}>
           <Pressable
@@ -960,6 +969,8 @@ const styles = StyleSheet.create({
   deleteCatText: { fontSize: 12, fontFamily: 'Inter_400Regular' },
 
   // TripRow
+  tripAddrRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  tripAddr: { flex: 1, fontSize: 11, fontFamily: 'Inter_400Regular' },
   tripCard: { borderRadius: 14, borderWidth: 1, padding: 14, gap: 10 },
   tripCardCompact: { padding: 10 },
   tripHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 },

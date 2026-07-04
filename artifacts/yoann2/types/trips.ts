@@ -20,6 +20,14 @@ export interface Trip {
   route?: RoutePoint[];
   /** Whether the route was road-matched by OSRM or kept as raw GPS trace. */
   routeSource?: 'osrm' | 'gps';
+  /** Resolved departure address (known-place name or Nominatim reverse geocode). */
+  startAddress?: string;
+  /** Resolved arrival address (known-place name or Nominatim reverse geocode). */
+  endAddress?: string;
+  /** ID of the KnownPlace matching the departure, if any. */
+  startPlaceId?: string;
+  /** ID of the KnownPlace matching the arrival, if any. */
+  endPlaceId?: string;
   /** Reference to a TripCategory grouping similar routes. */
   categoryId?: string;
   /** True when this trip is a return journey relative to its category. */

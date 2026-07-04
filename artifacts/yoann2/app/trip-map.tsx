@@ -13,7 +13,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { TripMapView } from '@/components/TripMapView';
 import { useColors } from '@/hooks/useColors';
+import type { PlaceCategory } from '@/types/places';
 import type { Trip, Vehicle } from '@/types/trips';
+import { getKnownPlaces, getPlaceCategories } from '@/utils/placesStorage';
 import { getTrips, getVehicleSettings } from '@/utils/tripStorage';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
@@ -44,6 +46,13 @@ export default function TripMapScreen() {
   const [loading, setLoading] = useState(true);
   const [osrmRoute, setOsrmRoute] = useState<{ lat: number; lng: number }[] | null>(null);
   const [loadingRoute, setLoadingRoute] = useState(false);
+  const [placeCategories, setPlaceCategories] = useState<PlaceCategory[]>([]);
+  const [knownPlaces, setKnownPlaces] = useState<Array<{ id: string; name: string; categoryId?: string }>>([]);
+
+  useEffect(() => {
+    getPlaceCategories().then(setPlaceCategories).catch(() => {});
+    getKnownPlaces().then(setKnownPlaces).catch(() => {});
+  }, []);
 
   useEffect(() => {
     Promise.all([getTrips(), getVehicleSettings()]).then(([trips, v]) => {
@@ -134,6 +143,27 @@ export default function TripMapScreen() {
       {/* Info card */}
       {trip && (
         <View style={[styles.card, { backgroundColor: colors.card, borderTopColor: colors.border }]}>
+          {(trip.startAddress || trip.endAddress) && (
+            <View style={[styles.addrBanner, { borderBottomColor: colors.border }]}>
+              <AddressBadge
+                address={trip.startAddress}
+                placeId={trip.startPlaceId}
+                dotColor="#4CAF50"
+                categories={placeCategories}
+                places={knownPlaces}
+                colors={colors}
+              />
+              <MaterialCommunityIcons name="arrow-right" size={13} color={colors.mutedForeground} />
+              <AddressBadge
+                address={trip.endAddress}
+                placeId={trip.endPlaceId}
+                dotColor="#FFC107"
+                categories={placeCategories}
+                places={knownPlaces}
+                colors={colors}
+              />
+            </View>
+          )}
           <Text style={[styles.dateText, { color: colors.foreground }]}>
             {fmtDate(trip.startTime)}
           </Text>
@@ -214,6 +244,36 @@ function StatItem({ icon, value, color }: { icon: string; value: string; color: 
   );
 }
 
+function AddressBadge({
+  address,
+  placeId,
+  dotColor,
+  categories,
+  places,
+  colors,
+}: {
+  address?: string;
+  placeId?: string;
+  dotColor: string;
+  categories: PlaceCategory[];
+  places: Array<{ id: string; name: string; categoryId?: string }>;
+  colors: ReturnType<typeof useColors>;
+}) {
+  const place = placeId ? places.find(p => p.id === placeId) : null;
+  const cat   = place?.categoryId ? categories.find(c => c.id === place.categoryId) : null;
+  const icon  = (cat?.icon ?? (placeId ? 'map-marker' : 'map-marker-outline')) as string;
+  const iconColor = cat?.color ?? dotColor;
+
+  return (
+    <View style={styles.addrBadge}>
+      <MaterialCommunityIcons name={icon as any} size={14} color={iconColor} />
+      <Text style={[styles.addrBadgeText, { color: colors.foreground }]} numberOfLines={1}>
+        {address ?? '—'}
+      </Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   root: { flex: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
@@ -245,4 +305,14 @@ const styles = StyleSheet.create({
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   legendDot: { width: 8, height: 8, borderRadius: 4 },
   legendText: { fontSize: 11, fontFamily: 'Inter_400Regular' },
+  addrBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingBottom: 12,
+    marginBottom: 4,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  addrBadge: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 5 },
+  addrBadgeText: { flex: 1, fontSize: 12, fontFamily: 'Inter_500Medium' },
 });
