@@ -900,7 +900,7 @@ export default function FinanceScreen() {
 
                 {/* Tâches du projet sélectionné */}
                 {noteProjId && (() => {
-                  const projTasks = tasks.filter(t => t.projectId === noteProjId && t.status !== 'done');
+                  const projTasks = tasks.filter(t => t.projectId === noteProjId);
                   if (projTasks.length === 0) return null;
                   const projName = projects.find(p => p.id === noteProjId)?.name ?? '';
                   return (
