@@ -42,6 +42,17 @@ import {
   saveNavShortcuts,
   upsertNavShortcut,
 } from '@/utils/navigationShortcuts';
+import { getKnownPlaces } from '@/utils/placesStorage';
+import type { KnownPlace } from '@/types/places';
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function normalizeStr(s: string): string {
+  return s
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -77,6 +88,21 @@ export default function NavigationScreen() {
   // Free search
   const [searchAddress, setSearchAddress] = useState('');
   const [searchLoading, setSearchLoading] = useState(false);
+
+  // Known places for autocomplete
+  const [knownPlaces, setKnownPlaces] = useState<KnownPlace[]>([]);
+  const [placeNavLoading, setPlaceNavLoading] = useState<string | null>(null);
+
+  const matchedPlaces = useMemo<KnownPlace[]>(() => {
+    const q = normalizeStr(searchAddress.trim());
+    if (q.length < 2) return [];
+    return knownPlaces
+      .filter(p =>
+        normalizeStr(p.name).includes(q) ||
+        (p.address && normalizeStr(p.address).includes(q)),
+      )
+      .slice(0, 3);
+  }, [searchAddress, knownPlaces]);
 
   // Edit modal
   const [editing, setEditing] = useState<EditShortcut | null>(null);
@@ -135,7 +161,11 @@ export default function NavigationScreen() {
     setShortcuts(await getNavShortcuts());
   }, []);
 
-  useEffect(() => { reload(); }, [reload]);
+  const reloadPlaces = useCallback(async () => {
+    setKnownPlaces(await getKnownPlaces());
+  }, []);
+
+  useEffect(() => { reload(); reloadPlaces(); }, [reload, reloadPlaces]);
 
   useEffect(() => {
     getGpsInterval().then(interval => {
@@ -178,6 +208,17 @@ export default function NavigationScreen() {
       setSearchAddress('');
     } finally {
       setSearchLoading(false);
+    }
+  }
+
+  async function handleNavigateToPlace(place: KnownPlace) {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setPlaceNavLoading(place.id);
+    try {
+      await openNavigation(place.lat, place.lng);
+      setSearchAddress('');
+    } finally {
+      setPlaceNavLoading(null);
     }
   }
 
@@ -288,6 +329,42 @@ export default function NavigationScreen() {
           <Text style={[styles.hintText, { color: colors.mutedForeground }]}>
             Ouvre Waze · fallback Google Maps · fallback web
           </Text>
+
+          {/* ── Known-place suggestions ── */}
+          {matchedPlaces.length > 0 && (
+            <View style={styles.suggestionsContainer}>
+              {matchedPlaces.map((place, idx) => (
+                <View key={place.id}>
+                  {idx > 0 && <View style={[styles.suggestionDivider, { backgroundColor: colors.border }]} />}
+                  <View style={styles.suggestionRow}>
+                    <View style={[styles.suggestionIcon, { backgroundColor: colors.primary + '20' }]}>
+                      <MaterialCommunityIcons name="map-marker" size={16} color={colors.primary} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.suggestionName, { color: colors.foreground }]} numberOfLines={1}>
+                        {place.name}
+                      </Text>
+                      {place.address ? (
+                        <Text style={[styles.suggestionAddress, { color: colors.mutedForeground }]} numberOfLines={1}>
+                          {place.address}
+                        </Text>
+                      ) : null}
+                    </View>
+                    <Pressable
+                      style={[styles.suggestionGoBtn, { backgroundColor: colors.primary, opacity: placeNavLoading === place.id ? 0.6 : 1 }]}
+                      onPress={() => handleNavigateToPlace(place)}
+                      disabled={placeNavLoading !== null}
+                      hitSlop={6}
+                    >
+                      {placeNavLoading === place.id
+                        ? <ActivityIndicator size="small" color="#121212" />
+                        : <MaterialCommunityIcons name="navigation-variant" size={16} color="#121212" />}
+                    </Pressable>
+                  </View>
+                </View>
+              ))}
+            </View>
+          )}
         </View>
 
         {/* ── Saved shortcuts ── */}
@@ -730,6 +807,47 @@ const styles = StyleSheet.create({
   hintText: {
     fontSize: 11,
     fontFamily: 'Inter_400Regular',
+  },
+  suggestionsContainer: {
+    marginTop: 10,
+    borderRadius: 10,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  suggestionDivider: {
+    height: 1,
+    marginHorizontal: 12,
+  },
+  suggestionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 10,
+  },
+  suggestionIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  suggestionName: {
+    fontSize: 13,
+    fontFamily: 'Inter_600SemiBold',
+  },
+  suggestionAddress: {
+    fontSize: 11,
+    fontFamily: 'Inter_400Regular',
+    marginTop: 1,
+  },
+  suggestionGoBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   grid: {
     flexDirection: 'row',
