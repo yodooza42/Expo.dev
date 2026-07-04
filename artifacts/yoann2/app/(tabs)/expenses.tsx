@@ -24,14 +24,20 @@ import { OcrScanModal } from '@/components/OcrScanModal';
 import { useApp } from '@/contexts/AppContext';
 import { useColors } from '@/hooks/useColors';
 import {
+  addRecurringTransfer,
   addTransaction,
   BankTransaction,
   computeCurrentBalance,
+  deleteRecurringTransfer,
   deleteTransaction,
   EXPENSE_CATEGORIES,
+  getRecurringTransfers,
   getSavingsBalance,
   getTransactions,
   INCOME_CATEGORIES,
+  processRecurringTransfers,
+  RecurringFrequency,
+  RecurringTransfer,
   setSavingsBalance,
   TransactionType,
   updateTransaction,
@@ -108,19 +114,25 @@ export default function FinanceScreen() {
   const [showOcr, setShowOcr]             = useState(false);
   const [noteProjId, setNoteProjId]       = useState<string | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [isRecurring, setIsRecurring]     = useState(false);
+  const [recurringFreq, setRecurringFreq] = useState<RecurringFrequency>('monthly');
+  const [recurringList, setRecurringList] = useState<RecurringTransfer[]>([]);
   const [transferAmount, setTransferAmount] = useState('');
   const [transferDir, setTransferDir]     = useState<'to' | 'from'>('to');
 
   const slideAnim = useRef(new Animated.Value(0)).current;
 
   async function load() {
-    const [txs, sav, shown] = await Promise.all([
+    await processRecurringTransfers();
+    const [txs, sav, shown, recs] = await Promise.all([
       getTransactions(),
       getSavingsBalance(),
       AsyncStorage.getItem(SHOW_AMOUNTS_KEY),
+      getRecurringTransfers(),
     ]);
     setTransactions(txs);
     setSavingsBal(sav);
+    setRecurringList(recs);
     if (shown === 'true') setShowAmounts(true);
   }
 
@@ -297,21 +309,41 @@ export default function FinanceScreen() {
       Alert.alert('Montant invalide');
       return;
     }
-    const newSavings = transferDir === 'to'
-      ? savingsBalance + amount
-      : Math.max(0, savingsBalance - amount);
-    await setSavingsBalance(newSavings);
-    const type: TransactionType = transferDir === 'to' ? 'transfer_to_savings' : 'transfer_from_savings';
-    await addTransaction({
-      type,
-      amount,
-      label: transferDir === 'to' ? 'Virement vers épargne' : 'Virement depuis épargne',
-      category: 'Épargne',
-      date: new Date().toISOString(),
-    });
+
+    if (isRecurring) {
+      const now = new Date();
+      const next = new Date(now);
+      if (recurringFreq === 'monthly') {
+        next.setMonth(next.getMonth() + 1);
+      } else {
+        next.setDate(next.getDate() + 7);
+      }
+      await addRecurringTransfer({
+        direction: transferDir,
+        amount,
+        label: transferDir === 'to' ? 'Virement vers épargne' : 'Virement depuis épargne',
+        frequency: recurringFreq,
+        nextDate: next.toISOString(),
+      });
+    } else {
+      const newSavings = transferDir === 'to'
+        ? savingsBalance + amount
+        : Math.max(0, savingsBalance - amount);
+      await setSavingsBalance(newSavings);
+      const type: TransactionType = transferDir === 'to' ? 'transfer_to_savings' : 'transfer_from_savings';
+      await addTransaction({
+        type,
+        amount,
+        label: transferDir === 'to' ? 'Virement vers épargne' : 'Virement depuis épargne',
+        category: 'Épargne',
+        date: new Date().toISOString(),
+      });
+    }
+
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setShowTransfer(false);
     setTransferAmount('');
+    setIsRecurring(false);
     load();
   }
 
@@ -731,11 +763,12 @@ export default function FinanceScreen() {
       {/* ── Transfer modal ── */}
       <Modal visible={showTransfer} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
-          <Pressable style={{ flex: 1 }} onPress={() => setShowTransfer(false)} />
+          <Pressable style={{ flex: 1 }} onPress={() => { setShowTransfer(false); setIsRecurring(false); }} />
           <View style={[styles.formSheet, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <View style={[styles.handle, { backgroundColor: colors.border }]} />
             <Text style={[styles.transferTitle, { color: colors.foreground }]}>Virement épargne</Text>
 
+            {/* Direction */}
             <View style={styles.transferDirRow}>
               {(['to', 'from'] as const).map(dir => (
                 <Pressable
@@ -760,6 +793,7 @@ export default function FinanceScreen() {
               ))}
             </View>
 
+            {/* Montant */}
             <TextInput
               value={transferAmount}
               onChangeText={setTransferAmount}
@@ -770,14 +804,99 @@ export default function FinanceScreen() {
               autoFocus
             />
 
+            {/* Toggle récurrent */}
+            <Pressable
+              onPress={() => setIsRecurring(v => !v)}
+              style={[styles.recurringToggle, { backgroundColor: colors.background, borderColor: isRecurring ? '#2196F3' : colors.border }]}
+            >
+              <MaterialCommunityIcons
+                name={isRecurring ? 'repeat' : 'repeat-off'}
+                size={18}
+                color={isRecurring ? '#2196F3' : colors.mutedForeground}
+              />
+              <Text style={[styles.recurringToggleTxt, { color: isRecurring ? '#2196F3' : colors.mutedForeground }]}>
+                {isRecurring ? 'Virement récurrent' : 'Ponctuel (une fois)'}
+              </Text>
+            </Pressable>
+
+            {/* Fréquence (visible si récurrent) */}
+            {isRecurring && (
+              <View style={{ gap: 6 }}>
+                <Text style={[styles.projPickerLabel, { color: colors.mutedForeground }]}>Fréquence</Text>
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                  {(['monthly', 'weekly'] as RecurringFrequency[]).map(freq => (
+                    <Pressable
+                      key={freq}
+                      onPress={() => setRecurringFreq(freq)}
+                      style={[
+                        styles.freqChip,
+                        recurringFreq === freq
+                          ? { backgroundColor: '#2196F320', borderColor: '#2196F3' }
+                          : { backgroundColor: colors.background, borderColor: colors.border },
+                      ]}
+                    >
+                      <MaterialCommunityIcons
+                        name={freq === 'monthly' ? 'calendar-month-outline' : 'calendar-week-outline'}
+                        size={14}
+                        color={recurringFreq === freq ? '#2196F3' : colors.mutedForeground}
+                      />
+                      <Text style={[styles.freqChipTxt, { color: recurringFreq === freq ? '#2196F3' : colors.mutedForeground }]}>
+                        {freq === 'monthly' ? 'Mensuel' : 'Hebdomadaire'}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+                <Text style={[styles.recurringHint, { color: colors.mutedForeground }]}>
+                  Premier virement : {(() => {
+                    const d = new Date();
+                    if (recurringFreq === 'monthly') d.setMonth(d.getMonth() + 1);
+                    else d.setDate(d.getDate() + 7);
+                    return d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
+                  })()}
+                </Text>
+              </View>
+            )}
+
+            {/* Actions */}
             <View style={{ flexDirection: 'row', gap: 10 }}>
-              <Pressable onPress={() => setShowTransfer(false)} style={[styles.btn, { flex: 1, backgroundColor: colors.background, borderColor: colors.border }]}>
+              <Pressable onPress={() => { setShowTransfer(false); setIsRecurring(false); }} style={[styles.btn, { flex: 1, backgroundColor: colors.background, borderColor: colors.border }]}>
                 <Text style={[styles.btnTxt, { color: colors.mutedForeground }]}>Annuler</Text>
               </Pressable>
               <Pressable onPress={handleTransfer} style={[styles.btn, { flex: 2, backgroundColor: '#2196F3' }]}>
-                <Text style={[styles.btnTxt, { color: '#fff' }]}>Valider</Text>
+                <Text style={[styles.btnTxt, { color: '#fff' }]}>{isRecurring ? 'Programmer' : 'Valider'}</Text>
               </Pressable>
             </View>
+
+            {/* Virements programmés existants */}
+            {recurringList.length > 0 && (
+              <View style={{ gap: 6 }}>
+                <Text style={[styles.projPickerLabel, { color: colors.mutedForeground, marginTop: 4 }]}>Virements programmés</Text>
+                {recurringList.map(rec => (
+                  <View key={rec.id} style={[styles.recurringRow, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                    <MaterialCommunityIcons name="repeat" size={16} color="#2196F3" />
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.recurringRowLabel, { color: colors.foreground }]}>
+                        {rec.direction === 'to' ? '→ Épargne' : '← Depuis épargne'} · {rec.amount.toFixed(0)} €
+                      </Text>
+                      <Text style={[styles.recurringRowSub, { color: colors.mutedForeground }]}>
+                        {rec.frequency === 'monthly' ? 'Mensuel' : 'Hebdomadaire'} · prochain : {new Date(rec.nextDate).toLocaleDateString('fr-FR')}
+                      </Text>
+                    </View>
+                    <Pressable
+                      onPress={() => {
+                        Alert.alert('Supprimer', 'Arrêter ce virement récurrent ?', [
+                          { text: 'Annuler', style: 'cancel' },
+                          { text: 'Supprimer', style: 'destructive', onPress: async () => { await deleteRecurringTransfer(rec.id); load(); } },
+                        ]);
+                      }}
+                      hitSlop={8}
+                    >
+                      <MaterialCommunityIcons name="trash-can-outline" size={18} color="#EF4444" />
+                    </Pressable>
+                  </View>
+                ))}
+              </View>
+            )}
           </View>
         </View>
       </Modal>
@@ -975,4 +1094,40 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   transferDirTxt: { fontSize: 13, fontFamily: 'Inter_600SemiBold' },
+
+  recurringToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  recurringToggleTxt: { fontSize: 14, fontFamily: 'Inter_500Medium' },
+  recurringHint: { fontSize: 12, fontFamily: 'Inter_400Regular' },
+
+  freqChip: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  freqChipTxt: { fontSize: 13, fontFamily: 'Inter_500Medium' },
+
+  recurringRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  recurringRowLabel: { fontSize: 13, fontFamily: 'Inter_600SemiBold' },
+  recurringRowSub: { fontSize: 11, fontFamily: 'Inter_400Regular', marginTop: 2 },
 });

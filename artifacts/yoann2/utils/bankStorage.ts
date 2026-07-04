@@ -3,6 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 const KEYS = {
   TRANSACTIONS: '@yoann2/bank_transactions',
   SAVINGS_BALANCE: '@yoann2/bank_savings_balance',
+  RECURRING: '@yoann2/bank_recurring_transfers',
 };
 
 export type TransactionType = 'income' | 'expense' | 'transfer_to_savings' | 'transfer_from_savings';
@@ -18,9 +19,23 @@ export interface BankTransaction {
   fromExpenseId?: string;
 }
 
+export type RecurringFrequency = 'weekly' | 'monthly';
+
+export interface RecurringTransfer {
+  id: string;
+  direction: 'to' | 'from';
+  amount: number;
+  label: string;
+  frequency: RecurringFrequency;
+  nextDate: string;
+  createdAt: string;
+}
+
 function genId(): string {
   return Date.now().toString() + Math.random().toString(36).substr(2, 9);
 }
+
+// ── BankTransaction ──────────────────────────────────────────────────────────
 
 export async function getTransactions(): Promise<BankTransaction[]> {
   try {
@@ -52,6 +67,8 @@ export async function updateTransaction(id: string, updates: Partial<Omit<BankTr
   await saveTransactions(txs.map(t => t.id === id ? { ...t, ...updates } : t));
 }
 
+// ── SavingsBalance ───────────────────────────────────────────────────────────
+
 export async function getSavingsBalance(): Promise<number> {
   try {
     const raw = await AsyncStorage.getItem(KEYS.SAVINGS_BALANCE);
@@ -74,6 +91,86 @@ export function computeCurrentBalance(txs: BankTransaction[]): number {
     return sum;
   }, 0);
 }
+
+// ── RecurringTransfer ────────────────────────────────────────────────────────
+
+export async function getRecurringTransfers(): Promise<RecurringTransfer[]> {
+  try {
+    const raw = await AsyncStorage.getItem(KEYS.RECURRING);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+async function saveRecurringTransfers(recs: RecurringTransfer[]): Promise<void> {
+  await AsyncStorage.setItem(KEYS.RECURRING, JSON.stringify(recs));
+}
+
+export async function addRecurringTransfer(
+  rec: Omit<RecurringTransfer, 'id' | 'createdAt'>
+): Promise<RecurringTransfer> {
+  const recs = await getRecurringTransfers();
+  const newRec: RecurringTransfer = {
+    ...rec,
+    id: genId(),
+    createdAt: new Date().toISOString(),
+  };
+  await saveRecurringTransfers([...recs, newRec]);
+  return newRec;
+}
+
+export async function deleteRecurringTransfer(id: string): Promise<void> {
+  const recs = await getRecurringTransfers();
+  await saveRecurringTransfers(recs.filter(r => r.id !== id));
+}
+
+function nextOccurrence(from: Date, frequency: RecurringFrequency): Date {
+  const next = new Date(from);
+  if (frequency === 'monthly') {
+    next.setMonth(next.getMonth() + 1);
+  } else {
+    next.setDate(next.getDate() + 7);
+  }
+  return next;
+}
+
+export async function processRecurringTransfers(): Promise<number> {
+  const recs = await getRecurringTransfers();
+  const now = new Date();
+  let executed = 0;
+
+  for (const rec of recs) {
+    let nextDate = new Date(rec.nextDate);
+    while (nextDate <= now) {
+      const label = rec.label || (rec.direction === 'to' ? 'Virement épargne auto' : 'Virement depuis épargne auto');
+      await addTransaction({
+        type: rec.direction === 'to' ? 'transfer_to_savings' : 'transfer_from_savings',
+        amount: rec.amount,
+        label,
+        category: 'Épargne',
+        date: nextDate.toISOString(),
+        note: `Récurrent · ${rec.frequency === 'monthly' ? 'mensuel' : 'hebdomadaire'}`,
+      });
+      const savings = await getSavingsBalance();
+      await setSavingsBalance(
+        rec.direction === 'to'
+          ? savings + rec.amount
+          : Math.max(0, savings - rec.amount)
+      );
+      nextDate = nextOccurrence(nextDate, rec.frequency);
+      executed++;
+    }
+    rec.nextDate = nextDate.toISOString();
+  }
+
+  if (executed > 0) {
+    await saveRecurringTransfers(recs);
+  }
+  return executed;
+}
+
+// ── Categories ───────────────────────────────────────────────────────────────
 
 export const INCOME_CATEGORIES = [
   'Salaire', 'Freelance', 'Remboursement', 'Vente', 'Autre revenu',
