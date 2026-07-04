@@ -4,8 +4,9 @@ import type { KnownPlace, PlaceCategory } from '@/types/places';
 import { DEFAULT_PLACE_CATEGORIES } from '@/types/places';
 import { haversineKm } from '@/utils/haversine';
 
-const KEY_CATEGORIES = '@yoann2_place_categories';
-const KEY_PLACES     = '@yoann2_known_places';
+const KEY_CATEGORIES    = '@yoann2_place_categories';
+const KEY_PLACES        = '@yoann2_known_places';
+const KEY_ADDRESS_USAGE = '@yoann2_address_usage';
 
 // ── Categories ────────────────────────────────────────────────────────────────
 
@@ -69,6 +70,43 @@ export async function deleteKnownPlace(id: string): Promise<void> {
     const places = await getKnownPlaces();
     await AsyncStorage.setItem(KEY_PLACES, JSON.stringify(places.filter(p => p.id !== id)));
   } catch {}
+}
+
+// ── Address usage (frequency-based suggestion ranking) ────────────────────────
+
+export async function getAddressUsage(): Promise<Record<string, number>> {
+  try {
+    const raw = await AsyncStorage.getItem(KEY_ADDRESS_USAGE);
+    return raw ? (JSON.parse(raw) as Record<string, number>) : {};
+  } catch {
+    return {};
+  }
+}
+
+export async function incrementAddressUsage(name: string): Promise<void> {
+  const trimmed = name.trim();
+  if (!trimmed) return;
+  try {
+    const usage = await getAddressUsage();
+    usage[trimmed] = (usage[trimmed] ?? 0) + 1;
+    await AsyncStorage.setItem(KEY_ADDRESS_USAGE, JSON.stringify(usage));
+  } catch {}
+}
+
+/**
+ * Returns suggestions sorted by descending usage count.
+ * Known-place names come first in the pool, then default suggestions not already present.
+ */
+export function sortSuggestionsByUsage(
+  knownPlaceNames: string[],
+  defaultSuggestions: string[],
+  usage: Record<string, number>,
+): string[] {
+  const all: string[] = [...knownPlaceNames];
+  for (const s of defaultSuggestions) {
+    if (!all.includes(s)) all.push(s);
+  }
+  return all.sort((a, b) => (usage[b] ?? 0) - (usage[a] ?? 0));
 }
 
 // ── Proximity helper ──────────────────────────────────────────────────────────

@@ -19,7 +19,13 @@ import { TripMapView } from '@/components/TripMapView';
 import { useColors } from '@/hooks/useColors';
 import type { PlaceCategory } from '@/types/places';
 import type { Trip, Vehicle } from '@/types/trips';
-import { getKnownPlaces, getPlaceCategories } from '@/utils/placesStorage';
+import {
+  getAddressUsage,
+  getKnownPlaces,
+  getPlaceCategories,
+  incrementAddressUsage,
+  sortSuggestionsByUsage,
+} from '@/utils/placesStorage';
 import { tripEvents } from '@/utils/tripEvents';
 import { getTrips, getVehicleSettings, updateTrip } from '@/utils/tripStorage';
 
@@ -52,6 +58,7 @@ function EditAddressModal({
   colors,
   onCancel,
   onSave,
+  onChipUsed,
 }: {
   visible: boolean;
   label: string;
@@ -60,6 +67,7 @@ function EditAddressModal({
   colors: ReturnType<typeof useColors>;
   onCancel: () => void;
   onSave: (value: string) => void;
+  onChipUsed: (name: string) => void;
 }) {
   const [text, setText] = useState(initialValue);
   const inputRef = useRef<TextInput>(null);
@@ -101,7 +109,7 @@ function EditAddressModal({
               {suggestions.map(s => (
                 <Pressable
                   key={s}
-                  onPress={() => setText(s)}
+                  onPress={() => { setText(s); onChipUsed(s); }}
                   style={[
                     editStyles.chip,
                     {
@@ -217,10 +225,12 @@ export default function TripMapScreen() {
   const [knownPlaces, setKnownPlaces] = useState<Array<{ id: string; name: string; categoryId?: string }>>([]);
 
   const [editingField, setEditingField] = useState<'start' | 'end' | null>(null);
+  const [addressUsage, setAddressUsage] = useState<Record<string, number>>({});
 
   useEffect(() => {
     getPlaceCategories().then(setPlaceCategories).catch(() => {});
     getKnownPlaces().then(setKnownPlaces).catch(() => {});
+    getAddressUsage().then(setAddressUsage).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -270,6 +280,21 @@ export default function TripMapScreen() {
     setEditingField(null);
     await updateTrip(trip.id, { [field]: value || undefined });
     tripEvents.emitTripUpdated();
+    if (value) {
+      await incrementAddressUsage(value);
+      setAddressUsage(prev => ({
+        ...prev,
+        [value]: (prev[value] ?? 0) + 1,
+      }));
+    }
+  }
+
+  async function handleChipUsed(name: string) {
+    await incrementAddressUsage(name);
+    setAddressUsage(prev => ({
+      ...prev,
+      [name]: (prev[name] ?? 0) + 1,
+    }));
   }
 
   const MAP_H = SCREEN_H * 0.62;
@@ -423,14 +448,15 @@ export default function TripMapScreen() {
         visible={editingField !== null}
         label={editingLabel}
         initialValue={editingInitial}
-        suggestions={(() => {
-          const knownNames = knownPlaces.map(p => p.name);
-          const extra = DEFAULT_SUGGESTIONS.filter(s => !knownNames.includes(s));
-          return [...knownNames, ...extra];
-        })()}
+        suggestions={sortSuggestionsByUsage(
+          knownPlaces.map(p => p.name),
+          DEFAULT_SUGGESTIONS,
+          addressUsage,
+        )}
         colors={colors}
         onCancel={() => setEditingField(null)}
         onSave={handleSaveAddress}
+        onChipUsed={handleChipUsed}
       />
     </View>
   );
