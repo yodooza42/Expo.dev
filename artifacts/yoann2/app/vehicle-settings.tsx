@@ -667,6 +667,8 @@ const styles = StyleSheet.create({
   modalActions: { flexDirection: 'row', gap: 8, marginTop: 8 },
   modalBtn: { flex: 1, padding: 12, borderRadius: 10, alignItems: 'center', borderWidth: 1 },
 
+  modeChip: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 16, borderWidth: 1 },
+
   pickerSheet: { width: '100%', position: 'absolute', bottom: 0, borderTopLeftRadius: 20, borderTopRightRadius: 20, borderTopWidth: 1, padding: 20, maxHeight: '70%' },
   projectRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 14, borderBottomWidth: StyleSheet.hairlineWidth },
   projectRowText: { fontSize: 15, fontFamily: 'Inter_400Regular' },
