@@ -12,6 +12,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useColors } from '@/hooks/useColors';
 import type { Trip, TripCategory, Vehicle } from '@/types/trips';
+import { getEffectiveCostPerKm } from '@/utils/costPerKm';
 import { getCategories } from '@/utils/tripCategories';
 import { getTrips, getVehicleSettings } from '@/utils/tripStorage';
 
@@ -54,8 +55,11 @@ function getWeeklyData(trips: Trip[]): WeekData[] {
   });
 }
 
-function getMonthlyData(trips: Trip[], vehicles: Vehicle[]): MonthData[] {
-  const costMap = new Map(vehicles.map(v => [v.id, v.costPerKm]));
+function getMonthlyData(
+  trips: Trip[],
+  vehicles: Vehicle[],
+  effectiveCostMap: Map<string, number>,
+): MonthData[] {
   const now = new Date();
   return Array.from({ length: 6 }, (_, i) => {
     const monthOffset = 5 - i;
@@ -64,7 +68,12 @@ function getMonthlyData(trips: Trip[], vehicles: Vehicle[]): MonthData[] {
     const slice = trips.filter(t => t.endTime >= start && t.endTime < end && t.vehicle && t.vehicle !== 'ignored');
     const car  = slice.filter(t => t.vehicle === 'car').reduce((s, t) => s + t.distanceKm, 0);
     const moto = slice.filter(t => t.vehicle === 'moto').reduce((s, t) => s + t.distanceKm, 0);
-    const cost = slice.reduce((s, t) => s + t.distanceKm * (costMap.get(t.vehicle ?? '') ?? 0.15), 0);
+    // Use effective cost/km (auto or manual) for each trip's vehicle
+    const cost = slice.reduce((s, t) => {
+      const veh = vehicles.find(v => v.id === t.vehicle);
+      const cpk = veh ? (effectiveCostMap.get(veh.id) ?? veh.costPerKm) : 0.15;
+      return s + t.distanceKm * cpk;
+    }, 0);
     return { label: shortMonth(start), car, moto, total: car + moto, cost };
   });
 }
@@ -115,20 +124,29 @@ export default function TripStatsScreen() {
   const [trips, setTrips] = useState<Trip[]>([]);
   const [categories, setCategories] = useState<TripCategory[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [effectiveCostMap, setEffectiveCostMap] = useState<Map<string, number>>(new Map());
 
   useEffect(() => {
-    Promise.all([getTrips(), getCategories(), getVehicleSettings()]).then(([t, c, v]) => {
+    Promise.all([getTrips(), getCategories(), getVehicleSettings()]).then(async ([t, c, v]) => {
       setTrips(t);
       setCategories(c);
       setVehicles(v);
+      // Load effective cost/km for each vehicle (async — auto mode computes from fuel+maintenance)
+      const entries = await Promise.all(
+        v.map(async veh => [veh.id, await getEffectiveCostPerKm(veh)] as [string, number]),
+      );
+      setEffectiveCostMap(new Map(entries));
     });
   }, []);
 
   const weeklyData  = useMemo(() => getWeeklyData(trips), [trips]);
-  const monthlyData = useMemo(() => getMonthlyData(trips, vehicles), [trips, vehicles]);
+  const monthlyData = useMemo(
+    () => getMonthlyData(trips, vehicles, effectiveCostMap),
+    [trips, vehicles, effectiveCostMap],
+  );
 
-  const maxWeeklyKm  = Math.max(...weeklyData.map(d => d.total), 1);
-  const maxMonthlyKm = Math.max(...monthlyData.map(d => d.total), 1);
+  const maxWeeklyKm    = Math.max(...weeklyData.map(d => d.total), 1);
+  const maxMonthlyKm   = Math.max(...monthlyData.map(d => d.total), 1);
   const maxMonthlyCost = Math.max(...monthlyData.map(d => d.cost), 1);
 
   const totalCar  = trips.filter(t => t.vehicle === 'car').reduce((s, t)  => s + t.distanceKm, 0);
@@ -190,6 +208,46 @@ export default function TripStatsScreen() {
           </Text>
         </View>
 
+        {/* Effective cost/km per vehicle */}
+        {vehicles.filter(v => v.id === 'car' || v.id === 'moto' || true).length > 0 && (
+          <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.cardTitle, { color: colors.foreground }]}>Coût / km effectif</Text>
+            {vehicles.map(v => {
+              const cpk = effectiveCostMap.get(v.id) ?? v.costPerKm;
+              const isAuto = v.costMode === 'auto';
+              const vColor = v.type === 'moto' ? '#FF9800' : '#2196F3';
+              return (
+                <View key={v.id} style={styles.costRow}>
+                  <MaterialCommunityIcons
+                    name={v.type === 'moto' ? 'motorbike' : 'car'}
+                    size={18}
+                    color={vColor}
+                  />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.costVehicleName, { color: colors.foreground }]}>{v.name}</Text>
+                    <Text style={[styles.costModeTxt, { color: colors.mutedForeground }]}>
+                      {isAuto ? 'Calcul auto (carburant + entretien)' : 'Valeur manuelle'}
+                    </Text>
+                  </View>
+                  <View style={styles.costBadgeWrap}>
+                    <View style={[styles.costModeBadge, {
+                      backgroundColor: isAuto ? '#4CAF5018' : '#2196F318',
+                      borderColor: isAuto ? '#4CAF5044' : '#2196F344',
+                    }]}>
+                      <Text style={[styles.costModeBadgeTxt, { color: isAuto ? '#4CAF50' : '#2196F3' }]}>
+                        {isAuto ? 'AUTO' : 'MANUEL'}
+                      </Text>
+                    </View>
+                    <Text style={[styles.costVal, { color: colors.foreground }]}>
+                      {cpk.toFixed(3)} €/km
+                    </Text>
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+        )}
+
         {/* Weekly km */}
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <Text style={[styles.cardTitle, { color: colors.foreground }]}>Km par semaine</Text>
@@ -223,7 +281,7 @@ export default function TripStatsScreen() {
             ))}
           </View>
           <Text style={[styles.hintText, { color: colors.mutedForeground }]}>
-            Basé sur le coût/km configuré (voiture + moto)
+            Basé sur le coût/km effectif de chaque véhicule
           </Text>
         </View>
 
@@ -282,6 +340,14 @@ const styles = StyleSheet.create({
   splitBar: { flex: 1, height: 8, borderRadius: 4, overflow: 'hidden' },
   splitFill: { height: '100%', borderRadius: 4 },
   totalKmText: { fontSize: 12, fontFamily: 'Inter_400Regular' },
+
+  costRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  costVehicleName: { fontSize: 13, fontFamily: 'Inter_600SemiBold' },
+  costModeTxt: { fontSize: 11, fontFamily: 'Inter_400Regular', marginTop: 1 },
+  costBadgeWrap: { alignItems: 'flex-end', gap: 4 },
+  costModeBadge: { borderRadius: 6, borderWidth: 1, paddingHorizontal: 6, paddingVertical: 2 },
+  costModeBadgeTxt: { fontSize: 9, fontFamily: 'Inter_700Bold', letterSpacing: 0.5 },
+  costVal: { fontSize: 15, fontFamily: 'Inter_700Bold' },
 
   chart: { flexDirection: 'row', alignItems: 'flex-end', gap: 4 },
   barWrap: { flex: 1, alignItems: 'center', gap: 3 },

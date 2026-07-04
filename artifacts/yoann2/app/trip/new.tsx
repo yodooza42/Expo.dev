@@ -17,7 +17,9 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useColors } from '@/hooks/useColors';
+import type { KnownPlace } from '@/types/places';
 import type { Vehicle } from '@/types/trips';
+import { findNearestPlace, getKnownPlaces } from '@/utils/placesStorage';
 import { getVehicleSettings, saveTrip } from '@/utils/tripStorage';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -34,6 +36,14 @@ interface GeoResult {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+function placeToGeoResult(p: KnownPlace): GeoResult {
+  return {
+    display_name: p.name,
+    lat: p.lat.toString(),
+    lon: p.lng.toString(),
+  };
+}
 
 async function geocode(query: string): Promise<GeoResult[]> {
   const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=3&accept-language=fr`;
@@ -74,6 +84,7 @@ export default function NewTripScreen() {
 
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [selectedVehicleId, setSelectedVehicleId] = useState<string>('');
+  const [knownPlaces, setKnownPlaces] = useState<KnownPlace[]>([]);
 
   const [startAddress, setStartAddress] = useState('');
   const [endAddress, setEndAddress] = useState('');
@@ -96,9 +107,10 @@ export default function NewTripScreen() {
   });
 
   useEffect(() => {
-    getVehicleSettings().then(v => {
+    Promise.all([getVehicleSettings(), getKnownPlaces()]).then(([v, p]) => {
       setVehicles(v);
       if (v.length > 0) setSelectedVehicleId(v[0]!.id);
+      setKnownPlaces(p);
     });
   }, []);
 
@@ -160,6 +172,18 @@ export default function NewTripScreen() {
     fetchRoutesIfReady(startResult, geo);
   }
 
+  function selectKnownPlaceStart(place: KnownPlace) {
+    Haptics.selectionAsync();
+    const geo = placeToGeoResult(place);
+    selectStart(geo);
+  }
+
+  function selectKnownPlaceEnd(place: KnownPlace) {
+    Haptics.selectionAsync();
+    const geo = placeToGeoResult(place);
+    selectEnd(geo);
+  }
+
   async function handleSave() {
     if (!startResult || !endResult) {
       Alert.alert('Adresses manquantes', 'Veuillez sélectionner un départ et une arrivée.');
@@ -182,8 +206,19 @@ export default function NewTripScreen() {
     const dateMs = new Date(tripDate).getTime();
     const vehicle = vehicles.find(v => v.id === selectedVehicleId);
 
+    const startLat = parseFloat(startResult.lat);
+    const startLon = parseFloat(startResult.lon);
+    const endLat   = parseFloat(endResult.lat);
+    const endLon   = parseFloat(endResult.lon);
+
     setSaving(true);
     try {
+      // Match start/end against known places
+      const [startPlace, endPlace] = await Promise.all([
+        findNearestPlace(startLat, startLon).catch(() => null),
+        findNearestPlace(endLat, endLon).catch(() => null),
+      ]);
+
       await saveTrip({
         id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
         startTime: dateMs,
@@ -191,10 +226,14 @@ export default function NewTripScreen() {
         distanceKm,
         vehicle: vehicle?.type === 'moto' ? 'moto' : vehicle?.type === 'car' ? 'car' : 'car',
         pointCount: 2,
-        startLat: parseFloat(startResult.lat),
-        startLon: parseFloat(startResult.lon),
-        endLat: parseFloat(endResult.lat),
-        endLon: parseFloat(endResult.lon),
+        startLat,
+        startLon,
+        endLat,
+        endLon,
+        startAddress: startPlace?.name ?? startResult.display_name.split(',').slice(0, 2).join(','),
+        startPlaceId: startPlace?.id,
+        endAddress: endPlace?.name ?? endResult.display_name.split(',').slice(0, 2).join(','),
+        endPlaceId: endPlace?.id,
         source: 'manual',
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -283,6 +322,33 @@ export default function NewTripScreen() {
         {/* Start address */}
         <View style={styles.section}>
           <Text style={[styles.label, { color: colors.mutedForeground }]}>DÉPART</Text>
+
+          {/* Known place shortcuts */}
+          {knownPlaces.length > 0 && (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.placeScroll}>
+              <View style={styles.placeChipRow}>
+                {knownPlaces.map(p => {
+                  const active = startResult?.lat === p.lat.toString() && startResult?.lon === p.lng.toString();
+                  return (
+                    <Pressable
+                      key={p.id}
+                      onPress={() => selectKnownPlaceStart(p)}
+                      style={[styles.placeChip, {
+                        borderColor: active ? '#4CAF50' : colors.border,
+                        backgroundColor: active ? '#4CAF5018' : colors.card,
+                      }]}
+                    >
+                      <MaterialCommunityIcons name="map-marker" size={12} color={active ? '#4CAF50' : colors.mutedForeground} />
+                      <Text style={[styles.placeChipText, { color: active ? '#4CAF50' : colors.mutedForeground }]}>
+                        {p.name}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </ScrollView>
+          )}
+
           <View style={styles.searchRow}>
             <TextInput
               style={[styles.input, { flex: 1, backgroundColor: colors.input, borderColor: startResult ? '#4CAF50' : colors.border, color: colors.foreground }]}
@@ -322,6 +388,33 @@ export default function NewTripScreen() {
         {/* End address */}
         <View style={styles.section}>
           <Text style={[styles.label, { color: colors.mutedForeground }]}>ARRIVÉE</Text>
+
+          {/* Known place shortcuts */}
+          {knownPlaces.length > 0 && (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.placeScroll}>
+              <View style={styles.placeChipRow}>
+                {knownPlaces.map(p => {
+                  const active = endResult?.lat === p.lat.toString() && endResult?.lon === p.lng.toString();
+                  return (
+                    <Pressable
+                      key={p.id}
+                      onPress={() => selectKnownPlaceEnd(p)}
+                      style={[styles.placeChip, {
+                        borderColor: active ? '#4CAF50' : colors.border,
+                        backgroundColor: active ? '#4CAF5018' : colors.card,
+                      }]}
+                    >
+                      <MaterialCommunityIcons name="map-marker" size={12} color={active ? '#4CAF50' : colors.mutedForeground} />
+                      <Text style={[styles.placeChipText, { color: active ? '#4CAF50' : colors.mutedForeground }]}>
+                        {p.name}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </ScrollView>
+          )}
+
           <View style={styles.searchRow}>
             <TextInput
               style={[styles.input, { flex: 1, backgroundColor: colors.input, borderColor: endResult ? '#4CAF50' : colors.border, color: colors.foreground }]}
@@ -442,6 +535,15 @@ const styles = StyleSheet.create({
   vehicleRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
   vehicleChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 20, borderWidth: 1 },
   vehicleChipText: { fontSize: 14, fontFamily: 'Inter_600SemiBold' },
+
+  placeScroll: { flexGrow: 0 },
+  placeChipRow: { flexDirection: 'row', gap: 6, paddingRight: 4 },
+  placeChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 10, paddingVertical: 5,
+    borderRadius: 16, borderWidth: 1,
+  },
+  placeChipText: { fontSize: 12, fontFamily: 'Inter_500Medium' },
 
   searchRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
   searchBtn: { width: 44, height: 46, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
