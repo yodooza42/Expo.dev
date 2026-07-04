@@ -1202,7 +1202,7 @@ export default function MapScreen() {
               <Pressable
                 onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setPanelExpanded(e => !e); }}
                 style={styles.panelToggle}
-                hitSlop={10}
+                hitSlop={16}
               >
                 <MaterialCommunityIcons
                   name={panelExpanded ? 'chevron-down' : 'chevron-up'}
@@ -1540,13 +1540,13 @@ const styles = StyleSheet.create({
   bottomPanel: {
     borderTopWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: 16,
-    paddingTop: 8,
-    gap: 10,
+    paddingTop: 2,
+    gap: 4,
   },
   panelToggle: {
     alignSelf: 'center',
-    paddingVertical: 2,
-    paddingHorizontal: 16,
+    paddingVertical: 0,
+    paddingHorizontal: 24,
   },
   permBanner: {
     flexDirection: 'row',
@@ -1792,8 +1792,8 @@ const styles = StyleSheet.create({
   // ── Trip chips ───────────────────────────────────────────────────────────────
   tripSection: {
     borderTopWidth: StyleSheet.hairlineWidth,
-    paddingTop: 8,
-    gap: 6,
+    paddingTop: 4,
+    gap: 4,
   },
   tripSectionLabel: {
     fontSize: 10,
