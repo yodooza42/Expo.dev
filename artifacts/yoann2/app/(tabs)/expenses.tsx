@@ -861,7 +861,7 @@ const styles = StyleSheet.create({
   projPickerLabel: { fontSize: 11, fontFamily: 'Inter_500Medium', textTransform: 'uppercase', letterSpacing: 0.6 },
 
   amountInput: {
-    flex: 1,
+    width: 110,
     borderRadius: 12,
     borderWidth: 1,
     paddingHorizontal: 14,
@@ -874,7 +874,7 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_500Medium',
   },
   dateInput: {
-    flex: 1.3,
+    flex: 1,
     borderRadius: 12,
     borderWidth: 1,
     paddingHorizontal: 14,
