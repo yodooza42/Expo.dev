@@ -223,8 +223,6 @@ interface AppContextValue {
   getProjectTasks: (projectId: string) => Task[];
   getProjectExpenses: (projectId: string) => Expense[];
   getStats: () => AppStats;
-  exportData: () => string;
-  importData: (json: string) => boolean;
   resetData: () => void;
 }
 
@@ -637,35 +635,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     };
   }, [projects, tasks]);
 
-  const exportData = useCallback((): string => {
-    return JSON.stringify({ projects, tasks, expenses, categories, expenseCategories, appointments }, null, 2);
-  }, [projects, tasks, expenses, categories, expenseCategories, appointments]);
-
-  const importData = useCallback((json: string): boolean => {
-    try {
-      const data = JSON.parse(json);
-      if (!data.projects || !data.tasks) return false;
-      const p = data.projects as Project[];
-      const t = data.tasks as Task[];
-      const e = data.expenses as Expense[] ?? [];
-      const c = data.categories as Category[] ?? DEFAULT_CATEGORIES;
-      const ec = data.expenseCategories as Category[] ?? DEFAULT_EXPENSE_CATEGORIES;
-      const a = data.appointments as Appointment[] ?? [];
-      setProjects(p);
-      setTasks(t);
-      setExpenses(e);
-      setCategories(c);
-      setExpenseCategories(ec);
-      setAppointments(a);
-      persist(p, t, e, c, ec, a);
-      AsyncStorage.setItem(STORAGE_KEYS.INITIALIZED, 'true');
-      markDirty();
-      return true;
-    } catch {
-      return false;
-    }
-  }, []);
-
   const resetData = useCallback(() => {
     const sample = createSampleData();
     setProjects(sample.projects);
@@ -719,8 +688,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         getProjectTasks,
         getProjectExpenses,
         getStats,
-        exportData,
-        importData,
         resetData,
       }}
     >

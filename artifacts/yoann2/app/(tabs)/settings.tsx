@@ -1,13 +1,10 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
   Alert,
-  KeyboardAvoidingView,
   Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -32,7 +29,7 @@ import {
   scheduleWeeklyReport,
   setApptReminderPref,
 } from '@/utils/notificationScheduler';
-import { listBackups } from '@/utils/backup';
+import { listBackups, restoreBackup, saveBackup } from '@/utils/backup';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { reconfigureStorage, SAF_ROOT_KEY } from '@/utils/photoStorage';
 
@@ -103,10 +100,12 @@ export default function SettingsScreen() {
   const colors = useColors();
   const { updateColor, resetColors } = useTheme();
   const insets = useSafeAreaInsets();
-  const { exportData, importData, resetData, projects, tasks, categories, addCategory, deleteCategory, expenseCategories, addExpenseCategory, deleteExpenseCategory } = useApp();
+  const { resetData, projects, tasks, categories, addCategory, deleteCategory, expenseCategories, addExpenseCategory, deleteExpenseCategory } = useApp();
 
-  const [importModalVisible, setImportModalVisible] = useState(false);
-  const [importText, setImportText] = useState('');
+  const [showBackupList, setShowBackupList] = useState(false);
+  const [backupList, setBackupList] = useState<Awaited<ReturnType<typeof listBackups>>>([]);
+  const [savingBackup, setSavingBackup] = useState(false);
+  const [restoringUri, setRestoringUri] = useState<string | null>(null);
   const [catModalVisible, setCatModalVisible] = useState(false);
   const [expCatModalVisible, setExpCatModalVisible] = useState(false);
   const [newCatName, setNewCatName] = useState('');
@@ -184,28 +183,53 @@ export default function SettingsScreen() {
   }
 
 
-  function handleExport() {
-    const json = exportData();
-    if (Platform.OS !== 'web') {
-      Clipboard.setStringAsync(json).then(() => {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        Alert.alert('Export', 'Données copiées dans le presse-papiers. Collez dans un fichier texte pour sauvegarder.');
-      });
+  async function handleManualBackup() {
+    if (!folderConfigured) {
+      Alert.alert('Dossier non configuré', 'Configurez d\'abord le dossier Yoann2.0 ci-dessous.');
+      return;
+    }
+    setSavingBackup(true);
+    const ok = await saveBackup();
+    setSavingBackup(false);
+    if (ok) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      loadStorageStatus();
+      Alert.alert('Sauvegarde créée', 'Vos données ont été sauvegardées dans le dossier Sauvegarde.');
     } else {
-      Alert.alert('Export JSON', json.substring(0, 200) + '...');
+      Alert.alert('Erreur', 'Impossible de créer la sauvegarde. Vérifiez le dossier Yoann2.0.');
     }
   }
 
-  function handleImport() {
-    const ok = importData(importText);
-    if (ok) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert('Import réussi', 'Les données ont été restaurées avec succès.');
-      setImportModalVisible(false);
-      setImportText('');
-    } else {
-      Alert.alert('Erreur', 'JSON invalide. Vérifiez le format des données.');
-    }
+  async function handleOpenRestoreList() {
+    const list = await listBackups();
+    setBackupList(list);
+    setShowBackupList(true);
+  }
+
+  async function handleRestore(uri: string, filename: string) {
+    Alert.alert(
+      'Restaurer cette sauvegarde ?',
+      `${filename}\n\nL'app redémarrera après la restauration pour appliquer les changements.`,
+      [
+        { text: 'Annuler', style: 'cancel' },
+        {
+          text: 'Restaurer',
+          style: 'destructive',
+          onPress: async () => {
+            setRestoringUri(uri);
+            setShowBackupList(false);
+            const ok = await restoreBackup(uri);
+            setRestoringUri(null);
+            if (ok) {
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              Alert.alert('Restauration réussie', 'Fermez et relancez l\'app pour voir vos données restaurées.');
+            } else {
+              Alert.alert('Erreur', 'Impossible de lire ce fichier de sauvegarde.');
+            }
+          },
+        },
+      ],
+    );
   }
 
   function handleReset() {
@@ -275,17 +299,17 @@ export default function SettingsScreen() {
 
         <Text style={[styles.section, { color: colors.mutedForeground }]}>Sauvegarde</Text>
         <SettingRow
-          icon="export-variant"
-          label="Exporter les données"
-          sublabel="Copie le JSON dans le presse-papiers"
-          onPress={handleExport}
+          icon="content-save-outline"
+          label={savingBackup ? 'Sauvegarde en cours…' : 'Sauvegarde manuelle'}
+          sublabel="Crée immédiatement une archive dans le dossier Sauvegarde"
+          onPress={handleManualBackup}
           colors={colors}
         />
         <SettingRow
-          icon="import"
-          label="Importer des données"
-          sublabel="Restaurer depuis un JSON"
-          onPress={() => setImportModalVisible(true)}
+          icon="restore"
+          label={restoringUri ? 'Restauration en cours…' : 'Restaurer une sauvegarde'}
+          sublabel="Choisir parmi les 5 dernières archives"
+          onPress={handleOpenRestoreList}
           colors={colors}
         />
 
@@ -475,36 +499,49 @@ export default function SettingsScreen() {
         </View>
       </ScrollView>
 
-      <Modal visible={importModalVisible} animationType="slide" transparent>
-        <KeyboardAvoidingView
-          style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.7)' }]}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        >
-          <Pressable style={{ flex: 1 }} onPress={() => setImportModalVisible(false)} />
+      <Modal visible={showBackupList} animationType="slide" transparent>
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.7)' }]}>
+          <Pressable style={{ flex: 1 }} onPress={() => setShowBackupList(false)} />
           <View style={[styles.modal, { backgroundColor: colors.card, borderColor: colors.border, paddingBottom: 24 + insets.bottom }]}>
-            <Text style={[styles.modalTitle, { color: colors.foreground }]}>Importer des données</Text>
+            <Text style={[styles.modalTitle, { color: colors.foreground }]}>Restaurer une sauvegarde</Text>
             <Text style={[styles.modalSub, { color: colors.mutedForeground }]}>
-              Collez votre JSON de sauvegarde ci-dessous.
+              Choisissez une archive. Toutes les données actuelles seront remplacées.
             </Text>
-            <TextInput
-              value={importText}
-              onChangeText={setImportText}
-              placeholder="Collez le JSON ici…"
-              placeholderTextColor={colors.mutedForeground}
-              multiline
-              scrollEnabled
-              style={[styles.jsonInput, { backgroundColor: colors.background, color: colors.foreground, borderColor: colors.border }]}
-            />
-            <View style={styles.modalBtns}>
-              <Pressable onPress={() => setImportModalVisible(false)} style={[styles.cancelBtn, { borderColor: colors.border }]}>
-                <Text style={[styles.cancelLabel, { color: colors.mutedForeground }]}>Annuler</Text>
-              </Pressable>
-              <Pressable onPress={handleImport} style={[styles.importBtn, { backgroundColor: colors.primary }]}>
-                <Text style={[styles.importLabel, { color: colors.primaryForeground }]}>Importer</Text>
-              </Pressable>
-            </View>
+            {backupList.length === 0 ? (
+              <Text style={[styles.modalSub, { color: colors.mutedForeground, textAlign: 'center', marginVertical: 16 }]}>
+                Aucune sauvegarde disponible.
+              </Text>
+            ) : (
+              <ScrollView style={{ maxHeight: 280 }}>
+                {backupList.map(entry => (
+                  <Pressable
+                    key={entry.uri}
+                    onPress={() => handleRestore(entry.uri, entry.filename)}
+                    style={({ pressed }) => [
+                      styles.backupRow,
+                      { backgroundColor: colors.background, borderColor: colors.border },
+                      pressed && { opacity: 0.7 },
+                    ]}
+                  >
+                    <MaterialCommunityIcons name="file-restore-outline" size={20} color={colors.primary} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.backupRowDate, { color: colors.foreground }]}>
+                        {new Date(entry.ts).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })}
+                        {' à '}
+                        {new Date(entry.ts).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                      </Text>
+                      <Text style={[styles.backupRowFile, { color: colors.mutedForeground }]}>{entry.filename}</Text>
+                    </View>
+                    <MaterialCommunityIcons name="chevron-right" size={18} color={colors.mutedForeground} />
+                  </Pressable>
+                ))}
+              </ScrollView>
+            )}
+            <Pressable onPress={() => setShowBackupList(false)} style={[styles.cancelBtn, { borderColor: colors.border, marginTop: 8 }]}>
+              <Text style={[styles.cancelLabel, { color: colors.mutedForeground }]}>Fermer</Text>
+            </Pressable>
           </View>
-        </KeyboardAvoidingView>
+        </View>
       </Modal>
 
       <Modal visible={catModalVisible} animationType="slide" transparent>
@@ -761,20 +798,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: 'Inter_400Regular',
   },
-  jsonInput: {
-    borderRadius: 12,
-    borderWidth: 1,
-    padding: 12,
-    minHeight: 120,
-    maxHeight: 220,
-    textAlignVertical: 'top',
-    fontSize: 12,
-    fontFamily: 'Inter_400Regular',
-  },
-  modalBtns: {
-    flexDirection: 'row',
-    gap: 10,
-  },
   cancelBtn: {
     flex: 1,
     paddingVertical: 14,
@@ -786,15 +809,24 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontFamily: 'Inter_500Medium',
   },
-  importBtn: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: 14,
+  backupRow: {
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 8,
   },
-  importLabel: {
-    fontSize: 15,
-    fontFamily: 'Inter_600SemiBold',
+  backupRowDate: {
+    fontSize: 14,
+    fontFamily: 'Inter_500Medium',
+  },
+  backupRowFile: {
+    fontSize: 12,
+    fontFamily: 'Inter_400Regular',
+    marginTop: 2,
   },
   catInput: {
     flexDirection: 'row',

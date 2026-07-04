@@ -139,3 +139,27 @@ export async function deleteBackup(uri: string): Promise<void> {
   await setBackupList(next);
   FileSystem.deleteAsync(uri, { idempotent: true }).catch(() => {});
 }
+
+// ── Restore from a backup entry ───────────────────────────────────────────────
+//
+// Reads the JSON file and restores every key back into AsyncStorage.
+// Keys that existed before but are absent from the backup are left untouched.
+
+export async function restoreBackup(uri: string): Promise<boolean> {
+  try {
+    const raw = await SAF.readAsStringAsync(uri, {
+      encoding: FileSystem.EncodingType.UTF8,
+    });
+    const parsed = JSON.parse(raw) as { version: number; data: Record<string, string | null> };
+    if (!parsed?.data || typeof parsed.data !== 'object') return false;
+
+    const pairs: [string, string][] = Object.entries(parsed.data)
+      .filter((entry): entry is [string, string] => typeof entry[1] === 'string')
+      .map(([k, v]) => [k, v]);
+
+    await AsyncStorage.multiSet(pairs);
+    return true;
+  } catch {
+    return false;
+  }
+}
