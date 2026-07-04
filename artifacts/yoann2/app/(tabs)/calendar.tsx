@@ -1,6 +1,6 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -19,6 +19,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '@/contexts/AppContext';
 import { useColors } from '@/hooks/useColors';
 import type { Appointment, Priority, Task } from '@/types';
+import { getRecurringTransfers, type RecurringTransfer } from '@/utils/bankStorage';
 
 const PRIORITY_COLORS: Record<Priority, string> = {
   low: '#4CAF50',
@@ -27,8 +28,46 @@ const PRIORITY_COLORS: Record<Priority, string> = {
   critical: '#9C27B0',
 };
 
-const APPOINTMENT_COLOR = '#7C3AED';
-const MARIE_APPT_COLOR  = '#EC4899';
+const APPOINTMENT_COLOR  = '#7C3AED';
+const MARIE_APPT_COLOR   = '#EC4899';
+const TRANSFER_COLOR     = '#F59E0B';
+
+function projectTransfersForMonth(
+  transfers: RecurringTransfer[],
+  year: number,
+  month: number,
+): Record<string, RecurringTransfer[]> {
+  const monthStart = new Date(year, month, 1);
+  const monthEnd   = new Date(year, month + 1, 0);
+  const map: Record<string, RecurringTransfer[]> = {};
+
+  for (const rec of transfers) {
+    let date = new Date(rec.nextDate);
+
+    if (date > monthEnd) continue;
+
+    while (date < monthStart) {
+      if (rec.frequency === 'monthly') {
+        date = new Date(date.getFullYear(), date.getMonth() + 1, date.getDate());
+      } else {
+        date = new Date(date.getTime() + 7 * 24 * 60 * 60 * 1000);
+      }
+    }
+
+    while (date <= monthEnd) {
+      const k = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+      if (!map[k]) map[k] = [];
+      map[k].push(rec);
+      if (rec.frequency === 'monthly') {
+        date = new Date(date.getFullYear(), date.getMonth() + 1, date.getDate());
+      } else {
+        date = new Date(date.getTime() + 7 * 24 * 60 * 60 * 1000);
+      }
+    }
+  }
+
+  return map;
+}
 
 function apptColor(a: Appointment): string {
   return a.fromMarie ? MARIE_APPT_COLOR : APPOINTMENT_COLOR;
@@ -98,7 +137,11 @@ export default function CalendarScreen() {
   const [importStep, setImportStep] = useState<'paste' | 'review'>('paste');
   const [importText, setImportText] = useState('');
   const [importItems, setImportItems] = useState<ImportItem[]>([]);
+  const [recurringTransfers, setRecurringTransfers] = useState<RecurringTransfer[]>([]);
 
+  useEffect(() => {
+    getRecurringTransfers().then(setRecurringTransfers).catch(() => {});
+  }, []);
 
   const days = useMemo(() => getDaysInMonth(year, month), [year, month]);
 
@@ -122,6 +165,11 @@ export default function CalendarScreen() {
     return map;
   }, [appointments]);
 
+  const transfersByDate = useMemo(
+    () => projectTransfersForMonth(recurringTransfers, year, month),
+    [recurringTransfers, year, month],
+  );
+
   function prevMonth() {
     if (month === 0) { setMonth(11); setYear(y => y - 1); }
     else setMonth(m => m - 1);
@@ -132,8 +180,9 @@ export default function CalendarScreen() {
     else setMonth(m => m + 1);
   }
 
-  const selectedTasks = selectedDate ? (tasksByDate[selectedDate] ?? []) : [];
+  const selectedTasks        = selectedDate ? (tasksByDate[selectedDate]        ?? []) : [];
   const selectedAppointments = selectedDate ? (appointmentsByDate[selectedDate] ?? []) : [];
+  const selectedTransfers    = selectedDate ? (transfersByDate[selectedDate]    ?? []) : [];
 
   const isToday = (d: Date) =>
     d.getDate() === today.getDate() &&
@@ -311,8 +360,9 @@ export default function CalendarScreen() {
         <View style={[styles.grid, { paddingHorizontal: 12 }]}>
           {days.map((d, i) => {
             const key = dateKey(d);
-            const dayTasks = tasksByDate[key] ?? [];
-            const dayAppts = appointmentsByDate[key] ?? [];
+            const dayTasks      = tasksByDate[key]      ?? [];
+            const dayAppts      = appointmentsByDate[key] ?? [];
+            const dayTransfers  = transfersByDate[key]  ?? [];
             const isCurrentMonth = d.getMonth() === month;
             const isSelected = selectedDate === key;
             const todayFlag = isToday(d);
@@ -349,13 +399,16 @@ export default function CalendarScreen() {
                   {dayAppts.slice(0, 2).map((a, j) => (
                     <View key={`a${j}`} style={[styles.dot, { backgroundColor: apptColor(a) }]} />
                   ))}
+                  {dayTransfers.length > 0 && (
+                    <View style={[styles.dot, { backgroundColor: TRANSFER_COLOR }]} />
+                  )}
                 </View>
               </Pressable>
             );
           })}
         </View>
 
-        {(selectedTasks.length > 0 || selectedAppointments.length > 0) && (
+        {(selectedTasks.length > 0 || selectedAppointments.length > 0 || selectedTransfers.length > 0) && (
           <View style={[styles.dayDetail, { paddingHorizontal: 16 }]}>
             {selectedAppointments.length > 0 && (
               <>
@@ -397,9 +450,34 @@ export default function CalendarScreen() {
               </>
             )}
 
-            {selectedTasks.length > 0 && (
+            {selectedTransfers.length > 0 && (
               <>
                 <Text style={[styles.sectionTitle, { color: colors.foreground, marginTop: selectedAppointments.length > 0 ? 12 : 0 }]}>
+                  <MaterialCommunityIcons name="bank-transfer" size={15} color={TRANSFER_COLOR} />
+                  {'  '}Virements programmés ({selectedTransfers.length})
+                </Text>
+                {selectedTransfers.map((rec, idx) => (
+                  <View
+                    key={`${rec.id}-${idx}`}
+                    style={[styles.taskItem, { backgroundColor: colors.card, borderColor: colors.border, borderLeftColor: TRANSFER_COLOR }]}
+                  >
+                    <MaterialCommunityIcons name="bank-transfer" size={18} color={TRANSFER_COLOR} style={{ marginRight: 4 }} />
+                    <Text style={[styles.taskTitle, { color: colors.foreground, flex: 1 }]}>
+                      {rec.direction === 'to'
+                        ? '⚠️ Virement vers compte épargne'
+                        : '⚠️ Virement depuis compte épargne'}
+                    </Text>
+                    <Text style={[styles.taskProj, { color: colors.mutedForeground }]}>
+                      {rec.frequency === 'monthly' ? 'Mensuel' : 'Hebdo'}
+                    </Text>
+                  </View>
+                ))}
+              </>
+            )}
+
+            {selectedTasks.length > 0 && (
+              <>
+                <Text style={[styles.sectionTitle, { color: colors.foreground, marginTop: (selectedAppointments.length > 0 || selectedTransfers.length > 0) ? 12 : 0 }]}>
                   Tâches ({selectedTasks.length})
                 </Text>
                 {selectedTasks.map(t => {
@@ -450,6 +528,10 @@ export default function CalendarScreen() {
             <View style={styles.legendItem}>
               <View style={[styles.legendDot, { backgroundColor: MARIE_APPT_COLOR }]} />
               <Text style={[styles.legendLabel, { color: colors.mutedForeground }]}>RDV Marie</Text>
+            </View>
+            <View style={styles.legendItem}>
+              <View style={[styles.legendDot, { backgroundColor: TRANSFER_COLOR }]} />
+              <Text style={[styles.legendLabel, { color: colors.mutedForeground }]}>Virement</Text>
             </View>
           </View>
         </View>
