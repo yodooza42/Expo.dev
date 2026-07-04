@@ -158,8 +158,9 @@ const LAST_VALID_KEY = '@yoann2_last_valid_point';
 const TRACKING_STARTED_MODE_KEY = '@yoann2_tracking_started_mode';
 
 // GPS accuracy filter: ignore points with horizontal accuracy worse than this.
-// 20m is a good threshold — below this the point adds GPS noise to the trace.
-const MAX_ACCURACY_METERS = 20;
+// 50m — generous enough to capture trip start in covered/urban areas without
+// letting obvious drift through (200m+ accuracy points are always noise).
+const MAX_ACCURACY_METERS = 50;
 
 // Speed sanity filter: ignore points implying faster than 200 km/h
 const MIN_DISTANCE_METERS = 15;
@@ -278,23 +279,6 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
   if (error) return;
   if (!data) return;
   const { locations } = data as { locations: Location.LocationObject[] };
-
-  // ── Adaptive interval check ─────────────────────────────────────────────────
-  // tripDetection signals the desired mode via TRACKING_MODE_KEY.
-  // If the mode has changed since the task was last started, restart now.
-  try {
-    const wantedMode = (await AsyncStorage.getItem(TRACKING_MODE_KEY)) ?? 'idle';
-    const startedMode = (await AsyncStorage.getItem(TRACKING_STARTED_MODE_KEY)) ?? 'idle';
-    if (wantedMode !== startedMode) {
-      await AsyncStorage.setItem(TRACKING_STARTED_MODE_KEY, wantedMode);
-      const tripPhase = wantedMode === 'active' ? 'active' : 'idle';
-      const opts = await buildLocationOptions(tripPhase);
-      await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME).catch(() => {});
-      await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, opts).catch(() => {});
-      // Return — the newly-started task will process the next batch of locations
-      return;
-    }
-  } catch {}
 
   // ── Load last valid point ───────────────────────────────────────────────────
   let lastValid: LocationPoint | null = null;

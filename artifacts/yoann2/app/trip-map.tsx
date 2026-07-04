@@ -20,7 +20,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TripMapView } from '@/components/TripMapView';
 import { useColors } from '@/hooks/useColors';
 import type { KnownPlace, PlaceCategory } from '@/types/places';
-import type { Trip, Vehicle } from '@/types/trips';
+import type { RoutePoint, Trip, Vehicle } from '@/types/trips';
+import { simplifyRoute } from '@/utils/routeSimplification';
 import {
   getAddressUsage,
   getKnownPlaces,
@@ -282,7 +283,9 @@ export default function TripMapScreen() {
       .then((data: { routes?: Array<{ geometry: { coordinates: [number, number][] } }> }) => {
         const coords = data.routes?.[0]?.geometry?.coordinates;
         if (coords && coords.length >= 2) {
-          setOsrmRoute(coords.map(([lng, lat]) => ({ lat, lng })));
+          const pts: RoutePoint[] = simplifyRoute(coords.map(([lng, lat]) => ({ lat, lng })));
+          setOsrmRoute(pts);
+          updateTrip(t.id, { route: pts }).catch(() => {});
         } else {
           setOsrmRoute([{ lat: t.startLat, lng: t.startLon }, { lat: t.endLat, lng: t.endLon }]);
         }

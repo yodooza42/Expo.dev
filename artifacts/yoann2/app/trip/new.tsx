@@ -18,9 +18,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useColors } from '@/hooks/useColors';
 import type { KnownPlace } from '@/types/places';
-import type { Vehicle } from '@/types/trips';
+import type { RoutePoint, Vehicle } from '@/types/trips';
 import { findNearestPlace, getKnownPlaces } from '@/utils/placesStorage';
-import { getVehicleSettings, saveTrip } from '@/utils/tripStorage';
+import { simplifyRoute } from '@/utils/routeSimplification';
+import { getVehicleSettings, saveTrip, updateTrip } from '@/utils/tripStorage';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -62,6 +63,23 @@ async function fetchRoutes(
   const data = await res.json() as { routes?: Array<{ distance: number; duration: number }> };
   if (!data.routes?.length) throw new Error('Aucun itinéraire trouvé');
   return data.routes.map(r => ({ distance: r.distance, duration: r.duration }));
+}
+
+async function fetchOsrmGeometry(
+  startLat: number, startLon: number,
+  endLat: number, endLon: number,
+): Promise<RoutePoint[] | null> {
+  try {
+    const url = `https://router.project-osrm.org/route/v1/driving/${startLon},${startLat};${endLon},${endLat}?overview=full&geometries=geojson`;
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const data = await res.json() as { routes?: Array<{ geometry: { coordinates: [number, number][] } }> };
+    const coords = data.routes?.[0]?.geometry?.coordinates;
+    if (!coords || coords.length < 2) return null;
+    return simplifyRoute(coords.map(([lng, lat]) => ({ lat, lng })));
+  } catch {
+    return null;
+  }
 }
 
 function fmtDist(m: number): string {
@@ -219,8 +237,9 @@ export default function NewTripScreen() {
         findNearestPlace(endLat, endLon).catch(() => null),
       ]);
 
+      const tripId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
       await saveTrip({
-        id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+        id: tripId,
         startTime: dateMs,
         endTime: dateMs + durationMs,
         distanceKm,
@@ -236,6 +255,12 @@ export default function NewTripScreen() {
         endPlaceId: endPlace?.id,
         source: 'manual',
       });
+
+      const geometry = await fetchOsrmGeometry(startLat, startLon, endLat, endLon);
+      if (geometry) {
+        await updateTrip(tripId, { route: geometry }).catch(() => {});
+      }
+
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       router.back();
     } catch {

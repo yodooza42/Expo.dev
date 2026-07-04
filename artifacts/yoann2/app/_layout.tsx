@@ -94,6 +94,14 @@ function RootLayoutNav() {
         updateNavWidget().catch(() => {});
         runScheduler();
         runDailyBackupIfNeeded().catch(() => {});
+        // Watchdog: restart location tracking if it was killed by the OS
+        import('@/utils/locationTracking').then(async ({ isTrackingPaused, startTracking, LOCATION_TASK_NAME }) => {
+          const paused = await isTrackingPaused();
+          if (paused) return;
+          const Location = await import('expo-location');
+          const running = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME).catch(() => false);
+          if (!running) await startTracking().catch(() => {});
+        }).catch(() => {});
       }
     });
     return () => sub.remove();

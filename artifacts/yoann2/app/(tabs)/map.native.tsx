@@ -24,6 +24,7 @@ import { exportBackup, importBackup } from '@/utils/locationBackup';
 import { correctActivity, deleteDayPoints, loadMultiDayPoints } from '@/utils/locationTracking';
 import type { ActivityType, LocationPoint } from '@/utils/locationTracking';
 import { haversineKm } from '@/utils/haversine';
+import { simplifyRoute } from '@/utils/routeSimplification';
 import { getTrips, updateTrip } from '@/utils/tripStorage';
 import type { Trip, RoutePoint } from '@/types/trips';
 import type { PlaceCategory } from '@/types/places';
@@ -708,13 +709,30 @@ export default function MapScreen() {
       setOriginalRoute(route);
       webRef.current?.injectJavaScript(buildTripInjectScript(route, color, true));
     } else if (trip.startLat && trip.startLon && trip.endLat && trip.endLon) {
-      // Manual trip with no stored route — show editable 2-point line from coords
+      // Manual trip with no stored route — show straight fallback immediately,
+      // then fetch real OSRM geometry, persist it, and update the map.
       const fallback: RoutePoint[] = [
         { lat: trip.startLat, lng: trip.startLon },
         { lat: trip.endLat, lng: trip.endLon },
       ];
       setOriginalRoute(fallback);
       webRef.current?.injectJavaScript(buildTripInjectScript(fallback, color, true));
+
+      const tripId = trip.id;
+      const { startLat, startLon, endLat, endLon } = trip;
+      const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${startLon},${startLat};${endLon},${endLat}?overview=full&geometries=geojson`;
+      fetch(osrmUrl)
+        .then(r => r.json())
+        .then((data: { routes?: Array<{ geometry: { coordinates: [number, number][] } }> }) => {
+          const coords = data.routes?.[0]?.geometry?.coordinates;
+          if (!coords || coords.length < 2) return;
+          const pts: RoutePoint[] = simplifyRoute(coords.map(([lng, lat]) => ({ lat, lng })));
+          webRef.current?.injectJavaScript(buildTripInjectScript(pts, color, true));
+          setOriginalRoute(pts);
+          updateTrip(tripId, { route: pts }).catch(() => {});
+          setDayTrips(prev => prev.map(t => t.id === tripId ? { ...t, route: pts } : t));
+        })
+        .catch(() => {});
     } else {
       setOriginalRoute(route);
     }
