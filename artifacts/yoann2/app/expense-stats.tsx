@@ -19,8 +19,6 @@ import Svg, { Line, Rect, Text as SvgText } from 'react-native-svg';
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { CameraOcrIcon } from '@/components/CameraOcrIcon';
-import { OcrScanModal } from '@/components/OcrScanModal';
 import { useApp } from '@/contexts/AppContext';
 import { useColors } from '@/hooks/useColors';
 import { exportExpensesCSV, exportExpensesPDF } from '@/utils/expenseExport';
@@ -106,7 +104,6 @@ export default function ExpensesScreen() {
   const [catSort, setCatSort] = useState<'date-desc' | 'date-asc' | 'price-desc' | 'price-asc' | 'project'>('date-desc');
   const [exporting, setExporting] = useState(false);
   const [showAmounts, setShowAmounts] = useState(false);
-  const [showOcr, setShowOcr] = useState(false);
 
   React.useEffect(() => {
     AsyncStorage.getItem(SHOW_AMOUNTS_KEY).then(val => {
@@ -265,14 +262,6 @@ export default function ExpensesScreen() {
           <Text style={[styles.title, { color: colors.foreground }]}>Statistiques</Text>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-          {/* OCR scan button */}
-          <Pressable
-            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setShowOcr(true); }}
-            hitSlop={8}
-            style={[styles.exportBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
-          >
-            <CameraOcrIcon size={20} color={colors.primary} />
-          </Pressable>
           <Pressable
             onPress={handleExport}
             disabled={exporting || expenses.length === 0}
@@ -658,7 +647,6 @@ export default function ExpensesScreen() {
         </View>
       </Modal>
 
-      <OcrScanModal visible={showOcr} onClose={() => setShowOcr(false)} />
     </View>
   );
 }

@@ -18,6 +18,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import { CameraOcrIcon } from '@/components/CameraOcrIcon';
+import { OcrScanModal } from '@/components/OcrScanModal';
 import { useApp } from '@/contexts/AppContext';
 import { useColors } from '@/hooks/useColors';
 import {
@@ -102,6 +104,7 @@ export default function FinanceScreen() {
   const [editId, setEditId]               = useState<string | null>(null);
   const [form, setForm]                   = useState<FormState>(EMPTY_FORM);
   const [showTransfer, setShowTransfer]   = useState(false);
+  const [showOcr, setShowOcr]             = useState(false);
   const [transferAmount, setTransferAmount] = useState('');
   const [transferDir, setTransferDir]     = useState<'to' | 'from'>('to');
 
@@ -341,6 +344,13 @@ export default function FinanceScreen() {
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <Text style={[styles.title, { color: colors.foreground }]}>Finance</Text>
         <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+          <Pressable
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setShowOcr(true); }}
+            hitSlop={8}
+            style={[styles.iconBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+          >
+            <CameraOcrIcon size={18} color={colors.primary} />
+          </Pressable>
           <Pressable
             onPress={() => router.push('/expense-stats')}
             hitSlop={8}
@@ -667,6 +677,8 @@ export default function FinanceScreen() {
           </View>
         </View>
       </Modal>
+
+      <OcrScanModal visible={showOcr} onClose={() => setShowOcr(false)} />
     </View>
   );
 }
