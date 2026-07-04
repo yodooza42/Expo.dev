@@ -7,11 +7,18 @@ import { saveBackup } from '@/utils/backup';
 import { genId } from '@/utils/ids';
 import {
   SEED_APPOINTMENTS,
+  SEED_BANK_RECURRING,
+  SEED_BANK_SAVINGS,
+  SEED_BANK_TRANSACTIONS,
   SEED_CATEGORIES,
   SEED_EXPENSE_CATEGORIES,
   SEED_EXPENSES,
+  SEED_KNOWN_PLACES,
+  SEED_NAV_SHORTCUTS,
+  SEED_PLACE_CATEGORIES,
   SEED_PROJECTS,
   SEED_TASKS,
+  SEED_TRIPS,
   SEED_VERSION,
 } from '@/utils/seedData';
 import {
@@ -322,6 +329,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           [STORAGE_KEYS.APPOINTMENTS, JSON.stringify(SEED_APPOINTMENTS)],
           [STORAGE_KEYS.INITIALIZED, 'true'],
           [STORAGE_KEYS.SEED_VERSION, SEED_VERSION],
+          // Finance & extras from real backup
+          ['@yoann2/bank_transactions', SEED_BANK_TRANSACTIONS],
+          ['@yoann2/bank_savings_balance', SEED_BANK_SAVINGS],
+          ['@yoann2/bank_recurring_transfers', SEED_BANK_RECURRING],
+          ['@yoann2_nav_shortcuts', SEED_NAV_SHORTCUTS],
+          ['@yoann2_place_categories', SEED_PLACE_CATEGORIES],
+          ['@yoann2_known_places', SEED_KNOWN_PLACES],
+          ['@yoann2_trips', SEED_TRIPS],
         ]);
       } else {
         const [pRaw, tRaw, eRaw, cRaw, ecRaw, aRaw] = await AsyncStorage.multiGet([
