@@ -26,6 +26,7 @@ import {
   tripIsReturnOf,
   tripMatchesCategory,
 } from '@/utils/tripCategories';
+import { tripEvents } from '@/utils/tripEvents';
 import {
   computeOdometer,
   deleteTrip,
@@ -608,6 +609,9 @@ export default function TripsScreen() {
   useEffect(() => {
     const sub = AppState.addEventListener('change', s => { if (s === 'active') load(); });
     return () => sub.remove();
+  }, [load]);
+  useEffect(() => {
+    return tripEvents.onTripUpdated(load);
   }, [load]);
   useFocusEffect(useCallback(() => { load(); }, [load]));
 

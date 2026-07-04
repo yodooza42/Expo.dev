@@ -19,6 +19,7 @@ import { useColors } from '@/hooks/useColors';
 import type { PlaceCategory } from '@/types/places';
 import type { Trip, Vehicle } from '@/types/trips';
 import { getKnownPlaces, getPlaceCategories } from '@/utils/placesStorage';
+import { tripEvents } from '@/utils/tripEvents';
 import { getTrips, getVehicleSettings, updateTrip } from '@/utils/tripStorage';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
@@ -224,6 +225,7 @@ export default function TripMapScreen() {
     setTrip(updated);
     setEditingField(null);
     await updateTrip(trip.id, { [field]: value || undefined });
+    tripEvents.emitTripUpdated();
   }
 
   const MAP_H = SCREEN_H * 0.62;
