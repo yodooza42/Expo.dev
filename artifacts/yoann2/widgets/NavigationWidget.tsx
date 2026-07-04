@@ -68,15 +68,25 @@ function ShortcutButton({ slot }: { slot: NavShortcut | null }) {
         borderRadius: 10,
         alignItems: 'center',
         justifyContent: 'center',
+        flexDirection: 'column',
         padding: 4,
+        flexGap: 2,
       }}
     >
       <TextWidget
         text={emoji}
         style={{
-          fontSize: 24,
+          fontSize: 22,
           color: ready ? PRIMARY : MUTED,
           fontFamily: 'sans-serif-medium',
+        }}
+      />
+      <TextWidget
+        text={label}
+        style={{
+          fontSize: 10,
+          color: ready ? TEXT : MUTED,
+          fontFamily: 'sans-serif',
         }}
       />
     </FlexWidget>
@@ -95,12 +105,18 @@ function FuelButton() {
         borderRadius: 10,
         alignItems: 'center',
         justifyContent: 'center',
+        flexDirection: 'column',
         padding: 4,
+        flexGap: 2,
       }}
     >
       <TextWidget
         text="⛽"
-        style={{ fontSize: 24, color: MUTED, fontFamily: 'sans-serif-medium' }}
+        style={{ fontSize: 22, color: MUTED, fontFamily: 'sans-serif-medium' }}
+      />
+      <TextWidget
+        text="Essence"
+        style={{ fontSize: 10, color: MUTED, fontFamily: 'sans-serif' }}
       />
     </FlexWidget>
   );
