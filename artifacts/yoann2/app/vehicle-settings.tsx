@@ -52,12 +52,16 @@ export default function VehicleSettingsScreen() {
     const [v, t] = await Promise.all([getVehicleSettings(), getTrips()]);
     setVehicles(v);
     setTrips(t.map(tr => ({ vehicle: tr.vehicle, distanceKm: tr.distanceKm })));
-    if (v.length > 0 && !v.find(x => x.id === selectedId)) {
-      setSelectedId(v[0]!.id);
-    }
-  }, [selectedId]);
+  }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // Fallback selectedId if the currently selected vehicle no longer exists
+  useEffect(() => {
+    if (vehicles.length > 0 && !vehicles.find(v => v.id === selectedId)) {
+      setSelectedId(vehicles[0]!.id);
+    }
+  }, [vehicles, selectedId]);
 
   const selected = vehicles.find(v => v.id === selectedId) ?? vehicles[0];
   const odo = selected ? computeOdometer(trips as any, selected.id, selected.odometerBaseKm) : 0;

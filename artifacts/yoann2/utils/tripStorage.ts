@@ -112,6 +112,7 @@ export async function getVehicleSettings(): Promise<VehicleSettings> {
       costPerKm?: number;
       odometerBaseKm?: number;
       maintenanceItems?: Vehicle['maintenanceItems'];
+      maintenanceProjectId?: string;
     }>;
 
     const migrated: Vehicle[] = [
@@ -122,6 +123,7 @@ export async function getVehicleSettings(): Promise<VehicleSettings> {
         costPerKm: legacy['car']?.costPerKm ?? 0.15,
         odometerBaseKm: legacy['car']?.odometerBaseKm ?? 0,
         maintenanceItems: legacy['car']?.maintenanceItems ?? [],
+        maintenanceProjectId: legacy['car']?.maintenanceProjectId,
       },
       {
         id: 'moto',
@@ -130,6 +132,7 @@ export async function getVehicleSettings(): Promise<VehicleSettings> {
         costPerKm: legacy['moto']?.costPerKm ?? 0.10,
         odometerBaseKm: legacy['moto']?.odometerBaseKm ?? 0,
         maintenanceItems: legacy['moto']?.maintenanceItems ?? [],
+        maintenanceProjectId: legacy['moto']?.maintenanceProjectId,
       },
     ];
 
