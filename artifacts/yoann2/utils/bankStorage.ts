@@ -259,6 +259,6 @@ export const INCOME_CATEGORIES = [
 ];
 
 export const EXPENSE_CATEGORIES = [
-  'Alimentation', 'Transport', 'Logement', 'Santé', 'Loisirs',
+  'Alimentation', 'Transport', 'Carburant', 'Logement', 'Santé', 'Loisirs',
   'Abonnements', 'Vêtements', 'Matériaux / Projet', 'Restauration', 'Autre',
 ];

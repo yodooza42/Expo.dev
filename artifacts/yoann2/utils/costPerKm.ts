@@ -13,10 +13,13 @@ import { computeOdometer } from '@/utils/tripStorage';
 
 const MS_12_MONTHS = 365 * 24 * 3_600_000;
 
-interface CostBreakdown {
+export interface CostBreakdown {
   fuelCostPerKm: number;
+  fuelCostPer100km: number;
   maintenanceCostPerKm: number;
+  maintenanceCostPer100km: number;
   totalCostPerKm: number;
+  totalCostPer100km: number;
   kmInPeriod: number;
   fuelTotalEUR: number;
   maintenanceTotalEUR: number;
@@ -31,7 +34,7 @@ export async function computeAutoCostPerKm(vehicle: Vehicle): Promise<CostBreakd
   const [trips, fuelEntries] = await Promise.all([getTrips(), getFuelEntries()]);
 
   const vehicleTrips = trips.filter(t => t.vehicle === vehicle.id);
-  const vehicleFuel  = fuelEntries.filter(e => e.vehicle === vehicle.id);
+  const vehicleFuel  = fuelEntries.filter(e => e.vehicleId === vehicle.id && !e.isExternal);
 
   // Determine period start: earliest fuel entry or earliest maintenance reset, or 12 months ago
   const firstFuelMs   = vehicleFuel.length > 0 ? Math.min(...vehicleFuel.map(e => e.timestamp)) : Infinity;
@@ -55,7 +58,7 @@ export async function computeAutoCostPerKm(vehicle: Vehicle): Promise<CostBreakd
 
   // Fuel cost in period
   const fuelInPeriod = vehicleFuel.filter(e => e.timestamp >= periodStartMs);
-  const fuelTotalEUR = fuelInPeriod.reduce((s, e) => s + e.liters * e.pricePerLiter, 0);
+  const fuelTotalEUR = fuelInPeriod.reduce((s, e) => s + e.totalCost, 0);
 
   // Maintenance cost in period (items with a cost that were reset within the period)
   const maintInPeriod = vehicle.maintenanceItems.filter(
@@ -63,13 +66,17 @@ export async function computeAutoCostPerKm(vehicle: Vehicle): Promise<CostBreakd
   );
   const maintenanceTotalEUR = maintInPeriod.reduce((s, i) => s + (i.cost ?? 0), 0);
 
-  const fuelCostPerKm       = fuelTotalEUR / kmInPeriod;
+  const fuelCostPerKm        = fuelTotalEUR / kmInPeriod;
   const maintenanceCostPerKm = maintenanceTotalEUR / kmInPeriod;
+  const totalCostPerKm       = fuelCostPerKm + maintenanceCostPerKm;
 
   return {
     fuelCostPerKm,
+    fuelCostPer100km:        fuelCostPerKm * 100,
     maintenanceCostPerKm,
-    totalCostPerKm: fuelCostPerKm + maintenanceCostPerKm,
+    maintenanceCostPer100km: maintenanceCostPerKm * 100,
+    totalCostPerKm,
+    totalCostPer100km:       totalCostPerKm * 100,
     kmInPeriod,
     fuelTotalEUR,
     maintenanceTotalEUR,

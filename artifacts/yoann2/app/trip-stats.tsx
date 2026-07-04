@@ -13,7 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useColors } from '@/hooks/useColors';
 import type { Trip, TripCategory, Vehicle } from '@/types/trips';
-import { getEffectiveCostPerKm } from '@/utils/costPerKm';
+import { computeAutoCostPerKm, getEffectiveCostPerKm, type CostBreakdown } from '@/utils/costPerKm';
 import { getCategories } from '@/utils/tripCategories';
 import { getTrips, getVehicleSettings } from '@/utils/tripStorage';
 
@@ -126,17 +126,23 @@ export default function TripStatsScreen() {
   const [categories, setCategories] = useState<TripCategory[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [effectiveCostMap, setEffectiveCostMap] = useState<Map<string, number>>(new Map());
+  const [fuelBreakdownMap, setFuelBreakdownMap] = useState<Map<string, CostBreakdown>>(new Map());
 
   useEffect(() => {
     Promise.all([getTrips(), getCategories(), getVehicleSettings()]).then(async ([t, c, v]) => {
       setTrips(t);
       setCategories(c);
       setVehicles(v);
-      // Load effective cost/km for each vehicle (async — auto mode computes from fuel+maintenance)
-      const entries = await Promise.all(
-        v.map(async veh => [veh.id, await getEffectiveCostPerKm(veh)] as [string, number]),
-      );
-      setEffectiveCostMap(new Map(entries));
+      const [cpkEntries, breakdownEntries] = await Promise.all([
+        Promise.all(v.map(async veh => [veh.id, await getEffectiveCostPerKm(veh)] as [string, number])),
+        Promise.all(v.map(async veh => [veh.id, await computeAutoCostPerKm(veh)] as [string, CostBreakdown | null])),
+      ]);
+      setEffectiveCostMap(new Map(cpkEntries));
+      const breakMap = new Map<string, CostBreakdown>();
+      for (const [id, bd] of breakdownEntries) {
+        if (bd) breakMap.set(id, bd);
+      }
+      setFuelBreakdownMap(breakMap);
     });
   }, []);
 
@@ -248,6 +254,63 @@ export default function TripStatsScreen() {
             })}
           </View>
         )}
+
+        {/* €/100km comparative */}
+        {(() => {
+          const vehsWithData = vehicles.filter(v => fuelBreakdownMap.has(v.id));
+          if (vehsWithData.length < 1) return null;
+          const maxC100 = Math.max(...vehsWithData.map(v => fuelBreakdownMap.get(v.id)!.fuelCostPer100km), 1);
+          const sorted = [...vehsWithData].sort((a, b) =>
+            (fuelBreakdownMap.get(a.id)!.fuelCostPer100km) - (fuelBreakdownMap.get(b.id)!.fuelCostPer100km)
+          );
+          const cheapest = sorted[0];
+          const mostExpensive = sorted[sorted.length - 1];
+          const ratio = cheapest && mostExpensive && cheapest.id !== mostExpensive.id
+            ? fuelBreakdownMap.get(mostExpensive.id)!.fuelCostPer100km / fuelBreakdownMap.get(cheapest.id)!.fuelCostPer100km
+            : null;
+          return (
+            <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <Text style={[styles.cardTitle, { color: colors.foreground }]}>Coût carburant / 100 km</Text>
+              {vehsWithData.map(v => {
+                const bd = fuelBreakdownMap.get(v.id)!;
+                const vColor = v.type === 'moto' ? '#FF9800' : '#2196F3';
+                const barPct = Math.max((bd.fuelCostPer100km / maxC100) * 100, 4);
+                return (
+                  <View key={v.id} style={styles.c100Row}>
+                    <View style={styles.c100LabelCol}>
+                      <View style={styles.c100NameRow}>
+                        <MaterialCommunityIcons name={v.type === 'moto' ? 'motorbike' : 'car'} size={14} color={vColor} />
+                        <Text style={[styles.c100Name, { color: colors.foreground }]}>{v.name}</Text>
+                      </View>
+                      <Text style={[styles.c100Sub, { color: colors.mutedForeground }]}>
+                        {bd.kmInPeriod.toFixed(0)} km · {bd.fuelTotalEUR.toFixed(0)} €
+                      </Text>
+                    </View>
+                    <View style={styles.c100BarCol}>
+                      <View style={[styles.c100BarBg, { backgroundColor: colors.muted }]}>
+                        <View style={[styles.c100BarFill, { width: `${barPct}%`, backgroundColor: vColor }]} />
+                      </View>
+                    </View>
+                    <Text style={[styles.c100Val, { color: vColor }]}>
+                      {bd.fuelCostPer100km.toFixed(2)} €
+                    </Text>
+                  </View>
+                );
+              })}
+              {ratio !== null && ratio > 1.1 && cheapest && mostExpensive && (
+                <View style={[styles.c100Tip, { backgroundColor: colors.muted }]}>
+                  <Text style={[styles.c100TipText, { color: colors.mutedForeground }]}>
+                    Avec le même budget, le {cheapest.name} fait{' '}
+                    <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold' }}>
+                      {ratio.toFixed(1)}× plus de km
+                    </Text>
+                    {' '}que le {mostExpensive.name}
+                  </Text>
+                </View>
+              )}
+            </View>
+          );
+        })()}
 
         {/* Weekly km */}
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -362,6 +425,18 @@ const styles = StyleSheet.create({
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   legendDot: { width: 8, height: 8, borderRadius: 2 },
   legendLabel: { fontSize: 11, color: '#777', fontFamily: 'Inter_400Regular' },
+
+  c100Row: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  c100LabelCol: { width: 80 },
+  c100NameRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  c100Name: { fontSize: 13, fontFamily: 'Inter_600SemiBold' },
+  c100Sub: { fontSize: 10, fontFamily: 'Inter_400Regular', marginTop: 1 },
+  c100BarCol: { flex: 1 },
+  c100BarBg: { height: 10, borderRadius: 5, overflow: 'hidden' },
+  c100BarFill: { height: '100%', borderRadius: 5 },
+  c100Val: { fontSize: 14, fontFamily: 'Inter_700Bold', minWidth: 52, textAlign: 'right' },
+  c100Tip: { borderRadius: 10, padding: 12, marginTop: 2 },
+  c100TipText: { fontSize: 12, fontFamily: 'Inter_400Regular', lineHeight: 18 },
 
   catRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   catName: { fontSize: 13, fontFamily: 'Inter_500Medium' },

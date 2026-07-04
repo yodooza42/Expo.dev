@@ -1,4 +1,5 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -20,8 +21,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '@/contexts/AppContext';
 import { useColors } from '@/hooks/useColors';
 import type { FuelEntry } from '@/types/fuel';
+import type { Vehicle } from '@/types/trips';
 import type { Appointment } from '@/types';
-import { saveFuelEntry } from '@/utils/fuelStorage';
+import { saveFuelEntry, getLastFuelType, saveLastFuelType } from '@/utils/fuelStorage';
+import { getVehicleSettings } from '@/utils/tripStorage';
 import { addTransaction } from '@/utils/bankStorage';
 import {
   getGpsInterval,
@@ -114,35 +117,74 @@ export default function NavigationScreen() {
 
   // Fuel log modal
   const [fuelOpen, setFuelOpen] = useState(false);
-  const [fuelVehicle, setFuelVehicle] = useState<'car' | 'moto'>('car');
+  const [fuelVehicles, setFuelVehicles] = useState<Vehicle[]>([]);
+  const [fuelSelectedId, setFuelSelectedId] = useState<string | null>(null);
+  const [fuelExternalName, setFuelExternalName] = useState('');
+  const [fuelType, setFuelType] = useState<'gazole' | 'sp95' | 'sp98'>('sp95');
   const [fuelLiters, setFuelLiters] = useState('');
-  const [fuelPrice, setFuelPrice] = useState('');
+  const [fuelTotalCost, setFuelTotalCost] = useState('');
+  const [fuelDate, setFuelDate] = useState(new Date().toISOString().slice(0, 10));
+  const [fuelShowDatePicker, setFuelShowDatePicker] = useState(false);
+
+  async function handleSelectVehicle(id: string | null) {
+    setFuelSelectedId(id);
+    if (id !== null) {
+      const lastType = await getLastFuelType(id);
+      setFuelType(lastType);
+    }
+    Haptics.selectionAsync();
+  }
 
   async function handleSaveFuel() {
-    const l = parseFloat(fuelLiters.replace(',', '.'));
-    const p = parseFloat(fuelPrice.replace(',', '.'));
-    if (isNaN(l) || isNaN(p) || l <= 0 || p <= 0) return;
+    const liters = parseFloat(fuelLiters.replace(',', '.'));
+    const total  = parseFloat(fuelTotalCost.replace(',', '.'));
+    const isExternal = fuelSelectedId === null;
+    const selectedVehicle = fuelVehicles.find(v => v.id === fuelSelectedId);
+    const vehicleName = isExternal ? fuelExternalName.trim() : (selectedVehicle?.name ?? '');
+    if (isNaN(liters) || isNaN(total) || liters <= 0 || total <= 0) return;
+    if (isExternal && !vehicleName) return;
+
+    const pricePerLiter = total / liters;
+    const vehicleType   = selectedVehicle?.type ?? null;
+    const fuelTypeLabel = { gazole: 'Gazole', sp95: 'SP95', sp98: 'SP98' }[fuelType];
+    const txLabel = `Plein — ${vehicleName} — ${fuelTypeLabel}`;
+    const txNote  = isExternal
+      ? `Avance — ${vehicleName} · ${liters.toFixed(1)}L`
+      : `${liters.toFixed(1)}L · ${pricePerLiter.toFixed(3)}€/L`;
+
+    const newTx = await addTransaction({
+      type: 'expense',
+      amount: parseFloat(total.toFixed(2)),
+      label: txLabel,
+      category: 'Carburant',
+      date: fuelDate,
+      note: txNote,
+    });
+
     const entry: FuelEntry = {
       id: `fuel_${Date.now()}`,
       timestamp: Date.now(),
-      vehicle: fuelVehicle,
-      liters: l,
-      pricePerLiter: p,
+      date: fuelDate,
+      vehicleId: fuelSelectedId,
+      vehicleName,
+      vehicleType,
+      fuelType,
+      liters,
+      totalCost: total,
+      pricePerLiter,
+      isExternal,
+      financeTransactionId: newTx.id,
     };
-    const vehicleName = fuelVehicle === 'car' ? 'Voiture' : 'Moto';
-    const label = `Essence ${vehicleName} - ${l} L - ${p.toFixed(3)} €/L`;
-    await Promise.all([
-      saveFuelEntry(entry),
-      addTransaction({
-        type: 'expense',
-        amount: parseFloat((l * p).toFixed(2)),
-        label,
-        category: 'Carburant',
-        date: new Date().toISOString(),
-      }),
-    ]);
+
+    await saveFuelEntry(entry);
+    if (!isExternal && fuelSelectedId) {
+      await saveLastFuelType(fuelSelectedId, fuelType);
+    }
+
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setFuelLiters('');
-    setFuelPrice('');
+    setFuelTotalCost('');
+    setFuelExternalName('');
     setFuelOpen(false);
   }
 
@@ -177,6 +219,25 @@ export default function NavigationScreen() {
   useEffect(() => {
     if (action === 'fuel') setFuelOpen(true);
   }, [action]);
+
+  useEffect(() => {
+    if (!fuelOpen) return;
+    setFuelDate(new Date().toISOString().slice(0, 10));
+    setFuelLiters('');
+    setFuelTotalCost('');
+    setFuelExternalName('');
+    getVehicleSettings().then(async vehicles => {
+      setFuelVehicles(vehicles);
+      if (vehicles.length > 0) {
+        const firstId = vehicles[0]!.id;
+        setFuelSelectedId(firstId);
+        const lastType = await getLastFuelType(firstId);
+        setFuelType(lastType);
+      } else {
+        setFuelSelectedId(null);
+      }
+    });
+  }, [fuelOpen]);
 
   // ── Navigation ──────────────────────────────────────────────────────────────
 
@@ -570,61 +631,152 @@ export default function NavigationScreen() {
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
           <View style={[styles.modalSheet, { backgroundColor: colors.card, borderColor: colors.border, paddingBottom: insets.bottom + 20 }]}>
-            <Text style={[styles.modalTitle, { color: colors.foreground }]}>⛽ Passage à la pompe</Text>
 
-            {/* Vehicle selector */}
-            <View style={styles.fuelVehicleRow}>
+            {/* Header + date */}
+            <View style={styles.fuelHeaderRow}>
+              <Text style={[styles.modalTitle, { color: colors.foreground, marginBottom: 0 }]}>⛽ Passage à la pompe</Text>
               <Pressable
-                onPress={() => setFuelVehicle('car')}
-                style={[styles.fuelVehicleBtn, {
-                  backgroundColor: fuelVehicle === 'car' ? '#2196F322' : colors.muted,
-                  borderColor: fuelVehicle === 'car' ? '#2196F3' : colors.border,
-                  borderWidth: 1,
-                }]}
+                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setFuelShowDatePicker(true); }}
+                style={[styles.fuelDateBtn, { backgroundColor: colors.muted, borderColor: colors.border }]}
               >
-                <MaterialCommunityIcons name="car" size={18} color={fuelVehicle === 'car' ? '#2196F3' : colors.mutedForeground} />
-                <Text style={[styles.fuelVehicleText, { color: fuelVehicle === 'car' ? '#2196F3' : colors.mutedForeground }]}>Voiture</Text>
-              </Pressable>
-              <Pressable
-                onPress={() => setFuelVehicle('moto')}
-                style={[styles.fuelVehicleBtn, {
-                  backgroundColor: fuelVehicle === 'moto' ? '#FF980022' : colors.muted,
-                  borderColor: fuelVehicle === 'moto' ? '#FF9800' : colors.border,
-                  borderWidth: 1,
-                }]}
-              >
-                <MaterialCommunityIcons name="motorbike" size={18} color={fuelVehicle === 'moto' ? '#FF9800' : colors.mutedForeground} />
-                <Text style={[styles.fuelVehicleText, { color: fuelVehicle === 'moto' ? '#FF9800' : colors.mutedForeground }]}>Moto</Text>
+                <MaterialCommunityIcons name="calendar-outline" size={14} color={colors.primary} />
+                <Text style={[styles.fuelDateTxt, { color: colors.foreground }]}>
+                  {fuelDate.split('-').reverse().join('/')}
+                </Text>
               </Pressable>
             </View>
 
-            <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Litres</Text>
-            <TextInput
-              style={[styles.fieldInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]}
-              placeholder="Ex : 35.5"
-              placeholderTextColor={colors.mutedForeground}
-              value={fuelLiters}
-              onChangeText={setFuelLiters}
-              keyboardType="decimal-pad"
-            />
-
-            <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Prix / litre (€)</Text>
-            <TextInput
-              style={[styles.fieldInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]}
-              placeholder="Ex : 1.89"
-              placeholderTextColor={colors.mutedForeground}
-              value={fuelPrice}
-              onChangeText={setFuelPrice}
-              keyboardType="decimal-pad"
-              returnKeyType="done"
-              onSubmitEditing={handleSaveFuel}
-            />
-
-            {fuelLiters.length > 0 && fuelPrice.length > 0 && (
-              <Text style={[styles.fuelTotal, { color: colors.primary }]}>
-                Total : {(parseFloat(fuelLiters.replace(',', '.') || '0') * parseFloat(fuelPrice.replace(',', '.') || '0')).toFixed(2)} €
-              </Text>
+            {fuelShowDatePicker && (
+              <DateTimePicker
+                value={new Date(fuelDate + 'T12:00:00')}
+                mode="date"
+                display="calendar"
+                maximumDate={new Date()}
+                onChange={(_evt, selected) => {
+                  setFuelShowDatePicker(false);
+                  if (selected) setFuelDate(selected.toISOString().slice(0, 10));
+                }}
+              />
             )}
+
+            {/* Vehicle picker */}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.fuelVehicleScroll}>
+              <View style={styles.fuelVehicleRow}>
+                {fuelVehicles.map(v => {
+                  const sel = fuelSelectedId === v.id;
+                  const vColor = v.type === 'moto' ? '#FF9800' : '#2196F3';
+                  return (
+                    <Pressable
+                      key={v.id}
+                      onPress={() => handleSelectVehicle(v.id)}
+                      style={[styles.fuelVehicleBtn, {
+                        backgroundColor: sel ? `${vColor}22` : colors.muted,
+                        borderColor: sel ? vColor : colors.border,
+                      }]}
+                    >
+                      <MaterialCommunityIcons
+                        name={v.type === 'moto' ? 'motorbike' : 'car'}
+                        size={15}
+                        color={sel ? vColor : colors.mutedForeground}
+                      />
+                      <Text style={[styles.fuelVehicleText, { color: sel ? vColor : colors.mutedForeground }]}>
+                        {v.name}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+                <Pressable
+                  onPress={() => handleSelectVehicle(null)}
+                  style={[styles.fuelVehicleBtn, {
+                    backgroundColor: fuelSelectedId === null ? '#9C27B022' : colors.muted,
+                    borderColor: fuelSelectedId === null ? '#9C27B0' : colors.border,
+                  }]}
+                >
+                  <MaterialCommunityIcons name="plus" size={15} color={fuelSelectedId === null ? '#9C27B0' : colors.mutedForeground} />
+                  <Text style={[styles.fuelVehicleText, { color: fuelSelectedId === null ? '#9C27B0' : colors.mutedForeground }]}>
+                    Autre
+                  </Text>
+                </Pressable>
+              </View>
+            </ScrollView>
+
+            {/* External vehicle name */}
+            {fuelSelectedId === null && (
+              <>
+                <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Nom du véhicule</Text>
+                <TextInput
+                  style={[styles.fieldInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]}
+                  placeholder="Ex : Toyota de Jean"
+                  placeholderTextColor={colors.mutedForeground}
+                  value={fuelExternalName}
+                  onChangeText={setFuelExternalName}
+                />
+              </>
+            )}
+
+            {/* Fuel type chips */}
+            <View style={styles.fuelTypeRow}>
+              {(['gazole', 'sp95', 'sp98'] as const).map(ft => {
+                const labels = { gazole: 'Gazole', sp95: 'SP95', sp98: 'SP98' };
+                const sel = fuelType === ft;
+                return (
+                  <Pressable
+                    key={ft}
+                    onPress={() => { setFuelType(ft); Haptics.selectionAsync(); }}
+                    style={[styles.fuelTypeChip, {
+                      backgroundColor: sel ? '#4CAF5022' : colors.muted,
+                      borderColor: sel ? '#4CAF50' : colors.border,
+                    }]}
+                  >
+                    <Text style={[styles.fuelTypeText, { color: sel ? '#4CAF50' : colors.mutedForeground }]}>
+                      {labels[ft]}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            {/* Inputs: Total € + Litres */}
+            <View style={styles.fuelInputsRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Total (€)</Text>
+                <TextInput
+                  style={[styles.fieldInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]}
+                  placeholder="Ex : 65.40"
+                  placeholderTextColor={colors.mutedForeground}
+                  value={fuelTotalCost}
+                  onChangeText={setFuelTotalCost}
+                  keyboardType="decimal-pad"
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Litres</Text>
+                <TextInput
+                  style={[styles.fieldInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]}
+                  placeholder="Ex : 35.0"
+                  placeholderTextColor={colors.mutedForeground}
+                  value={fuelLiters}
+                  onChangeText={setFuelLiters}
+                  keyboardType="decimal-pad"
+                  returnKeyType="done"
+                  onSubmitEditing={handleSaveFuel}
+                />
+              </View>
+            </View>
+
+            {/* Auto-calculated price/L */}
+            {(() => {
+              const l = parseFloat(fuelLiters.replace(',', '.'));
+              const t = parseFloat(fuelTotalCost.replace(',', '.'));
+              if (l > 0 && t > 0) {
+                return (
+                  <Text style={[styles.fuelCalc, { color: colors.mutedForeground }]}>
+                    → {(t / l).toFixed(3)} €/L
+                  </Text>
+                );
+              }
+              return null;
+            })()}
 
             <View style={styles.modalActions}>
               <Pressable style={[styles.modalBtn, { borderColor: colors.border }]} onPress={() => setFuelOpen(false)}>
@@ -633,7 +785,12 @@ export default function NavigationScreen() {
               <Pressable
                 style={[styles.modalBtn, styles.modalBtnPrimary, {
                   backgroundColor: colors.primary,
-                  opacity: (parseFloat(fuelLiters) > 0 && parseFloat(fuelPrice) > 0) ? 1 : 0.4,
+                  opacity: (() => {
+                    const l = parseFloat(fuelLiters.replace(',', '.'));
+                    const t = parseFloat(fuelTotalCost.replace(',', '.'));
+                    const extOk = fuelSelectedId !== null || fuelExternalName.trim().length > 0;
+                    return (l > 0 && t > 0 && extOk) ? 1 : 0.4;
+                  })(),
                 }]}
                 onPress={handleSaveFuel}
               >
@@ -948,13 +1105,25 @@ const styles = StyleSheet.create({
     width: 34, height: 34, borderRadius: 10, borderWidth: 1,
     alignItems: 'center', justifyContent: 'center',
   },
-  fuelVehicleRow: { flexDirection: 'row', gap: 10 },
+  fuelHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
+  fuelDateBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: 8, borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: 10, paddingVertical: 6 },
+  fuelDateTxt: { fontSize: 13, fontFamily: 'Inter_500Medium' },
+  fuelVehicleScroll: { marginHorizontal: -4 },
+  fuelVehicleRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 4 },
   fuelVehicleBtn: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 7, borderRadius: 10, paddingVertical: 10,
+    flexDirection: 'row', alignItems: 'center',
+    gap: 6, borderRadius: 10, paddingVertical: 8, paddingHorizontal: 14,
+    borderWidth: 1,
   },
-  fuelVehicleText: { fontSize: 14, fontFamily: 'Inter_500Medium' },
-  fuelTotal: { fontSize: 15, fontFamily: 'Inter_700Bold', textAlign: 'center', marginTop: 2 },
+  fuelVehicleText: { fontSize: 13, fontFamily: 'Inter_500Medium' },
+  fuelTypeRow: { flexDirection: 'row', gap: 8 },
+  fuelTypeChip: {
+    flex: 1, alignItems: 'center', borderRadius: 10, paddingVertical: 9,
+    borderWidth: 1,
+  },
+  fuelTypeText: { fontSize: 13, fontFamily: 'Inter_600SemiBold' },
+  fuelInputsRow: { flexDirection: 'row', gap: 10 },
+  fuelCalc: { fontSize: 12, fontFamily: 'Inter_400Regular', textAlign: 'right', marginTop: -4 },
   iconPickerRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
