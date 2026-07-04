@@ -134,6 +134,23 @@ const HISTORY: VersionEntry[] = [
       'Seed : injection automatique des données réelles depuis la dernière sauvegarde',
     ],
   },
+  {
+    version: 'v2.7.0',
+    date: 'Juillet 2026 — Trajets manuels & Travail',
+    items: [
+      'Trajet manuel via widget : bouton ▶ Départ (vert) / ⏹ Fin (rouge)',
+      'GPS activé uniquement entre les deux boutons (économie batterie)',
+      'Intervalle GPS 15 s / 50 m — distance calculée sur la vraie route (OSRM)',
+      'Auto-détection désactivée en mode manuel (pas de doublons)',
+      'Tolérance feux rouges : 30 s de vitesse basse avant d\'annuler la détection',
+      'Plein de carburant : sélecteur de véhicule nommé (Doblo / Msx)',
+      'Carburant : type mémorisé par véhicule (Gazole / SP95 / SP98)',
+      'Carburant : saisie date, Total € + Litres, transaction finance auto-créée',
+      'Stats carburant : coût / 100 km comparatif avec ratio d\'efficacité',
+      'Travail : navigation ← → entre semaines pour compléter les jours passés',
+      'Travail : rapport mensuel mis à jour automatiquement à chaque saisie',
+    ],
+  },
 ];
 
 export default function ChangelogScreen() {
@@ -162,7 +179,7 @@ export default function ChangelogScreen() {
             Bienvenue dans mon cerveau numérique
           </Text>
           <Text style={[styles.heroVersion, { color: colors.primary }]}>
-            Yoann2.0  ·  v2.6.0
+            Yoann2.0  ·  v2.7.0
           </Text>
         </View>
 
