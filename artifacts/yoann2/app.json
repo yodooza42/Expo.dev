@@ -106,7 +106,8 @@
           }
         }
       ],
-      "./plugins/with-large-heap"
+      "./plugins/with-large-heap",
+      "@react-native-community/datetimepicker"
     ],
     "experiments": {
       "typedRoutes": true,

@@ -1,3 +1,4 @@
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -106,6 +107,7 @@ export default function FinanceScreen() {
   const [showTransfer, setShowTransfer]   = useState(false);
   const [showOcr, setShowOcr]             = useState(false);
   const [noteProjId, setNoteProjId]       = useState<string | null>(null);
+  const [showDatePicker, setShowDatePicker] = useState(false);
   const [transferAmount, setTransferAmount] = useState('');
   const [transferDir, setTransferDir]     = useState<'to' | 'from'>('to');
 
@@ -217,6 +219,7 @@ export default function FinanceScreen() {
     setShowForm(false);
     setEditId(null);
     setNoteProjId(null);
+    setShowDatePicker(false);
     setForm(EMPTY_FORM);
   }
 
@@ -586,6 +589,38 @@ export default function FinanceScreen() {
                 keyboardType="numeric"
                 style={[styles.dateInput, { color: colors.foreground, backgroundColor: colors.background, borderColor: colors.border }]}
               />
+              <Pressable
+                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowDatePicker(true); }}
+                hitSlop={8}
+                style={[styles.calBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+              >
+                <MaterialCommunityIcons name="calendar-outline" size={18} color={colors.primary} />
+              </Pressable>
+              {showDatePicker && (
+                <DateTimePicker
+                  value={(() => {
+                    const parts = form.date.split('/');
+                    if (parts.length === 3) {
+                      const [d, m, y] = parts.map(Number);
+                      const dt = new Date(y, m - 1, d);
+                      if (!isNaN(dt.getTime())) return dt;
+                    }
+                    return new Date();
+                  })()}
+                  mode="date"
+                  display="calendar"
+                  maximumDate={new Date(new Date().getFullYear() + 5, 11, 31)}
+                  onChange={(_event, selected) => {
+                    setShowDatePicker(false);
+                    if (selected) {
+                      const d = selected.getDate().toString().padStart(2, '0');
+                      const m = (selected.getMonth() + 1).toString().padStart(2, '0');
+                      const y = selected.getFullYear();
+                      setForm(f => ({ ...f, date: `${d}/${m}/${y}` }));
+                    }
+                  }}
+                />
+              )}
             </View>
 
             {/* Catégorie */}
@@ -874,13 +909,20 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_500Medium',
   },
   dateInput: {
-    flex: 1,
+    width: 108,
     borderRadius: 12,
     borderWidth: 1,
-    paddingHorizontal: 14,
+    paddingHorizontal: 10,
     paddingVertical: 12,
     fontSize: 13,
     fontFamily: 'Inter_400Regular',
+  },
+  calBtn: {
+    borderRadius: 10,
+    borderWidth: 1,
+    padding: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   typeChip: {

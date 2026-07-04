@@ -53,6 +53,7 @@
     "zod-validation-error": "^3.4.0"
   },
   "dependencies": {
+    "@react-native-community/datetimepicker": "8.4.4",
     "@react-native-ml-kit/text-recognition": "^2.0.0",
     "expo": "~54.0.35",
     "expo-build-properties": "~1.0.10",
@@ -75,11 +76,15 @@
   "expo": {
     "doctor": {
       "reactNativeDirectoryCheck": {
-        "exclude": ["@react-native-ml-kit/text-recognition"]
+        "exclude": [
+          "@react-native-ml-kit/text-recognition"
+        ]
       }
     },
     "install": {
-      "exclude": ["react-native-webview"]
+      "exclude": [
+        "react-native-webview"
+      ]
     }
   }
 }
