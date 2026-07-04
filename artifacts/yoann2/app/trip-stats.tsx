@@ -2,6 +2,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  Dimensions,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -80,7 +81,7 @@ function getMonthlyData(
 
 // ── Mini bar chart ────────────────────────────────────────────────────────────
 
-const BAR_H = 90;
+const BAR_H = Math.round(Dimensions.get('window').height * 0.135);
 
 function ChartBar({ car, moto, maxVal, label }: { car: number; moto: number; maxVal: number; label: string }) {
   const scale = maxVal > 0 ? BAR_H / maxVal : 0;
