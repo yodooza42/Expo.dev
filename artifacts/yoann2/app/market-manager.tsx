@@ -41,7 +41,7 @@ import {
   updateMarketAsset,
   updateMarketOperation,
 } from '@/utils/marketStorage';
-import { type LivePrice, fetchLivePrices } from '@/utils/marketPrices';
+import { type LivePrice, fetchLivePrices, resolveYahooSymbol } from '@/utils/marketPrices';
 
 const MKT_GREEN = '#10B981';
 
@@ -72,6 +72,7 @@ export default function MarketManagerScreen() {
   const [modalMode, setModalMode]     = useState<ModalMode>(null);
   const [prices, setPrices]           = useState<Record<string, LivePrice>>({});
   const [pricesLoading, setPricesLoading] = useState(false);
+  const [resolveLoading, setResolveLoading] = useState(false);
 
   // Selected context for op/recurring forms
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
@@ -95,11 +96,14 @@ export default function MarketManagerScreen() {
     setAssets(a);
     setOps(o);
     setRecs(r);
-    // Fetch live prices for all tickers
-    const tickers = a.filter(asset => asset.ticker).map(asset => asset.ticker!);
-    if (tickers.length > 0) {
+    // Fetch live prices — priorité yahooSymbol, fallback ticker TR
+    const symbols = a
+      .map(asset => asset.yahooSymbol ?? asset.ticker)
+      .filter((s): s is string => Boolean(s));
+    const uniqueSymbols = [...new Set(symbols)];
+    if (uniqueSymbols.length > 0) {
       setPricesLoading(true);
-      const priceMap = await fetchLivePrices(tickers);
+      const priceMap = await fetchLivePrices(uniqueSymbols);
       setPrices(priceMap);
       setPricesLoading(false);
     }
@@ -120,8 +124,9 @@ export default function MarketManagerScreen() {
     setFAmount(''); setFFees(''); setFPrice(''); setFDate(todayIso()); setFNote('');
     // Pre-fill current price from live data if available
     const asset = assets.find(a => a.id === assetId);
-    if (asset?.ticker && prices[asset.ticker]) {
-      setFPrice(prices[asset.ticker].price.toString());
+    const priceKey = asset?.yahooSymbol ?? asset?.ticker;
+    if (priceKey && prices[priceKey]) {
+      setFPrice(prices[priceKey].price.toString());
     }
     setModalMode('add_op');
   }
@@ -147,13 +152,31 @@ export default function MarketManagerScreen() {
   async function handleSaveAsset() {
     if (!fName.trim()) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const trTicker = fTicker.trim() || undefined;
+    let savedId: string;
     if (editAsset) {
-      await updateMarketAsset(editAsset.id, { name: fName.trim(), ticker: fTicker.trim() || undefined });
+      await updateMarketAsset(editAsset.id, { name: fName.trim(), ticker: trTicker, yahooSymbol: undefined });
+      savedId = editAsset.id;
     } else {
-      await addMarketAsset({ name: fName.trim(), ticker: fTicker.trim() || undefined });
+      const newAsset = await addMarketAsset({ name: fName.trim(), ticker: trTicker });
+      savedId = newAsset.id;
     }
     closeModal();
-    load();
+
+    // Résolution du symbole Yahoo en arrière-plan si un ticker TR est fourni
+    if (trTicker) {
+      setResolveLoading(true);
+      resolveYahooSymbol(trTicker).then(async (symbol) => {
+        if (symbol) await updateMarketAsset(savedId, { yahooSymbol: symbol });
+        setResolveLoading(false);
+        load();
+      }).catch(() => {
+        setResolveLoading(false);
+        load();
+      });
+    } else {
+      load();
+    }
   }
 
   async function handleDeleteAsset(a: MarketAsset) {
@@ -226,8 +249,9 @@ export default function MarketManagerScreen() {
   }
 
   const totalBalance = computeMarketBalance(ops);
+  // priceMap est déjà keyed par yahooSymbol ou ticker (identique à ce que computePortfolioValue attend)
   const priceMap: Record<string, number> = {};
-  for (const [ticker, lp] of Object.entries(prices)) priceMap[ticker] = lp.price;
+  for (const [sym, lp] of Object.entries(prices)) priceMap[sym] = lp.price;
   const { currentValue: totalCurrentValue } = computePortfolioValue(ops, assets, priceMap);
   const totalPnl    = totalCurrentValue - totalBalance;
   const totalPnlPct = totalBalance > 0 ? (totalPnl / totalBalance) * 100 : 0;
@@ -281,7 +305,8 @@ export default function MarketManagerScreen() {
           const isExpanded = expanded === asset.id;
           const aOps = assetOps(asset.id);
           const aRecs = assetRecs(asset.id);
-          const livePrice = asset.ticker ? prices[asset.ticker]?.price : undefined;
+          const priceKey  = asset.yahooSymbol ?? asset.ticker;
+          const livePrice = priceKey ? prices[priceKey]?.price : undefined;
           const pnl = computeAssetPnl(aOps, asset.id, livePrice);
           return (
             <View key={asset.id} style={[styles.assetCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -294,7 +319,10 @@ export default function MarketManagerScreen() {
                   <View style={styles.assetNameRow}>
                     <Text style={[styles.assetName, { color: colors.foreground }]}>{asset.name}</Text>
                     {asset.ticker ? (
-                      <Text style={[styles.assetTicker, { color: MKT_GREEN }]}>{asset.ticker}</Text>
+                      <Text style={[styles.assetTicker, { color: colors.mutedForeground }]}>{asset.ticker}</Text>
+                    ) : null}
+                    {asset.yahooSymbol && asset.yahooSymbol !== asset.ticker ? (
+                      <Text style={[styles.assetTicker, { color: MKT_GREEN }]}>{asset.yahooSymbol}</Text>
                     ) : null}
                   </View>
                   {pnl.hasLivePrice ? (
@@ -450,7 +478,7 @@ export default function MarketManagerScreen() {
                 <TextInput
                   value={fTicker}
                   onChangeText={setFTicker}
-                  placeholder="Ticker optionnel (ex: ENGI.PA)"
+                  placeholder="Ticker Trade Republic (ex: GZF, ENGI, MSFT…)"
                   placeholderTextColor={colors.mutedForeground}
                   style={[styles.input, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]}
                   autoCapitalize="characters"

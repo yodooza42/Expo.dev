@@ -2,8 +2,32 @@
 // Couvre tous les marchés : ENGI.PA (Euronext Paris), AAPL (NASDAQ), etc.
 // Fallback : cost basis affiché si l'appel échoue.
 
-const BASE = 'https://query1.finance.yahoo.com/v8/finance/chart/';
+const BASE    = 'https://query1.finance.yahoo.com/v8/finance/chart/';
+const SEARCH  = 'https://query1.finance.yahoo.com/v1/finance/search';
 const HEADERS = { 'User-Agent': 'Mozilla/5.0' };
+
+/**
+ * Recherche le symbole Yahoo Finance correspondant à un ticker Trade Republic (ou tout autre query).
+ * Retourne le premier résultat EQUITY / ETF / FUND, ou null si rien trouvé.
+ */
+export async function resolveYahooSymbol(query: string): Promise<string | null> {
+  try {
+    const url = `${SEARCH}?q=${encodeURIComponent(query)}&quotesCount=6&newsCount=0&enableFuzzyQuery=false&lang=en-US`;
+    const res = await fetch(url, { headers: HEADERS });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const quotes: any[] = data?.quotes ?? [];
+    if (quotes.length === 0) return null;
+    const best =
+      quotes.find(q => q.quoteType === 'EQUITY') ??
+      quotes.find(q => q.quoteType === 'ETF') ??
+      quotes.find(q => q.quoteType === 'MUTUALFUND') ??
+      quotes[0];
+    return (best?.symbol as string) ?? null;
+  } catch {
+    return null;
+  }
+}
 
 export interface LivePrice {
   price: number;

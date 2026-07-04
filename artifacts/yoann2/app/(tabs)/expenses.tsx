@@ -167,12 +167,14 @@ export default function FinanceScreen() {
     setRecurringExpenseList(recExps);
     if (shown === 'true') setShowAmounts(true);
 
-    // Essaie de récupérer les cours en direct pour afficher la valeur actuelle
-    const tickers = mktAssets.filter(a => a.ticker).map(a => a.ticker!);
+    // Essaie de récupérer les cours en direct — priorité yahooSymbol sur ticker TR
+    const symbols = [...new Set(
+      mktAssets.map(a => a.yahooSymbol ?? a.ticker).filter((s): s is string => Boolean(s)),
+    )];
     let currentMktVal: number;
-    if (tickers.length > 0) {
+    if (symbols.length > 0) {
       try {
-        const livePrices = await fetchLivePrices(tickers);
+        const livePrices = await fetchLivePrices(symbols);
         const priceMap: Record<string, number> = {};
         for (const [t, lp] of Object.entries(livePrices)) priceMap[t] = lp.price;
         const { currentValue } = computePortfolioValue(mktOps, mktAssets, priceMap);

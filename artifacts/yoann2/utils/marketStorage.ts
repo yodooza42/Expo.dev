@@ -13,7 +13,8 @@ const KEYS = {
 export interface MarketAsset {
   id: string;
   name: string;
-  ticker?: string;
+  ticker?: string;       // Ticker Trade Republic (affiché)
+  yahooSymbol?: string;  // Symbole Yahoo Finance résolu automatiquement
   createdAt: string;
 }
 
@@ -59,7 +60,7 @@ export async function addMarketAsset(asset: Omit<MarketAsset, 'id' | 'createdAt'
   return newItem;
 }
 
-export async function updateMarketAsset(id: string, updates: Partial<Pick<MarketAsset, 'name' | 'ticker'>>): Promise<void> {
+export async function updateMarketAsset(id: string, updates: Partial<Pick<MarketAsset, 'name' | 'ticker' | 'yahooSymbol'>>): Promise<void> {
   const list = await getMarketAssets();
   await AsyncStorage.setItem(KEYS.ASSETS, JSON.stringify(list.map(a => a.id === id ? { ...a, ...updates } : a)));
 }
@@ -231,7 +232,9 @@ export function computePortfolioValue(
   for (const asset of assets) {
     const cb = computeAssetBalance(ops, asset.id);
     costBasis += cb;
-    const price = asset.ticker ? prices[asset.ticker] : undefined;
+    // Priorité : yahooSymbol (résolu auto) > ticker TR
+    const priceKey = asset.yahooSymbol ?? asset.ticker;
+    const price = priceKey ? prices[priceKey] : undefined;
     const qty = computeAssetQtyHeld(ops, asset.id);
     if (price !== undefined && qty > 0) {
       currentValue += qty * price;
