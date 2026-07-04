@@ -16,7 +16,6 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useApp } from '@/contexts/AppContext';
-import { type ThemeColorKey, useTheme } from '@/contexts/ThemeContext';
 import { useColors } from '@/hooks/useColors';
 import {
   cancelAppointmentReminders,
@@ -32,32 +31,6 @@ import {
 import { listBackups, restoreBackup, saveBackup } from '@/utils/backup';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { reconfigureStorage, SAF_ROOT_KEY } from '@/utils/photoStorage';
-
-const COLOR_PALETTE = [
-  '#FFC107', '#FF9800', '#FF5722', '#F44336', '#E91E63',
-  '#9C27B0', '#673AB7', '#3F51B5', '#2196F3', '#03A9F4',
-  '#00BCD4', '#009688', '#4CAF50', '#8BC34A', '#CDDC39',
-  '#795548', '#9E9E9E', '#607D8B', '#FFFFFF', '#444444',
-];
-
-const COLOR_LABELS: Record<ThemeColorKey, string> = {
-  primary: 'Couleur principale',
-  priorityLow: 'Priorité Faible',
-  priorityMedium: 'Priorité Moyenne',
-  priorityHigh: 'Priorité Haute',
-  priorityCritical: 'Priorité Critique',
-  statusIdea: 'Statut Idée',
-  statusTodo: 'Statut À faire',
-  statusInProgress: 'Statut En cours',
-  statusWaiting: 'Statut En attente',
-  statusDone: 'Statut Terminé',
-};
-
-const COLOR_KEYS: ThemeColorKey[] = [
-  'primary',
-  'priorityLow', 'priorityMedium', 'priorityHigh', 'priorityCritical',
-  'statusIdea', 'statusTodo', 'statusInProgress', 'statusWaiting', 'statusDone',
-];
 
 function SettingRow({
   icon,
@@ -98,27 +71,25 @@ function SettingRow({
 
 export default function SettingsScreen() {
   const colors = useColors();
-  const { updateColor, resetColors } = useTheme();
   const insets = useSafeAreaInsets();
   const { resetData, projects, tasks, categories, addCategory, deleteCategory, expenseCategories, addExpenseCategory, deleteExpenseCategory } = useApp();
-
-  const [showBackupList, setShowBackupList] = useState(false);
-  const [backupList, setBackupList] = useState<Awaited<ReturnType<typeof listBackups>>>([]);
-  const [savingBackup, setSavingBackup] = useState(false);
-  const [restoringUri, setRestoringUri] = useState<string | null>(null);
-  const [catModalVisible, setCatModalVisible] = useState(false);
-  const [expCatModalVisible, setExpCatModalVisible] = useState(false);
-  const [newCatName, setNewCatName] = useState('');
-  const [newExpCatName, setNewExpCatName] = useState('');
-  const [colorPickerKey, setColorPickerKey] = useState<ThemeColorKey | null>(null);
-  const [weeklyNotif, setWeeklyNotif] = useState(false);
-  const [monthlyNotif, setMonthlyNotif] = useState(false);
-  const [apptReminder, setApptReminder] = useState(false);
-  const [folderConfigured, setFolderConfigured] = useState(false);
-  const [lastBackupDate, setLastBackupDate] = useState<Date | null>(null);
-  const [backupCount, setBackupCount] = useState(0);
-  const [configuringFolder, setConfiguringFolder] = useState(false);
   const router = useRouter();
+
+  const [showBackupList,    setShowBackupList]    = useState(false);
+  const [backupList,        setBackupList]        = useState<Awaited<ReturnType<typeof listBackups>>>([]);
+  const [savingBackup,      setSavingBackup]      = useState(false);
+  const [restoringUri,      setRestoringUri]      = useState<string | null>(null);
+  const [catModalVisible,   setCatModalVisible]   = useState(false);
+  const [expCatModalVisible,setExpCatModalVisible]= useState(false);
+  const [newCatName,        setNewCatName]        = useState('');
+  const [newExpCatName,     setNewExpCatName]     = useState('');
+  const [weeklyNotif,       setWeeklyNotif]       = useState(false);
+  const [monthlyNotif,      setMonthlyNotif]      = useState(false);
+  const [apptReminder,      setApptReminder]      = useState(false);
+  const [folderConfigured,  setFolderConfigured]  = useState(false);
+  const [lastBackupDate,    setLastBackupDate]    = useState<Date | null>(null);
+  const [backupCount,       setBackupCount]       = useState(0);
+  const [configuringFolder, setConfiguringFolder] = useState(false);
 
   useEffect(() => {
     getNotifPrefs().then(prefs => {
@@ -152,21 +123,13 @@ export default function SettingsScreen() {
 
   async function handleWeeklyToggle(value: boolean) {
     setWeeklyNotif(value);
-    if (value) {
-      await scheduleWeeklyReport();
-    } else {
-      await cancelWeeklyReport();
-    }
+    if (value) await scheduleWeeklyReport(); else await cancelWeeklyReport();
     Haptics.selectionAsync();
   }
 
   async function handleMonthlyToggle(value: boolean) {
     setMonthlyNotif(value);
-    if (value) {
-      await scheduleMonthlyReport();
-    } else {
-      await cancelMonthlyReport();
-    }
+    if (value) await scheduleMonthlyReport(); else await cancelMonthlyReport();
     Haptics.selectionAsync();
   }
 
@@ -174,14 +137,12 @@ export default function SettingsScreen() {
     setApptReminder(value);
     await setApptReminderPref(value);
     if (value) {
-      // reschedule will happen via AppContext effect
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } else {
       await cancelAppointmentReminders();
       Haptics.selectionAsync();
     }
   }
-
 
   async function handleManualBackup() {
     if (!folderConfigured) {
@@ -241,39 +202,15 @@ export default function SettingsScreen() {
         {
           text: 'Réinitialiser',
           style: 'destructive',
-          onPress: () => {
-            resetData();
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          },
+          onPress: () => { resetData(); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); },
         },
       ]
     );
   }
 
   function handleAddCategory() {
-    if (newCatName.trim()) {
-      addCategory(newCatName.trim());
-      setNewCatName('');
-    }
+    if (newCatName.trim()) { addCategory(newCatName.trim()); setNewCatName(''); }
   }
-
-  function handlePickColor(key: ThemeColorKey, color: string) {
-    updateColor(key, color);
-    Haptics.selectionAsync();
-  }
-
-  function handleResetColors() {
-    Alert.alert(
-      'Réinitialiser les couleurs',
-      'Restaurer les couleurs par défaut ?',
-      [
-        { text: 'Annuler', style: 'cancel' },
-        { text: 'Réinitialiser', onPress: () => { resetColors(); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); } },
-      ]
-    );
-  }
-
-  const currentColorValue = colorPickerKey ? (colors as unknown as Record<string, string>)[colorPickerKey] : null;
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -282,11 +219,13 @@ export default function SettingsScreen() {
       </View>
 
       <ScrollView contentContainerStyle={[styles.content, { paddingBottom: 120 }]} showsVerticalScrollIndicator={false}>
-        <Text style={[styles.section, { color: colors.mutedForeground }]}>Statistiques</Text>
+
+        {/* ── DONNÉES ── */}
+        <Text style={[styles.section, { color: colors.mutedForeground }]}>Données</Text>
         <View style={[styles.statsBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
           {[
-            { label: 'Projets', value: projects.length, icon: 'folder-multiple-outline' },
-            { label: 'Tâches', value: tasks.length, icon: 'format-list-checks' },
+            { label: 'Projets',    value: projects.length,   icon: 'folder-multiple-outline' },
+            { label: 'Tâches',     value: tasks.length,      icon: 'format-list-checks' },
             { label: 'Catégories', value: categories.length, icon: 'tag-multiple-outline' },
           ].map((s, i) => (
             <View key={i} style={[styles.statRow, i < 2 && { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
@@ -296,27 +235,9 @@ export default function SettingsScreen() {
             </View>
           ))}
         </View>
-
-        <Text style={[styles.section, { color: colors.mutedForeground }]}>Sauvegarde</Text>
-        <SettingRow
-          icon="content-save-outline"
-          label={savingBackup ? 'Sauvegarde en cours…' : 'Sauvegarde manuelle'}
-          sublabel="Crée immédiatement une archive dans le dossier Sauvegarde"
-          onPress={handleManualBackup}
-          colors={colors}
-        />
-        <SettingRow
-          icon="restore"
-          label={restoringUri ? 'Restauration en cours…' : 'Restaurer une sauvegarde'}
-          sublabel="Choisir parmi les 5 dernières archives"
-          onPress={handleOpenRestoreList}
-          colors={colors}
-        />
-
-        <Text style={[styles.section, { color: colors.mutedForeground }]}>Catégories</Text>
         <SettingRow
           icon="tag-multiple-outline"
-          label="Gérer les catégories de projets"
+          label="Catégories de projets"
           sublabel={`${categories.length} catégorie${categories.length !== 1 ? 's' : ''}`}
           onPress={() => setCatModalVisible(true)}
           colors={colors}
@@ -329,15 +250,7 @@ export default function SettingsScreen() {
           colors={colors}
         />
 
-        <Text style={[styles.section, { color: colors.mutedForeground }]}>Widget Android</Text>
-        <SettingRow
-          icon="widgets-outline"
-          label="Personnaliser le widget"
-          sublabel="Taille du texte, couleurs"
-          onPress={() => router.push('/widget-settings')}
-          colors={colors}
-        />
-
+        {/* ── NOTIFICATIONS ── */}
         <Text style={[styles.section, { color: colors.mutedForeground }]}>Notifications</Text>
         <View style={[styles.row, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <View style={[styles.rowIcon, { backgroundColor: colors.primary + '20' }]}>
@@ -354,15 +267,6 @@ export default function SettingsScreen() {
             thumbColor={apptReminder ? colors.primary : colors.mutedForeground}
           />
         </View>
-
-        <Text style={[styles.section, { color: colors.mutedForeground }]}>Rapports automatiques</Text>
-        <SettingRow
-          icon="chart-bar"
-          label="Consulter les rapports"
-          sublabel="Résumé hebdo et mensuel"
-          onPress={() => router.push('/rapport' as any)}
-          colors={colors}
-        />
         <View style={[styles.row, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <View style={[styles.rowIcon, { backgroundColor: colors.primary + '20' }]}>
             <MaterialCommunityIcons name="bell-ring-outline" size={20} color={colors.primary} />
@@ -394,9 +298,18 @@ export default function SettingsScreen() {
           />
         </View>
 
-        <Text style={[styles.section, { color: colors.mutedForeground }]}>Sauvegarde locale</Text>
+        {/* ── RAPPORTS ── */}
+        <Text style={[styles.section, { color: colors.mutedForeground }]}>Rapports</Text>
+        <SettingRow
+          icon="chart-bar"
+          label="Consulter les rapports"
+          sublabel="Résumé hebdomadaire et mensuel"
+          onPress={() => router.push('/rapport' as any)}
+          colors={colors}
+        />
 
-        {/* Dossier Yoann2.0 */}
+        {/* ── SAUVEGARDE ── */}
+        <Text style={[styles.section, { color: colors.mutedForeground }]}>Sauvegarde</Text>
         <Pressable
           onPress={handleConfigureFolder}
           disabled={configuringFolder}
@@ -415,14 +328,11 @@ export default function SettingsScreen() {
               {configuringFolder
                 ? 'Sélection en cours…'
                 : folderConfigured
-                  ? 'Configuré · toucher pour reconfigurer (réinstallation, nouveau téléphone)'
-                  : 'Non configuré — toucher pour choisir ou créer le dossier'}
+                  ? 'Configuré · toucher pour reconfigurer'
+                  : 'Non configuré — toucher pour choisir le dossier'}
             </Text>
           </View>
-          <View style={[
-            styles.folderBadge,
-            { backgroundColor: folderConfigured ? '#4CAF5020' : '#FF980020' },
-          ]}>
+          <View style={[styles.folderBadge, { backgroundColor: folderConfigured ? '#4CAF5020' : '#FF980020' }]}>
             <MaterialCommunityIcons
               name={folderConfigured ? 'check-circle-outline' : 'alert-outline'}
               size={16}
@@ -430,8 +340,6 @@ export default function SettingsScreen() {
             />
           </View>
         </Pressable>
-
-        {/* Statut sauvegarde automatique */}
         <View style={[styles.row, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <View style={[styles.rowIcon, { backgroundColor: '#4CAF5020' }]}>
             <MaterialCommunityIcons name="shield-check-outline" size={20} color="#4CAF50" />
@@ -440,50 +348,37 @@ export default function SettingsScreen() {
             <Text style={[styles.rowLabel, { color: colors.foreground }]}>Sauvegarde automatique</Text>
             <Text style={[styles.rowSub, { color: colors.mutedForeground }]}>
               {lastBackupDate
-                ? `Dernière : ${lastBackupDate.toLocaleDateString('fr-FR', { day: '2-digit', month: 'long' })} à ${lastBackupDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })} · ${backupCount}/5 archive${backupCount > 1 ? 's' : ''}`
-                : 'Aucune sauvegarde encore · se déclenche à 10h chaque jour'}
+                ? `Dernière : ${lastBackupDate.toLocaleDateString('fr-FR', { day: '2-digit', month: 'long' })} à ${lastBackupDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })} · ${backupCount}/5 archives`
+                : 'Aucune archive encore · se déclenche à 10h chaque jour'}
             </Text>
           </View>
         </View>
-
-        <Text style={[styles.section, { color: colors.mutedForeground }]}>Couleurs</Text>
-        <View style={[styles.colorsBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          {COLOR_KEYS.map((key, i) => {
-            const colorVal = (colors as unknown as Record<string, string>)[key] ?? '#888';
-            return (
-              <Pressable
-                key={key}
-                onPress={() => setColorPickerKey(key)}
-                style={({ pressed }) => [
-                  styles.colorRow,
-                  i < COLOR_KEYS.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border },
-                  pressed && { opacity: 0.7 },
-                ]}
-              >
-                <View style={[styles.colorSwatch, { backgroundColor: colorVal }]} />
-                <Text style={[styles.colorLabel, { color: colors.foreground }]}>{COLOR_LABELS[key]}</Text>
-                <MaterialCommunityIcons name="chevron-right" size={18} color={colors.mutedForeground} />
-              </Pressable>
-            );
-          })}
-        </View>
-        <Pressable
-          onPress={handleResetColors}
-          style={[styles.resetColorsBtn, { borderColor: colors.border }]}
-        >
-          <Text style={[styles.resetColorsLabel, { color: colors.mutedForeground }]}>Réinitialiser les couleurs par défaut</Text>
-        </Pressable>
-
-        <Text style={[styles.section, { color: colors.mutedForeground }]}>Danger</Text>
         <SettingRow
-          icon="delete-alert-outline"
-          label="Réinitialiser les données"
-          sublabel="Restaure les données d'exemple"
-          onPress={handleReset}
-          accent={colors.destructive}
+          icon="content-save-outline"
+          label={savingBackup ? 'Sauvegarde en cours…' : 'Sauvegarde manuelle'}
+          sublabel="Crée immédiatement une archive dans le dossier Sauvegarde"
+          onPress={handleManualBackup}
+          colors={colors}
+        />
+        <SettingRow
+          icon="restore"
+          label={restoringUri ? 'Restauration en cours…' : 'Restaurer une sauvegarde'}
+          sublabel="Choisir parmi les 5 dernières archives"
+          onPress={handleOpenRestoreList}
           colors={colors}
         />
 
+        {/* ── WIDGET ANDROID ── */}
+        <Text style={[styles.section, { color: colors.mutedForeground }]}>Widget Android</Text>
+        <SettingRow
+          icon="widgets-outline"
+          label="Personnaliser le widget"
+          sublabel="Taille du texte, couleurs"
+          onPress={() => router.push('/widget-settings')}
+          colors={colors}
+        />
+
+        {/* ── À PROPOS ── */}
         <Text style={[styles.section, { color: colors.mutedForeground }]}>À propos</Text>
         <SettingRow
           icon="update"
@@ -493,12 +388,26 @@ export default function SettingsScreen() {
           colors={colors}
         />
         <View style={[styles.about, { borderColor: colors.border }]}>
-          <Text style={[styles.aboutTitle, { color: colors.foreground }]}>Yoann2.0 - par et pour Gorge Yoann</Text>
-          <Text style={[styles.aboutSub, { color: colors.mutedForeground }]}>Bienvenue dans mon cerveau numérique</Text>
-          <Text style={[styles.aboutSub, { color: colors.mutedForeground }]}>v.2.0.0</Text>
+          <MaterialCommunityIcons name="brain" size={24} color={colors.primary} />
+          <Text style={[styles.aboutTitle, { color: colors.foreground }]}>Yoann2.0</Text>
+          <Text style={[styles.aboutSub, { color: colors.mutedForeground }]}>par et pour Gorge Yoann</Text>
+          <Text style={[styles.aboutVersion, { color: colors.primary }]}>v2.6.0</Text>
         </View>
+
+        {/* ── DANGER ── */}
+        <Text style={[styles.section, { color: colors.mutedForeground }]}>Danger</Text>
+        <SettingRow
+          icon="delete-alert-outline"
+          label="Réinitialiser les données"
+          sublabel="Restaure les données de la dernière sauvegarde seed"
+          onPress={handleReset}
+          accent={colors.destructive}
+          colors={colors}
+        />
+
       </ScrollView>
 
+      {/* ── MODAL : Restaurer une sauvegarde ── */}
       <Modal visible={showBackupList} animationType="slide" transparent>
         <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.7)' }]}>
           <Pressable style={{ flex: 1 }} onPress={() => setShowBackupList(false)} />
@@ -544,6 +453,7 @@ export default function SettingsScreen() {
         </View>
       </Modal>
 
+      {/* ── MODAL : Catégories projets ── */}
       <Modal visible={catModalVisible} animationType="slide" transparent>
         <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.7)' }]}>
           <Pressable style={{ flex: 1 }} onPress={() => setCatModalVisible(false)} />
@@ -578,6 +488,7 @@ export default function SettingsScreen() {
         </View>
       </Modal>
 
+      {/* ── MODAL : Catégories dépenses ── */}
       <Modal visible={expCatModalVisible} animationType="slide" transparent>
         <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.7)' }]}>
           <Pressable style={{ flex: 1 }} onPress={() => setExpCatModalVisible(false)} />
@@ -613,40 +524,6 @@ export default function SettingsScreen() {
             </ScrollView>
             <Pressable onPress={() => setExpCatModalVisible(false)} style={[styles.cancelBtn, { borderColor: colors.border }]}>
               <Text style={[styles.cancelLabel, { color: colors.mutedForeground }]}>Fermer</Text>
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
-
-      <Modal visible={colorPickerKey !== null} animationType="slide" transparent>
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.7)' }]}>
-          <Pressable style={{ flex: 1 }} onPress={() => setColorPickerKey(null)} />
-          <View style={[styles.modal, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Text style={[styles.modalTitle, { color: colors.foreground }]}>
-              {colorPickerKey ? COLOR_LABELS[colorPickerKey] : ''}
-            </Text>
-            <View style={styles.palette}>
-              {COLOR_PALETTE.map(c => (
-                <Pressable
-                  key={c}
-                  onPress={() => {
-                    if (colorPickerKey) handlePickColor(colorPickerKey, c);
-                    setColorPickerKey(null);
-                  }}
-                  style={[
-                    styles.paletteCell,
-                    { backgroundColor: c },
-                    currentColorValue === c && styles.paletteCellSelected,
-                  ]}
-                >
-                  {currentColorValue === c && (
-                    <MaterialCommunityIcons name="check" size={16} color={c === '#FFFFFF' ? '#000' : '#fff'} />
-                  )}
-                </Pressable>
-              ))}
-            </View>
-            <Pressable onPress={() => setColorPickerKey(null)} style={[styles.cancelBtn, { borderColor: colors.border }]}>
-              <Text style={[styles.cancelLabel, { color: colors.mutedForeground }]}>Annuler</Text>
             </Pressable>
           </View>
         </View>
@@ -713,6 +590,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     borderWidth: 1,
     overflow: 'hidden',
+    marginBottom: 4,
   },
   statRow: {
     flexDirection: 'row',
@@ -730,58 +608,25 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: 'Inter_700Bold',
   },
-  colorsBox: {
-    borderRadius: 14,
-    borderWidth: 1,
-    overflow: 'hidden',
-  },
-  colorRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  colorSwatch: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.15)',
-  },
-  colorLabel: {
-    flex: 1,
-    fontSize: 14,
-    fontFamily: 'Inter_400Regular',
-  },
-  resetColorsBtn: {
-    paddingVertical: 10,
-    borderRadius: 12,
-    borderWidth: 1,
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  resetColorsLabel: {
-    fontSize: 13,
-    fontFamily: 'Inter_400Regular',
-  },
   about: {
     alignItems: 'center',
-    marginTop: 20,
-    paddingTop: 20,
+    marginTop: 12,
+    paddingVertical: 20,
     borderTopWidth: 1,
     gap: 4,
-    paddingBottom: 20,
   },
   aboutTitle: {
-    fontSize: 15,
+    fontSize: 16,
     fontFamily: 'Inter_700Bold',
-    textAlign: 'center',
   },
   aboutSub: {
     fontSize: 13,
     fontFamily: 'Inter_400Regular',
-    textAlign: 'center',
+  },
+  aboutVersion: {
+    fontSize: 13,
+    fontFamily: 'Inter_700Bold',
+    marginTop: 4,
   },
   modal: {
     borderTopLeftRadius: 24,
@@ -858,24 +703,5 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     fontFamily: 'Inter_500Medium',
-  },
-  palette: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-    justifyContent: 'center',
-    paddingVertical: 8,
-  },
-  paletteCell: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  paletteCellSelected: {
-    borderColor: '#fff',
   },
 });

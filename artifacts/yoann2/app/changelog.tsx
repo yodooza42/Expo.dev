@@ -33,7 +33,6 @@ const HISTORY: VersionEntry[] = [
     items: [
       'Icônes personnalisées (jaune) sur navigation et widget',
       'Rapports hebdomadaires et mensuels détaillés',
-      'Rapports hebdomadaires et mensuels',
       'Notifications automatiques dimanche / dernier jour du mois',
       'Sauvegarde automatique locale (5 archives)',
     ],
@@ -46,7 +45,6 @@ const HISTORY: VersionEntry[] = [
       'Tracking des sessions de travail',
       'Import des données historiques (mai)',
       'Daily breakdown dans les rapports',
-      'Correction du calcul des heures de travail',
     ],
   },
   {
@@ -56,7 +54,7 @@ const HISTORY: VersionEntry[] = [
       'Planning Marie (PB/PD) avec calendrier interactif',
       'Planning Anna (nounou) : badges Isabelle #00BCD4 / Evelyne #9C27B0',
       'Détection automatique "personne à la maison" (intersection horaires)',
-      'Quick access bar : raccourcis Travail, Marie, Anna, Paramètres',
+      'Quick access bar : raccourcis Travail, Marie, Anna',
       'Widget intégré : cercle Marie + infos nounou + travail',
       'Tâches récurrentes (quotidienne, hebdo, mensuelle)',
       'Swipe dans le Kanban pour changer de colonne',
@@ -84,7 +82,6 @@ const HISTORY: VersionEntry[] = [
       'Statistiques par trajet : distance, durée, vitesse moyenne',
       'Trajets manuels : ajout de points de départ/arrivée',
       'Lieux connus avec catégories et icônes personnalisées',
-      'Alertes de départ configurables par destination',
       'Widget Navigation : 3 raccourcis Waze + bouton plein d\'essence',
       'Statistiques globales de trajets (mensuel / annuel)',
     ],
@@ -110,7 +107,6 @@ const HISTORY: VersionEntry[] = [
       'Dossier Photos par projet visible dans le gestionnaire de fichiers',
       'Paramètres véhicule : type carburant, consommation de référence',
       'Widget personnalisable : couleur principale, taille police',
-      'Page Paramètres réorganisée avec sections claires',
     ],
   },
   {
@@ -118,11 +114,24 @@ const HISTORY: VersionEntry[] = [
     date: 'Juillet 2026 — Polissage',
     items: [
       'Édition date et heure des trajets directement sur la carte',
-      'Virements programmés visibles dans le calendrier (sans montant affiché)',
-      'Photos projet : copie locale persistante — plus de disparition au redémarrage',
+      'Virements programmés visibles dans le calendrier',
+      'Photos projet : copie locale persistante',
       'Widget Navigation : labels de destination sous chaque bouton',
-      'Centralisation des utilitaires date, identifiants, géocodage',
       'Correction : imports/exports de sauvegarde via SAF',
+    ],
+  },
+  {
+    version: 'v2.6.0',
+    date: 'Juillet 2026 — Finitions',
+    items: [
+      'Finance : types "Vers marché" / "Depuis marché" dans les transactions',
+      'Finance : séparateurs de milliers sur tous les montants (1 500,00 €)',
+      'Marché : résolution automatique du symbole Yahoo Finance depuis le ticker Trade Republic',
+      'Accueil : mini stats (RDV, projets, tâches) sous la bannière Aujourd\'hui',
+      'Accueil : suppression des pills stats dans le header (gain de hauteur)',
+      'Navigation : bouton retour Android → Accueil au lieu de Calendrier',
+      'Paramètres : suppression de la section Couleurs inutilisée, réorganisation par catégorie',
+      'Seed : injection automatique des données réelles depuis la dernière sauvegarde',
     ],
   },
 ];
@@ -147,24 +156,21 @@ export default function ChangelogScreen() {
         contentContainerStyle={[styles.scroll, { paddingBottom: 40 }]}
         showsVerticalScrollIndicator={false}
       >
-        {/* Welcome */}
         <View style={[styles.hero, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <MaterialCommunityIcons name="brain" size={32} color={colors.primary} />
           <Text style={[styles.heroText, { color: colors.foreground }]}>
             Bienvenue dans mon cerveau numérique
           </Text>
           <Text style={[styles.heroVersion, { color: colors.primary }]}>
-            Yoann2.0  ·  v2.5.0
+            Yoann2.0  ·  v2.6.0
           </Text>
         </View>
 
-        {/* Timeline */}
-        {HISTORY.map((v, i) => (
+        {[...HISTORY].reverse().map((v, i) => (
           <View key={v.version} style={styles.versionBlock}>
-            {/* Header */}
             <View style={styles.versionHeader}>
-              <View style={[styles.versionDot, { backgroundColor: colors.primary }]} />
-              <Text style={[styles.versionLabel, { color: colors.primary }]}>
+              <View style={[styles.versionDot, { backgroundColor: i === 0 ? colors.primary : colors.border }]} />
+              <Text style={[styles.versionLabel, { color: i === 0 ? colors.primary : colors.foreground }]}>
                 {v.version}
               </Text>
               <Text style={[styles.versionDate, { color: colors.mutedForeground }]}>
@@ -172,17 +178,19 @@ export default function ChangelogScreen() {
               </Text>
             </View>
 
-            {/* Items */}
-            <View style={[styles.versionCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <View style={[styles.versionCard, { backgroundColor: colors.card, borderColor: i === 0 ? colors.primary + '40' : colors.border }]}>
               {v.items.map((item, j) => (
                 <View key={j} style={[styles.itemRow, j < v.items.length - 1 && { borderBottomColor: colors.border }]}>
-                  <MaterialCommunityIcons name="circle-small" size={14} color={colors.primary} />
+                  <MaterialCommunityIcons
+                    name="circle-small"
+                    size={14}
+                    color={i === 0 ? colors.primary : colors.mutedForeground}
+                  />
                   <Text style={[styles.itemText, { color: colors.foreground }]}>{item}</Text>
                 </View>
               ))}
             </View>
 
-            {/* Connector line */}
             {i < HISTORY.length - 1 && (
               <View style={[styles.connector, { backgroundColor: colors.border }]} />
             )}
