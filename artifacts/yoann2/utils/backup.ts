@@ -1,75 +1,141 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system/legacy';
 
-const BACKUP_DIR = FileSystem.documentDirectory + 'yoann2_backups/';
-const MAX_BACKUPS = 5;
+import { SAF_BACKUP_KEY } from '@/utils/photoStorage';
 
-export async function ensureBackupDir(): Promise<void> {
-  const info = await FileSystem.getInfoAsync(BACKUP_DIR);
-  if (!info.exists) {
-    await FileSystem.makeDirectoryAsync(BACKUP_DIR, { intermediates: true });
-  }
-}
+const SAF              = FileSystem.StorageAccessFramework;
+const BACKUP_LIST_KEY  = '@yoann2_backup_list';
+const LAST_BACKUP_KEY  = '@yoann2_last_backup_ts';
+const MAX_BACKUPS      = 5;
 
-export async function saveBackup(jsonData: string): Promise<string | null> {
+type BackupEntry = { uri: string; ts: number; filename: string };
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+async function getBackupDir(): Promise<string | null> {
   try {
-    await ensureBackupDir();
-    const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-    const filename = `backup_${ts}.json`;
-    const uri = BACKUP_DIR + filename;
-    await FileSystem.writeAsStringAsync(uri, jsonData, { encoding: FileSystem.EncodingType.UTF8 });
-    await pruneOldBackups();
-    return uri;
+    return await AsyncStorage.getItem(SAF_BACKUP_KEY);
   } catch {
     return null;
   }
 }
 
-export async function pruneOldBackups(): Promise<void> {
+async function getBackupList(): Promise<BackupEntry[]> {
   try {
-    const files = await FileSystem.readDirectoryAsync(BACKUP_DIR);
-    const sorted = files
-      .filter(f => f.startsWith('backup_') && f.endsWith('.json'))
-      .sort();
-    if (sorted.length > MAX_BACKUPS) {
-      const toDelete = sorted.slice(0, sorted.length - MAX_BACKUPS);
-      for (const f of toDelete) {
-        await FileSystem.deleteAsync(BACKUP_DIR + f, { idempotent: true });
-      }
-    }
-  } catch {
-  }
-}
-
-export async function listBackups(): Promise<{ name: string; uri: string; date: Date }[]> {
-  try {
-    await ensureBackupDir();
-    const files = await FileSystem.readDirectoryAsync(BACKUP_DIR);
-    return files
-      .filter(f => f.startsWith('backup_') && f.endsWith('.json'))
-      .sort()
-      .reverse()
-      .map(f => {
-        const datePart = f.replace('backup_', '').replace('.json', '').replace(/-/g, (m, i) => {
-          if (i === 4 || i === 7) return '-';
-          if (i === 10) return 'T';
-          if (i === 13 || i === 16) return ':';
-          return m;
-        });
-        return {
-          name: f,
-          uri: BACKUP_DIR + f,
-          date: new Date(datePart),
-        };
-      });
+    const raw = await AsyncStorage.getItem(BACKUP_LIST_KEY);
+    return raw ? (JSON.parse(raw) as BackupEntry[]) : [];
   } catch {
     return [];
   }
 }
 
+async function setBackupList(list: BackupEntry[]): Promise<void> {
+  await AsyncStorage.setItem(BACKUP_LIST_KEY, JSON.stringify(list));
+}
+
+// ── Collect all @yoann2 data from AsyncStorage ────────────────────────────────
+
+async function collectAllData(): Promise<string> {
+  const allKeys = await AsyncStorage.getAllKeys();
+  const keys = allKeys.filter(k => k.startsWith('@yoann2'));
+  const pairs = await AsyncStorage.multiGet(keys);
+  const data: Record<string, string | null> = {};
+  for (const [k, v] of pairs) data[k] = v;
+  return JSON.stringify({
+    exportedAt: new Date().toISOString(),
+    version: 1,
+    data,
+  }, null, 2);
+}
+
+// ── Save one backup (SAF write + rotate) ─────────────────────────────────────
+
+export async function saveBackup(): Promise<boolean> {
+  try {
+    const backupDir = await getBackupDir();
+    if (!backupDir) return false;
+
+    const jsonData  = await collectAllData();
+    const ts        = Date.now();
+    const dateStr   = new Date(ts).toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const filename  = `backup_${dateStr}.json`;
+
+    const tmpPath = `${FileSystem.cacheDirectory}${filename}`;
+    await FileSystem.writeAsStringAsync(tmpPath, jsonData, {
+      encoding: FileSystem.EncodingType.UTF8,
+    });
+    const base64 = await FileSystem.readAsStringAsync(tmpPath, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+
+    const fileUri = await SAF.createFileAsync(backupDir, filename, 'application/json');
+    await SAF.writeAsStringAsync(fileUri, base64, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+
+    FileSystem.deleteAsync(tmpPath, { idempotent: true }).catch(() => {});
+
+    const list = await getBackupList();
+    list.push({ uri: fileUri, ts, filename });
+
+    if (list.length > MAX_BACKUPS) {
+      const toDelete = list.splice(0, list.length - MAX_BACKUPS);
+      for (const entry of toDelete) {
+        FileSystem.deleteAsync(entry.uri, { idempotent: true }).catch(() => {});
+      }
+    }
+
+    await setBackupList(list);
+    await AsyncStorage.setItem(LAST_BACKUP_KEY, String(ts));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// ── Daily trigger — call on each foreground ───────────────────────────────────
+//
+// Runs if: no backup today AND current time >= 10:00
+
+export async function runDailyBackupIfNeeded(): Promise<void> {
+  try {
+    const now = new Date();
+    if (now.getHours() < 10) return;
+
+    const raw = await AsyncStorage.getItem(LAST_BACKUP_KEY);
+    if (raw) {
+      const last = new Date(parseInt(raw, 10));
+      const todayAt10 = new Date(now);
+      todayAt10.setHours(10, 0, 0, 0);
+      if (last >= todayAt10) return;
+    }
+
+    await saveBackup();
+  } catch {
+    // silently ignore
+  }
+}
+
+// ── Read helpers (for future restore UI) ─────────────────────────────────────
+
+export async function listBackups(): Promise<BackupEntry[]> {
+  const list = await getBackupList();
+  return [...list].reverse();
+}
+
 export async function readBackup(uri: string): Promise<string | null> {
   try {
-    return await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.UTF8 });
+    return await SAF.readAsStringAsync(uri, {
+      encoding: FileSystem.EncodingType.UTF8,
+    });
   } catch {
     return null;
   }
+}
+
+export async function deleteBackup(uri: string): Promise<void> {
+  const list = await getBackupList();
+  const next = list.filter(e => e.uri !== uri);
+  await setBackupList(next);
+  FileSystem.deleteAsync(uri, { idempotent: true }).catch(() => {});
 }

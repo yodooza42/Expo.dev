@@ -21,6 +21,7 @@ import { AppProvider, useApp } from '@/contexts/AppContext';
 import { SplashProvider } from '@/contexts/SplashContext';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 import type { Trip, VehicleType } from '@/types/trips';
+import { runDailyBackupIfNeeded } from '@/utils/backup';
 import { isTrackingPaused, purgeOldData, requestLocationPermissions, startTracking } from '@/utils/locationTracking';
 import { runMaintenanceScheduler } from '@/utils/maintenanceScheduler';
 import { updateNavWidget } from '@/widgets/updateNavWidget';
@@ -82,6 +83,7 @@ function RootLayoutNav() {
     bootstrapLocationTracking();
     checkPendingTrips();
     runScheduler();
+    runDailyBackupIfNeeded().catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [checkPendingTrips]);
 
@@ -91,6 +93,7 @@ function RootLayoutNav() {
         checkPendingTrips();
         updateNavWidget().catch(() => {});
         runScheduler();
+        runDailyBackupIfNeeded().catch(() => {});
       }
     });
     return () => sub.remove();

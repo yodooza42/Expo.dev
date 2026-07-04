@@ -2,8 +2,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Alert } from 'react-native';
 
-const SAF     = FileSystem.StorageAccessFramework;
-const SAF_KEY = '@yoann2_saf_photos_uri';
+const SAF            = FileSystem.StorageAccessFramework;
+const SAF_KEY        = '@yoann2_saf_photos_uri';
+export const SAF_BACKUP_KEY = '@yoann2_saf_backup_uri';
 
 // Per-project dir URIs — keyed by sanitized project name
 const PROJECT_DIR_PREFIX = '@yoann2_saf_proj_';
@@ -49,10 +50,11 @@ export async function getOrRequestPhotosDir(): Promise<string | null> {
               const perm = await SAF.requestDirectoryPermissionsAsync();
               if (!perm.granted) { _pendingPermission = null; resolve(null); return; }
 
-              const yoann2    = await _makeDir(perm.directoryUri, 'Yoann2.0');
-              await _makeDir(yoann2, 'Sauvegarde');
-              const photosDir = await _makeDir(yoann2, 'Photos');
+              const yoann2     = await _makeDir(perm.directoryUri, 'Yoann2.0');
+              const backupDir  = await _makeDir(yoann2, 'Sauvegarde');
+              const photosDir  = await _makeDir(yoann2, 'Photos');
 
+              await AsyncStorage.setItem(SAF_BACKUP_KEY, backupDir);
               await AsyncStorage.setItem(SAF_KEY, photosDir);
               _pendingPermission = null;
               resolve(photosDir);

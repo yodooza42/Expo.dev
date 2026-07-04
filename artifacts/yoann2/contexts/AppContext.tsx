@@ -291,15 +291,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const sub = AppState.addEventListener('change', nextState => {
       if (nextState === 'background' && dirtyRef.current && !loading) {
-        const data = JSON.stringify({
-          projects: projectsRef.current,
-          tasks: tasksRef.current,
-          expenses: expensesRef.current,
-          categories: categoriesRef.current,
-          expenseCategories: expenseCategoriesRef.current,
-          appointments: appointmentsRef.current,
-        }, null, 2);
-        saveBackup(data).then(() => {
+        saveBackup().then(() => {
           dirtyRef.current = false;
         });
       }
