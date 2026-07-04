@@ -34,7 +34,9 @@ _Describe the high-level user-facing capabilities of this app once they exist._
 
 ## User preferences
 
-_Populate as you build — explicit user instructions worth remembering across sessions._
+- **Appareil cible** : Samsung Galaxy S25 Ultra (Android, One UI 7) — optimiser pour grand écran Android, pas d'iOS.
+- **Usage** : application strictement personnelle — pas d'onboarding multi-utilisateur, pas de soumission App Store, pas de contraintes d'accessibilité publique.
+- **Liquid glass / NativeTabs iOS** : non pertinent, l'app est Android uniquement.
 
 ## Gotchas
 
