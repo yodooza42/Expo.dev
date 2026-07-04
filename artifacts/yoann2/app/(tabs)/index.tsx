@@ -106,7 +106,6 @@ export default function DashboardScreen() {
 
   const stats    = getStats();
   const now      = new Date();
-  const topPad   = Platform.OS === 'web' ? 67 : insets.top;
   const todayStart = startOfDay(now);
   const todayKey   = isoDate(todayStart);
 
@@ -419,7 +418,7 @@ export default function DashboardScreen() {
       {/* HEADER */}
       <LinearGradient
         colors={['#1A1500', colors.background]}
-        style={[styles.header, { paddingTop: topPad + 16 }]}
+        style={[styles.header, { paddingTop: insets.top + 16 }]}
       >
         <View style={styles.headerRow}>
           {/* ── Wordmark (tap to replay phoenix) ── */}

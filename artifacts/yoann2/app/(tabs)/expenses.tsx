@@ -98,7 +98,6 @@ export default function ExpensesScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { projects, expenses, expenseCategories } = useApp();
-  const topPad = Platform.OS === 'web' ? 67 : insets.top;
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [period, setPeriod] = useState<PeriodKey>('6m');
@@ -257,7 +256,7 @@ export default function ExpensesScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.header, { paddingTop: topPad + 12 }]}>
+      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <Text style={[styles.title, { color: colors.foreground }]}>Finances</Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
           {/* OCR scan button */}

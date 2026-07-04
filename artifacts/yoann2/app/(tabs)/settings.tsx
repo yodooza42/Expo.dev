@@ -154,7 +154,6 @@ export default function SettingsScreen() {
     }
   }
 
-  const topPad = Platform.OS === 'web' ? 67 : insets.top;
 
   function handleExport() {
     const json = exportData();
@@ -225,7 +224,7 @@ export default function SettingsScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.header, { paddingTop: topPad + 12 }]}>
+      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <Text style={[styles.title, { color: colors.foreground }]}>Paramètres</Text>
       </View>
 

@@ -130,7 +130,6 @@ export default function KanbanScreen() {
   const [movingTask, setMovingTask] = useState<Task | null>(null);
   const [selectedProject, setSelectedProject] = useState<string>('all');
 
-  const topPad = Platform.OS === 'web' ? 67 : insets.top;
   const now    = new Date();
   const stats  = getStats();
 
@@ -158,7 +157,7 @@ export default function KanbanScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.header, { paddingTop: topPad + 12 }]}>
+      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <View style={styles.titleRow}>
           <Text style={[styles.title, { color: colors.foreground }]}>Kanban</Text>
           <View style={styles.titleActions}>

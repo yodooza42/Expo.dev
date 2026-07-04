@@ -99,7 +99,6 @@ export default function CalendarScreen() {
   const [importText, setImportText] = useState('');
   const [importItems, setImportItems] = useState<ImportItem[]>([]);
 
-  const topPad = Platform.OS === 'web' ? 67 : insets.top;
 
   const days = useMemo(() => getDaysInMonth(year, month), [year, month]);
 
@@ -270,7 +269,7 @@ export default function CalendarScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.header, { paddingTop: topPad + 12 }]}>
+      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <View style={styles.titleRow}>
           <Text style={[styles.title, { color: colors.foreground }]}>Calendrier</Text>
           <View style={styles.titleBtns}>

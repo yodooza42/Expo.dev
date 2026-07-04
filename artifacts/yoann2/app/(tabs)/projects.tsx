@@ -58,7 +58,6 @@ export default function ProjectsScreen() {
   const [reorderMode, setReorderMode] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
 
-  const topPad = Platform.OS === 'web' ? 67 : insets.top;
 
   const archivedCount = projects.filter(p => p.archived).length;
 
@@ -101,7 +100,7 @@ export default function ProjectsScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.header, { paddingTop: topPad + 12 }]}>
+      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <View style={styles.headerRow}>
           <Text style={[styles.title, { color: colors.foreground }]}>Projets</Text>
           <View style={styles.headerBtns}>
