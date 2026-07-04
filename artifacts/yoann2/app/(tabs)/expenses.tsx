@@ -94,7 +94,7 @@ export default function FinanceScreen() {
   const colors  = useColors();
   const insets  = useSafeAreaInsets();
   const router  = useRouter();
-  const { expenses, projects, updateExpense } = useApp();
+  const { expenses, projects, tasks, updateExpense } = useApp();
 
   const [transactions, setTransactions]   = useState<BankTransaction[]>([]);
   const [savingsBalance, setSavingsBal]   = useState(0);
@@ -105,6 +105,7 @@ export default function FinanceScreen() {
   const [form, setForm]                   = useState<FormState>(EMPTY_FORM);
   const [showTransfer, setShowTransfer]   = useState(false);
   const [showOcr, setShowOcr]             = useState(false);
+  const [noteProjId, setNoteProjId]       = useState<string | null>(null);
   const [transferAmount, setTransferAmount] = useState('');
   const [transferDir, setTransferDir]     = useState<'to' | 'from'>('to');
 
@@ -190,12 +191,15 @@ export default function FinanceScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     if (tx) {
       setEditId(tx.id);
+      const noteVal = tx.note ?? '';
+      const matchedProj = projects.find(p => noteVal === p.name || noteVal.startsWith(p.name + ' · '));
+      setNoteProjId(matchedProj?.id ?? null);
       setForm({
         type: tx.type,
         amount: tx.amount.toString(),
         label: tx.label,
         category: tx.category,
-        note: tx.note ?? '',
+        note: noteVal,
         date: (() => {
           const d = new Date(tx.date);
           return isNaN(d.getTime()) ? new Date().toLocaleDateString('fr-FR') : d.toLocaleDateString('fr-FR');
@@ -203,6 +207,7 @@ export default function FinanceScreen() {
       });
     } else {
       setEditId(null);
+      setNoteProjId(null);
       setForm({ ...EMPTY_FORM, type });
     }
     setShowForm(true);
@@ -211,6 +216,7 @@ export default function FinanceScreen() {
   function closeForm() {
     setShowForm(false);
     setEditId(null);
+    setNoteProjId(null);
     setForm(EMPTY_FORM);
   }
 
@@ -563,21 +569,26 @@ export default function FinanceScreen() {
 
             {/* Montant + Date */}
             <View style={{ flexDirection: 'row', gap: 10 }}>
-              <TextInput
-                value={form.amount}
-                onChangeText={v => setForm(f => ({ ...f, amount: v }))}
-                placeholder="0,00"
-                placeholderTextColor={colors.mutedForeground}
-                keyboardType="numeric"
-                style={[styles.input, { flex: 1, color: colors.foreground, backgroundColor: colors.background, borderColor: colors.border }]}
-              />
+              {/* Montant avec suffixe € */}
+              <View style={[styles.input, { flex: 1, flexDirection: 'row', alignItems: 'center', paddingVertical: 0, backgroundColor: colors.background, borderColor: colors.border }]}>
+                <TextInput
+                  value={form.amount}
+                  onChangeText={v => setForm(f => ({ ...f, amount: v }))}
+                  placeholder="0,00"
+                  placeholderTextColor={colors.mutedForeground}
+                  keyboardType="numeric"
+                  style={{ flex: 1, color: colors.foreground, fontSize: 14, fontFamily: 'Inter_400Regular', paddingVertical: 12 }}
+                />
+                <Text style={{ color: colors.mutedForeground, fontSize: 14, fontFamily: 'Inter_500Medium', paddingRight: 4 }}>€</Text>
+              </View>
+              {/* Date */}
               <TextInput
                 value={form.date}
                 onChangeText={v => setForm(f => ({ ...f, date: v }))}
                 placeholder="JJ/MM/AAAA"
                 placeholderTextColor={colors.mutedForeground}
                 keyboardType="numeric"
-                style={[styles.input, { flex: 1, color: colors.foreground, backgroundColor: colors.background, borderColor: colors.border }]}
+                style={[styles.input, { flex: 1.3, color: colors.foreground, backgroundColor: colors.background, borderColor: colors.border, fontSize: 13 }]}
               />
             </View>
 
@@ -602,14 +613,76 @@ export default function FinanceScreen() {
               })}
             </ScrollView>
 
-            {/* Note */}
-            <TextInput
-              value={form.note}
-              onChangeText={v => setForm(f => ({ ...f, note: v }))}
-              placeholder="Note (optionnel)"
-              placeholderTextColor={colors.mutedForeground}
-              style={[styles.input, { color: colors.foreground, backgroundColor: colors.background, borderColor: colors.border }]}
-            />
+            {/* Lier à un projet */}
+            {form.type !== 'transfer_to_savings' && form.type !== 'transfer_from_savings' && (
+              <View style={{ gap: 6 }}>
+                <Text style={[styles.projPickerLabel, { color: colors.mutedForeground }]}>Projet lié (optionnel)</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+                  <Pressable
+                    onPress={() => { setNoteProjId(null); setForm(f => ({ ...f, note: '' })); }}
+                    style={[
+                      styles.catChip,
+                      !noteProjId
+                        ? { backgroundColor: colors.primary + '25', borderColor: colors.primary }
+                        : { backgroundColor: colors.background, borderColor: colors.border },
+                    ]}
+                  >
+                    <Text style={[styles.catChipTxt, { color: !noteProjId ? colors.primary : colors.mutedForeground }]}>Aucun</Text>
+                  </Pressable>
+                  {projects.filter(p => !p.archived).map(p => {
+                    const active = noteProjId === p.id;
+                    return (
+                      <Pressable
+                        key={p.id}
+                        onPress={() => {
+                          setNoteProjId(p.id);
+                          setForm(f => ({ ...f, note: p.name }));
+                        }}
+                        style={[
+                          styles.catChip,
+                          active
+                            ? { backgroundColor: colors.primary + '25', borderColor: colors.primary }
+                            : { backgroundColor: colors.background, borderColor: colors.border },
+                        ]}
+                      >
+                        <Text style={[styles.catChipTxt, { color: active ? colors.primary : colors.mutedForeground }]}>{p.name}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+
+                {/* Tâches du projet sélectionné */}
+                {noteProjId && (() => {
+                  const projTasks = tasks.filter(t => t.projectId === noteProjId && t.status !== 'done');
+                  if (projTasks.length === 0) return null;
+                  const projName = projects.find(p => p.id === noteProjId)?.name ?? '';
+                  return (
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+                      {projTasks.map(t => {
+                        const active = form.note === projName + ' · ' + t.title;
+                        return (
+                          <Pressable
+                            key={t.id}
+                            onPress={() => setForm(f => ({
+                              ...f,
+                              note: active ? projName : projName + ' · ' + t.title,
+                            }))}
+                            style={[
+                              styles.catChip,
+                              active
+                                ? { backgroundColor: '#F59E0B20', borderColor: '#F59E0B' }
+                                : { backgroundColor: colors.background, borderColor: colors.border },
+                            ]}
+                          >
+                            <Text style={[styles.catChipTxt, { color: active ? '#F59E0B' : colors.mutedForeground }]}>· {t.title}</Text>
+                          </Pressable>
+                        );
+                      })}
+                    </ScrollView>
+                  );
+                })()}
+              </View>
+            )}
 
             {/* Actions */}
             <View style={{ flexDirection: 'row', gap: 10 }}>
@@ -789,6 +862,7 @@ const styles = StyleSheet.create({
   },
   handle: { width: 40, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: 4 },
   formTitle: { fontSize: 16, fontFamily: 'Inter_600SemiBold' },
+  projPickerLabel: { fontSize: 11, fontFamily: 'Inter_500Medium', textTransform: 'uppercase', letterSpacing: 0.6 },
 
   typeChip: {
     flexDirection: 'row',
