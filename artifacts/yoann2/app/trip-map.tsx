@@ -7,6 +7,7 @@ import {
   Keyboard,
   Modal,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -41,10 +42,13 @@ function fmtDuration(ms: number): string {
 
 // ── Edit-address modal ─────────────────────────────────────────────────────────
 
+const DEFAULT_SUGGESTIONS = ['Maison', 'Travail', 'Chez les parents', 'Gym', 'École'];
+
 function EditAddressModal({
   visible,
   label,
   initialValue,
+  suggestions,
   colors,
   onCancel,
   onSave,
@@ -52,6 +56,7 @@ function EditAddressModal({
   visible: boolean;
   label: string;
   initialValue: string;
+  suggestions: string[];
   colors: ReturnType<typeof useColors>;
   onCancel: () => void;
   onSave: (value: string) => void;
@@ -86,6 +91,37 @@ function EditAddressModal({
           <Text style={[editStyles.sublabel, { color: colors.mutedForeground }]}>
             {label}
           </Text>
+          {suggestions.length > 0 && (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={editStyles.chipsRow}
+              keyboardShouldPersistTaps="handled"
+            >
+              {suggestions.map(s => (
+                <Pressable
+                  key={s}
+                  onPress={() => setText(s)}
+                  style={[
+                    editStyles.chip,
+                    {
+                      backgroundColor: text === s ? colors.primary : colors.muted,
+                      borderColor: text === s ? colors.primary : colors.border,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      editStyles.chipText,
+                      { color: text === s ? '#000' : colors.mutedForeground },
+                    ]}
+                  >
+                    {s}
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          )}
           <TextInput
             ref={inputRef}
             value={text}
@@ -145,6 +181,14 @@ const editStyles = StyleSheet.create({
     fontSize: 15,
     fontFamily: 'Inter_400Regular',
   },
+  chipsRow: { flexDirection: 'row', gap: 8, paddingVertical: 2 },
+  chip: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  chipText: { fontSize: 13, fontFamily: 'Inter_500Medium' },
   actions: { flexDirection: 'row', gap: 10, justifyContent: 'flex-end' },
   btn: {
     paddingHorizontal: 18,
@@ -379,6 +423,11 @@ export default function TripMapScreen() {
         visible={editingField !== null}
         label={editingLabel}
         initialValue={editingInitial}
+        suggestions={(() => {
+          const knownNames = knownPlaces.map(p => p.name);
+          const extra = DEFAULT_SUGGESTIONS.filter(s => !knownNames.includes(s));
+          return [...knownNames, ...extra];
+        })()}
         colors={colors}
         onCancel={() => setEditingField(null)}
         onSave={handleSaveAddress}
