@@ -127,6 +127,8 @@ export default function FinanceScreen() {
   const [marketBalance, setMarketBal]     = useState(0);
   const [showAmounts, setShowAmounts]         = useState(false);
   const [summaryCollapsed, setSummaryCollapsed] = useState(false);
+  const [searchActive, setSearchActive]         = useState(false);
+  const [searchQuery, setSearchQuery]           = useState('');
   const [filter, setFilter]               = useState<FilterType>('all');
   const [showForm, setShowForm]           = useState(false);
   const [editId, setEditId]               = useState<string | null>(null);
@@ -240,7 +242,19 @@ export default function FinanceScreen() {
     [allTransactions, filter]
   );
 
-  const grouped = useMemo(() => groupByMonth(filtered), [filtered]);
+  const searched = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return filtered;
+    return filtered.filter(t => {
+      const inLabel    = t.label.toLowerCase().includes(q);
+      const inCategory = t.category.toLowerCase().includes(q);
+      const inNote     = (t.note ?? '').toLowerCase().includes(q);
+      const inUserNote = (t.userNote ?? '').toLowerCase().includes(q);
+      return inLabel || inCategory || inNote || inUserNote;
+    });
+  }, [filtered, searchQuery]);
+
+  const grouped = useMemo(() => groupByMonth(searched), [searched]);
 
   const currentBalance = useMemo(() => computeCurrentBalance(allTransactions), [allTransactions]);
 
@@ -533,6 +547,28 @@ export default function FinanceScreen() {
         <Text style={[styles.title, { color: colors.foreground }]}>Finance</Text>
         <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
           <Pressable
+            onPress={() => {
+              if (searchActive) {
+                setSearchActive(false);
+                setSearchQuery('');
+              } else {
+                setSearchActive(true);
+              }
+              Haptics.selectionAsync();
+            }}
+            hitSlop={8}
+            style={[styles.iconBtn, {
+              backgroundColor: searchActive ? colors.primary + '25' : colors.card,
+              borderColor: searchActive ? colors.primary : colors.border,
+            }]}
+          >
+            <MaterialCommunityIcons
+              name="magnify"
+              size={18}
+              color={searchActive ? colors.primary : colors.mutedForeground}
+            />
+          </Pressable>
+          <Pressable
             onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setShowOcr(true); }}
             hitSlop={8}
             style={[styles.iconBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
@@ -570,6 +606,35 @@ export default function FinanceScreen() {
           </Pressable>
         </View>
       </View>
+
+      {/* ── Barre de recherche ── */}
+      {searchActive && (
+        <View style={[styles.searchBar, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
+          <View style={[styles.searchInputWrap, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <MaterialCommunityIcons name="magnify" size={18} color={colors.mutedForeground} />
+            <TextInput
+              autoFocus
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder="Libellé, catégorie, note…"
+              placeholderTextColor={colors.mutedForeground}
+              style={[styles.searchInput, { color: colors.foreground }]}
+              returnKeyType="search"
+              clearButtonMode="while-editing"
+            />
+            {searchQuery.length > 0 && (
+              <Pressable onPress={() => setSearchQuery('')} hitSlop={8}>
+                <MaterialCommunityIcons name="close-circle" size={16} color={colors.mutedForeground} />
+              </Pressable>
+            )}
+          </View>
+          {searchQuery.length > 0 && (
+            <Text style={[styles.searchCount, { color: colors.mutedForeground }]}>
+              {searched.length} résultat{searched.length !== 1 ? 's' : ''}
+            </Text>
+          )}
+        </View>
+      )}
 
       <ScrollView showsVerticalScrollIndicator={false} stickyHeaderIndices={[0]}>
 
@@ -1250,6 +1315,33 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: 28, fontFamily: 'Inter_700Bold' },
   iconBtn: { width: 34, height: 34, borderRadius: 10, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+
+  searchBar: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    gap: 6,
+    borderBottomWidth: 1,
+  },
+  searchInputWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 15,
+    fontFamily: 'Inter_400Regular',
+    padding: 0,
+  },
+  searchCount: {
+    fontSize: 12,
+    fontFamily: 'Inter_400Regular',
+    textAlign: 'center',
+  },
 
   balanceCard: {
     borderRadius: 18,
