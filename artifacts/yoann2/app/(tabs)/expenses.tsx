@@ -58,7 +58,8 @@ import {
 } from '@/utils/marketStorage';
 import { fetchLivePrices } from '@/utils/marketPrices';
 
-const SHOW_AMOUNTS_KEY = '@yoann2/finance_show_amounts';
+const SHOW_AMOUNTS_KEY      = '@yoann2/finance_show_amounts';
+const SUMMARY_COLLAPSED_KEY = '@yoann2/finance_summary_collapsed';
 
 const TYPE_CONFIG: Record<TransactionType, { label: string; icon: string; color: string; sign: string }> = {
   income:                  { label: 'Entrée',          icon: 'arrow-down-circle-outline',  color: '#4CAF50', sign: '+' },
@@ -124,7 +125,8 @@ export default function FinanceScreen() {
   const [transactions, setTransactions]   = useState<BankTransaction[]>([]);
   const [savingsBalance, setSavingsBal]   = useState(0);
   const [marketBalance, setMarketBal]     = useState(0);
-  const [showAmounts, setShowAmounts]     = useState(false);
+  const [showAmounts, setShowAmounts]         = useState(false);
+  const [summaryCollapsed, setSummaryCollapsed] = useState(false);
   const [filter, setFilter]               = useState<FilterType>('all');
   const [showForm, setShowForm]           = useState(false);
   const [editId, setEditId]               = useState<string | null>(null);
@@ -167,6 +169,8 @@ export default function FinanceScreen() {
     setRecurringList(recs);
     setRecurringExpenseList(recExps);
     if (shown === 'true') setShowAmounts(true);
+    const collapsed = await AsyncStorage.getItem(SUMMARY_COLLAPSED_KEY);
+    if (collapsed === 'true') setSummaryCollapsed(true);
 
     // Essaie de récupérer les cours en direct — priorité yahooSymbol sur ticker TR
     const symbols = [...new Set(
@@ -190,6 +194,14 @@ export default function FinanceScreen() {
   }
 
   useFocusEffect(useCallback(() => { load(); }, []));
+
+  function toggleSummary() {
+    Haptics.selectionAsync();
+    setSummaryCollapsed(v => {
+      AsyncStorage.setItem(SUMMARY_COLLAPSED_KEY, String(!v));
+      return !v;
+    });
+  }
 
   function toggleAmounts() {
     Haptics.selectionAsync();
@@ -545,6 +557,17 @@ export default function FinanceScreen() {
               color={colors.mutedForeground}
             />
           </Pressable>
+          <Pressable
+            onPress={toggleSummary}
+            hitSlop={8}
+            style={[styles.iconBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+          >
+            <MaterialCommunityIcons
+              name={summaryCollapsed ? 'chevron-down' : 'chevron-up'}
+              size={18}
+              color={colors.mutedForeground}
+            />
+          </Pressable>
         </View>
       </View>
 
@@ -552,67 +575,82 @@ export default function FinanceScreen() {
 
         {/* ── Sticky balance card ── */}
         <View style={{ backgroundColor: colors.background, paddingHorizontal: 16, paddingBottom: 8 }}>
-          <View style={[styles.balanceCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            {/* Compte courant */}
-            <View style={styles.balanceMain}>
-              <Text style={[styles.balanceLbl, { color: colors.mutedForeground }]}>Solde courant</Text>
-              <Text style={[styles.balanceAmount, { color: currentBalance >= 0 ? colors.foreground : colors.destructive }]}>
+          {summaryCollapsed ? (
+            /* Vue compacte quand replié */
+            <Pressable
+              onPress={toggleSummary}
+              style={[styles.balanceCardCompact, { backgroundColor: colors.card, borderColor: colors.border }]}
+            >
+              <MaterialCommunityIcons name="bank-outline" size={16} color={colors.mutedForeground} />
+              <Text style={[styles.balanceLblCompact, { color: colors.mutedForeground }]}>Solde courant</Text>
+              <Text style={[styles.balanceAmountCompact, { color: currentBalance >= 0 ? colors.foreground : colors.destructive }]}>
                 {showAmounts ? fmtEuro(currentBalance) : '••••••'}
               </Text>
-              <View style={styles.balanceRow}>
-                <View style={styles.balanceStat}>
-                  <MaterialCommunityIcons name="arrow-down-circle" size={14} color="#4CAF50" />
-                  <Text style={[styles.balanceStatTxt, { color: colors.mutedForeground }]}>
-                    {showAmounts ? `+${fmtEuro(monthIncome)}` : '••••'}
-                  </Text>
+              <MaterialCommunityIcons name="chevron-down" size={16} color={colors.mutedForeground} />
+            </Pressable>
+          ) : (
+            <View style={[styles.balanceCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              {/* Compte courant */}
+              <View style={styles.balanceMain}>
+                <Text style={[styles.balanceLbl, { color: colors.mutedForeground }]}>Solde courant</Text>
+                <Text style={[styles.balanceAmount, { color: currentBalance >= 0 ? colors.foreground : colors.destructive }]}>
+                  {showAmounts ? fmtEuro(currentBalance) : '••••••'}
+                </Text>
+                <View style={styles.balanceRow}>
+                  <View style={styles.balanceStat}>
+                    <MaterialCommunityIcons name="arrow-down-circle" size={14} color="#4CAF50" />
+                    <Text style={[styles.balanceStatTxt, { color: colors.mutedForeground }]}>
+                      {showAmounts ? `+${fmtEuro(monthIncome)}` : '••••'}
+                    </Text>
+                  </View>
+                  <View style={[styles.balanceDivider, { backgroundColor: colors.border }]} />
+                  <View style={styles.balanceStat}>
+                    <MaterialCommunityIcons name="arrow-up-circle" size={14} color="#EF4444" />
+                    <Text style={[styles.balanceStatTxt, { color: colors.mutedForeground }]}>
+                      {showAmounts ? `-${fmtEuro(monthExpense)}` : '••••'}
+                    </Text>
+                  </View>
+                  <Text style={[styles.balanceMonthHint, { color: colors.mutedForeground }]}>ce mois</Text>
                 </View>
-                <View style={[styles.balanceDivider, { backgroundColor: colors.border }]} />
-                <View style={styles.balanceStat}>
-                  <MaterialCommunityIcons name="arrow-up-circle" size={14} color="#EF4444" />
-                  <Text style={[styles.balanceStatTxt, { color: colors.mutedForeground }]}>
-                    {showAmounts ? `-${fmtEuro(monthExpense)}` : '••••'}
-                  </Text>
+              </View>
+
+              {/* Épargne */}
+              <View style={[styles.savingsRow, { borderTopColor: colors.border }]}>
+                <View style={styles.savingsLeft}>
+                  <MaterialCommunityIcons name="piggy-bank-outline" size={16} color="#2196F3" />
+                  <Text style={[styles.savingsLbl, { color: colors.mutedForeground }]}>Épargne</Text>
                 </View>
-                <Text style={[styles.balanceMonthHint, { color: colors.mutedForeground }]}>ce mois</Text>
+                <Text style={[styles.savingsAmount, { color: '#2196F3' }]}>
+                  {showAmounts ? fmtEuro(savingsBalance) : '••••'}
+                </Text>
+                <Pressable
+                  onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setTransferDir('to'); setShowTransfer(true); }}
+                  style={[styles.transferBtn, { backgroundColor: '#2196F3' + '18', borderColor: '#2196F3' + '40' }]}
+                >
+                  <MaterialCommunityIcons name="bank-transfer" size={15} color="#2196F3" />
+                  <Text style={[styles.transferBtnTxt, { color: '#2196F3' }]}>Virer</Text>
+                </Pressable>
               </View>
-            </View>
 
-            {/* Épargne */}
-            <View style={[styles.savingsRow, { borderTopColor: colors.border }]}>
-              <View style={styles.savingsLeft}>
-                <MaterialCommunityIcons name="piggy-bank-outline" size={16} color="#2196F3" />
-                <Text style={[styles.savingsLbl, { color: colors.mutedForeground }]}>Épargne</Text>
+              {/* Marché */}
+              <View style={[styles.savingsRow, { borderTopColor: colors.border }]}>
+                <View style={styles.savingsLeft}>
+                  <MaterialCommunityIcons name="chart-areaspline" size={16} color="#10B981" />
+                  <Text style={[styles.savingsLbl, { color: colors.mutedForeground }]}>Marché</Text>
+                </View>
+                <Text style={[styles.savingsAmount, { color: '#10B981' }]}>
+                  {showAmounts ? fmtEuro(marketBalance) : '••••'}
+                </Text>
+                <Pressable
+                  onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/market-manager'); }}
+                  style={[styles.transferBtn, { backgroundColor: '#10B98118', borderColor: '#10B98140' }]}
+                >
+                  <MaterialCommunityIcons name="chart-line" size={15} color="#10B981" />
+                  <Text style={[styles.transferBtnTxt, { color: '#10B981' }]}>Gérer</Text>
+                </Pressable>
               </View>
-              <Text style={[styles.savingsAmount, { color: '#2196F3' }]}>
-                {showAmounts ? fmtEuro(savingsBalance) : '••••'}
-              </Text>
-              <Pressable
-                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setTransferDir('to'); setShowTransfer(true); }}
-                style={[styles.transferBtn, { backgroundColor: '#2196F3' + '18', borderColor: '#2196F3' + '40' }]}
-              >
-                <MaterialCommunityIcons name="bank-transfer" size={15} color="#2196F3" />
-                <Text style={[styles.transferBtnTxt, { color: '#2196F3' }]}>Virer</Text>
-              </Pressable>
             </View>
-
-            {/* Marché */}
-            <View style={[styles.savingsRow, { borderTopColor: colors.border }]}>
-              <View style={styles.savingsLeft}>
-                <MaterialCommunityIcons name="chart-areaspline" size={16} color="#10B981" />
-                <Text style={[styles.savingsLbl, { color: colors.mutedForeground }]}>Marché</Text>
-              </View>
-              <Text style={[styles.savingsAmount, { color: '#10B981' }]}>
-                {showAmounts ? fmtEuro(marketBalance) : '••••'}
-              </Text>
-              <Pressable
-                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/market-manager'); }}
-                style={[styles.transferBtn, { backgroundColor: '#10B98118', borderColor: '#10B98140' }]}
-              >
-                <MaterialCommunityIcons name="chart-line" size={15} color="#10B981" />
-                <Text style={[styles.transferBtnTxt, { color: '#10B981' }]}>Gérer</Text>
-              </Pressable>
-            </View>
-          </View>
+          )}
         </View>
 
         {/* ── Quick actions ── */}
@@ -1217,6 +1255,24 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     borderWidth: 1,
     overflow: 'hidden',
+  },
+  balanceCardCompact: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  balanceLblCompact: {
+    flex: 1,
+    fontSize: 13,
+    fontFamily: 'Inter_500Medium',
+  },
+  balanceAmountCompact: {
+    fontSize: 16,
+    fontFamily: 'Inter_700Bold',
   },
   balanceMain: { padding: 20, gap: 4 },
   balanceLbl: { fontSize: 12, fontFamily: 'Inter_500Medium', textTransform: 'uppercase', letterSpacing: 0.8 },
