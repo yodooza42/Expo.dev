@@ -17,6 +17,8 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import WebView, { type WebViewMessageEvent } from 'react-native-webview';
+
 import { useColors } from '@/hooks/useColors';
 import {
   DEFAULT_PLACE_CATEGORIES,
@@ -41,6 +43,148 @@ const COLOR_PALETTE = [
   '#795548', '#9E9E9E', '#607D8B',
 ];
 
+// ── Map picker ────────────────────────────────────────────────────────────────
+
+function buildPickerHtml(cLat: number, cLng: number, hasPin: boolean): string {
+  const lat = cLat.toFixed(6);
+  const lng = cLng.toFixed(6);
+  const zoom = hasPin ? 15 : 6;
+  const initMarker = hasPin
+    ? `marker=L.marker([${lat},${lng}],{draggable:true,icon:pinIcon()}).addTo(map);`
+      + `marker.on('dragend',function(){var ll=marker.getLatLng();send(ll.lat,ll.lng);});`
+    : '';
+  return `<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>*{margin:0;padding:0;box-sizing:border-box}body{background:#121212}#map{width:100vw;height:100vh}.leaflet-control-zoom a{background:#1E1E1E!important;color:#FFF!important;border-color:#333!important}</style>
+</head>
+<body>
+<div id="map"></div>
+<script>
+var map=L.map('map',{zoomControl:true,attributionControl:false});
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{maxZoom:19}).addTo(map);
+map.setView([${lat},${lng}],${zoom});
+var marker=null;
+function send(lat,lng){if(window.ReactNativeWebView){window.ReactNativeWebView.postMessage(JSON.stringify({type:'pick',lat:lat,lng:lng}));}}
+function pinIcon(){return L.divIcon({className:'',html:'<div style="width:24px;height:24px;background:#FFC107;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:3px solid #fff;box-shadow:0 2px 6px #000a;margin:-22px 0 0 -12px"></div>',iconSize:[24,24],iconAnchor:[12,24]});}
+${initMarker}
+map.on('click',function(e){
+  var lat=e.latlng.lat,lng=e.latlng.lng;
+  if(marker){marker.setLatLng([lat,lng]);}
+  else{marker=L.marker([lat,lng],{draggable:true,icon:pinIcon()}).addTo(map);marker.on('dragend',function(){var ll=marker.getLatLng();send(ll.lat,ll.lng);});}
+  send(lat,lng);
+});
+</script>
+</body>
+</html>`;
+}
+
+function MapPickerModal({
+  visible,
+  initialLat,
+  initialLng,
+  colors,
+  onPick,
+  onClose,
+}: {
+  visible: boolean;
+  initialLat?: number | null;
+  initialLng?: number | null;
+  colors: ReturnType<typeof useColors>;
+  onPick: (lat: number, lng: number) => void;
+  onClose: () => void;
+}) {
+  const insets                                = useSafeAreaInsets();
+  const [pickedLat, setPickedLat]             = useState<number | null>(null);
+  const [pickedLng, setPickedLng]             = useState<number | null>(null);
+
+  useEffect(() => {
+    if (visible) {
+      const hasCoords = initialLat != null && initialLat !== 0;
+      setPickedLat(hasCoords ? initialLat! : null);
+      setPickedLng(hasCoords ? initialLng! : null);
+    }
+  }, [visible, initialLat, initialLng]);
+
+  const cLat = (initialLat != null && initialLat !== 0) ? initialLat : 46.2276;
+  const cLng = (initialLng != null && initialLng !== 0) ? initialLng : 2.2137;
+  const mapHtml = buildPickerHtml(cLat, cLng, cLat !== 46.2276);
+
+  function handleMessage(event: WebViewMessageEvent) {
+    try {
+      const msg = JSON.parse(event.nativeEvent.data) as { type: string; lat: number; lng: number };
+      if (msg.type === 'pick') {
+        setPickedLat(msg.lat);
+        setPickedLng(msg.lng);
+      }
+    } catch {}
+  }
+
+  return (
+    <Modal visible={visible} animationType="slide">
+      <View style={[pickerSt.container, { backgroundColor: colors.background }]}>
+        <View style={[pickerSt.header, { paddingTop: insets.top + 12 }]}>
+          <Pressable onPress={onClose} hitSlop={12}>
+            <MaterialCommunityIcons name="arrow-left" size={24} color={colors.foreground} />
+          </Pressable>
+          <Text style={[pickerSt.title, { color: colors.foreground }]}>Choisir sur la carte</Text>
+          <View style={{ width: 24 }} />
+        </View>
+        <Text style={[pickerSt.hint, { color: colors.mutedForeground }]}>
+          Appuyez sur la carte pour placer un repère
+        </Text>
+        <WebView
+          key={`picker-${visible}`}
+          source={{ html: mapHtml }}
+          style={{ flex: 1 }}
+          originWhitelist={['*']}
+          javaScriptEnabled
+          domStorageEnabled
+          scalesPageToFit={false}
+          scrollEnabled={false}
+          onMessage={handleMessage}
+        />
+        <View style={[pickerSt.footer, { paddingBottom: insets.bottom + 16, borderTopColor: colors.border }]}>
+          <Text style={[pickerSt.coordTxt, { color: pickedLat !== null ? '#4CAF50' : colors.mutedForeground }]}>
+            {pickedLat !== null ? `📍 ${pickedLat.toFixed(5)}, ${pickedLng?.toFixed(5)}` : 'Aucun point sélectionné'}
+          </Text>
+          <Pressable
+            onPress={() => { if (pickedLat !== null && pickedLng !== null) onPick(pickedLat, pickedLng); }}
+            style={[pickerSt.confirmBtn, { backgroundColor: colors.primary, opacity: pickedLat !== null ? 1 : 0.4 }]}
+            disabled={pickedLat === null}
+          >
+            <Text style={[pickerSt.confirmTxt, { color: colors.primaryForeground }]}>Utiliser ce lieu</Text>
+          </Pressable>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+const pickerSt = StyleSheet.create({
+  container: { flex: 1 },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingBottom: 4,
+    gap: 12,
+  },
+  title: { flex: 1, textAlign: 'center', fontSize: 17, fontFamily: 'Inter_700Bold' },
+  hint: { textAlign: 'center', fontSize: 12, fontFamily: 'Inter_400Regular', paddingBottom: 6 },
+  footer: {
+    padding: 16,
+    gap: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  coordTxt: { textAlign: 'center', fontSize: 12, fontFamily: 'Inter_400Regular' },
+  confirmBtn: { borderRadius: 12, padding: 14, alignItems: 'center' },
+  confirmTxt: { fontSize: 15, fontFamily: 'Inter_700Bold' },
+});
+
 // ── Modals ────────────────────────────────────────────────────────────────────
 
 function PlaceModal({
@@ -48,6 +192,9 @@ function PlaceModal({
   initial,
   categories,
   colors,
+  coordsFromPicker,
+  onClearPickerCoords,
+  onOpenMapPicker,
   onSave,
   onClose,
 }: {
@@ -55,6 +202,9 @@ function PlaceModal({
   initial: Partial<KnownPlace> | null;
   categories: PlaceCategory[];
   colors: ReturnType<typeof useColors>;
+  coordsFromPicker?: { lat: number; lng: number } | null;
+  onClearPickerCoords?: () => void;
+  onOpenMapPicker: (lat?: number, lng?: number) => void;
   onSave: (p: KnownPlace) => void;
   onClose: () => void;
 }) {
@@ -78,6 +228,14 @@ function PlaceModal({
       setGeocoding(false);
     }
   }, [visible, initial, categories]);
+
+  useEffect(() => {
+    if (coordsFromPicker != null) {
+      setResolvedLat(coordsFromPicker.lat);
+      setResolvedLng(coordsFromPicker.lng);
+      onClearPickerCoords?.();
+    }
+  }, [coordsFromPicker]);
 
   async function handleGeocode() {
     const q = address.trim();
@@ -168,6 +326,19 @@ function PlaceModal({
               Saisissez une adresse puis appuyez sur 🔍 pour localiser
             </Text>
           )}
+
+          <View style={styles.orRow}>
+            <View style={[styles.orLine, { backgroundColor: colors.border }]} />
+            <Text style={[styles.orTxt, { color: colors.mutedForeground }]}>OU</Text>
+            <View style={[styles.orLine, { backgroundColor: colors.border }]} />
+          </View>
+          <Pressable
+            onPress={() => onOpenMapPicker(resolvedLat ?? undefined, resolvedLng ?? undefined)}
+            style={[styles.mapPickBtn, { borderColor: colors.primary, backgroundColor: colors.primary + '18' }]}
+          >
+            <MaterialCommunityIcons name="map-marker-plus-outline" size={18} color={colors.primary} />
+            <Text style={[styles.mapPickTxt, { color: colors.primary }]}>Choisir sur la carte</Text>
+          </Pressable>
 
           <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Catégorie</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
@@ -353,6 +524,11 @@ export default function KnownPlacesScreen() {
   const [editPlace, setEditPlace]     = useState<Partial<KnownPlace> | null>(null);
   const [editCat, setEditCat]         = useState<Partial<PlaceCategory> | null>(null);
 
+  const [mapPickerVisible, setMapPickerVisible]   = useState(false);
+  const [pickerInitLat, setPickerInitLat]         = useState<number | null>(null);
+  const [pickerInitLng, setPickerInitLng]         = useState<number | null>(null);
+  const [coordsFromPicker, setCoordsFromPicker]   = useState<{ lat: number; lng: number } | null>(null);
+
   const load = useCallback(async () => {
     const [cats, pls] = await Promise.all([getPlaceCategories(), getKnownPlaces()]);
     setCategories(cats);
@@ -528,8 +704,26 @@ export default function KnownPlacesScreen() {
         initial={editPlace}
         categories={categories}
         colors={colors}
+        coordsFromPicker={coordsFromPicker}
+        onClearPickerCoords={() => setCoordsFromPicker(null)}
+        onOpenMapPicker={(lat, lng) => {
+          setPickerInitLat(lat ?? null);
+          setPickerInitLng(lng ?? null);
+          setMapPickerVisible(true);
+        }}
         onSave={handleSavePlace}
         onClose={() => setPlaceModal(false)}
+      />
+      <MapPickerModal
+        visible={mapPickerVisible}
+        initialLat={pickerInitLat}
+        initialLng={pickerInitLng}
+        colors={colors}
+        onPick={(lat, lng) => {
+          setCoordsFromPicker({ lat, lng });
+          setMapPickerVisible(false);
+        }}
+        onClose={() => setMapPickerVisible(false)}
       />
       <CategoryModal
         visible={catModal}
@@ -679,6 +873,25 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_400Regular',
     marginBottom: 4,
   },
+  orRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginVertical: 10,
+  },
+  orLine: { flex: 1, height: StyleSheet.hairlineWidth },
+  orTxt: { fontSize: 11, fontFamily: 'Inter_500Medium', letterSpacing: 1 },
+  mapPickBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    marginBottom: 4,
+  },
+  mapPickTxt: { fontSize: 14, fontFamily: 'Inter_600SemiBold' },
   geocodeRow: {
     flexDirection: 'row',
     gap: 8,
