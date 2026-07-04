@@ -58,9 +58,71 @@ const HISTORY: VersionEntry[] = [
       'Détection automatique "personne à la maison" (intersection horaires)',
       'Quick access bar : raccourcis Travail, Marie, Anna, Paramètres',
       'Widget intégré : cercle Marie + infos nounou + travail',
-      'Section stats RDV dans le Kanban (à venir)',
       'Tâches récurrentes (quotidienne, hebdo, mensuelle)',
       'Swipe dans le Kanban pour changer de colonne',
+    ],
+  },
+  {
+    version: 'v2.1.0',
+    date: 'Finance & Épargne',
+    items: [
+      'Module Finance complet : solde courant, revenus, dépenses',
+      'Compte épargne séparé avec historique de virements',
+      'Virements ponctuels et programmés (mensuel / hebdomadaire)',
+      'Catégories de revenus et dépenses personnalisées',
+      'Statistiques financières mensuelles avec graphiques',
+      'Intégration automatique des dépenses projet → transactions',
+      'Export Excel des transactions',
+    ],
+  },
+  {
+    version: 'v2.2.0',
+    date: 'Navigation & Trajets',
+    items: [
+      'Onglet Trajets : détection automatique GPS (départ / arrivée)',
+      'Carte interactive par trajet (OpenStreetMap + tracé OSRM)',
+      'Statistiques par trajet : distance, durée, vitesse moyenne',
+      'Trajets manuels : ajout de points de départ/arrivée',
+      'Lieux connus avec catégories et icônes personnalisées',
+      'Alertes de départ configurables par destination',
+      'Widget Navigation : 3 raccourcis Waze + bouton plein d\'essence',
+      'Statistiques globales de trajets (mensuel / annuel)',
+    ],
+  },
+  {
+    version: 'v2.3.0',
+    date: 'Rapports & Voix',
+    items: [
+      'Rapports de projet exportables en PDF',
+      'Statistiques dépenses par catégorie (graphiques)',
+      'Assistant vocal : création de tâches et notes par la parole',
+      'Rapport de maintenance véhicule (Moto / Doblo)',
+      'Planificateur de maintenance avec alertes kilométrage',
+      'Suivi carburant : historique de pleins, coût au litre, autonomie',
+    ],
+  },
+  {
+    version: 'v2.4.0',
+    date: 'Sauvegarde & Paramètres',
+    items: [
+      'Sauvegarde manuelle en un tap (dossier SAF Yoann2.0)',
+      'Liste des backups avec restauration sélective',
+      'Dossier Photos par projet visible dans le gestionnaire de fichiers',
+      'Paramètres véhicule : type carburant, consommation de référence',
+      'Widget personnalisable : couleur principale, taille police',
+      'Page Paramètres réorganisée avec sections claires',
+    ],
+  },
+  {
+    version: 'v2.5.0',
+    date: 'Juillet 2026 — Polissage',
+    items: [
+      'Édition date et heure des trajets directement sur la carte',
+      'Virements programmés visibles dans le calendrier (sans montant affiché)',
+      'Photos projet : copie locale persistante — plus de disparition au redémarrage',
+      'Widget Navigation : labels de destination sous chaque bouton',
+      'Centralisation des utilitaires date, identifiants, géocodage',
+      'Correction : imports/exports de sauvegarde via SAF',
     ],
   },
 ];
@@ -92,7 +154,7 @@ export default function ChangelogScreen() {
             Bienvenue dans mon cerveau numérique
           </Text>
           <Text style={[styles.heroVersion, { color: colors.primary }]}>
-            Yoann2.0  ·  v2.0.0
+            Yoann2.0  ·  v2.5.0
           </Text>
         </View>
 
