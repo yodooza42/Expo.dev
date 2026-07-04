@@ -153,9 +153,23 @@ export default function TripMapScreen() {
               color={colors.mutedForeground}
             />
             <StatItem
-              icon={trip.source === 'manual' ? 'pencil-outline' : 'navigation-variant-outline'}
-              value={trip.source === 'manual' ? 'Trajet manuel' : `${trip.pointCount} pts GPS`}
-              color={colors.mutedForeground}
+              icon={
+                trip.source === 'manual'
+                  ? 'pencil-outline'
+                  : trip.routeSource === 'osrm'
+                    ? 'road-variant'
+                    : 'navigation-variant-outline'
+              }
+              value={
+                trip.source === 'manual'
+                  ? 'Trajet manuel'
+                  : trip.routeSource === 'osrm'
+                    ? 'Tracé routier'
+                    : `${trip.pointCount} pts GPS`
+              }
+              color={
+                trip.routeSource === 'osrm' ? '#4CAF50' : colors.mutedForeground
+              }
             />
             {trip.vehicle && trip.vehicle !== 'ignored' && (() => {
               const veh = vehicles.find(v => v.id === trip.vehicle);
@@ -176,8 +190,12 @@ export default function TripMapScreen() {
                 <View style={[styles.legendDot, { backgroundColor: trip.source === 'manual' ? '#2196F3' : '#FFC107' }]} />
                 <Text style={[styles.legendText, { color: colors.mutedForeground }]}>Arrivée</Text>
               </View>
-              <Text style={[styles.legendText, { color: colors.mutedForeground }]}>
-                {trip.source === 'manual' ? 'Itinéraire estimé (OSRM)' : `${trip.route?.length ?? 0} pts (tracé simplifié)`}
+              <Text style={[styles.legendText, { color: trip.routeSource === 'osrm' ? '#4CAF50' : colors.mutedForeground }]}>
+                {trip.source === 'manual'
+                  ? 'Itinéraire estimé (OSRM)'
+                  : trip.routeSource === 'osrm'
+                    ? `Tracé routier OSRM · ${trip.route?.length ?? 0} pts`
+                    : `${trip.route?.length ?? 0} pts (tracé GPS simplifié)`}
               </Text>
             </View>
           )}

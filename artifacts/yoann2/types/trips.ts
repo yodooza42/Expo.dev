@@ -18,6 +18,8 @@ export interface Trip {
   endLon: number;
   /** Simplified GPS trace stored for map display. */
   route?: RoutePoint[];
+  /** Whether the route was road-matched by OSRM or kept as raw GPS trace. */
+  routeSource?: 'osrm' | 'gps';
   /** Reference to a TripCategory grouping similar routes. */
   categoryId?: string;
   /** True when this trip is a return journey relative to its category. */

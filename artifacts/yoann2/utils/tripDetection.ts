@@ -3,6 +3,7 @@ import * as Notifications from 'expo-notifications';
 
 import type { LocationPoint } from '@/utils/locationTracking';
 import { haversineKm } from '@/utils/haversine';
+import { matchRouteOSRM, computeRouteDistanceKm } from '@/utils/osrmMatching';
 import { simplifyRoute } from '@/utils/routeSimplification';
 import {
   getTripDetectionState,
@@ -107,12 +108,16 @@ export async function processPointForTrip(point: LocationPoint): Promise<Trip | 
         const stoppedMs = now - state.lastMovingTime;
         if (stoppedMs >= STOP_DURATION_MS) {
           if (state.distanceKm >= MIN_TRIP_KM) {
-            const route = simplifyRoute(state.routePoints);
+            const osrmRoute = await matchRouteOSRM(state.routePoints);
+            const route = osrmRoute ?? simplifyRoute(state.routePoints);
+            const distanceKm = osrmRoute
+              ? Math.round(computeRouteDistanceKm(osrmRoute) * 100) / 100
+              : Math.round(state.distanceKm * 100) / 100;
             completedTrip = {
               id: genId(),
               startTime: state.startTime,
               endTime: state.lastMovingTime,
-              distanceKm: Math.round(state.distanceKm * 100) / 100,
+              distanceKm,
               vehicle: null,
               pointCount: state.pointCount,
               startLat: state.startLat,
@@ -120,6 +125,7 @@ export async function processPointForTrip(point: LocationPoint): Promise<Trip | 
               endLat: state.lastLat,
               endLon: state.lastLon,
               route,
+              routeSource: osrmRoute ? 'osrm' : 'gps',
             };
           }
           state.status = 'idle';
