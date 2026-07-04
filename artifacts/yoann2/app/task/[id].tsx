@@ -355,7 +355,7 @@ export default function TaskDetailScreen() {
       <Modal visible={addExpVisible} animationType="slide" transparent>
         <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.7)' }]}>
           <Pressable style={{ flex: 1 }} onPress={() => setAddExpVisible(false)} />
-          <View style={[styles.sheet, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <View style={[styles.sheet, { backgroundColor: colors.card, borderColor: colors.border, paddingBottom: insets.bottom + 20 }]}>
             <Text style={[styles.sheetTitle, { color: colors.foreground }]}>Nouvelle dépense</Text>
             <Text style={[styles.sheetSub, { color: colors.mutedForeground }]}>
               Sera automatiquement ajoutée au projet « {project?.name ?? '...'} »

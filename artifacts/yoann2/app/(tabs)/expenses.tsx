@@ -836,7 +836,7 @@ export default function FinanceScreen() {
       <Modal visible={showForm} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <Pressable style={{ flex: 1 }} onPress={closeForm} />
-          <View style={[styles.formSheet, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <View style={[styles.formSheet, { backgroundColor: colors.card, borderColor: colors.border, paddingBottom: insets.bottom + 20 }]}>
             {/* Handle */}
             <View style={[styles.handle, { backgroundColor: colors.border }]} />
 
@@ -1140,7 +1140,7 @@ export default function FinanceScreen() {
       <Modal visible={showTransfer} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <Pressable style={{ flex: 1 }} onPress={() => { setShowTransfer(false); setIsRecurring(false); }} />
-          <View style={[styles.formSheet, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <View style={[styles.formSheet, { backgroundColor: colors.card, borderColor: colors.border, paddingBottom: insets.bottom + 20 }]}>
             <View style={[styles.handle, { backgroundColor: colors.border }]} />
             <Text style={[styles.transferTitle, { color: colors.foreground }]}>Virement épargne</Text>
 

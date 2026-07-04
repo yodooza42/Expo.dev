@@ -472,7 +472,7 @@ export default function NavigationScreen() {
           style={styles.modalOverlay}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
-          <View style={[styles.modalSheet, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <View style={[styles.modalSheet, { backgroundColor: colors.card, borderColor: colors.border, paddingBottom: insets.bottom + 20 }]}>
             <Text style={[styles.modalTitle, { color: colors.foreground }]}>
               {editing?.shortcut ? 'Modifier le raccourci' : 'Nouveau raccourci'}
             </Text>
@@ -569,7 +569,7 @@ export default function NavigationScreen() {
           style={styles.modalOverlay}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
-          <View style={[styles.modalSheet, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <View style={[styles.modalSheet, { backgroundColor: colors.card, borderColor: colors.border, paddingBottom: insets.bottom + 20 }]}>
             <Text style={[styles.modalTitle, { color: colors.foreground }]}>⛽ Passage à la pompe</Text>
 
             {/* Vehicle selector */}

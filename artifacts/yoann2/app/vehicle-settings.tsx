@@ -455,7 +455,7 @@ export default function VehicleSettingsScreen() {
       {/* Add maintenance item modal */}
       <Modal visible={addModalVisible} transparent animationType="fade">
         <Pressable style={styles.modalBackdrop} onPress={() => setAddModalVisible(false)}>
-          <Pressable style={[styles.modalCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Pressable style={[styles.modalCard, { backgroundColor: colors.card, borderColor: colors.border, paddingBottom: insets.bottom + 20 }]}>
             <Text style={[styles.modalTitle, { color: colors.foreground }]}>Nouveau rappel</Text>
 
             <View style={styles.typeRow}>
@@ -526,7 +526,7 @@ export default function VehicleSettingsScreen() {
       {/* Add vehicle modal */}
       <Modal visible={addVehicleVisible} transparent animationType="fade">
         <Pressable style={styles.modalBackdrop} onPress={() => setAddVehicleVisible(false)}>
-          <Pressable style={[styles.modalCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Pressable style={[styles.modalCard, { backgroundColor: colors.card, borderColor: colors.border, paddingBottom: insets.bottom + 20 }]}>
             <Text style={[styles.modalTitle, { color: colors.foreground }]}>Ajouter un véhicule</Text>
 
             <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Nom</Text>

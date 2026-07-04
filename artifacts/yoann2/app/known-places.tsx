@@ -208,6 +208,7 @@ function PlaceModal({
   onSave: (p: KnownPlace) => void;
   onClose: () => void;
 }) {
+  const insets = useSafeAreaInsets();
   const [name, setName]               = useState('');
   const [catId, setCatId]             = useState('');
   const [radius, setRadius]           = useState('200');
@@ -278,7 +279,7 @@ function PlaceModal({
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <Pressable style={{ flex: 1 }} onPress={onClose} />
-        <View style={[styles.sheet, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        <View style={[styles.sheet, { backgroundColor: colors.card, borderColor: colors.border, paddingBottom: insets.bottom + 20 }]}>
           <Text style={[styles.sheetTitle, { color: colors.foreground }]}>
             {initial?.id ? 'Modifier le lieu' : 'Nouveau lieu'}
           </Text>
@@ -406,6 +407,7 @@ function CategoryModal({
   onSave: (c: PlaceCategory) => void;
   onClose: () => void;
 }) {
+  const insets = useSafeAreaInsets();
   const [name, setName]   = useState('');
   const [icon, setIcon]   = useState('map-marker');
   const [color, setColor] = useState('#FFC107');
@@ -436,7 +438,7 @@ function CategoryModal({
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <Pressable style={{ flex: 1 }} onPress={onClose} />
-        <View style={[styles.sheet, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        <View style={[styles.sheet, { backgroundColor: colors.card, borderColor: colors.border, paddingBottom: insets.bottom + 20 }]}>
           <Text style={[styles.sheetTitle, { color: colors.foreground }]}>
             {initial?.id ? 'Modifier la catégorie' : 'Nouvelle catégorie'}
           </Text>

@@ -167,6 +167,7 @@ function GroupModal({
   onAssign: (catId: string, isReturn: boolean) => void;
 }) {
   const [name, setName] = useState('');
+  const insets = useSafeAreaInsets();
 
   const forwardMatches = useMemo(() => {
     if (!trip) return [];
@@ -189,7 +190,7 @@ function GroupModal({
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={styles.overlay} onPress={onClose}>
-        <Pressable style={[styles.sheet, { backgroundColor: colors.card }]}>
+        <Pressable style={[styles.sheet, { backgroundColor: colors.card, paddingBottom: insets.bottom + 20 }]}>
           <Text style={[styles.sheetTitle, { color: colors.foreground }]}>Grouper ce trajet</Text>
 
           {hasMatches && (
@@ -279,12 +280,13 @@ function RenameModal({
   onRename: (name: string) => void;
 }) {
   const [name, setName] = useState('');
+  const insets = useSafeAreaInsets();
   useEffect(() => { if (category) setName(category.name); }, [category]);
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <Pressable style={styles.overlay} onPress={onClose}>
-        <Pressable style={[styles.sheet, { backgroundColor: colors.card }]}>
+        <Pressable style={[styles.sheet, { backgroundColor: colors.card, paddingBottom: insets.bottom + 20 }]}>
           <Text style={[styles.sheetTitle, { color: colors.foreground }]}>Renommer la catégorie</Text>
           <TextInput
             value={name}

@@ -90,10 +90,11 @@ function MoveModal({
   onMove: (status: TaskStatus) => void;
   colors: ReturnType<typeof useColors>;
 }) {
+  const insets = useSafeAreaInsets();
   return (
     <View style={[StyleSheet.absoluteFill, styles.modalOverlay]}>
       <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
-      <View style={[styles.modalSheet, { backgroundColor: colors.card, borderColor: colors.border }]}>
+      <View style={[styles.modalSheet, { backgroundColor: colors.card, borderColor: colors.border, paddingBottom: insets.bottom + 24 }]}>
         <Text style={[styles.modalTitle, { color: colors.foreground }]}>Déplacer vers…</Text>
         <Text style={[styles.modalTask, { color: colors.mutedForeground }]} numberOfLines={2}>
           {task.title}

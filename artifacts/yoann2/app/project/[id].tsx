@@ -799,7 +799,7 @@ export default function ProjectDetailScreen() {
       <Modal visible={addExpenseVisible} animationType="slide" transparent>
         <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.7)' }]}>
           <Pressable style={{ flex: 1 }} onPress={() => { setAddExpenseVisible(false); resetExpenseForm(); }} />
-          <View style={[styles.sheet, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <View style={[styles.sheet, { backgroundColor: colors.card, borderColor: colors.border, paddingBottom: insets.bottom + 20 }]}>
             <Text style={[styles.sheetTitle, { color: colors.foreground }]}>
               {editingExpense ? 'Modifier la dépense' : 'Nouvelle dépense'}
             </Text>

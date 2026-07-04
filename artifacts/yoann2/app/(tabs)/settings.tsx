@@ -457,7 +457,7 @@ export default function SettingsScreen() {
       <Modal visible={catModalVisible} animationType="slide" transparent>
         <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.7)' }]}>
           <Pressable style={{ flex: 1 }} onPress={() => setCatModalVisible(false)} />
-          <View style={[styles.modal, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <View style={[styles.modal, { backgroundColor: colors.card, borderColor: colors.border, paddingBottom: insets.bottom + 20 }]}>
             <Text style={[styles.modalTitle, { color: colors.foreground }]}>Catégories</Text>
             <View style={[styles.catInput, { backgroundColor: colors.background, borderColor: colors.border }]}>
               <TextInput
@@ -492,7 +492,7 @@ export default function SettingsScreen() {
       <Modal visible={expCatModalVisible} animationType="slide" transparent>
         <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.7)' }]}>
           <Pressable style={{ flex: 1 }} onPress={() => setExpCatModalVisible(false)} />
-          <View style={[styles.modal, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <View style={[styles.modal, { backgroundColor: colors.card, borderColor: colors.border, paddingBottom: insets.bottom + 20 }]}>
             <Text style={[styles.modalTitle, { color: colors.foreground }]}>Catégories de dépenses</Text>
             <View style={[styles.catInput, { backgroundColor: colors.background, borderColor: colors.border }]}>
               <TextInput
