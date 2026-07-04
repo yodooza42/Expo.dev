@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useApp } from '@/contexts/AppContext';
 import { useColors } from '@/hooks/useColors';
+import { fmtEuro } from '@/utils/money';
 
 type Period = 'weekly' | 'monthly';
 
@@ -158,7 +159,7 @@ export default function RapportScreen() {
           <StatRow
             icon="cash-multiple"
             label="Total"
-            value={`${stats.expensesTotal.toFixed(2)} €`}
+            value={fmtEuro(stats.expensesTotal)}
             accent={colors.primary}
           />
         </View>
@@ -171,7 +172,7 @@ export default function RapportScreen() {
                 key={cat}
                 icon="tag-outline"
                 label={cat}
-                value={`${amt.toFixed(2)} €`}
+                value={fmtEuro(amt)}
                 accent={['#FFC107', '#FF9800', '#2196F3'][i] ?? colors.primary}
               />
             ))}

@@ -42,12 +42,11 @@ import {
   updateMarketOperation,
 } from '@/utils/marketStorage';
 import { type LivePrice, fetchLivePrices, resolveYahooSymbol } from '@/utils/marketPrices';
+import { fmtEuro } from '@/utils/money';
 
 const MKT_GREEN = '#10B981';
 
-function fmt(n: number) {
-  return n.toFixed(2).replace('.', ',') + ' €';
-}
+function fmt(n: number) { return fmtEuro(n); }
 
 function fmtDate(iso: string) {
   const d = new Date(iso + (iso.includes('T') ? '' : 'T12:00:00'));

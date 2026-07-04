@@ -48,6 +48,7 @@ import {
   updateTransaction,
 } from '@/utils/bankStorage';
 import { fmtDateShort } from '@/utils/date';
+import { fmtEuro } from '@/utils/money';
 import {
   computePortfolioValue,
   getMarketAssets,
@@ -70,7 +71,7 @@ const TYPE_CONFIG: Record<TransactionType, { label: string; icon: string; color:
 
 function formatAmount(amount: number, masked: boolean): string {
   if (masked) return '••••';
-  return `${amount.toFixed(2).replace('.', ',')} €`;
+  return fmtEuro(amount);
 }
 
 
@@ -556,20 +557,20 @@ export default function FinanceScreen() {
             <View style={styles.balanceMain}>
               <Text style={[styles.balanceLbl, { color: colors.mutedForeground }]}>Solde courant</Text>
               <Text style={[styles.balanceAmount, { color: currentBalance >= 0 ? colors.foreground : colors.destructive }]}>
-                {showAmounts ? `${currentBalance >= 0 ? '' : '-'}${Math.abs(currentBalance).toFixed(2).replace('.', ',')} €` : '••••••'}
+                {showAmounts ? fmtEuro(currentBalance) : '••••••'}
               </Text>
               <View style={styles.balanceRow}>
                 <View style={styles.balanceStat}>
                   <MaterialCommunityIcons name="arrow-down-circle" size={14} color="#4CAF50" />
                   <Text style={[styles.balanceStatTxt, { color: colors.mutedForeground }]}>
-                    {showAmounts ? `+${monthIncome.toFixed(2).replace('.', ',')} €` : '••••'}
+                    {showAmounts ? `+${fmtEuro(monthIncome)}` : '••••'}
                   </Text>
                 </View>
                 <View style={[styles.balanceDivider, { backgroundColor: colors.border }]} />
                 <View style={styles.balanceStat}>
                   <MaterialCommunityIcons name="arrow-up-circle" size={14} color="#EF4444" />
                   <Text style={[styles.balanceStatTxt, { color: colors.mutedForeground }]}>
-                    {showAmounts ? `-${monthExpense.toFixed(2).replace('.', ',')} €` : '••••'}
+                    {showAmounts ? `-${fmtEuro(monthExpense)}` : '••••'}
                   </Text>
                 </View>
                 <Text style={[styles.balanceMonthHint, { color: colors.mutedForeground }]}>ce mois</Text>
@@ -583,7 +584,7 @@ export default function FinanceScreen() {
                 <Text style={[styles.savingsLbl, { color: colors.mutedForeground }]}>Épargne</Text>
               </View>
               <Text style={[styles.savingsAmount, { color: '#2196F3' }]}>
-                {showAmounts ? `${savingsBalance.toFixed(2).replace('.', ',')} €` : '••••'}
+                {showAmounts ? fmtEuro(savingsBalance) : '••••'}
               </Text>
               <Pressable
                 onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setTransferDir('to'); setShowTransfer(true); }}
@@ -601,7 +602,7 @@ export default function FinanceScreen() {
                 <Text style={[styles.savingsLbl, { color: colors.mutedForeground }]}>Marché</Text>
               </View>
               <Text style={[styles.savingsAmount, { color: '#10B981' }]}>
-                {showAmounts ? `${marketBalance.toFixed(2).replace('.', ',')} €` : '••••'}
+                {showAmounts ? fmtEuro(marketBalance) : '••••'}
               </Text>
               <Pressable
                 onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/market-manager'); }}
@@ -681,7 +682,7 @@ export default function FinanceScreen() {
                         if (t.type === 'income' || t.type === 'transfer_from_savings') return s + t.amount;
                         return s - t.amount;
                       }, 0);
-                      return `${net >= 0 ? '+' : ''}${net.toFixed(2).replace('.', ',')} €`;
+                      return `${net >= 0 ? '+' : ''}${fmtEuro(net)}`;
                     })()
                   : '••••'
                 }
@@ -705,7 +706,7 @@ export default function FinanceScreen() {
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.recurringRowLabel, { color: colors.foreground }]}>{rec.label}</Text>
                   <Text style={[styles.recurringRowSub, { color: colors.mutedForeground }]}>
-                    {showAmounts ? `${rec.amount.toFixed(2).replace('.', ',')} € · ` : '•••• · '}
+                    {showAmounts ? `${fmtEuro(rec.amount)} · ` : '•••• · '}
                     {rec.frequency === 'monthly' ? 'Mensuel' : 'Hebdomadaire'} · prochain : {new Date(rec.nextDate).toLocaleDateString('fr-FR')}
                   </Text>
                 </View>

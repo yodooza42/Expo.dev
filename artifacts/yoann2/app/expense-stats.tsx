@@ -23,6 +23,7 @@ import { useApp } from '@/contexts/AppContext';
 import { useColors } from '@/hooks/useColors';
 import { exportExpensesCSV, exportExpensesPDF } from '@/utils/expenseExport';
 import { fmtDateSlash } from '@/utils/date';
+import { fmtEuro } from '@/utils/money';
 
 const SHOW_AMOUNTS_KEY = '@yoann2/show_amounts';
 
@@ -288,7 +289,7 @@ export default function ExpensesScreen() {
           </Pressable>
           <View style={[styles.totalBadge, { backgroundColor: colors.primary + '18' }]}>
             <Text style={[styles.totalTxt, { color: colors.primary }]}>
-              {showAmounts ? `${totalAll.toFixed(2)} €` : '••••'}
+              {showAmounts ? fmtEuro(totalAll) : '••••'}
             </Text>
           </View>
         </View>
@@ -330,7 +331,7 @@ export default function ExpensesScreen() {
                       <MaterialCommunityIcons name="tag-outline" size={15} color={colors.primary} />
                       <Text style={[styles.catName, { color: colors.foreground }]}>{cat}</Text>
                       <Text style={[styles.catPct, { color: colors.mutedForeground }]}>{pct.toFixed(0)}%</Text>
-                      <Text style={[styles.catAmount, { color: colors.primary }]}>{showAmounts ? `${total.toFixed(2)} €` : '••••'}</Text>
+                      <Text style={[styles.catAmount, { color: colors.primary }]}>{showAmounts ? fmtEuro(total) : '••••'}</Text>
                       <MaterialCommunityIcons name="chevron-right" size={16} color={colors.mutedForeground} />
                     </View>
                     <View style={[styles.catTrack, { backgroundColor: colors.border }]}>
@@ -364,13 +365,13 @@ export default function ExpensesScreen() {
                           }]} />
                         </View>
                         <Text style={[styles.budgetLbl, { color: over ? colors.destructive : colors.mutedForeground }]}>
-                          {showAmounts ? `${total.toFixed(2)} € / ${budget} €` : '••••'}
+                          {showAmounts ? `${fmtEuro(total)} / ${fmtEuro(budget)}` : '••••'}
                         </Text>
                       </>
                     )}
                   </View>
                   <Text style={[styles.projAmount, { color: over ? colors.destructive : colors.primary }]}>
-                    {showAmounts ? `${total.toFixed(2)} €` : '••••'}
+                    {showAmounts ? fmtEuro(total) : '••••'}
                   </Text>
                 </View>
               );
@@ -602,7 +603,7 @@ export default function ExpensesScreen() {
             <View style={[styles.catSheetTotal, { backgroundColor: colors.background, borderColor: colors.border }]}>
               <Text style={[styles.catSheetTotalLbl, { color: colors.mutedForeground }]}>Total</Text>
               <Text style={[styles.catSheetTotalAmt, { color: colors.primary }]}>
-                {showAmounts ? `${catDetailExpenses.reduce((s, e) => s + e.amount, 0).toFixed(2)} €` : '••••'}
+                {showAmounts ? fmtEuro(catDetailExpenses.reduce((s, e) => s + e.amount, 0)) : '••••'}
               </Text>
             </View>
 
@@ -638,7 +639,7 @@ export default function ExpensesScreen() {
                       </View>
                     </View>
                     <Text style={[styles.catSheetRowAmt, { color: colors.foreground }]}>
-                      {showAmounts ? `${exp.amount.toFixed(2)} €` : '••••'}
+                      {showAmounts ? fmtEuro(exp.amount) : '••••'}
                     </Text>
                   </View>
                 );
