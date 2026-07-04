@@ -1,13 +1,16 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Dimensions,
+  Keyboard,
+  Modal,
+  Pressable,
   StyleSheet,
   Text,
+  TextInput,
   View,
-  Pressable,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -16,7 +19,7 @@ import { useColors } from '@/hooks/useColors';
 import type { PlaceCategory } from '@/types/places';
 import type { Trip, Vehicle } from '@/types/trips';
 import { getKnownPlaces, getPlaceCategories } from '@/utils/placesStorage';
-import { getTrips, getVehicleSettings } from '@/utils/tripStorage';
+import { getTrips, getVehicleSettings, updateTrip } from '@/utils/tripStorage';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
@@ -35,6 +38,125 @@ function fmtDuration(ms: number): string {
   return `${h}h${String(m % 60).padStart(2, '0')}`;
 }
 
+// ── Edit-address modal ─────────────────────────────────────────────────────────
+
+function EditAddressModal({
+  visible,
+  label,
+  initialValue,
+  colors,
+  onCancel,
+  onSave,
+}: {
+  visible: boolean;
+  label: string;
+  initialValue: string;
+  colors: ReturnType<typeof useColors>;
+  onCancel: () => void;
+  onSave: (value: string) => void;
+}) {
+  const [text, setText] = useState(initialValue);
+  const inputRef = useRef<TextInput>(null);
+
+  useEffect(() => {
+    if (visible) {
+      setText(initialValue);
+      setTimeout(() => inputRef.current?.focus(), 80);
+    }
+  }, [visible, initialValue]);
+
+  function handleSave() {
+    Keyboard.dismiss();
+    onSave(text.trim());
+  }
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onCancel}
+    >
+      <Pressable style={editStyles.overlay} onPress={onCancel}>
+        <Pressable style={[editStyles.sheet, { backgroundColor: colors.card }]}>
+          <Text style={[editStyles.title, { color: colors.foreground }]}>
+            Modifier le lieu
+          </Text>
+          <Text style={[editStyles.sublabel, { color: colors.mutedForeground }]}>
+            {label}
+          </Text>
+          <TextInput
+            ref={inputRef}
+            value={text}
+            onChangeText={setText}
+            placeholder="Ex : Bureau, Chez les parents…"
+            placeholderTextColor={colors.mutedForeground}
+            style={[editStyles.input, {
+              color: colors.foreground,
+              borderColor: colors.border,
+              backgroundColor: colors.background,
+            }]}
+            returnKeyType="done"
+            onSubmitEditing={handleSave}
+            autoCorrect={false}
+          />
+          <View style={editStyles.actions}>
+            <Pressable
+              onPress={onCancel}
+              style={[editStyles.btn, { backgroundColor: colors.muted }]}
+            >
+              <Text style={[editStyles.btnText, { color: colors.mutedForeground }]}>Annuler</Text>
+            </Pressable>
+            <Pressable
+              onPress={handleSave}
+              style={[editStyles.btn, { backgroundColor: colors.primary }]}
+            >
+              <Text style={[editStyles.btnText, { color: '#000' }]}>Enregistrer</Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+const editStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: '#00000088',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  sheet: {
+    width: '100%',
+    borderRadius: 16,
+    padding: 20,
+    gap: 12,
+  },
+  title: { fontSize: 16, fontFamily: 'Inter_600SemiBold' },
+  sublabel: { fontSize: 12, fontFamily: 'Inter_400Regular' },
+  input: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    fontSize: 15,
+    fontFamily: 'Inter_400Regular',
+  },
+  actions: { flexDirection: 'row', gap: 10, justifyContent: 'flex-end' },
+  btn: {
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 8,
+    minWidth: 90,
+    alignItems: 'center',
+  },
+  btnText: { fontSize: 14, fontFamily: 'Inter_600SemiBold' },
+});
+
+// ── Main screen ───────────────────────────────────────────────────────────────
+
 export default function TripMapScreen() {
   const colors = useColors();
   const router = useRouter();
@@ -49,6 +171,8 @@ export default function TripMapScreen() {
   const [placeCategories, setPlaceCategories] = useState<PlaceCategory[]>([]);
   const [knownPlaces, setKnownPlaces] = useState<Array<{ id: string; name: string; categoryId?: string }>>([]);
 
+  const [editingField, setEditingField] = useState<'start' | 'end' | null>(null);
+
   useEffect(() => {
     getPlaceCategories().then(setPlaceCategories).catch(() => {});
     getKnownPlaces().then(setKnownPlaces).catch(() => {});
@@ -61,7 +185,6 @@ export default function TripMapScreen() {
       setVehicles(v);
       setLoading(false);
 
-      // For manual trips without GPS trace: fetch OSRM route geometry
       if (
         found &&
         found.source === 'manual' &&
@@ -77,7 +200,6 @@ export default function TripMapScreen() {
             if (coords && coords.length >= 2) {
               setOsrmRoute(coords.map(([lng, lat]) => ({ lat, lng })));
             } else {
-              // Fallback: straight line between start and end
               setOsrmRoute([
                 { lat: found.startLat, lng: found.startLon },
                 { lat: found.endLat, lng: found.endLon },
@@ -95,8 +217,24 @@ export default function TripMapScreen() {
     });
   }, [id]);
 
+  async function handleSaveAddress(value: string) {
+    if (!trip || !editingField) return;
+    const field = editingField === 'start' ? 'startAddress' : 'endAddress';
+    const updated: Trip = { ...trip, [field]: value || undefined };
+    setTrip(updated);
+    setEditingField(null);
+    await updateTrip(trip.id, { [field]: value || undefined });
+  }
+
   const MAP_H = SCREEN_H * 0.62;
   const MAP_W = SCREEN_W;
+
+  const editingLabel = editingField === 'start' ? 'Lieu de départ' : "Lieu d'arrivée";
+  const editingInitial = editingField === 'start'
+    ? (trip?.startAddress ?? '')
+    : (trip?.endAddress ?? '');
+
+  const hasAnyAddress = !!(trip?.startAddress || trip?.endAddress);
 
   return (
     <View style={[styles.root, { backgroundColor: '#121212' }]}>
@@ -143,27 +281,29 @@ export default function TripMapScreen() {
       {/* Info card */}
       {trip && (
         <View style={[styles.card, { backgroundColor: colors.card, borderTopColor: colors.border }]}>
-          {(trip.startAddress || trip.endAddress) && (
-            <View style={[styles.addrBanner, { borderBottomColor: colors.border }]}>
-              <AddressBadge
-                address={trip.startAddress}
-                placeId={trip.startPlaceId}
-                dotColor="#4CAF50"
-                categories={placeCategories}
-                places={knownPlaces}
-                colors={colors}
-              />
-              <MaterialCommunityIcons name="arrow-right" size={13} color={colors.mutedForeground} />
-              <AddressBadge
-                address={trip.endAddress}
-                placeId={trip.endPlaceId}
-                dotColor="#FFC107"
-                categories={placeCategories}
-                places={knownPlaces}
-                colors={colors}
-              />
-            </View>
-          )}
+          {/* Address banner — always shown so the user can always edit */}
+          <View style={[styles.addrBanner, { borderBottomColor: colors.border }]}>
+            <AddressBadge
+              address={trip.startAddress}
+              placeId={trip.startPlaceId}
+              dotColor="#4CAF50"
+              categories={placeCategories}
+              places={knownPlaces}
+              colors={colors}
+              onPress={() => setEditingField('start')}
+            />
+            <MaterialCommunityIcons name="arrow-right" size={13} color={colors.mutedForeground} />
+            <AddressBadge
+              address={trip.endAddress}
+              placeId={trip.endPlaceId}
+              dotColor="#FFC107"
+              categories={placeCategories}
+              places={knownPlaces}
+              colors={colors}
+              onPress={() => setEditingField('end')}
+            />
+          </View>
+
           <Text style={[styles.dateText, { color: colors.foreground }]}>
             {fmtDate(trip.startTime)}
           </Text>
@@ -231,6 +371,16 @@ export default function TripMapScreen() {
           )}
         </View>
       )}
+
+      {/* Edit-address modal */}
+      <EditAddressModal
+        visible={editingField !== null}
+        label={editingLabel}
+        initialValue={editingInitial}
+        colors={colors}
+        onCancel={() => setEditingField(null)}
+        onSave={handleSaveAddress}
+      />
     </View>
   );
 }
@@ -251,6 +401,7 @@ function AddressBadge({
   categories,
   places,
   colors,
+  onPress,
 }: {
   address?: string;
   placeId?: string;
@@ -258,6 +409,7 @@ function AddressBadge({
   categories: PlaceCategory[];
   places: Array<{ id: string; name: string; categoryId?: string }>;
   colors: ReturnType<typeof useColors>;
+  onPress: () => void;
 }) {
   const place = placeId ? places.find(p => p.id === placeId) : null;
   const cat   = place?.categoryId ? categories.find(c => c.id === place.categoryId) : null;
@@ -265,12 +417,17 @@ function AddressBadge({
   const iconColor = cat?.color ?? dotColor;
 
   return (
-    <View style={styles.addrBadge}>
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.addrBadge, pressed && { opacity: 0.6 }]}
+      hitSlop={6}
+    >
       <MaterialCommunityIcons name={icon as any} size={14} color={iconColor} />
       <Text style={[styles.addrBadgeText, { color: colors.foreground }]} numberOfLines={1}>
         {address ?? '—'}
       </Text>
-    </View>
+      <MaterialCommunityIcons name="pencil-outline" size={11} color={colors.mutedForeground} />
+    </Pressable>
   );
 }
 
