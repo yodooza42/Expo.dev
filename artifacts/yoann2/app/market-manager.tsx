@@ -1,7 +1,7 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
-import * as WebBrowser from 'expo-web-browser';
+
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -19,8 +19,8 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useColors } from '@/hooks/useColors';
+import { addTransaction } from '@/utils/bankStorage';
 import {
-  type AssetPnl,
   type MarketAsset,
   type MarketOperation,
   type MarketRecurring,
@@ -158,6 +158,8 @@ export default function MarketManagerScreen() {
     if (isNaN(amount) || amount <= 0 || !selectedAssetId) return;
     const fees = parseFloat(fFees.replace(',', '.')) || 0;
     const pricePerShare = parseFloat(fPrice.replace(',', '.')) || undefined;
+    const opDate = fDate || todayIso();
+    const assetName = assets.find(a => a.id === selectedAssetId)?.name ?? 'Actif';
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     await addMarketOperation({
       assetId: selectedAssetId,
@@ -165,9 +167,32 @@ export default function MarketManagerScreen() {
       amount,
       fees,
       pricePerShare,
-      date: fDate || todayIso(),
+      date: opDate,
       note: fNote.trim() || undefined,
     });
+    // Virement automatique vers/depuis le compte courant
+    if (opType === 'buy') {
+      await addTransaction({
+        type: 'transfer_to_market',
+        amount: amount + fees,
+        label: `Achat ${assetName}`,
+        category: 'Marché',
+        date: opDate,
+        note: fNote.trim() || undefined,
+      });
+    } else {
+      const net = Math.max(0, amount - fees);
+      if (net > 0) {
+        await addTransaction({
+          type: 'transfer_from_market',
+          amount: net,
+          label: `Vente ${assetName}`,
+          category: 'Marché',
+          date: opDate,
+          note: fNote.trim() || undefined,
+        });
+      }
+    }
     closeModal();
     load();
   }
@@ -200,13 +225,6 @@ export default function MarketManagerScreen() {
   async function handleDeleteRecurring(id: string) {
     await deleteMarketRecurring(id);
     load();
-  }
-
-  async function openTR(ticker?: string) {
-    const url = ticker
-      ? `https://app.traderepublic.com/#/search/${encodeURIComponent(ticker)}`
-      : 'https://app.traderepublic.com';
-    await WebBrowser.openBrowserAsync(url);
   }
 
   const totalBalance = computeMarketBalance(ops);
@@ -298,13 +316,6 @@ export default function MarketManagerScreen() {
                   )}
                 </View>
                 <View style={styles.assetHeaderRight}>
-                  <Pressable
-                    onPress={() => openTR(asset.ticker)}
-                    style={[styles.trBtn, { backgroundColor: MKT_GREEN + '18', borderColor: MKT_GREEN + '40' }]}
-                    hitSlop={8}
-                  >
-                    <Text style={[styles.trBtnTxt, { color: MKT_GREEN }]}>TR</Text>
-                  </Pressable>
                   <MaterialCommunityIcons
                     name={isExpanded ? 'chevron-up' : 'chevron-down'}
                     size={20}
@@ -629,14 +640,6 @@ const styles = StyleSheet.create({
   assetTicker:  { fontSize: 11, fontFamily: 'Inter_500Medium', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4, backgroundColor: '#10B98118' },
   assetBal:     { fontSize: 13, fontFamily: 'Inter_500Medium' },
   assetHeaderRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  trBtn: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    borderWidth: 1,
-  },
-  trBtnTxt: { fontSize: 11, fontFamily: 'Inter_700Bold' },
-
   assetBody: { borderTopWidth: StyleSheet.hairlineWidth, padding: 12, gap: 12 },
 
   opBtnRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },

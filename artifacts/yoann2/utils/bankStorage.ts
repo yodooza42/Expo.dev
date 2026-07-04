@@ -9,7 +9,7 @@ const KEYS = {
   RECURRING_EXPENSES: '@yoann2/bank_recurring_expenses',
 };
 
-export type TransactionType = 'income' | 'expense' | 'transfer_to_savings' | 'transfer_from_savings';
+export type TransactionType = 'income' | 'expense' | 'transfer_to_savings' | 'transfer_from_savings' | 'transfer_to_market' | 'transfer_from_market';
 
 export interface BankTransaction {
   id: string;
@@ -105,6 +105,8 @@ export function computeCurrentBalance(txs: BankTransaction[]): number {
       if (tx.type === 'expense') return sum - tx.amount;
       if (tx.type === 'transfer_to_savings') return sum - tx.amount;
       if (tx.type === 'transfer_from_savings') return sum + tx.amount;
+      if (tx.type === 'transfer_to_market') return sum - tx.amount;
+      if (tx.type === 'transfer_from_market') return sum + tx.amount;
       return sum;
     }, 0);
 }

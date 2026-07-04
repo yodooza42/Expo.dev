@@ -60,10 +60,12 @@ import { fetchLivePrices } from '@/utils/marketPrices';
 const SHOW_AMOUNTS_KEY = '@yoann2/finance_show_amounts';
 
 const TYPE_CONFIG: Record<TransactionType, { label: string; icon: string; color: string; sign: string }> = {
-  income:                { label: 'Entrée',          icon: 'arrow-down-circle-outline',  color: '#4CAF50', sign: '+' },
-  expense:               { label: 'Sortie',           icon: 'arrow-up-circle-outline',    color: '#EF4444', sign: '-' },
-  transfer_to_savings:   { label: 'Vers épargne',     icon: 'piggy-bank-outline',         color: '#2196F3', sign: '-' },
-  transfer_from_savings: { label: 'Depuis épargne',   icon: 'bank-transfer',              color: '#FF9800', sign: '+' },
+  income:                  { label: 'Entrée',          icon: 'arrow-down-circle-outline',  color: '#4CAF50', sign: '+' },
+  expense:                 { label: 'Sortie',           icon: 'arrow-up-circle-outline',    color: '#EF4444', sign: '-' },
+  transfer_to_savings:     { label: 'Vers épargne',     icon: 'piggy-bank-outline',         color: '#2196F3', sign: '-' },
+  transfer_from_savings:   { label: 'Depuis épargne',   icon: 'bank-transfer',              color: '#FF9800', sign: '+' },
+  transfer_to_market:      { label: 'Vers marché',      icon: 'chart-areaspline',           color: '#10B981', sign: '-' },
+  transfer_from_market:    { label: 'Depuis marché',    icon: 'chart-areaspline',           color: '#10B981', sign: '+' },
 };
 
 function formatAmount(amount: number, masked: boolean): string {
@@ -593,7 +595,7 @@ export default function FinanceScreen() {
             {/* Marché */}
             <View style={[styles.savingsRow, { borderTopColor: colors.border }]}>
               <View style={styles.savingsLeft}>
-                <Text style={styles.marketEmoji}>📈</Text>
+                <MaterialCommunityIcons name="chart-areaspline" size={16} color="#10B981" />
                 <Text style={[styles.savingsLbl, { color: colors.mutedForeground }]}>Marché</Text>
               </View>
               <Text style={[styles.savingsAmount, { color: '#10B981' }]}>
