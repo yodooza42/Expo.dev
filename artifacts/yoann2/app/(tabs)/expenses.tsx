@@ -48,7 +48,14 @@ import {
   updateTransaction,
 } from '@/utils/bankStorage';
 import { fmtDateShort } from '@/utils/date';
-import { getMarketBalance, processMarketRecurrings } from '@/utils/marketStorage';
+import {
+  computePortfolioValue,
+  getMarketAssets,
+  getMarketBalance,
+  getMarketOperations,
+  processMarketRecurrings,
+} from '@/utils/marketStorage';
+import { fetchLivePrices } from '@/utils/marketPrices';
 
 const SHOW_AMOUNTS_KEY = '@yoann2/finance_show_amounts';
 
@@ -143,20 +150,38 @@ export default function FinanceScreen() {
 
   async function load() {
     await Promise.all([processRecurringTransfers(), processRecurringExpenses(), processMarketRecurrings()]);
-    const [txs, sav, shown, recs, recExps, mktBal] = await Promise.all([
+    const [txs, sav, shown, recs, recExps, mktAssets, mktOps] = await Promise.all([
       getTransactions(),
       getSavingsBalance(),
       AsyncStorage.getItem(SHOW_AMOUNTS_KEY),
       getRecurringTransfers(),
       getRecurringExpenses(),
-      getMarketBalance(),
+      getMarketAssets(),
+      getMarketOperations(),
     ]);
     setTransactions(txs);
     setSavingsBal(sav);
-    setMarketBal(mktBal);
     setRecurringList(recs);
     setRecurringExpenseList(recExps);
     if (shown === 'true') setShowAmounts(true);
+
+    // Essaie de récupérer les cours en direct pour afficher la valeur actuelle
+    const tickers = mktAssets.filter(a => a.ticker).map(a => a.ticker!);
+    let currentMktVal: number;
+    if (tickers.length > 0) {
+      try {
+        const livePrices = await fetchLivePrices(tickers);
+        const priceMap: Record<string, number> = {};
+        for (const [t, lp] of Object.entries(livePrices)) priceMap[t] = lp.price;
+        const { currentValue } = computePortfolioValue(mktOps, mktAssets, priceMap);
+        currentMktVal = currentValue;
+      } catch {
+        currentMktVal = await getMarketBalance();
+      }
+    } else {
+      currentMktVal = await getMarketBalance();
+    }
+    setMarketBal(currentMktVal);
   }
 
   useFocusEffect(useCallback(() => { load(); }, []));

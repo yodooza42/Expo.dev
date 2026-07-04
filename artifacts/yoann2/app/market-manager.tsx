@@ -4,6 +4,7 @@ import { useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
   Modal,
@@ -19,6 +20,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useColors } from '@/hooks/useColors';
 import {
+  type AssetPnl,
   type MarketAsset,
   type MarketOperation,
   type MarketRecurring,
@@ -26,7 +28,9 @@ import {
   addMarketOperation,
   addMarketRecurring,
   computeAssetBalance,
+  computeAssetPnl,
   computeMarketBalance,
+  computePortfolioValue,
   deleteMarketAsset,
   deleteMarketOperation,
   deleteMarketRecurring,
@@ -36,6 +40,7 @@ import {
   processMarketRecurrings,
   updateMarketAsset,
 } from '@/utils/marketStorage';
+import { type LivePrice, fetchLivePrices } from '@/utils/marketPrices';
 
 const MKT_GREEN = '#10B981';
 
@@ -59,11 +64,13 @@ export default function MarketManagerScreen() {
   const insets  = useSafeAreaInsets();
   const router  = useRouter();
 
-  const [assets, setAssets]       = useState<MarketAsset[]>([]);
-  const [ops, setOps]             = useState<MarketOperation[]>([]);
-  const [recs, setRecs]           = useState<MarketRecurring[]>([]);
-  const [expanded, setExpanded]   = useState<string | null>(null);
-  const [modalMode, setModalMode] = useState<ModalMode>(null);
+  const [assets, setAssets]           = useState<MarketAsset[]>([]);
+  const [ops, setOps]                 = useState<MarketOperation[]>([]);
+  const [recs, setRecs]               = useState<MarketRecurring[]>([]);
+  const [expanded, setExpanded]       = useState<string | null>(null);
+  const [modalMode, setModalMode]     = useState<ModalMode>(null);
+  const [prices, setPrices]           = useState<Record<string, LivePrice>>({});
+  const [pricesLoading, setPricesLoading] = useState(false);
 
   // Selected context for op/recurring forms
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
@@ -73,6 +80,7 @@ export default function MarketManagerScreen() {
   // Form fields
   const [fAmount, setFAmount]   = useState('');
   const [fFees, setFFees]       = useState('');
+  const [fPrice, setFPrice]     = useState('');
   const [fDate, setFDate]       = useState(todayIso());
   const [fNote, setFNote]       = useState('');
   const [fName, setFName]       = useState('');
@@ -85,6 +93,14 @@ export default function MarketManagerScreen() {
     setAssets(a);
     setOps(o);
     setRecs(r);
+    // Fetch live prices for all tickers
+    const tickers = a.filter(asset => asset.ticker).map(asset => asset.ticker!);
+    if (tickers.length > 0) {
+      setPricesLoading(true);
+      const priceMap = await fetchLivePrices(tickers);
+      setPrices(priceMap);
+      setPricesLoading(false);
+    }
   }, []);
 
   useEffect(() => { load(); }, [load]);
@@ -99,7 +115,12 @@ export default function MarketManagerScreen() {
   }
   function openAddOp(assetId: string, type: 'buy' | 'sell') {
     setSelectedAssetId(assetId); setOpType(type);
-    setFAmount(''); setFFees(''); setFDate(todayIso()); setFNote('');
+    setFAmount(''); setFFees(''); setFPrice(''); setFDate(todayIso()); setFNote('');
+    // Pre-fill current price from live data if available
+    const asset = assets.find(a => a.id === assetId);
+    if (asset?.ticker && prices[asset.ticker]) {
+      setFPrice(prices[asset.ticker].price.toString());
+    }
     setModalMode('add_op');
   }
   function openAddRecurring(assetId: string) {
@@ -136,12 +157,14 @@ export default function MarketManagerScreen() {
     const amount = parseFloat(fAmount.replace(',', '.'));
     if (isNaN(amount) || amount <= 0 || !selectedAssetId) return;
     const fees = parseFloat(fFees.replace(',', '.')) || 0;
+    const pricePerShare = parseFloat(fPrice.replace(',', '.')) || undefined;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     await addMarketOperation({
       assetId: selectedAssetId,
       type: opType,
       amount,
       fees,
+      pricePerShare,
       date: fDate || todayIso(),
       note: fNote.trim() || undefined,
     });
@@ -187,6 +210,11 @@ export default function MarketManagerScreen() {
   }
 
   const totalBalance = computeMarketBalance(ops);
+  const priceMap: Record<string, number> = {};
+  for (const [ticker, lp] of Object.entries(prices)) priceMap[ticker] = lp.price;
+  const { currentValue: totalCurrentValue } = computePortfolioValue(ops, assets, priceMap);
+  const totalPnl    = totalCurrentValue - totalBalance;
+  const totalPnlPct = totalBalance > 0 ? (totalPnl / totalBalance) * 100 : 0;
 
   const assetRecs = (assetId: string) => recs.filter(r => r.assetId === assetId);
   const assetOps  = (assetId: string) => ops.filter(o => o.assetId === assetId);
@@ -207,8 +235,24 @@ export default function MarketManagerScreen() {
       <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}>
         {/* Total card */}
         <View style={[styles.totalCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <Text style={[styles.totalLabel, { color: colors.mutedForeground }]}>CAPITAL INVESTI TOTAL</Text>
-          <Text style={[styles.totalAmount, { color: MKT_GREEN }]}>{fmt(totalBalance)}</Text>
+          <Text style={[styles.totalLabel, { color: colors.mutedForeground }]}>VALEUR DU PORTEFEUILLE</Text>
+          {pricesLoading ? (
+            <ActivityIndicator color={MKT_GREEN} style={{ marginTop: 6 }} />
+          ) : (
+            <Text style={[styles.totalAmount, { color: MKT_GREEN }]}>{fmt(totalCurrentValue)}</Text>
+          )}
+          {!pricesLoading && totalBalance > 0 && (
+            <View style={styles.pnlRow}>
+              <Text style={[styles.pnlLabel, { color: colors.mutedForeground }]}>
+                Investi : {fmt(totalBalance)}
+              </Text>
+              {totalPnl !== 0 && (
+                <Text style={[styles.pnlBadge, { color: totalPnl >= 0 ? MKT_GREEN : '#EF4444', backgroundColor: (totalPnl >= 0 ? MKT_GREEN : '#EF4444') + '18' }]}>
+                  {totalPnl >= 0 ? '+' : ''}{fmt(totalPnl)} ({totalPnlPct >= 0 ? '+' : ''}{totalPnlPct.toFixed(1)}%)
+                </Text>
+              )}
+            </View>
+          )}
         </View>
 
         {assets.length === 0 && (
@@ -219,9 +263,10 @@ export default function MarketManagerScreen() {
 
         {assets.map(asset => {
           const isExpanded = expanded === asset.id;
-          const bal = computeAssetBalance(ops, asset.id);
           const aOps = assetOps(asset.id);
           const aRecs = assetRecs(asset.id);
+          const livePrice = asset.ticker ? prices[asset.ticker]?.price : undefined;
+          const pnl = computeAssetPnl(aOps, asset.id, livePrice);
           return (
             <View key={asset.id} style={[styles.assetCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
               {/* Asset header row */}
@@ -236,9 +281,21 @@ export default function MarketManagerScreen() {
                       <Text style={[styles.assetTicker, { color: MKT_GREEN }]}>{asset.ticker}</Text>
                     ) : null}
                   </View>
-                  <Text style={[styles.assetBal, { color: bal > 0 ? MKT_GREEN : colors.mutedForeground }]}>
-                    {fmt(bal)} investi
-                  </Text>
+                  {pnl.hasLivePrice ? (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Text style={[styles.assetBal, { color: MKT_GREEN }]}>{fmt(pnl.currentValue)}</Text>
+                      <Text style={[styles.pnlBadge, {
+                        color: pnl.pnl >= 0 ? MKT_GREEN : '#EF4444',
+                        backgroundColor: (pnl.pnl >= 0 ? MKT_GREEN : '#EF4444') + '20',
+                      }]}>
+                        {pnl.pnl >= 0 ? '+' : ''}{fmt(pnl.pnl)} ({pnl.pnlPct >= 0 ? '+' : ''}{pnl.pnlPct.toFixed(1)}%)
+                      </Text>
+                    </View>
+                  ) : (
+                    <Text style={[styles.assetBal, { color: pnl.costBasis > 0 ? MKT_GREEN : colors.mutedForeground }]}>
+                      {fmt(pnl.costBasis)} investi
+                    </Text>
+                  )}
                 </View>
                 <View style={styles.assetHeaderRight}>
                   <Pressable
@@ -423,6 +480,14 @@ export default function MarketManagerScreen() {
                   />
                 </View>
                 <TextInput
+                  value={fPrice}
+                  onChangeText={setFPrice}
+                  placeholder="Prix/action € (pour calcul P&L)"
+                  placeholderTextColor={colors.mutedForeground}
+                  keyboardType="decimal-pad"
+                  style={[styles.input, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]}
+                />
+                <TextInput
                   value={fDate}
                   onChangeText={setFDate}
                   placeholder="Date (AAAA-MM-JJ)"
@@ -432,7 +497,7 @@ export default function MarketManagerScreen() {
                 <TextInput
                   value={fNote}
                   onChangeText={setFNote}
-                  placeholder="Note optionnelle (ex: cours 14.52€/action)"
+                  placeholder="Note optionnelle"
                   placeholderTextColor={colors.mutedForeground}
                   style={[styles.input, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]}
                 />
@@ -640,4 +705,8 @@ const styles = StyleSheet.create({
   freqRow: { flexDirection: 'row', gap: 10 },
   freqBtn: { flex: 1, paddingVertical: 9, borderRadius: 10, borderWidth: 1, alignItems: 'center' },
   freqBtnTxt: { fontSize: 13, fontFamily: 'Inter_500Medium' },
+
+  pnlRow:   { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6, flexWrap: 'wrap', justifyContent: 'center' },
+  pnlLabel: { fontSize: 12, fontFamily: 'Inter_400Regular' },
+  pnlBadge: { fontSize: 11, fontFamily: 'Inter_600SemiBold', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6 },
 });

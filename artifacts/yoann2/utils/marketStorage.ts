@@ -26,6 +26,8 @@ export interface MarketOperation {
   amount: number;
   fees: number;
   date: string;
+  pricePerShare?: number;  // cours à l'achat/vente (optionnel, permet le calcul P&L)
+  qty?: number;            // nb d'actions = amount / pricePerShare (calculé à la sauvegarde)
   note?: string;
   fromRecurringId?: string;
 }
@@ -82,7 +84,11 @@ export async function getMarketOperations(): Promise<MarketOperation[]> {
 
 export async function addMarketOperation(op: Omit<MarketOperation, 'id'>): Promise<MarketOperation> {
   const list = await getMarketOperations();
-  const newItem: MarketOperation = { ...op, id: genId() };
+  // Compute qty from amount / pricePerShare if both provided
+  const qty = op.pricePerShare && op.pricePerShare > 0
+    ? op.amount / op.pricePerShare
+    : op.qty;
+  const newItem: MarketOperation = { ...op, id: genId(), qty };
   await AsyncStorage.setItem(KEYS.OPS, JSON.stringify([newItem, ...list]));
   return newItem;
 }
@@ -150,6 +156,7 @@ export async function processMarketRecurrings(): Promise<void> {
 
 // ── Balance helpers ───────────────────────────────────────────────────────────
 
+/** Coût de revient total (cash investi - cash récupéré) */
 export function computeMarketBalance(ops: MarketOperation[]): number {
   return ops.reduce((sum, op) => {
     if (op.type === 'buy')  return sum + op.amount + op.fees;
@@ -160,6 +167,62 @@ export function computeMarketBalance(ops: MarketOperation[]): number {
 
 export function computeAssetBalance(ops: MarketOperation[], assetId: string): number {
   return computeMarketBalance(ops.filter(o => o.assetId === assetId));
+}
+
+/** Nombre d'actions nettes détenues pour un actif (opérations avec qty uniquement) */
+export function computeAssetQtyHeld(ops: MarketOperation[], assetId: string): number {
+  return ops
+    .filter(o => o.assetId === assetId && o.qty !== undefined)
+    .reduce((sum, o) => {
+      if (o.type === 'buy')  return sum + (o.qty ?? 0);
+      if (o.type === 'sell') return sum - (o.qty ?? 0);
+      return sum;
+    }, 0);
+}
+
+export interface AssetPnl {
+  costBasis:    number;
+  currentValue: number;  // = qty × currentPrice, ou costBasis si pas de prix
+  pnl:          number;  // currentValue - costBasis
+  pnlPct:       number;  // pnl / costBasis × 100
+  hasLivePrice: boolean;
+}
+
+/** Calcule la P&L d'un actif à partir des opérations et du cours actuel */
+export function computeAssetPnl(
+  ops: MarketOperation[],
+  assetId: string,
+  currentPrice?: number,
+): AssetPnl {
+  const costBasis = computeAssetBalance(ops, assetId);
+  const qty = computeAssetQtyHeld(ops, assetId);
+  const hasLivePrice = currentPrice !== undefined && qty > 0;
+  const currentValue = hasLivePrice ? qty * currentPrice! : costBasis;
+  const pnl = currentValue - costBasis;
+  const pnlPct = costBasis > 0 ? (pnl / costBasis) * 100 : 0;
+  return { costBasis, currentValue, pnl, pnlPct, hasLivePrice };
+}
+
+/** Valeur totale du portefeuille (cours actuels pour les actifs cotés, cost basis sinon) */
+export function computePortfolioValue(
+  ops: MarketOperation[],
+  assets: MarketAsset[],
+  prices: Record<string, number>,
+): { currentValue: number; costBasis: number } {
+  let currentValue = 0;
+  let costBasis = 0;
+  for (const asset of assets) {
+    const cb = computeAssetBalance(ops, asset.id);
+    costBasis += cb;
+    const price = asset.ticker ? prices[asset.ticker] : undefined;
+    const qty = computeAssetQtyHeld(ops, asset.id);
+    if (price !== undefined && qty > 0) {
+      currentValue += qty * price;
+    } else {
+      currentValue += cb; // fallback coût de revient
+    }
+  }
+  return { currentValue, costBasis };
 }
 
 export async function getMarketBalance(): Promise<number> {
