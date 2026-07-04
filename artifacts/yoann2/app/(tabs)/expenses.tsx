@@ -117,6 +117,8 @@ export default function FinanceScreen() {
   const [isRecurring, setIsRecurring]     = useState(false);
   const [recurringFreq, setRecurringFreq] = useState<RecurringFrequency>('monthly');
   const [recurringList, setRecurringList] = useState<RecurringTransfer[]>([]);
+  const [recurringStartDate, setRecurringStartDate] = useState<Date>(() => { const d = new Date(); d.setMonth(d.getMonth() + 1); return d; });
+  const [showRecurringDatePicker, setShowRecurringDatePicker] = useState(false);
   const [transferAmount, setTransferAmount] = useState('');
   const [transferDir, setTransferDir]     = useState<'to' | 'from'>('to');
 
@@ -311,19 +313,12 @@ export default function FinanceScreen() {
     }
 
     if (isRecurring) {
-      const now = new Date();
-      const next = new Date(now);
-      if (recurringFreq === 'monthly') {
-        next.setMonth(next.getMonth() + 1);
-      } else {
-        next.setDate(next.getDate() + 7);
-      }
       await addRecurringTransfer({
         direction: transferDir,
         amount,
         label: transferDir === 'to' ? 'Virement vers épargne' : 'Virement depuis épargne',
         frequency: recurringFreq,
-        nextDate: next.toISOString(),
+        nextDate: recurringStartDate.toISOString(),
       });
     } else {
       const newSavings = transferDir === 'to'
@@ -344,6 +339,8 @@ export default function FinanceScreen() {
     setShowTransfer(false);
     setTransferAmount('');
     setIsRecurring(false);
+    const resetDate = new Date(); resetDate.setMonth(resetDate.getMonth() + 1);
+    setRecurringStartDate(resetDate);
     load();
   }
 
@@ -827,7 +824,13 @@ export default function FinanceScreen() {
                   {(['monthly', 'weekly'] as RecurringFrequency[]).map(freq => (
                     <Pressable
                       key={freq}
-                      onPress={() => setRecurringFreq(freq)}
+                      onPress={() => {
+                        setRecurringFreq(freq);
+                        const d = new Date();
+                        if (freq === 'monthly') d.setMonth(d.getMonth() + 1);
+                        else d.setDate(d.getDate() + 7);
+                        setRecurringStartDate(d);
+                      }}
                       style={[
                         styles.freqChip,
                         recurringFreq === freq
@@ -846,14 +849,30 @@ export default function FinanceScreen() {
                     </Pressable>
                   ))}
                 </View>
-                <Text style={[styles.recurringHint, { color: colors.mutedForeground }]}>
-                  Premier virement : {(() => {
-                    const d = new Date();
-                    if (recurringFreq === 'monthly') d.setMonth(d.getMonth() + 1);
-                    else d.setDate(d.getDate() + 7);
-                    return d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
-                  })()}
-                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Text style={[styles.recurringHint, { color: colors.mutedForeground }]}>Premier virement :</Text>
+                  <Pressable
+                    onPress={() => setShowRecurringDatePicker(true)}
+                    style={[styles.recurringDateBtn, { backgroundColor: colors.background, borderColor: '#2196F3' }]}
+                  >
+                    <Text style={[styles.recurringDateTxt, { color: '#2196F3' }]}>
+                      {recurringStartDate.toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })}
+                    </Text>
+                    <MaterialCommunityIcons name="calendar-outline" size={14} color="#2196F3" />
+                  </Pressable>
+                  {showRecurringDatePicker && (
+                    <DateTimePicker
+                      value={recurringStartDate}
+                      mode="date"
+                      display="calendar"
+                      minimumDate={new Date()}
+                      onChange={(_e, selected) => {
+                        setShowRecurringDatePicker(false);
+                        if (selected) setRecurringStartDate(selected);
+                      }}
+                    />
+                  )}
+                </View>
               </View>
             )}
 
@@ -1130,4 +1149,15 @@ const styles = StyleSheet.create({
   },
   recurringRowLabel: { fontSize: 13, fontFamily: 'Inter_600SemiBold' },
   recurringRowSub: { fontSize: 11, fontFamily: 'Inter_400Regular', marginTop: 2 },
+
+  recurringDateBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  recurringDateTxt: { fontSize: 13, fontFamily: 'Inter_500Medium' },
 });
