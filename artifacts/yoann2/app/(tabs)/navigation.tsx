@@ -27,12 +27,6 @@ import { saveFuelEntry, getLastFuelType, saveLastFuelType } from '@/utils/fuelSt
 import { getVehicleSettings } from '@/utils/tripStorage';
 import { addTransaction } from '@/utils/bankStorage';
 import {
-  getGpsInterval,
-  setGpsInterval,
-  GPS_INTERVALS,
-  restartTracking,
-} from '@/utils/locationTracking';
-import {
   MAX_SHORTCUTS,
   NavShortcut,
   SHORTCUT_ICONS,
@@ -85,7 +79,6 @@ export default function NavigationScreen() {
 
   const [shortcuts, setShortcuts] = useState<NavShortcut[]>([]);
   const [loadingId, setLoadingId] = useState<string | null>(null);
-  const [gpsIntervalIdx, setGpsIntervalIdx] = useState(0);
   const router = useRouter();
 
   // Free search
@@ -192,13 +185,6 @@ export default function NavigationScreen() {
 
   const { action } = useLocalSearchParams<{ action?: string }>();
 
-  async function handleGpsIntervalChange(idx: number) {
-    setGpsIntervalIdx(idx);
-    await setGpsInterval(idx);
-    await restartTracking();
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-  }
-
   const reload = useCallback(async () => {
     setShortcuts(await getNavShortcuts());
   }, []);
@@ -208,13 +194,6 @@ export default function NavigationScreen() {
   }, []);
 
   useEffect(() => { reload(); reloadPlaces(); }, [reload, reloadPlaces]);
-
-  useEffect(() => {
-    getGpsInterval().then(interval => {
-      const idx = GPS_INTERVALS.findIndex(g => g.label === interval.label);
-      setGpsIntervalIdx(idx >= 0 ? idx : 0);
-    });
-  }, []);
 
   useEffect(() => {
     if (action === 'fuel') setFuelOpen(true);
@@ -491,35 +470,6 @@ export default function NavigationScreen() {
           <MaterialCommunityIcons name="chevron-right" size={18} color={colors.mutedForeground} />
         </Pressable>
 
-        {/* ── Fréquence GPS ── */}
-        <Text style={[styles.sectionHeader, { color: colors.mutedForeground, marginTop: 8 }]}>LOCALISATION GPS</Text>
-        <View style={[styles.settingsRow, { backgroundColor: colors.card, borderColor: colors.border }] }>
-          <View style={[styles.settingsRowIcon, { backgroundColor: colors.primary + '20' }]}>
-            <MaterialCommunityIcons name="map-marker-radius" size={18} color={colors.primary} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.settingsRowLabel, { color: colors.foreground }]}>Fréquence de rafraîchissement</Text>
-            <Text style={[styles.settingsRowSub, { color: colors.mutedForeground }]}>Plus fréquent = plus précis, plus de batterie</Text>
-          </View>
-        </View>
-        {GPS_INTERVALS.map((g, i) => (
-          <Pressable
-            key={g.label}
-            onPress={() => handleGpsIntervalChange(i)}
-            style={({ pressed }) => [
-              styles.settingsRow,
-              { backgroundColor: colors.card, borderColor: colors.border, paddingLeft: 52 },
-              pressed && { opacity: 0.75 },
-            ]}
-          >
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.settingsRowLabel, { color: colors.foreground }]}>{g.label}</Text>
-            </View>
-            {gpsIntervalIdx === i && (
-              <MaterialCommunityIcons name="check-circle" size={18} color={colors.primary} />
-            )}
-          </Pressable>
-        ))}
       </ScrollView>
 
       {/* ── Edit modal ── */}
