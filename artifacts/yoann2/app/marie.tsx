@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useApp } from '@/contexts/AppContext';
 import { useColors } from '@/hooks/useColors';
 import {
   type MariePlanning,
@@ -83,6 +84,15 @@ function formatDateFR(dateKey: string): string {
 
 // ── Import types ────────────────────────────────────────────────────────────
 
+type RdvImportStatus = 'new' | 'date_conflict' | 'duplicate';
+interface RdvImportItem {
+  isoDate: string;
+  title: string;
+  status: RdvImportStatus;
+  selected: boolean;
+  conflictTitles: string[];
+}
+
 type PlanImportStatus = 'new' | 'conflict' | 'duplicate';
 
 interface PlanImportItem {
@@ -100,14 +110,22 @@ export default function MarieScreen() {
   const insets  = useSafeAreaInsets();
   const router  = useRouter();
   const topPad  = Platform.OS === 'web' ? 67 : insets.top;
+  const { appointments, addAppointment } = useApp();
 
   const [monthStr, setMonthStr] = useState(currentMonthStr);
   const [planning, setPlanning] = useState<MariePlanning>({});
 
+  // Planning import state
   const [importVisible, setImportVisible]   = useState(false);
   const [importStep, setImportStep]         = useState<'paste' | 'review'>('paste');
   const [importText, setImportText]         = useState('');
   const [importItems, setImportItems]       = useState<PlanImportItem[]>([]);
+
+  // RDV import state
+  const [rdvImportVisible, setRdvImportVisible] = useState(false);
+  const [rdvImportStep, setRdvImportStep]       = useState<'paste' | 'review'>('paste');
+  const [rdvImportText, setRdvImportText]       = useState('');
+  const [rdvImportItems, setRdvImportItems]     = useState<RdvImportItem[]>([]);
 
   useEffect(() => {
     loadMariePlanning().then(setPlanning);
@@ -231,6 +249,76 @@ export default function MarieScreen() {
     duplicate: colors.mutedForeground,
   };
 
+  // ── RDV import handlers ───────────────────────────────────────────────────
+
+  function closeRdvImport() {
+    setRdvImportVisible(false);
+    setRdvImportStep('paste');
+    setRdvImportText('');
+    setRdvImportItems([]);
+  }
+
+  function parseRdvAndReview() {
+    const match = rdvImportText.trim().match(/RDV:(\{[\s\S]*\})/);
+    if (!match) {
+      Alert.alert('Format non reconnu', 'Le texte doit contenir "RDV:{...}". Vérifie que Marie a bien copié ses données.');
+      return;
+    }
+    let incoming: Record<string, string>;
+    try { incoming = JSON.parse(match[1]); }
+    catch { Alert.alert('Erreur de lecture', 'Impossible de lire les données.'); return; }
+
+    const existingKeys = new Set(appointments.map(a => `${a.date.slice(0, 10)}|${a.title.toLowerCase().trim()}`));
+    const existingByDate: Record<string, string[]> = {};
+    appointments.forEach(a => {
+      const d = a.date.slice(0, 10);
+      if (!existingByDate[d]) existingByDate[d] = [];
+      existingByDate[d].push(a.title);
+    });
+
+    const items: RdvImportItem[] = Object.entries(incoming)
+      .filter(([, title]) => typeof title === 'string' && title.trim().length > 0)
+      .map(([isoDate, title]) => {
+        const t = title.trim();
+        const dupKey = `${isoDate}|${t.toLowerCase()}`;
+        let status: RdvImportStatus;
+        let conflictTitles: string[] = [];
+        if (existingKeys.has(dupKey)) { status = 'duplicate'; }
+        else if (existingByDate[isoDate]) { status = 'date_conflict'; conflictTitles = existingByDate[isoDate]; }
+        else { status = 'new'; }
+        return { isoDate, title: t, status, selected: status !== 'duplicate', conflictTitles };
+      });
+
+    if (items.length === 0) { Alert.alert('Aucun RDV', 'Aucun rendez-vous trouvé.'); return; }
+    setRdvImportItems(items);
+    setRdvImportStep('review');
+  }
+
+  function toggleRdvItem(idx: number) {
+    setRdvImportItems(prev => prev.map((item, i) => i === idx ? { ...item, selected: !item.selected } : item));
+  }
+
+  function confirmRdvImport() {
+    const toImport = rdvImportItems.filter(i => i.selected);
+    if (toImport.length === 0) { Alert.alert('Aucun RDV sélectionné'); return; }
+    toImport.forEach(item => {
+      addAppointment({
+        title: item.title,
+        date: new Date(item.isoDate).toISOString(),
+        description: '',
+        location: '',
+        time: '',
+        category: '',
+        fromMarie: true,
+      });
+    });
+    closeRdvImport();
+  }
+
+  const rdvSelectedCount = rdvImportItems.filter(i => i.selected).length;
+  const RDV_STATUS_LABELS: Record<RdvImportStatus, string> = { new: 'Nouveau', date_conflict: 'Conflit', duplicate: 'Doublon' };
+  const RDV_STATUS_COLORS: Record<RdvImportStatus, string> = { new: '#4CAF50', date_conflict: '#FF9800', duplicate: colors.mutedForeground };
+
   // ── Render ───────────────────────────────────────────────────────────────
 
   return (
@@ -245,13 +333,22 @@ export default function MarieScreen() {
           <Text style={[styles.headerTitle, { color: colors.foreground }]}>Marie</Text>
           <Text style={[styles.headerSub, { color: colors.mutedForeground }]}>Planning mensuel</Text>
         </View>
-        <Pressable
-          onPress={() => setImportVisible(true)}
-          hitSlop={8}
-          style={[styles.importBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
-        >
-          <MaterialCommunityIcons name="calendar-import" size={16} color={colors.primary} />
-        </Pressable>
+        <View style={styles.headerBtns}>
+          <Pressable
+            onPress={() => setRdvImportVisible(true)}
+            hitSlop={8}
+            style={[styles.importBtn, { backgroundColor: '#EC489920', borderColor: '#EC489955' }]}
+          >
+            <MaterialCommunityIcons name="calendar-arrow-left" size={16} color="#EC4899" />
+          </Pressable>
+          <Pressable
+            onPress={() => setImportVisible(true)}
+            hitSlop={8}
+            style={[styles.importBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+          >
+            <MaterialCommunityIcons name="calendar-import" size={16} color={colors.primary} />
+          </Pressable>
+        </View>
       </View>
 
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
@@ -491,6 +588,126 @@ export default function MarieScreen() {
           )}
         </KeyboardAvoidingView>
       </Modal>
+
+      {/* ── Import RDV Modal ── */}
+      <Modal
+        visible={rdvImportVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={closeRdvImport}
+      >
+        <KeyboardAvoidingView
+          style={[styles.modalContainer, { backgroundColor: colors.background }]}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
+            <Pressable onPress={rdvImportStep === 'review' ? () => setRdvImportStep('paste') : closeRdvImport} hitSlop={12}>
+              <MaterialCommunityIcons
+                name={rdvImportStep === 'review' ? 'arrow-left' : 'close'}
+                size={22}
+                color={colors.foreground}
+              />
+            </Pressable>
+            <Text style={[styles.modalTitle, { color: colors.foreground }]}>
+              {rdvImportStep === 'paste' ? 'Importer RDVs Marie' : 'Vérifier les RDVs'}
+            </Text>
+            <View style={{ width: 22 }} />
+          </View>
+
+          {rdvImportStep === 'paste' && (
+            <View style={styles.pasteStep}>
+              <Text style={[styles.pasteHint, { color: colors.mutedForeground }]}>
+                Demande à Marie de partager ses rendez-vous (format RDV:&#123;...&#125;) puis colle le texte ici :
+              </Text>
+              <TextInput
+                style={[styles.pasteInput, {
+                  backgroundColor: colors.card, borderColor: colors.border, color: colors.foreground,
+                }]}
+                multiline
+                numberOfLines={8}
+                placeholder={'RDV:{"2026-07-10":"Médecin","2026-07-15":"Dentiste"}'}
+                placeholderTextColor={colors.mutedForeground}
+                value={rdvImportText}
+                onChangeText={setRdvImportText}
+                autoCorrect={false}
+                autoCapitalize="none"
+                textAlignVertical="top"
+              />
+              <Pressable
+                onPress={parseRdvAndReview}
+                style={[styles.primaryBtn, { backgroundColor: '#EC4899', opacity: rdvImportText.trim().length < 5 ? 0.5 : 1 }]}
+                disabled={rdvImportText.trim().length < 5}
+              >
+                <MaterialCommunityIcons name="magnify" size={18} color="#fff" />
+                <Text style={[styles.primaryBtnLabel, { color: '#fff' }]}>Analyser</Text>
+              </Pressable>
+            </View>
+          )}
+
+          {rdvImportStep === 'review' && (
+            <View style={styles.reviewStep}>
+              <Text style={[styles.reviewCount, { color: colors.mutedForeground }]}>
+                {rdvImportItems.length} RDV trouvé{rdvImportItems.length > 1 ? 's' : ''} · {rdvSelectedCount} sélectionné{rdvSelectedCount > 1 ? 's' : ''}
+              </Text>
+              <ScrollView style={styles.reviewList} contentContainerStyle={{ gap: 10, paddingBottom: 20 }} showsVerticalScrollIndicator={false}>
+                {rdvImportItems.map((item, idx) => {
+                  const statusColor = RDV_STATUS_COLORS[item.status];
+                  const isDup = item.status === 'duplicate';
+                  return (
+                    <Pressable
+                      key={idx}
+                      onPress={() => !isDup && toggleRdvItem(idx)}
+                      style={[styles.reviewItem, {
+                        backgroundColor: colors.card,
+                        borderColor: item.selected ? statusColor + '60' : colors.border,
+                        borderLeftColor: statusColor,
+                        opacity: isDup ? 0.55 : 1,
+                      }]}
+                    >
+                      <View style={styles.reviewItemLeft}>
+                        <View style={[styles.reviewStatusBadge, { backgroundColor: statusColor + '22' }]}>
+                          <Text style={[styles.reviewStatusLabel, { color: statusColor }]}>
+                            {RDV_STATUS_LABELS[item.status]}
+                          </Text>
+                        </View>
+                        <Text style={[styles.reviewItemDate, { color: colors.foreground }]}>
+                          {formatDateFR(item.isoDate)}
+                        </Text>
+                        <Text style={[styles.reviewItemTitle, { color: colors.foreground }]}>{item.title}</Text>
+                        {item.status === 'date_conflict' && item.conflictTitles.length > 0 && (
+                          <Text style={[styles.reviewConflictNote, { color: '#FF9800' }]}>
+                            ⚠ Ce jour a déjà : {item.conflictTitles.join(', ')}
+                          </Text>
+                        )}
+                        {isDup && (
+                          <Text style={[styles.reviewConflictNote, { color: colors.mutedForeground }]}>Déjà présent</Text>
+                        )}
+                      </View>
+                      {!isDup && (
+                        <MaterialCommunityIcons
+                          name={item.selected ? 'checkbox-marked-circle' : 'checkbox-blank-circle-outline'}
+                          size={24}
+                          color={item.selected ? statusColor : colors.mutedForeground}
+                        />
+                      )}
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+              <Pressable
+                onPress={confirmRdvImport}
+                style={[styles.primaryBtn, { backgroundColor: '#EC4899', opacity: rdvSelectedCount === 0 ? 0.4 : 1 }]}
+                disabled={rdvSelectedCount === 0}
+              >
+                <MaterialCommunityIcons name="calendar-check" size={18} color="#fff" />
+                <Text style={[styles.primaryBtnLabel, { color: '#fff' }]}>
+                  Importer {rdvSelectedCount} RDV{rdvSelectedCount > 1 ? 's' : ''}
+                </Text>
+              </Pressable>
+            </View>
+          )}
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
@@ -508,6 +725,7 @@ const styles = StyleSheet.create({
   headerCenter: { flex: 1, alignItems: 'center' },
   headerTitle: { fontSize: 17, fontFamily: 'Inter_700Bold' },
   headerSub:   { fontSize: 11, fontFamily: 'Inter_400Regular', marginTop: 1 },
+  headerBtns: { flexDirection: 'row', gap: 6 },
   importBtn: {
     width: 36,
     height: 36,
@@ -649,5 +867,6 @@ const styles = StyleSheet.create({
   reviewStatusLabel: { fontSize: 11, fontFamily: 'Inter_600SemiBold' },
   reviewItemDate: { fontSize: 14, fontFamily: 'Inter_500Medium' },
   reviewItemSub:  { fontSize: 12, fontFamily: 'Inter_400Regular' },
+  reviewItemTitle: { fontSize: 14, fontFamily: 'Inter_500Medium', marginTop: 2 },
   reviewConflictNote: { fontSize: 12, fontFamily: 'Inter_400Regular', marginTop: 2 },
 });

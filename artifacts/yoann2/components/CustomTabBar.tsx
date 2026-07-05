@@ -1,23 +1,17 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import React from 'react';
 import {
-  LayoutAnimation,
   Platform,
   Pressable,
   StyleSheet,
   Text,
-  UIManager,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useColors } from '@/hooks/useColors';
-
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
 
 interface TabBarProps {
   state: any;
@@ -49,12 +43,6 @@ const TAB_LABELS: Record<string, string> = {
   map:        'Carte',
 };
 
-const QUICK_SHORTCUTS = [
-  { key: 'work',  icon: 'briefcase-outline',    label: 'Travail', route: '/work',  color: '#FFC107' },
-  { key: 'marie', icon: 'account-heart-outline', label: 'Marie',   route: '/marie', color: '#FF9800' },
-  { key: 'anna',  icon: 'baby-carriage',         label: 'Anna',    route: '/anna',  color: '#E91E63' },
-] as const;
-
 const HIDDEN_TABS = ['settings', 'map', 'navigation', 'projects', 'kanban'];
 
 export function CustomTabBar({ state, navigation }: TabBarProps) {
@@ -64,53 +52,10 @@ export function CustomTabBar({ state, navigation }: TabBarProps) {
   const isWeb     = Platform.OS === 'web';
   const bottomPad = isWeb ? 8 : insets.bottom;
 
-  const [quickOpen, setQuickOpen] = useState(false);
-
   const currentRouteName: string = state.routes[state.index]?.name ?? '';
-
-  function toggleQuick() {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setQuickOpen(v => !v);
-  }
 
   return (
     <View style={[styles.wrapper, { backgroundColor: colors.card, borderTopColor: colors.border }]}>
-
-      {/* ── Quick access bar + toggle — Agenda tab only ── */}
-      {currentRouteName === 'calendar' && (
-        <>
-          {quickOpen && (
-            <View style={[styles.quickBar, { borderBottomColor: colors.border }]}>
-              {QUICK_SHORTCUTS.map(s => (
-                <Pressable
-                  key={s.key}
-                  onPress={() => {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                    setQuickOpen(false);
-                    router.push(s.route as any);
-                  }}
-                  style={({ pressed }) => [styles.quickItem, { opacity: pressed ? 0.6 : 1 }]}
-                >
-                  <View style={[styles.quickIconWrap, { backgroundColor: s.color + '22' }]}>
-                    <MaterialCommunityIcons name={s.icon as any} size={20} color={s.color} />
-                  </View>
-                  <Text style={[styles.quickLabel, { color: colors.mutedForeground }]}>{s.label}</Text>
-                </Pressable>
-              ))}
-            </View>
-          )}
-
-          <Pressable onPress={toggleQuick} hitSlop={16} style={styles.toggleRow}>
-            <MaterialCommunityIcons
-              name={quickOpen ? 'chevron-down' : 'chevron-up'}
-              size={15}
-              color={colors.mutedForeground + '70'}
-            />
-          </Pressable>
-        </>
-      )}
-
       {/* ── Main tab row ── */}
       <View style={[styles.tabRow, { paddingBottom: bottomPad, height: 50 + bottomPad }]}>
         {state.routes
@@ -150,35 +95,6 @@ export function CustomTabBar({ state, navigation }: TabBarProps) {
 const styles = StyleSheet.create({
   wrapper: {
     borderTopWidth: StyleSheet.hairlineWidth,
-  },
-  quickBar: {
-    flexDirection: 'row',
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    gap: 6,
-  },
-  quickItem: {
-    flex: 1,
-    alignItems: 'center',
-    gap: 5,
-  },
-  quickIconWrap: {
-    width: 42,
-    height: 42,
-    borderRadius: 13,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  quickLabel: {
-    fontSize: 10,
-    fontFamily: 'Inter_500Medium',
-  },
-  toggleRow: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: 12,
-    marginTop: 2,
   },
   tabRow: {
     flexDirection: 'row',

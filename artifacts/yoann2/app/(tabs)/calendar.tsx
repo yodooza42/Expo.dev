@@ -2,23 +2,17 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Alert,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
   Pressable,
   ScrollView,
-  Share,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useApp } from '@/contexts/AppContext';
 import { useColors } from '@/hooks/useColors';
-import type { Appointment, Priority, Task } from '@/types';
+import type { Priority, Task } from '@/types';
 import { getRecurringTransfers, type RecurringTransfer } from '@/utils/bankStorage';
 
 const PRIORITY_COLORS: Record<Priority, string> = {
@@ -43,9 +37,7 @@ function projectTransfersForMonth(
 
   for (const rec of transfers) {
     let date = new Date(rec.nextDate);
-
     if (date > monthEnd) continue;
-
     while (date < monthStart) {
       if (rec.frequency === 'monthly') {
         date = new Date(date.getFullYear(), date.getMonth() + 1, date.getDate());
@@ -53,7 +45,6 @@ function projectTransfersForMonth(
         date = new Date(date.getTime() + 7 * 24 * 60 * 60 * 1000);
       }
     }
-
     while (date <= monthEnd) {
       const k = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
       if (!map[k]) map[k] = [];
@@ -65,11 +56,10 @@ function projectTransfersForMonth(
       }
     }
   }
-
   return map;
 }
 
-function apptColor(a: Appointment): string {
+function apptColor(a: { fromMarie?: boolean }): string {
   return a.fromMarie ? MARIE_APPT_COLOR : APPOINTMENT_COLOR;
 }
 
@@ -100,43 +90,21 @@ function dateKey(d: Date) {
   return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
 }
 
-function appointmentDateKey(a: Appointment) {
+function appointmentDateKey(a: { date: string }) {
   const d = new Date(a.date);
   return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-}
-
-function formatDateFR(isoDate: string): string {
-  const [year, month, day] = isoDate.split('-').map(Number);
-  const d = new Date(year, month - 1, day);
-  const dayName = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'][d.getDay()];
-  return `${dayName} ${day} ${MONTHS_FR[month - 1]} ${year}`;
-}
-
-type ImportStatus = 'new' | 'date_conflict' | 'duplicate';
-
-interface ImportItem {
-  isoDate: string;
-  title: string;
-  status: ImportStatus;
-  selected: boolean;
-  conflictTitles: string[];
 }
 
 export default function CalendarScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { tasks, projects, appointments, addAppointment, deleteAppointment } = useApp();
+  const { tasks, projects, appointments } = useApp();
 
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth());
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
-
-  const [importVisible, setImportVisible] = useState(false);
-  const [importStep, setImportStep] = useState<'paste' | 'review'>('paste');
-  const [importText, setImportText] = useState('');
-  const [importItems, setImportItems] = useState<ImportItem[]>([]);
   const [recurringTransfers, setRecurringTransfers] = useState<RecurringTransfer[]>([]);
 
   useEffect(() => {
@@ -156,7 +124,7 @@ export default function CalendarScreen() {
   }, [tasks]);
 
   const appointmentsByDate = useMemo(() => {
-    const map: Record<string, Appointment[]> = {};
+    const map: Record<string, typeof appointments> = {};
     appointments.forEach(a => {
       const key = appointmentDateKey(a);
       if (!map[key]) map[key] = [];
@@ -189,155 +157,55 @@ export default function CalendarScreen() {
     d.getMonth() === today.getMonth() &&
     d.getFullYear() === today.getFullYear();
 
-  async function shareMesRdv() {
-    const myAppts = appointments.filter(a => !a.fromMarie);
-    if (myAppts.length === 0) {
-      Alert.alert('Aucun RDV', "Tu n'as pas encore de rendez-vous à partager.");
-      return;
-    }
-    const byDate: Record<string, string[]> = {};
-    myAppts.forEach(a => {
-      const d = a.date.slice(0, 10);
-      if (!byDate[d]) byDate[d] = [];
-      byDate[d].push(a.title);
-    });
-    const sorted = Object.entries(byDate).sort(([a], [b]) => a.localeCompare(b));
-    const obj = Object.fromEntries(sorted.map(([d, titles]) => [d, titles.join(' + ')]));
-    await Share.share({ message: `RDV:${JSON.stringify(obj)}` });
-  }
-
-  function openMarieMenu() {
-    Alert.alert('Marie', 'Que veux-tu faire ?', [
-      { text: 'Importer ses RDVs', onPress: () => setImportVisible(true) },
-      { text: 'Partager mes RDVs', onPress: shareMesRdv },
-      { text: 'Annuler', style: 'cancel' },
-    ]);
-  }
-
-  function closeImport() {
-    setImportVisible(false);
-    setImportStep('paste');
-    setImportText('');
-    setImportItems([]);
-  }
-
-  function parseAndReview() {
-    const trimmed = importText.trim();
-    const match = trimmed.match(/RDV:(\{[\s\S]*\})/);
-    if (!match) {
-      Alert.alert(
-        'Format non reconnu',
-        'Le texte doit contenir "RDV:{...}" avec les rendez-vous. Vérifie que Marie a bien copié ses données.'
-      );
-      return;
-    }
-    let incoming: Record<string, string>;
-    try {
-      incoming = JSON.parse(match[1]);
-    } catch {
-      Alert.alert('Erreur de lecture', 'Impossible de lire les données. Vérifie que le texte n\'est pas tronqué.');
-      return;
-    }
-
-    const existingDateTitleKeys = new Set(
-      appointments.map(a => `${a.date.slice(0, 10)}|${a.title.toLowerCase().trim()}`)
-    );
-    const existingByDate: Record<string, string[]> = {};
-    appointments.forEach(a => {
-      const d = a.date.slice(0, 10);
-      if (!existingByDate[d]) existingByDate[d] = [];
-      existingByDate[d].push(a.title);
-    });
-
-    const items: ImportItem[] = Object.entries(incoming)
-      .filter(([, title]) => typeof title === 'string' && title.trim().length > 0)
-      .map(([isoDate, title]) => {
-        const titleTrimmed = title.trim();
-        const dupKey = `${isoDate}|${titleTrimmed.toLowerCase()}`;
-        let status: ImportStatus;
-        let conflictTitles: string[] = [];
-
-        if (existingDateTitleKeys.has(dupKey)) {
-          status = 'duplicate';
-        } else if (existingByDate[isoDate]) {
-          status = 'date_conflict';
-          conflictTitles = existingByDate[isoDate];
-        } else {
-          status = 'new';
-        }
-        return { isoDate, title: titleTrimmed, status, selected: status !== 'duplicate', conflictTitles };
-      });
-
-    if (items.length === 0) {
-      Alert.alert('Aucun RDV', 'Aucun rendez-vous trouvé dans les données.');
-      return;
-    }
-
-    setImportItems(items);
-    setImportStep('review');
-  }
-
-  function toggleItem(idx: number) {
-    setImportItems(prev => prev.map((item, i) =>
-      i === idx ? { ...item, selected: !item.selected } : item
-    ));
-  }
-
-  function confirmImport() {
-    const toImport = importItems.filter(i => i.selected);
-    if (toImport.length === 0) {
-      Alert.alert('Aucun RDV sélectionné', 'Sélectionne au moins un rendez-vous à importer.');
-      return;
-    }
-    toImport.forEach(item => {
-      addAppointment({
-        title: item.title,
-        date: new Date(item.isoDate).toISOString(),
-        description: '',
-        location: '',
-        time: '',
-        category: '',
-        fromMarie: true,
-      });
-    });
-    closeImport();
-  }
-
-  const selectedCount = importItems.filter(i => i.selected).length;
-
-  const STATUS_LABELS: Record<ImportStatus, string> = {
-    new: 'Nouveau',
-    date_conflict: 'Conflit',
-    duplicate: 'Doublon',
-  };
-  const STATUS_COLORS: Record<ImportStatus, string> = {
-    new: '#4CAF50',
-    date_conflict: '#FF9800',
-    duplicate: colors.mutedForeground,
-  };
-
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
+
+      {/* ── Header ── */}
+      <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
         <View style={styles.titleRow}>
-          <Text style={[styles.title, { color: colors.foreground }]}>Calendrier</Text>
-          <View style={styles.titleBtns}>
-            <Pressable
-              onPress={openMarieMenu}
-              style={[styles.addBtn, { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }]}
-            >
-              <MaterialCommunityIcons name="calendar-sync" size={17} color={colors.primary} />
-              <Text style={[styles.addBtnLabel, { color: colors.primary }]}>Marie</Text>
-            </Pressable>
+          {/* Liste button */}
+          <Pressable
+            onPress={() => router.push('/appointment-list' as any)}
+            style={[styles.listBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+          >
+            <MaterialCommunityIcons name="format-list-bulleted" size={14} color={colors.foreground} />
+            <Text style={[styles.listBtnLabel, { color: colors.foreground }]}>Liste</Text>
+          </Pressable>
+
+          {/* Icon buttons */}
+          <View style={styles.headerIcons}>
             <Pressable
               onPress={() => router.push('/appointment/new')}
-              style={[styles.addBtn, { backgroundColor: colors.primary }]}
+              hitSlop={8}
+              style={[styles.calHeaderBtn, { backgroundColor: '#7C3AED22', borderColor: '#7C3AED55' }]}
             >
-              <MaterialCommunityIcons name="calendar-plus" size={18} color={colors.primaryForeground} />
-              <Text style={[styles.addBtnLabel, { color: colors.primaryForeground }]}>RDV</Text>
+              <MaterialCommunityIcons name="calendar-plus" size={18} color="#7C3AED" />
+            </Pressable>
+            <Pressable
+              onPress={() => router.push('/work' as any)}
+              hitSlop={8}
+              style={[styles.calHeaderBtn, { backgroundColor: '#FFC10722', borderColor: '#FFC10755' }]}
+            >
+              <MaterialCommunityIcons name="briefcase-outline" size={18} color="#FFC107" />
+            </Pressable>
+            <Pressable
+              onPress={() => router.push('/marie' as any)}
+              hitSlop={8}
+              style={[styles.calHeaderBtn, { backgroundColor: '#FF980022', borderColor: '#FF980055' }]}
+            >
+              <MaterialCommunityIcons name="account-heart-outline" size={18} color="#FF9800" />
+            </Pressable>
+            <Pressable
+              onPress={() => router.push('/anna' as any)}
+              hitSlop={8}
+              style={[styles.calHeaderBtn, { backgroundColor: '#E91E6322', borderColor: '#E91E6355' }]}
+            >
+              <MaterialCommunityIcons name="baby-carriage" size={18} color="#E91E63" />
             </Pressable>
           </View>
         </View>
+
+        {/* Month navigation */}
         <View style={styles.navRow}>
           <Pressable onPress={prevMonth} style={[styles.navBtn, { backgroundColor: colors.card }]}>
             <MaterialCommunityIcons name="chevron-left" size={22} color={colors.foreground} />
@@ -349,6 +217,7 @@ export default function CalendarScreen() {
             <MaterialCommunityIcons name="chevron-right" size={22} color={colors.foreground} />
           </Pressable>
         </View>
+
         <View style={styles.dayHeaders}>
           {DAYS_FR.map(d => (
             <Text key={d} style={[styles.dayHeader, { color: colors.mutedForeground }]}>{d}</Text>
@@ -356,13 +225,14 @@ export default function CalendarScreen() {
         </View>
       </View>
 
+      {/* ── Calendar ── */}
       <ScrollView contentContainerStyle={{ paddingBottom: 120 }} showsVerticalScrollIndicator={false}>
         <View style={[styles.grid, { paddingHorizontal: 12 }]}>
           {days.map((d, i) => {
             const key = dateKey(d);
-            const dayTasks      = tasksByDate[key]      ?? [];
+            const dayTasks      = tasksByDate[key]        ?? [];
             const dayAppts      = appointmentsByDate[key] ?? [];
-            const dayTransfers  = transfersByDate[key]  ?? [];
+            const dayTransfers  = transfersByDate[key]    ?? [];
             const isCurrentMonth = d.getMonth() === month;
             const isSelected = selectedDate === key;
             const todayFlag = isToday(d);
@@ -393,9 +263,7 @@ export default function CalendarScreen() {
                   {d.getDate()}
                 </Text>
                 <View style={styles.dotRow}>
-                  {dayTasks.slice(0, 2).map((t, j) => (
-                    <View key={j} style={[styles.dot, { backgroundColor: PRIORITY_COLORS[t.priority] }]} />
-                  ))}
+                  {topPriority && <View style={[styles.dot, { backgroundColor: PRIORITY_COLORS[topPriority] }]} />}
                   {dayAppts.slice(0, 2).map((a, j) => (
                     <View key={`a${j}`} style={[styles.dot, { backgroundColor: apptColor(a) }]} />
                   ))}
@@ -408,6 +276,7 @@ export default function CalendarScreen() {
           })}
         </View>
 
+        {/* ── Selected day detail ── */}
         {(selectedTasks.length > 0 || selectedAppointments.length > 0 || selectedTransfers.length > 0) && (
           <View style={[styles.dayDetail, { paddingHorizontal: 16 }]}>
             {selectedAppointments.length > 0 && (
@@ -423,9 +292,7 @@ export default function CalendarScreen() {
                     style={[styles.apptItem, { backgroundColor: colors.card, borderColor: colors.border, borderLeftColor: apptColor(a) }]}
                   >
                     <View style={{ flex: 1 }}>
-                      <Text style={[styles.apptTitle, { color: colors.foreground }]} numberOfLines={1}>
-                        {a.title}
-                      </Text>
+                      <Text style={[styles.apptTitle, { color: colors.foreground }]} numberOfLines={1}>{a.title}</Text>
                       {a.fromMarie && (
                         <Text style={[styles.apptDetail, { color: MARIE_APPT_COLOR, marginBottom: 2 }]}>
                           <MaterialCommunityIcons name="heart-outline" size={11} /> Marie
@@ -490,12 +357,8 @@ export default function CalendarScreen() {
                       style={[styles.taskItem, { backgroundColor: colors.card, borderColor: colors.border, borderLeftColor: pColor }]}
                     >
                       <View style={{ flex: 1 }}>
-                        <Text style={[styles.taskTitle, { color: colors.foreground }]} numberOfLines={2}>
-                          {t.title}
-                        </Text>
-                        {proj && (
-                          <Text style={[styles.taskProj, { color: colors.primary }]}>{proj.name}</Text>
-                        )}
+                        <Text style={[styles.taskTitle, { color: colors.foreground }]} numberOfLines={2}>{t.title}</Text>
+                        {proj && <Text style={[styles.taskProj, { color: colors.primary }]}>{proj.name}</Text>}
                       </View>
                       <MaterialCommunityIcons
                         name={t.status === 'done' ? 'check-circle' : 'circle-outline'}
@@ -510,6 +373,7 @@ export default function CalendarScreen() {
           </View>
         )}
 
+        {/* ── Legend ── */}
         <View style={[styles.legend, { paddingHorizontal: 16, marginTop: 16 }]}>
           <Text style={[styles.legendTitle, { color: colors.mutedForeground }]}>Légende :</Text>
           <View style={styles.legendRow}>
@@ -536,138 +400,6 @@ export default function CalendarScreen() {
           </View>
         </View>
       </ScrollView>
-
-      {/* ── Import Marie Modal ── */}
-      <Modal
-        visible={importVisible}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={closeImport}
-      >
-        <KeyboardAvoidingView
-          style={[styles.modalContainer, { backgroundColor: colors.background }]}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        >
-          {/* Modal header */}
-          <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
-            <Pressable onPress={importStep === 'review' ? () => setImportStep('paste') : closeImport} hitSlop={12}>
-              <MaterialCommunityIcons
-                name={importStep === 'review' ? 'arrow-left' : 'close'}
-                size={22}
-                color={colors.foreground}
-              />
-            </Pressable>
-            <Text style={[styles.modalTitle, { color: colors.foreground }]}>
-              {importStep === 'paste' ? 'Importer les RDV de Marie' : 'Vérifier les rendez-vous'}
-            </Text>
-            <View style={{ width: 22 }} />
-          </View>
-
-          {/* ── Step 1: Paste ── */}
-          {importStep === 'paste' && (
-            <View style={styles.pasteStep}>
-              <Text style={[styles.pasteHint, { color: colors.mutedForeground }]}>
-                Demande à Marie de copier ses rendez-vous depuis son appli, puis colle le texte ici :
-              </Text>
-              <TextInput
-                style={[styles.pasteInput, {
-                  backgroundColor: colors.card,
-                  borderColor: colors.border,
-                  color: colors.foreground,
-                }]}
-                multiline
-                numberOfLines={8}
-                placeholder={'RDV:{"2026-06-19": "Dentiste Anna", ...}'}
-                placeholderTextColor={colors.mutedForeground}
-                value={importText}
-                onChangeText={setImportText}
-                autoCorrect={false}
-                autoCapitalize="none"
-                textAlignVertical="top"
-              />
-              <Pressable
-                onPress={parseAndReview}
-                style={[styles.primaryBtn, { backgroundColor: colors.primary, opacity: importText.trim().length < 5 ? 0.5 : 1 }]}
-                disabled={importText.trim().length < 5}
-              >
-                <MaterialCommunityIcons name="magnify" size={18} color={colors.primaryForeground} />
-                <Text style={[styles.primaryBtnLabel, { color: colors.primaryForeground }]}>Analyser</Text>
-              </Pressable>
-            </View>
-          )}
-
-          {/* ── Step 2: Review ── */}
-          {importStep === 'review' && (
-            <View style={styles.reviewStep}>
-              <Text style={[styles.reviewCount, { color: colors.mutedForeground }]}>
-                {importItems.length} rendez-vous trouvé{importItems.length > 1 ? 's' : ''} · {selectedCount} sélectionné{selectedCount > 1 ? 's' : ''}
-              </Text>
-              <ScrollView style={styles.reviewList} contentContainerStyle={{ gap: 10, paddingBottom: 20 }} showsVerticalScrollIndicator={false}>
-                {importItems.map((item, idx) => {
-                  const statusColor = STATUS_COLORS[item.status];
-                  const isDup = item.status === 'duplicate';
-                  return (
-                    <Pressable
-                      key={idx}
-                      onPress={() => !isDup && toggleItem(idx)}
-                      style={[
-                        styles.reviewItem,
-                        {
-                          backgroundColor: colors.card,
-                          borderColor: item.selected ? statusColor + '60' : colors.border,
-                          borderLeftColor: statusColor,
-                          opacity: isDup ? 0.55 : 1,
-                        },
-                      ]}
-                    >
-                      <View style={styles.reviewItemLeft}>
-                        <View style={[styles.reviewStatusBadge, { backgroundColor: statusColor + '22' }]}>
-                          <Text style={[styles.reviewStatusLabel, { color: statusColor }]}>
-                            {STATUS_LABELS[item.status]}
-                          </Text>
-                        </View>
-                        <Text style={[styles.reviewItemDate, { color: colors.mutedForeground }]}>
-                          {formatDateFR(item.isoDate)}
-                        </Text>
-                        <Text style={[styles.reviewItemTitle, { color: colors.foreground }]} numberOfLines={2}>
-                          {item.title}
-                        </Text>
-                        {item.status === 'date_conflict' && item.conflictTitles.length > 0 && (
-                          <Text style={[styles.reviewConflictNote, { color: '#FF9800' }]}>
-                            ⚠ Tu as déjà : {item.conflictTitles.join(', ')}
-                          </Text>
-                        )}
-                        {item.status === 'duplicate' && (
-                          <Text style={[styles.reviewConflictNote, { color: colors.mutedForeground }]}>
-                            Déjà présent dans ton calendrier
-                          </Text>
-                        )}
-                      </View>
-                      {!isDup && (
-                        <MaterialCommunityIcons
-                          name={item.selected ? 'checkbox-marked-circle' : 'checkbox-blank-circle-outline'}
-                          size={24}
-                          color={item.selected ? statusColor : colors.mutedForeground}
-                        />
-                      )}
-                    </Pressable>
-                  );
-                })}
-              </ScrollView>
-              <Pressable
-                onPress={confirmImport}
-                style={[styles.primaryBtn, { backgroundColor: colors.primary, opacity: selectedCount === 0 ? 0.4 : 1 }]}
-                disabled={selectedCount === 0}
-              >
-                <MaterialCommunityIcons name="calendar-check" size={18} color={colors.primaryForeground} />
-                <Text style={[styles.primaryBtnLabel, { color: colors.primaryForeground }]}>
-                  Importer {selectedCount} RDV{selectedCount > 1 ? '' : ''}
-                </Text>
-              </Pressable>
-            </View>
-          )}
-        </KeyboardAvoidingView>
-      </Modal>
     </View>
   );
 }
@@ -676,7 +408,7 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   header: {
     paddingHorizontal: 16,
-    gap: 12,
+    gap: 10,
     paddingBottom: 8,
   },
   titleRow: {
@@ -684,25 +416,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  titleBtns: {
-    flexDirection: 'row',
-    gap: 8,
+  listBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingHorizontal: 12, paddingVertical: 7,
+    borderRadius: 20, borderWidth: StyleSheet.hairlineWidth,
   },
-  title: {
-    fontSize: 28,
-    fontFamily: 'Inter_700Bold',
-  },
-  addBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-  },
-  addBtnLabel: {
-    fontSize: 13,
-    fontFamily: 'Inter_600SemiBold',
+  listBtnLabel: { fontSize: 13, fontFamily: 'Inter_600SemiBold' },
+  headerIcons: { flexDirection: 'row', gap: 6 },
+  calHeaderBtn: {
+    width: 36, height: 36, borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center', justifyContent: 'center',
   },
   navRow: {
     flexDirection: 'row',
@@ -710,229 +434,43 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   navBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 36, height: 36, borderRadius: 18,
+    alignItems: 'center', justifyContent: 'center',
   },
-  monthLabel: {
-    fontSize: 18,
-    fontFamily: 'Inter_600SemiBold',
-  },
-  dayHeaders: {
-    flexDirection: 'row',
-  },
+  monthLabel: { fontSize: 18, fontFamily: 'Inter_600SemiBold' },
+  dayHeaders: { flexDirection: 'row' },
   dayHeader: {
-    flex: 1,
-    textAlign: 'center',
-    fontSize: 12,
-    fontFamily: 'Inter_500Medium',
-    paddingBottom: 4,
+    flex: 1, textAlign: 'center', fontSize: 12,
+    fontFamily: 'Inter_500Medium', paddingBottom: 4,
   },
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 2,
-  },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 2 },
   dayCell: {
     width: `${100 / 7}%` as any,
-    aspectRatio: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: 'transparent',
-    padding: 2,
+    aspectRatio: 1, alignItems: 'center', justifyContent: 'center',
+    borderRadius: 10, borderWidth: 1, borderColor: 'transparent', padding: 2,
   },
-  dayNum: {
-    fontSize: 13,
-    fontFamily: 'Inter_400Regular',
-  },
-  dotRow: {
-    flexDirection: 'row',
-    gap: 2,
-    marginTop: 2,
-  },
-  dot: {
-    width: 5,
-    height: 5,
-    borderRadius: 3,
-  },
-  dayDetail: {
-    marginTop: 16,
-    gap: 8,
-  },
-  sectionTitle: {
-    fontSize: 15,
-    fontFamily: 'Inter_600SemiBold',
-    marginBottom: 4,
-  },
+  dayNum: { fontSize: 13, fontFamily: 'Inter_400Regular' },
+  dotRow: { flexDirection: 'row', gap: 2, marginTop: 2 },
+  dot: { width: 5, height: 5, borderRadius: 3 },
+  dayDetail: { marginTop: 16, gap: 8 },
+  sectionTitle: { fontSize: 15, fontFamily: 'Inter_600SemiBold', marginBottom: 4 },
   apptItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    padding: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderLeftWidth: 4,
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    padding: 12, borderRadius: 12, borderWidth: 1, borderLeftWidth: 4,
   },
-  apptTitle: {
-    fontSize: 14,
-    fontFamily: 'Inter_500Medium',
-  },
-  apptMeta: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 2,
-    flexWrap: 'wrap',
-  },
-  apptDetail: {
-    fontSize: 12,
-    fontFamily: 'Inter_400Regular',
-  },
+  apptTitle: { fontSize: 14, fontFamily: 'Inter_500Medium' },
+  apptMeta: { flexDirection: 'row', gap: 10, marginTop: 2, flexWrap: 'wrap' },
+  apptDetail: { fontSize: 12, fontFamily: 'Inter_400Regular' },
   taskItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    padding: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderLeftWidth: 4,
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    padding: 12, borderRadius: 12, borderWidth: 1, borderLeftWidth: 4,
   },
-  taskTitle: {
-    fontSize: 14,
-    fontFamily: 'Inter_500Medium',
-  },
-  taskProj: {
-    fontSize: 12,
-    fontFamily: 'Inter_400Regular',
-  },
-  legend: {
-    gap: 6,
-  },
-  legendTitle: {
-    fontSize: 12,
-    fontFamily: 'Inter_400Regular',
-  },
-  legendRow: {
-    flexDirection: 'row',
-    gap: 12,
-    flexWrap: 'wrap',
-  },
-  legendItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  legendDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-  },
-  legendLabel: {
-    fontSize: 12,
-    fontFamily: 'Inter_400Regular',
-  },
-
-  /* ── Import modal ── */
-  modalContainer: {
-    flex: 1,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  modalTitle: {
-    fontSize: 16,
-    fontFamily: 'Inter_600SemiBold',
-  },
-
-  /* Step 1 - Paste */
-  pasteStep: {
-    flex: 1,
-    padding: 16,
-    gap: 16,
-  },
-  pasteHint: {
-    fontSize: 14,
-    fontFamily: 'Inter_400Regular',
-    lineHeight: 20,
-  },
-  pasteInput: {
-    borderRadius: 12,
-    borderWidth: 1,
-    padding: 14,
-    fontSize: 13,
-    fontFamily: 'Inter_400Regular',
-    minHeight: 160,
-    lineHeight: 20,
-  },
-  primaryBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 14,
-    borderRadius: 14,
-  },
-  primaryBtnLabel: {
-    fontSize: 15,
-    fontFamily: 'Inter_600SemiBold',
-  },
-
-  /* Step 2 - Review */
-  reviewStep: {
-    flex: 1,
-    padding: 16,
-    gap: 12,
-  },
-  reviewCount: {
-    fontSize: 13,
-    fontFamily: 'Inter_500Medium',
-  },
-  reviewList: {
-    flex: 1,
-  },
-  reviewItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    padding: 14,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderLeftWidth: 4,
-  },
-  reviewItemLeft: {
-    flex: 1,
-    gap: 3,
-  },
-  reviewStatusBadge: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 20,
-    marginBottom: 2,
-  },
-  reviewStatusLabel: {
-    fontSize: 11,
-    fontFamily: 'Inter_600SemiBold',
-  },
-  reviewItemDate: {
-    fontSize: 12,
-    fontFamily: 'Inter_400Regular',
-  },
-  reviewItemTitle: {
-    fontSize: 14,
-    fontFamily: 'Inter_500Medium',
-  },
-  reviewConflictNote: {
-    fontSize: 12,
-    fontFamily: 'Inter_400Regular',
-    marginTop: 2,
-  },
+  taskTitle: { fontSize: 14, fontFamily: 'Inter_500Medium' },
+  taskProj: { fontSize: 12, fontFamily: 'Inter_400Regular' },
+  legend: { gap: 6 },
+  legendTitle: { fontSize: 12, fontFamily: 'Inter_400Regular' },
+  legendRow: { flexDirection: 'row', gap: 12, flexWrap: 'wrap' },
+  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  legendDot: { width: 10, height: 10, borderRadius: 5 },
+  legendLabel: { fontSize: 12, fontFamily: 'Inter_400Regular' },
 });
