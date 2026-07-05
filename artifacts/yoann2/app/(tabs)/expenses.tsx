@@ -57,6 +57,7 @@ import {
   processMarketRecurrings,
 } from '@/utils/marketStorage';
 import { fetchLivePrices } from '@/utils/marketPrices';
+import { pH } from '@/styles/header';
 
 const SHOW_AMOUNTS_KEY      = '@yoann2/finance_show_amounts';
 const SUMMARY_COLLAPSED_KEY = '@yoann2/finance_summary_collapsed';
@@ -543,9 +544,9 @@ export default function FinanceScreen() {
     <View style={[styles.container, { backgroundColor: colors.background }]}>
 
       {/* ── Header ── */}
-      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
-        <Text style={[styles.title, { color: colors.foreground }]}>Finance</Text>
-        <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+      <View style={[pH.rowSpaced, { paddingTop: insets.top + 8, backgroundColor: colors.background, borderBottomColor: colors.border }]}>
+        <Text style={[pH.title, { color: colors.foreground }]}>Finance</Text>
+        <View style={pH.btnGroup}>
           <Pressable
             onPress={() => {
               if (searchActive) {
@@ -557,7 +558,7 @@ export default function FinanceScreen() {
               Haptics.selectionAsync();
             }}
             hitSlop={8}
-            style={[styles.iconBtn, {
+            style={[pH.btn, {
               backgroundColor: searchActive ? colors.primary + '25' : colors.card,
               borderColor: searchActive ? colors.primary : colors.border,
             }]}
@@ -571,21 +572,21 @@ export default function FinanceScreen() {
           <Pressable
             onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setShowOcr(true); }}
             hitSlop={8}
-            style={[styles.iconBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+            style={[pH.btn, { backgroundColor: colors.card, borderColor: colors.border }]}
           >
             <CameraOcrIcon size={18} color={colors.primary} />
           </Pressable>
           <Pressable
             onPress={() => router.push('/expense-stats')}
             hitSlop={8}
-            style={[styles.iconBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+            style={[pH.btn, { backgroundColor: colors.card, borderColor: colors.border }]}
           >
             <MaterialCommunityIcons name="chart-bar" size={18} color={colors.primary} />
           </Pressable>
           <Pressable
             onPress={toggleAmounts}
             hitSlop={8}
-            style={[styles.iconBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+            style={[pH.btn, { backgroundColor: colors.card, borderColor: colors.border }]}
           >
             <MaterialCommunityIcons
               name={showAmounts ? 'eye-outline' : 'eye-off-outline'}
@@ -596,7 +597,7 @@ export default function FinanceScreen() {
           <Pressable
             onPress={toggleSummary}
             hitSlop={8}
-            style={[styles.iconBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+            style={[pH.btn, { backgroundColor: colors.card, borderColor: colors.border }]}
           >
             <MaterialCommunityIcons
               name={summaryCollapsed ? 'chevron-down' : 'chevron-up'}
@@ -1306,15 +1307,7 @@ export default function FinanceScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingBottom: 12,
-  },
-  title: { fontSize: 28, fontFamily: 'Inter_700Bold' },
-  iconBtn: { width: 34, height: 34, borderRadius: 10, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+
 
   searchBar: {
     paddingHorizontal: 16,

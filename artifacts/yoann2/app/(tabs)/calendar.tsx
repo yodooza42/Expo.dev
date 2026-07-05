@@ -14,6 +14,7 @@ import { useApp } from '@/contexts/AppContext';
 import { useColors } from '@/hooks/useColors';
 import type { Priority, Task } from '@/types';
 import { getRecurringTransfers, type RecurringTransfer } from '@/utils/bankStorage';
+import { pH } from '@/styles/header';
 
 const PRIORITY_COLORS: Record<Priority, string> = {
   low: '#4CAF50',
@@ -167,38 +168,38 @@ export default function CalendarScreen() {
           <Pressable
             onPress={() => router.push('/appointment-list' as any)}
             hitSlop={8}
-            style={[styles.calHeaderBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+            style={[pH.btn, { backgroundColor: colors.card, borderColor: colors.border }]}
           >
             <MaterialCommunityIcons name="format-list-bulleted" size={18} color={colors.foreground} />
           </Pressable>
 
           {/* Icon buttons */}
-          <View style={styles.headerIcons}>
+          <View style={pH.btnGroup}>
             <Pressable
               onPress={() => router.push('/appointment/new')}
               hitSlop={8}
-              style={[styles.calHeaderBtn, { backgroundColor: '#7C3AED22', borderColor: '#7C3AED55' }]}
+              style={[pH.btn, { backgroundColor: '#7C3AED22', borderColor: '#7C3AED55' }]}
             >
               <MaterialCommunityIcons name="calendar-plus" size={18} color="#7C3AED" />
             </Pressable>
             <Pressable
               onPress={() => router.push('/work' as any)}
               hitSlop={8}
-              style={[styles.calHeaderBtn, { backgroundColor: '#FFC10722', borderColor: '#FFC10755' }]}
+              style={[pH.btn, { backgroundColor: '#FFC10722', borderColor: '#FFC10755' }]}
             >
               <MaterialCommunityIcons name="briefcase-outline" size={18} color="#FFC107" />
             </Pressable>
             <Pressable
               onPress={() => router.push('/marie' as any)}
               hitSlop={8}
-              style={[styles.calHeaderBtn, { backgroundColor: '#FF980022', borderColor: '#FF980055' }]}
+              style={[pH.btn, { backgroundColor: '#FF980022', borderColor: '#FF980055' }]}
             >
               <MaterialCommunityIcons name="account-heart-outline" size={18} color="#FF9800" />
             </Pressable>
             <Pressable
               onPress={() => router.push('/anna' as any)}
               hitSlop={8}
-              style={[styles.calHeaderBtn, { backgroundColor: '#E91E6322', borderColor: '#E91E6355' }]}
+              style={[pH.btn, { backgroundColor: '#E91E6322', borderColor: '#E91E6355' }]}
             >
               <MaterialCommunityIcons name="baby-carriage" size={18} color="#E91E63" />
             </Pressable>
@@ -415,18 +416,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-  },
-  listBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    paddingHorizontal: 12, paddingVertical: 7,
-    borderRadius: 20, borderWidth: StyleSheet.hairlineWidth,
-  },
-  listBtnLabel: { fontSize: 13, fontFamily: 'Inter_600SemiBold' },
-  headerIcons: { flexDirection: 'row', gap: 6 },
-  calHeaderBtn: {
-    width: 36, height: 36, borderRadius: 10,
-    borderWidth: StyleSheet.hairlineWidth,
-    alignItems: 'center', justifyContent: 'center',
   },
   navRow: {
     flexDirection: 'row',

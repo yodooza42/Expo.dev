@@ -21,6 +21,7 @@ import { useApp } from '@/contexts/AppContext';
 import { useSplash } from '@/contexts/SplashContext';
 import { useColors } from '@/hooks/useColors';
 import type { Appointment, Task } from '@/types';
+import { pH } from '@/styles/header';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -423,35 +424,34 @@ export default function DashboardScreen() {
       {/* HEADER */}
       <LinearGradient
         colors={['#1A1500', colors.background]}
-        style={[styles.header, { paddingTop: insets.top + 16 }]}
+        style={[styles.header, { paddingTop: insets.top + 8 }]}
       >
-        <View style={[styles.shortcutRow, { justifyContent: 'flex-end' }]}>
-          <View style={styles.headerActions}>
+        <View style={pH.btnGroup}>
             <Pressable
               onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/(tabs)/kanban' as any); }}
               hitSlop={6}
-              style={[styles.iconBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+              style={[pH.btn, { backgroundColor: colors.card, borderColor: colors.border }]}
             >
               <MaterialCommunityIcons name="view-column-outline" size={18} color={colors.mutedForeground} />
             </Pressable>
             <Pressable
               onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/(tabs)/projects' as any); }}
               hitSlop={6}
-              style={[styles.iconBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+              style={[pH.btn, { backgroundColor: colors.card, borderColor: colors.border }]}
             >
               <MaterialCommunityIcons name="folder-multiple-outline" size={18} color={colors.mutedForeground} />
             </Pressable>
             <Pressable
               onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/(tabs)/settings' as any); }}
               hitSlop={6}
-              style={[styles.iconBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+              style={[pH.btn, { backgroundColor: colors.card, borderColor: colors.border }]}
             >
               <MaterialCommunityIcons name="cog-outline" size={18} color={colors.mutedForeground} />
             </Pressable>
             <Pressable
               onPress={() => { setShowAppts(v => !v); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
               hitSlop={6}
-              style={[styles.iconBtn, { backgroundColor: showAppts ? '#7C4DFF28' : colors.card, borderColor: showAppts ? '#7C4DFF' : colors.border }]}
+              style={[pH.btn, { backgroundColor: showAppts ? '#7C4DFF28' : colors.card, borderColor: showAppts ? '#7C4DFF' : colors.border }]}
             >
               <MaterialCommunityIcons
                 name={showAppts ? 'calendar-clock' : 'calendar-clock-outline' as any}
@@ -462,7 +462,7 @@ export default function DashboardScreen() {
             <Pressable
               onPress={() => { setShowPhotos(v => !v); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
               hitSlop={6}
-              style={[styles.iconBtn, { backgroundColor: showPhotos ? colors.primary + '28' : colors.card, borderColor: showPhotos ? colors.primary : colors.border }]}
+              style={[pH.btn, { backgroundColor: showPhotos ? colors.primary + '28' : colors.card, borderColor: showPhotos ? colors.primary : colors.border }]}
             >
               <MaterialCommunityIcons
                 name={showPhotos ? 'camera' : 'camera-outline'}
@@ -470,7 +470,6 @@ export default function DashboardScreen() {
                 color={showPhotos ? colors.primary : colors.mutedForeground}
               />
             </Pressable>
-          </View>
         </View>
 
       </LinearGradient>
@@ -861,15 +860,7 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
 
   // Header
-  header:      { paddingHorizontal: 20, paddingBottom: 16 },
-  headerRow:   { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  appName:     { fontSize: 32, fontFamily: 'Inter_700Bold', letterSpacing: -0.5 },
-  dateStr:     { fontSize: 13, fontFamily: 'Inter_400Regular', textTransform: 'capitalize', marginTop: 2 },
-  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
-  shortcutRow:   { flexDirection: 'row', gap: 8, marginTop: 10 },
-  shortcutBtn:   { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, height: 34, borderRadius: 17, borderWidth: 1 },
-  shortcutLabel: { fontSize: 13, fontFamily: 'Inter_500Medium' },
-  iconBtn:     { width: 36, height: 36, borderRadius: 10, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  header: { paddingHorizontal: 14, paddingBottom: 10, alignItems: 'flex-end' },
   addBtn:      { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center' },
   statsRow:    { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 12 },
   statPill:    { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20, backgroundColor: '#ffffff0c' },

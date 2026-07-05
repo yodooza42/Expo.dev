@@ -28,6 +28,7 @@ import {
   tripMatchesCategory,
 } from '@/utils/tripCategories';
 import { tripEvents } from '@/utils/tripEvents';
+import { pH } from '@/styles/header';
 import {
   computeOdometer,
   deleteTrip,
@@ -697,47 +698,47 @@ export default function TripsScreen() {
       />
 
       {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top + 8, backgroundColor: colors.background, borderBottomColor: colors.border }]}>
-        <View style={styles.headerActions}>
+      <View style={[pH.row, { paddingTop: insets.top + 8, backgroundColor: colors.background, borderBottomColor: colors.border }]}>
+        <View style={pH.btnGroup}>
           <Pressable
             onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/known-places' as any); }}
             hitSlop={8}
-            style={[styles.headerBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+            style={[pH.btn, { backgroundColor: colors.card, borderColor: colors.border }]}
           >
             <MaterialCommunityIcons name="map-marker-outline" size={18} color={colors.mutedForeground} />
           </Pressable>
           <Pressable
             onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/nav-widget' as any); }}
             hitSlop={8}
-            style={[styles.headerBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+            style={[pH.btn, { backgroundColor: colors.card, borderColor: colors.border }]}
           >
             <MaterialCommunityIcons name="widgets-outline" size={18} color={colors.mutedForeground} />
           </Pressable>
           <Pressable
             onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/fuel-log' as any); }}
             hitSlop={8}
-            style={[styles.headerBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+            style={[pH.btn, { backgroundColor: colors.card, borderColor: colors.border }]}
           >
             <MaterialCommunityIcons name="gas-station" size={18} color={colors.primary} />
           </Pressable>
           <Pressable
             onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/trip-stats' as any); }}
             hitSlop={8}
-            style={[styles.headerBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+            style={[pH.btn, { backgroundColor: colors.card, borderColor: colors.border }]}
           >
             <MaterialCommunityIcons name="chart-bar" size={18} color={colors.mutedForeground} />
           </Pressable>
           <Pressable
             onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/(tabs)/map'); }}
             hitSlop={8}
-            style={[styles.headerBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+            style={[pH.btn, { backgroundColor: colors.card, borderColor: colors.border }]}
           >
             <MaterialCommunityIcons name="map-outline" size={18} color={colors.mutedForeground} />
           </Pressable>
           <Pressable
             onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/vehicle-settings' as any); }}
             hitSlop={8}
-            style={[styles.headerBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+            style={[pH.btn, { backgroundColor: colors.card, borderColor: colors.border }]}
           >
             <MaterialCommunityIcons name="wrench" size={18} color={colors.mutedForeground} />
           </Pressable>
@@ -900,18 +901,6 @@ export default function TripsScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 20, paddingBottom: 10, borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  headerBtn: {
-    width: 34, height: 34, borderRadius: 10, borderWidth: 1,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  shortcutRow:  { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 },
-  shortcutBtn:  { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, height: 34, borderRadius: 17, borderWidth: 1 },
-  shortcutLabel: { fontSize: 13, fontFamily: 'Inter_500Medium' },
   matchBtnBadge: { marginLeft: 'auto' as any, fontSize: 12, fontFamily: 'Inter_600SemiBold' },
   mapBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 5,
