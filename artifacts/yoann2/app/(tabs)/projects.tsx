@@ -125,6 +125,15 @@ export default function ProjectsScreen() {
                 </Text>
               </Pressable>
             )}
+            {!reorderMode && (
+              <Pressable
+                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/project-reports' as any); }}
+                hitSlop={8}
+                style={[styles.reportBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+              >
+                <MaterialCommunityIcons name="printer-outline" size={18} color={colors.primary} />
+              </Pressable>
+            )}
             {reorderMode ? (
               <Pressable
                 onPress={exitReorderMode}
@@ -351,6 +360,14 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reportBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },

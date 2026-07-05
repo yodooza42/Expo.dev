@@ -44,8 +44,8 @@ export default function TabLayout() {
     >
       <Tabs.Screen name="calendar" />
       <Tabs.Screen name="map" options={{ href: null }} />
-      <Tabs.Screen name="projects" />
-      <Tabs.Screen name="kanban" />
+      <Tabs.Screen name="projects" options={{ href: null }} />
+      <Tabs.Screen name="kanban" options={{ href: null }} />
       <Tabs.Screen name="expenses" />
       <Tabs.Screen name="trips" />
       <Tabs.Screen name="navigation" />

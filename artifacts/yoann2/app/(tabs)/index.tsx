@@ -486,6 +486,22 @@ export default function DashboardScreen() {
               />
             </Pressable>
           </View>
+          <View style={styles.shortcutRow}>
+            <Pressable
+              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/(tabs)/kanban' as any); }}
+              style={[styles.shortcutBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+            >
+              <MaterialCommunityIcons name="view-column-outline" size={15} color={colors.foreground} />
+              <Text style={[styles.shortcutLabel, { color: colors.foreground }]}>Kanban</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/(tabs)/projects' as any); }}
+              style={[styles.shortcutBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+            >
+              <MaterialCommunityIcons name="folder-multiple-outline" size={15} color={colors.foreground} />
+              <Text style={[styles.shortcutLabel, { color: colors.foreground }]}>Projets</Text>
+            </Pressable>
+          </View>
         </View>
 
       </LinearGradient>
@@ -881,6 +897,9 @@ const styles = StyleSheet.create({
   appName:     { fontSize: 32, fontFamily: 'Inter_700Bold', letterSpacing: -0.5 },
   dateStr:     { fontSize: 13, fontFamily: 'Inter_400Regular', textTransform: 'capitalize', marginTop: 2 },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
+  shortcutRow:   { flexDirection: 'row', gap: 8, marginTop: 10 },
+  shortcutBtn:   { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, height: 34, borderRadius: 17, borderWidth: 1 },
+  shortcutLabel: { fontSize: 13, fontFamily: 'Inter_500Medium' },
   iconBtn:     { width: 36, height: 36, borderRadius: 10, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   addBtn:      { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center' },
   statsRow:    { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 12 },

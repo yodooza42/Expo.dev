@@ -53,7 +53,7 @@ const QUICK_SHORTCUTS = [
   { key: 'anna',  icon: 'baby-carriage',         label: 'Anna',    route: '/anna',  color: '#E91E63' },
 ] as const;
 
-const HIDDEN_TABS = ['settings', 'map', 'navigation'];
+const HIDDEN_TABS = ['settings', 'map', 'navigation', 'projects', 'kanban'];
 
 export function CustomTabBar({ state, navigation }: TabBarProps) {
   const colors    = useColors();
