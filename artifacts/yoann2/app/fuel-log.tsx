@@ -348,18 +348,6 @@ export default function FuelLogScreen() {
               </Pressable>
             </View>
 
-            {fuelShowDatePicker && (
-              <DateTimePicker
-                value={new Date(fuelDate + 'T12:00:00')}
-                mode="date"
-                display="calendar"
-                maximumDate={new Date()}
-                onChange={(_evt, selected) => {
-                  setFuelShowDatePicker(false);
-                  if (selected) setFuelDate(selected.toISOString().slice(0, 10));
-                }}
-              />
-            )}
 
             {/* Vehicle picker */}
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.fuelVehicleScroll}>
@@ -497,6 +485,19 @@ export default function FuelLogScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      {fuelShowDatePicker && (
+        <DateTimePicker
+          value={new Date(fuelDate + 'T12:00:00')}
+          mode="date"
+          display="calendar"
+          maximumDate={new Date()}
+          onChange={(_evt, selected) => {
+            setFuelShowDatePicker(false);
+            if (selected) setFuelDate(selected.toISOString().slice(0, 10));
+          }}
+        />
+      )}
     </View>
   );
 }
