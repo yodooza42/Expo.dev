@@ -425,24 +425,22 @@ export default function DashboardScreen() {
         colors={['#1A1500', colors.background]}
         style={[styles.header, { paddingTop: insets.top + 16 }]}
       >
-        <View style={[styles.shortcutRow, { justifyContent: 'space-between' }]}>
-          <View style={{ flexDirection: 'row', gap: 8 }}>
+        <View style={[styles.shortcutRow, { justifyContent: 'flex-end' }]}>
+          <View style={styles.headerActions}>
             <Pressable
               onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/(tabs)/kanban' as any); }}
-              style={[styles.shortcutBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+              hitSlop={6}
+              style={[styles.iconBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
             >
-              <MaterialCommunityIcons name="view-column-outline" size={15} color={colors.foreground} />
-              <Text style={[styles.shortcutLabel, { color: colors.foreground }]}>Kanban</Text>
+              <MaterialCommunityIcons name="view-column-outline" size={18} color={colors.mutedForeground} />
             </Pressable>
             <Pressable
               onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/(tabs)/projects' as any); }}
-              style={[styles.shortcutBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+              hitSlop={6}
+              style={[styles.iconBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
             >
-              <MaterialCommunityIcons name="folder-multiple-outline" size={15} color={colors.foreground} />
-              <Text style={[styles.shortcutLabel, { color: colors.foreground }]}>Projets</Text>
+              <MaterialCommunityIcons name="folder-multiple-outline" size={18} color={colors.mutedForeground} />
             </Pressable>
-          </View>
-          <View style={styles.headerActions}>
             <Pressable
               onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/(tabs)/settings' as any); }}
               hitSlop={6}
