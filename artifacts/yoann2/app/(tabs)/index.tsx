@@ -486,22 +486,23 @@ export default function DashboardScreen() {
               />
             </Pressable>
           </View>
-          <View style={styles.shortcutRow}>
-            <Pressable
-              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/(tabs)/kanban' as any); }}
-              style={[styles.shortcutBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
-            >
-              <MaterialCommunityIcons name="view-column-outline" size={15} color={colors.foreground} />
-              <Text style={[styles.shortcutLabel, { color: colors.foreground }]}>Kanban</Text>
-            </Pressable>
-            <Pressable
-              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/(tabs)/projects' as any); }}
-              style={[styles.shortcutBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
-            >
-              <MaterialCommunityIcons name="folder-multiple-outline" size={15} color={colors.foreground} />
-              <Text style={[styles.shortcutLabel, { color: colors.foreground }]}>Projets</Text>
-            </Pressable>
-          </View>
+        </View>
+
+        <View style={styles.shortcutRow}>
+          <Pressable
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/(tabs)/kanban' as any); }}
+            style={[styles.shortcutBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+          >
+            <MaterialCommunityIcons name="view-column-outline" size={15} color={colors.foreground} />
+            <Text style={[styles.shortcutLabel, { color: colors.foreground }]}>Kanban</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/(tabs)/projects' as any); }}
+            style={[styles.shortcutBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+          >
+            <MaterialCommunityIcons name="folder-multiple-outline" size={15} color={colors.foreground} />
+            <Text style={[styles.shortcutLabel, { color: colors.foreground }]}>Projets</Text>
+          </Pressable>
         </View>
 
       </LinearGradient>
