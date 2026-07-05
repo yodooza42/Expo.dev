@@ -272,49 +272,6 @@ export default function TripsScreen() {
           </View>
         )}
 
-        {/* ── Accès rapide ── */}
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Accès rapide</Text>
-          <View style={styles.shortcutRow}>
-            {([
-              { icon: 'map-marker-outline', label: 'Adresses', route: '/known-places' },
-              { icon: 'gas-station', label: 'Carburant', route: '/fuel-log', color: colors.primary },
-              { icon: 'chart-bar', label: 'Statistiques', route: '/trip-stats' },
-            ] as const).map(item => (
-              <Pressable
-                key={item.route}
-                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push(item.route as any); }}
-                style={[styles.shortcutItem, { backgroundColor: colors.card, borderColor: colors.border }]}
-              >
-                <MaterialCommunityIcons name={item.icon} size={22} color={'color' in item ? item.color : colors.mutedForeground} />
-                <Text style={[styles.shortcutLabel, { color: colors.foreground }]}>{item.label}</Text>
-              </Pressable>
-            ))}
-          </View>
-          <View style={styles.shortcutRow}>
-            {([
-              { icon: 'map-outline', label: 'Carte', route: '/(tabs)/map' },
-              { icon: 'wrench', label: 'Entretien', route: '/vehicle-settings', badge: alerts.length > 0 ? alerts.length : 0 },
-              { icon: 'widgets-outline', label: 'Widget Nav.', route: '/nav-widget' },
-            ] as const).map(item => (
-              <Pressable
-                key={item.route}
-                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push(item.route as any); }}
-                style={[styles.shortcutItem, { backgroundColor: colors.card, borderColor: colors.border }]}
-              >
-                <View>
-                  <MaterialCommunityIcons name={item.icon} size={22} color={colors.mutedForeground} />
-                  {'badge' in item && item.badge > 0 && (
-                    <View style={[styles.badge, { backgroundColor: '#FF9800' }]}>
-                      <Text style={styles.badgeTxt}>{item.badge}</Text>
-                    </View>
-                  )}
-                </View>
-                <Text style={[styles.shortcutLabel, { color: colors.foreground }]}>{item.label}</Text>
-              </Pressable>
-            ))}
-          </View>
-        </View>
       </ScrollView>
     </View>
   );
@@ -354,17 +311,4 @@ const styles = StyleSheet.create({
   okCard: { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 12, borderWidth: 1, padding: 14 },
   okText: { fontSize: 13, fontFamily: 'Inter_400Regular' },
 
-  shortcutRow: { flexDirection: 'row', gap: 10 },
-  shortcutItem: {
-    flex: 1, borderRadius: 14, borderWidth: 1,
-    paddingVertical: 16, paddingHorizontal: 8,
-    alignItems: 'center', gap: 8,
-  },
-  shortcutLabel: { fontSize: 11, fontFamily: 'Inter_500Medium', textAlign: 'center' },
-  badge: {
-    position: 'absolute', top: -4, right: -6,
-    width: 16, height: 16, borderRadius: 8,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  badgeTxt: { fontSize: 9, fontFamily: 'Inter_700Bold', color: '#fff' },
 });
