@@ -640,7 +640,7 @@ export default function FinanceScreen() {
       <ScrollView showsVerticalScrollIndicator={false} stickyHeaderIndices={[0]}>
 
         {/* ── Sticky balance card ── */}
-        <View style={{ backgroundColor: colors.background, paddingHorizontal: 16, paddingBottom: 8 }}>
+        <View style={{ backgroundColor: colors.background, paddingHorizontal: 16, paddingTop: 16, paddingBottom: 8 }}>
           {summaryCollapsed ? (
             /* Vue compacte quand replié */
             <Pressable

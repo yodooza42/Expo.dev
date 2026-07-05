@@ -162,7 +162,7 @@ export default function CalendarScreen() {
     <View style={[styles.container, { backgroundColor: colors.background }]}>
 
       {/* ── Header ── */}
-      <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
+      <View style={[styles.header, { paddingTop: insets.top + 8, borderBottomColor: colors.border }]}>
         <View style={styles.titleRow}>
           {/* Liste button */}
           <Pressable
@@ -411,6 +411,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     gap: 10,
     paddingBottom: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   titleRow: {
     flexDirection: 'row',

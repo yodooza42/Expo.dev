@@ -35,4 +35,7 @@ export const pH = StyleSheet.create({
     fontSize: 22,
     fontFamily: 'Inter_700Bold',
   },
+  contentTop: {
+    paddingTop: 16,
+  },
 });

@@ -424,7 +424,7 @@ export default function DashboardScreen() {
       {/* HEADER */}
       <LinearGradient
         colors={['#1A1500', colors.background]}
-        style={[styles.header, { paddingTop: insets.top + 8 }]}
+        style={[styles.header, { paddingTop: insets.top + 8, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border }]}
       >
         <View style={pH.btnGroup}>
             <Pressable
@@ -867,7 +867,7 @@ const styles = StyleSheet.create({
   statPillTxt: { fontSize: 12, fontFamily: 'Inter_500Medium' },
 
   // Scroll
-  scroll: { paddingHorizontal: 16, paddingTop: 10 },
+  scroll: { paddingHorizontal: 16, paddingTop: 16 },
 
   // Appointment banner
   apptBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10, borderRadius: 12, borderWidth: 1, marginBottom: 10 },
