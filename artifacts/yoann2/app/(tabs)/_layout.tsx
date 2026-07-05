@@ -15,7 +15,7 @@ function BackGuard() {
 
   useEffect(() => {
     const currentTab = (segments[segments.length - 1] ?? '') as string;
-    const isHome = currentTab === 'index' || currentTab === '(tabs)';
+    const isHome = currentTab === 'index' || currentTab === 'accueil' || currentTab === '(tabs)';
 
     const handler = BackHandler.addEventListener('hardwareBackPress', () => {
       if (!isHome) {
@@ -42,14 +42,15 @@ export default function TabLayout() {
         headerShown: false,
       }}
     >
+      <Tabs.Screen name="expenses" />
+      <Tabs.Screen name="trips" />
+      <Tabs.Screen name="index" />
       <Tabs.Screen name="calendar" />
+      <Tabs.Screen name="accueil" />
       <Tabs.Screen name="map" options={{ href: null }} />
       <Tabs.Screen name="projects" options={{ href: null }} />
       <Tabs.Screen name="kanban" options={{ href: null }} />
-      <Tabs.Screen name="expenses" />
-      <Tabs.Screen name="trips" />
-      <Tabs.Screen name="navigation" />
-      <Tabs.Screen name="index" />
+      <Tabs.Screen name="navigation" options={{ href: null }} />
       <Tabs.Screen name="settings" options={{ href: null }} />
     </Tabs>
   );

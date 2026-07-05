@@ -26,22 +26,24 @@ interface TabBarProps {
 }
 
 const TAB_ICONS: Record<string, string> = {
-  index:    'view-dashboard-outline',
-  projects: 'folder-multiple-outline',
-  kanban:   'view-column-outline',
-  expenses: 'bank-outline',
-  calendar: 'calendar-month-outline',
+  index:      'clipboard-list-outline',
+  accueil:    'home-outline',
+  projects:   'folder-multiple-outline',
+  kanban:     'view-column-outline',
+  expenses:   'bank-outline',
+  calendar:   'calendar-month-outline',
   trips:      'road-variant',
   navigation: 'navigation-variant-outline',
   map:        'map-outline',
 };
 
 const TAB_LABELS: Record<string, string> = {
-  index:    'Accueil',
-  projects: 'Projets',
-  kanban:   'Kanban',
-  expenses: 'Finance',
-  calendar: 'Agenda',
+  index:      'Bureau',
+  accueil:    'Accueil',
+  projects:   'Projets',
+  kanban:     'Kanban',
+  expenses:   'Finance',
+  calendar:   'Calendrier',
   trips:      'Trajets',
   navigation: 'Y aller',
   map:        'Carte',
