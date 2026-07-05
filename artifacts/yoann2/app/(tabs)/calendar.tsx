@@ -166,10 +166,10 @@ export default function CalendarScreen() {
           {/* Liste button */}
           <Pressable
             onPress={() => router.push('/appointment-list' as any)}
-            style={[styles.listBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+            hitSlop={8}
+            style={[styles.calHeaderBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
           >
-            <MaterialCommunityIcons name="format-list-bulleted" size={14} color={colors.foreground} />
-            <Text style={[styles.listBtnLabel, { color: colors.foreground }]}>Liste</Text>
+            <MaterialCommunityIcons name="format-list-bulleted" size={18} color={colors.foreground} />
           </Pressable>
 
           {/* Icon buttons */}

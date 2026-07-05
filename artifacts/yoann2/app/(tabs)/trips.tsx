@@ -698,16 +698,14 @@ export default function TripsScreen() {
 
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 8, backgroundColor: colors.background, borderBottomColor: colors.border }]}>
-        <View style={styles.shortcutRow}>
+        <View style={styles.headerActions}>
           <Pressable
             onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/known-places' as any); }}
-            style={[styles.shortcutBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+            hitSlop={8}
+            style={[styles.headerBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
           >
-            <MaterialCommunityIcons name="map-marker-outline" size={15} color={colors.foreground} />
-            <Text style={[styles.shortcutLabel, { color: colors.foreground }]}>Adresse</Text>
+            <MaterialCommunityIcons name="map-marker-outline" size={18} color={colors.mutedForeground} />
           </Pressable>
-        </View>
-        <View style={styles.headerActions}>
           <Pressable
             onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/nav-widget' as any); }}
             hitSlop={8}
