@@ -698,14 +698,29 @@ export default function TripsScreen() {
 
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 8, backgroundColor: colors.background, borderBottomColor: colors.border }]}>
-        <Text style={[styles.headerTitle, { color: colors.foreground }]}>Trajets & Km</Text>
-        <View style={styles.headerActions}>
+        <View style={styles.shortcutRow}>
+          <Pressable
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/known-places' as any); }}
+            style={[styles.shortcutBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+          >
+            <MaterialCommunityIcons name="map-marker-outline" size={15} color={colors.foreground} />
+            <Text style={[styles.shortcutLabel, { color: colors.foreground }]}>Lieux connus</Text>
+          </Pressable>
           <Pressable
             onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/(tabs)/navigation' as any); }}
+            style={[styles.shortcutBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+          >
+            <MaterialCommunityIcons name="navigation-variant-outline" size={15} color={colors.foreground} />
+            <Text style={[styles.shortcutLabel, { color: colors.foreground }]}>Y aller</Text>
+          </Pressable>
+        </View>
+        <View style={styles.headerActions}>
+          <Pressable
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/fuel-log' as any); }}
             hitSlop={8}
             style={[styles.headerBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
           >
-            <MaterialCommunityIcons name="navigation-variant-outline" size={18} color={colors.primary} />
+            <MaterialCommunityIcons name="gas-station" size={18} color={colors.primary} />
           </Pressable>
           <Pressable
             onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/trip-stats' as any); }}
@@ -891,12 +906,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 20, paddingBottom: 10, borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  headerTitle: { fontSize: 22, fontFamily: 'Inter_700Bold' },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   headerBtn: {
     width: 34, height: 34, borderRadius: 10, borderWidth: 1,
     alignItems: 'center', justifyContent: 'center',
   },
+  shortcutRow:  { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 },
+  shortcutBtn:  { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, height: 34, borderRadius: 17, borderWidth: 1 },
+  shortcutLabel: { fontSize: 13, fontFamily: 'Inter_500Medium' },
   matchBtnBadge: { marginLeft: 'auto' as any, fontSize: 12, fontFamily: 'Inter_600SemiBold' },
   mapBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 5,
