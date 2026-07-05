@@ -24,8 +24,13 @@ export default function AppointmentListScreen() {
   const router = useRouter();
   const { appointments } = useApp();
 
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
   const sorted = useMemo(() =>
-    [...appointments].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()),
+    [...appointments]
+      .filter(a => new Date(a.date) >= today)
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()),
     [appointments],
   );
 
