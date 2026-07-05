@@ -468,8 +468,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       let next = prev.map(t => {
         if (t.id !== id) return t;
         const updated = { ...t, ...updates };
-        // Auto-stamp completedAt the first time a task reaches 'done'
-        if (updates.status === 'done' && !t.completedAt) {
+        // Auto-stamp completedAt only when transitioning into 'done' (not on re-saves of already-done tasks)
+        if (updates.status === 'done' && t.status !== 'done') {
           const now = new Date();
           const dd   = String(now.getDate()).padStart(2, '0');
           const mm   = String(now.getMonth() + 1).padStart(2, '0');
@@ -485,7 +485,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       });
       // ── Recurrence: spawn next instance when a recurring task is marked done ──
       const task = prev.find(t => t.id === id);
-      if (task && task.recurrence && updates.status === 'done' && !task.completedAt) {
+      if (task && task.recurrence && updates.status === 'done' && task.status !== 'done') {
         const due = new Date(task.dueDate);
         if (!isNaN(due.getTime())) {
           const nextDue = new Date(due);
