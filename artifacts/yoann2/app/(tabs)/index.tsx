@@ -95,7 +95,7 @@ export default function DashboardScreen() {
   const insets   = useSafeAreaInsets();
   const router   = useRouter();
   const { projects, tasks, appointments, getStats, updateTask } = useApp();
-  const { triggerSplash } = useSplash();
+  useSplash();
 
   const [showPhotos,    setShowPhotos]    = useState(false);
   const [showAppts,     setShowAppts]     = useState(false);
@@ -425,23 +425,24 @@ export default function DashboardScreen() {
         colors={['#1A1500', colors.background]}
         style={[styles.header, { paddingTop: insets.top + 16 }]}
       >
-        <View style={styles.headerRow}>
-          {/* ── Wordmark (tap to replay phoenix) ── */}
-          <Pressable
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-              triggerSplash();
-            }}
-            hitSlop={8}
-          >
-            <View style={styles.wordmarkRow}>
-              <Text style={[styles.wordmarkMain, { color: colors.foreground }]}>YOANN</Text>
-              <Text style={[styles.wordmarkVersion, { color: colors.primary }]}>2.0</Text>
-            </View>
-            <View style={[styles.wordmarkLine, { backgroundColor: colors.primary }]} />
-          </Pressable>
+        <View style={[styles.shortcutRow, { justifyContent: 'space-between' }]}>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <Pressable
+              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/(tabs)/kanban' as any); }}
+              style={[styles.shortcutBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+            >
+              <MaterialCommunityIcons name="view-column-outline" size={15} color={colors.foreground} />
+              <Text style={[styles.shortcutLabel, { color: colors.foreground }]}>Kanban</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/(tabs)/projects' as any); }}
+              style={[styles.shortcutBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+            >
+              <MaterialCommunityIcons name="folder-multiple-outline" size={15} color={colors.foreground} />
+              <Text style={[styles.shortcutLabel, { color: colors.foreground }]}>Projets</Text>
+            </Pressable>
+          </View>
           <View style={styles.headerActions}>
-            {/* Settings */}
             <Pressable
               onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/(tabs)/settings' as any); }}
               hitSlop={6}
@@ -449,17 +450,10 @@ export default function DashboardScreen() {
             >
               <MaterialCommunityIcons name="cog-outline" size={18} color={colors.mutedForeground} />
             </Pressable>
-            {/* Appointments toggle */}
             <Pressable
               onPress={() => { setShowAppts(v => !v); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
               hitSlop={6}
-              style={[
-                styles.iconBtn,
-                {
-                  backgroundColor: showAppts ? '#7C4DFF28' : colors.card,
-                  borderColor: showAppts ? '#7C4DFF' : colors.border,
-                },
-              ]}
+              style={[styles.iconBtn, { backgroundColor: showAppts ? '#7C4DFF28' : colors.card, borderColor: showAppts ? '#7C4DFF' : colors.border }]}
             >
               <MaterialCommunityIcons
                 name={showAppts ? 'calendar-clock' : 'calendar-clock-outline' as any}
@@ -467,17 +461,10 @@ export default function DashboardScreen() {
                 color={showAppts ? '#7C4DFF' : colors.mutedForeground}
               />
             </Pressable>
-            {/* Photo toggle */}
             <Pressable
               onPress={() => { setShowPhotos(v => !v); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
               hitSlop={6}
-              style={[
-                styles.iconBtn,
-                {
-                  backgroundColor: showPhotos ? colors.primary + '28' : colors.card,
-                  borderColor: showPhotos ? colors.primary : colors.border,
-                },
-              ]}
+              style={[styles.iconBtn, { backgroundColor: showPhotos ? colors.primary + '28' : colors.card, borderColor: showPhotos ? colors.primary : colors.border }]}
             >
               <MaterialCommunityIcons
                 name={showPhotos ? 'camera' : 'camera-outline'}
@@ -486,23 +473,6 @@ export default function DashboardScreen() {
               />
             </Pressable>
           </View>
-        </View>
-
-        <View style={styles.shortcutRow}>
-          <Pressable
-            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/(tabs)/kanban' as any); }}
-            style={[styles.shortcutBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
-          >
-            <MaterialCommunityIcons name="view-column-outline" size={15} color={colors.foreground} />
-            <Text style={[styles.shortcutLabel, { color: colors.foreground }]}>Kanban</Text>
-          </Pressable>
-          <Pressable
-            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/(tabs)/projects' as any); }}
-            style={[styles.shortcutBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
-          >
-            <MaterialCommunityIcons name="folder-multiple-outline" size={15} color={colors.foreground} />
-            <Text style={[styles.shortcutLabel, { color: colors.foreground }]}>Projets</Text>
-          </Pressable>
         </View>
 
       </LinearGradient>
