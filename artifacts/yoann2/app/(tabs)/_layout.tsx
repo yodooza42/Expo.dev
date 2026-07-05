@@ -50,7 +50,6 @@ export default function TabLayout() {
       <Tabs.Screen name="map" options={{ href: null }} />
       <Tabs.Screen name="projects" options={{ href: null }} />
       <Tabs.Screen name="kanban" options={{ href: null }} />
-      <Tabs.Screen name="navigation" options={{ href: null }} />
       <Tabs.Screen name="settings" options={{ href: null }} />
     </Tabs>
   );

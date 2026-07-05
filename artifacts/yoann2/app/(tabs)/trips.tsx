@@ -707,11 +707,11 @@ export default function TripsScreen() {
             <Text style={[styles.shortcutLabel, { color: colors.foreground }]}>Lieux connus</Text>
           </Pressable>
           <Pressable
-            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/(tabs)/navigation' as any); }}
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/nav-widget' as any); }}
             style={[styles.shortcutBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
           >
-            <MaterialCommunityIcons name="navigation-variant-outline" size={15} color={colors.foreground} />
-            <Text style={[styles.shortcutLabel, { color: colors.foreground }]}>Y aller</Text>
+            <MaterialCommunityIcons name="widgets-outline" size={15} color={colors.foreground} />
+            <Text style={[styles.shortcutLabel, { color: colors.foreground }]}>Widget Nav</Text>
           </Pressable>
         </View>
         <View style={styles.headerActions}>
