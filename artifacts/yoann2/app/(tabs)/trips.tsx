@@ -704,17 +704,17 @@ export default function TripsScreen() {
             style={[styles.shortcutBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
           >
             <MaterialCommunityIcons name="map-marker-outline" size={15} color={colors.foreground} />
-            <Text style={[styles.shortcutLabel, { color: colors.foreground }]}>Lieux connus</Text>
-          </Pressable>
-          <Pressable
-            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/nav-widget' as any); }}
-            style={[styles.shortcutBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
-          >
-            <MaterialCommunityIcons name="widgets-outline" size={15} color={colors.foreground} />
-            <Text style={[styles.shortcutLabel, { color: colors.foreground }]}>Widget Nav</Text>
+            <Text style={[styles.shortcutLabel, { color: colors.foreground }]}>Adresse</Text>
           </Pressable>
         </View>
         <View style={styles.headerActions}>
+          <Pressable
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/nav-widget' as any); }}
+            hitSlop={8}
+            style={[styles.headerBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+          >
+            <MaterialCommunityIcons name="widgets-outline" size={18} color={colors.mutedForeground} />
+          </Pressable>
           <Pressable
             onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/fuel-log' as any); }}
             hitSlop={8}
