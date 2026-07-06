@@ -218,6 +218,12 @@ async function buildLocationOptions(
     accuracy: isActive ? Location.Accuracy.High : Location.Accuracy.Balanced,
     timeInterval: isActive ? 3_000 : baseInterval.timeIntervalMs,
     distanceInterval: isActive ? 2 : baseInterval.distanceIntervalM,
+    // Automotive navigation hint: tells FLP this is a navigation use-case so it
+    // never throttles or pauses updates on its own (critical for widget trips).
+    ...(isActive && {
+      activityType: Location.ActivityType.AutomotiveNavigation,
+      pausesLocationUpdatesAutomatically: false,
+    }),
     showsBackgroundLocationIndicator: true,
     foregroundService: {
       notificationTitle: isActive ? 'Yoann2.0 — Trajet en cours' : 'Yoann2.0',
@@ -282,17 +288,10 @@ export async function startManualTracking(): Promise<void> {
     await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME);
   }
 
-  await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
-    accuracy: Location.Accuracy.Balanced,
-    timeInterval: 15_000,
-    distanceInterval: 50,
-    showsBackgroundLocationIndicator: true,
-    foregroundService: {
-      notificationTitle: 'Yoann2.0 — Trajet en cours',
-      notificationBody: 'Suivi GPS manuel actif',
-      notificationColor: '#FFC107',
-    },
-  });
+  // Use the same high-accuracy active options as the auto-tracking mode:
+  // Accuracy.High (real GPS chip), 3s/2m intervals, automotive navigation hint.
+  const opts = await buildLocationOptions('active');
+  await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, opts);
 }
 
 // ── Background task definition ────────────────────────────────────────────────

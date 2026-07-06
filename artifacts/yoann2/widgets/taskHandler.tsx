@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 import * as Notifications from 'expo-notifications';
 import React from 'react';
+import { Platform } from 'react-native';
 import { requestWidgetUpdate } from 'react-native-android-widget';
 import type { WidgetTaskHandlerProps } from 'react-native-android-widget';
 
@@ -29,6 +30,29 @@ import { TodoWidget } from './TodoWidget';
 const SPIN_FRAMES   = 8;    // frames
 const SPIN_INTERVAL = 250;  // ms per frame  →  8 × 250 = 2 s
 const SPIN_TOTAL    = 720;  // degrees  →  2 full rotations
+
+const BATTERY_OPT_PROMPTED_KEY = '@yoann2_battery_opt_prompted';
+
+// Sends a one-time notification asking the user to exempt the app from battery
+// optimisation (Samsung One UI kills background foreground services otherwise).
+async function maybeSuggestBatteryOptimization(): Promise<void> {
+  if (Platform.OS !== 'android') return;
+  try {
+    const already = await AsyncStorage.getItem(BATTERY_OPT_PROMPTED_KEY);
+    if (already === '1') return;
+    await AsyncStorage.setItem(BATTERY_OPT_PROMPTED_KEY, '1');
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: 'Trajet GPS — action recommandée',
+        body: 'Pour éviter les coupures GPS, exemptez Yoann2.0 de l\'optimisation batterie. Appuyez pour ouvrir le réglage.',
+        data: { action: 'battery_optimization' },
+      },
+      trigger: null,
+    });
+  } catch {
+    // best-effort
+  }
+}
 
 async function renderNavWidget(
   renderWidget: WidgetTaskHandlerProps['renderWidget'],
@@ -58,10 +82,14 @@ async function renderNavWidget(
 async function handleManualTripStart(
   renderWidget: WidgetTaskHandlerProps['renderWidget'],
 ): Promise<void> {
+  // One-time battery optimisation prompt (Samsung One UI kills FG services).
+  await maybeSuggestBatteryOptimization();
+
   try {
+    // High accuracy (real GPS chip) + 12 s timeout to let the chip converge.
     const loc = await Promise.race<Location.LocationObject | null>([
-      Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
-      new Promise<null>(resolve => setTimeout(() => resolve(null), 8_000)),
+      Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High }),
+      new Promise<null>(resolve => setTimeout(() => resolve(null), 12_000)),
     ]);
 
     await saveManualTripState({
@@ -94,10 +122,10 @@ async function handleManualTripEnd(
 
   const endTime = Date.now();
 
-  // Position de fin
+  // Position de fin — High accuracy + 12 s pour laisser la puce GPS converger.
   const endLoc = await Promise.race<Location.LocationObject | null>([
-    Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
-    new Promise<null>(resolve => setTimeout(() => resolve(null), 8_000)),
+    Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High }),
+    new Promise<null>(resolve => setTimeout(() => resolve(null), 12_000)),
   ]).catch(() => null);
 
   const endLat = endLoc?.coords.latitude ?? manualState.startLat;

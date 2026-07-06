@@ -6,11 +6,12 @@ import {
   useFonts,
 } from '@expo-google-fonts/inter';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import * as IntentLauncher from 'expo-intent-launcher';
 import * as Notifications from 'expo-notifications';
 import { useRouter, Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, AppState } from 'react-native';
+import { Alert, AppState, Platform } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -114,6 +115,21 @@ function RootLayoutNav() {
   useEffect(() => {
     const sub = Notifications.addNotificationResponseReceivedListener(response => {
       const data = response.notification.request.content.data;
+      const action = data?.action as string | undefined;
+      if (action === 'battery_optimization' && Platform.OS === 'android') {
+        // Open the system dialog / app battery settings so the user can exempt
+        // Yoann2.0 from battery optimisation (prevents One UI killing the GPS).
+        IntentLauncher.startActivityAsync(
+          'android.settings.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS',
+          { data: 'package:com.yoann2.app' },
+        ).catch(() => {
+          // Fallback: open generic battery settings if the direct intent fails.
+          IntentLauncher.startActivityAsync(
+            IntentLauncher.ActivityAction.BATTERY_SAVER_SETTINGS,
+          ).catch(() => {});
+        });
+        return;
+      }
       const url = data?.url as string | undefined;
       if (url) router.push(url as any);
     });
