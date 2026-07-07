@@ -12,7 +12,6 @@ import { haversineKm } from '@/utils/haversine';
 import { genId } from '@/utils/ids';
 import {
   dateKey,
-  dismissLiveNotification,
   loadDayPoints,
   resetTripTracking,
   startManualTracking,
@@ -136,7 +135,7 @@ async function handleManualTripPause(
   );
 
   await saveManualTripState({ ...state, paused: true, segments });
-  await dismissLiveNotification();
+  // stopTracking() ci-dessus a arrêté le foreground service → notification disparaît automatiquement
 
   await renderNavWidget(renderWidget, 'paused');
 }
@@ -169,9 +168,8 @@ async function handleManualTripEnd(
 ): Promise<void> {
   const manualState = await getManualTripState();
 
-  // GPS et notification live en tout état de cause
+  // GPS en tout état de cause (la notification foreground disparaît avec le service)
   await stopTracking().catch(() => {});
-  await dismissLiveNotification();
 
   if (!manualState) {
     await clearManualTripState();

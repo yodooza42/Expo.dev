@@ -1,6 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
-import * as Notifications from 'expo-notifications';
 import * as TaskManager from 'expo-task-manager';
 
 import { autoBackup } from '@/utils/locationBackup';
@@ -14,25 +13,34 @@ const KEY_PREFIX = '@yoann2_location_';
 const MAX_DAYS = 7;
 
 // ── Live trip notification ────────────────────────────────────────────────────
-export const LIVE_NOTIF_ID_KEY = '@yoann2_live_notif_id';
-const NOTIF_INTERVAL_MS = 30_000; // mise à jour notification toutes les 30s
-
-// Accumulateurs en mémoire (réinitialisés sur resetTripTracking ou redémarrage)
+// Distance accumulée en mémoire — réinitialisée sur resetTripTracking()
+// ou redémarrage du processus (foreground service reste vivant via Samsung One UI).
 let _tripDistKm = 0;
-let _lastNotifTs = 0;
 
 export function resetTripTracking(): void {
   _tripDistKm = 0;
-  _lastNotifTs = 0;
 }
 
-export async function dismissLiveNotification(): Promise<void> {
+// Met à jour le texte de la notification du foreground service sans recréer
+// de notification et sans arrêter le GPS : startLocationUpdatesAsync sur une
+// tâche déjà enregistrée ne fait que patcher les options (incl. le titre/corps).
+async function updateForegroundNotification(body: string): Promise<void> {
   try {
-    const id = await AsyncStorage.getItem(LIVE_NOTIF_ID_KEY);
-    if (id) {
-      await Notifications.dismissNotificationAsync(id).catch(() => {});
-      await AsyncStorage.removeItem(LIVE_NOTIF_ID_KEY);
-    }
+    const isRegistered = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME).catch(() => false);
+    if (!isRegistered) return;
+    await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
+      accuracy: Location.Accuracy.High,
+      timeInterval: 3_000,
+      distanceInterval: 2,
+      activityType: Location.ActivityType.AutomotiveNavigation,
+      pausesUpdatesAutomatically: false,
+      showsBackgroundLocationIndicator: true,
+      foregroundService: {
+        notificationTitle: 'Yoann2.0 — Trajet en cours',
+        notificationBody: body,
+        notificationColor: '#FFC107',
+      },
+    });
   } catch {}
 }
 
@@ -246,7 +254,7 @@ async function buildLocationOptions(
     // never throttles or pauses updates on its own (critical for widget trips).
     ...(isActive && {
       activityType: Location.ActivityType.AutomotiveNavigation,
-      pausesLocationUpdatesAutomatically: false,
+      pausesUpdatesAutomatically: false,
     }),
     showsBackgroundLocationIndicator: true,
     foregroundService: {
@@ -381,50 +389,31 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
       await processPointForTrip(point).catch(() => {});
     }
 
-    // ── Suivi distance trajet manuel (actif, non en pause) ──────────────────
+    // ── Suivi distance + notification foreground live ────────────────────────
     if (manualActive && !manualPaused && lastValid) {
       _tripDistKm += haversineKm(lastValid.lat, lastValid.lng, lat, lng);
+
+      // Durée active = somme des segments (pauses exclues)
+      const segs = manualParsed?.segments ?? [];
+      let activeMs = 0;
+      for (const s of segs) {
+        activeMs += (s.end ?? timestamp) - s.start;
+      }
+      const hh = Math.floor(activeMs / 3_600_000);
+      const mm = Math.floor((activeMs % 3_600_000) / 60_000);
+      const ss = Math.floor((activeMs % 60_000) / 1_000);
+      const durationStr = hh > 0
+        ? `${hh}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`
+        : `${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
+
+      // Patch le texte du foreground service sans recréer de notification ni arrêter le GPS
+      await updateForegroundNotification(`${_tripDistKm.toFixed(2)} km · ${durationStr}`);
     }
 
     lastValid = point;
     try {
       await AsyncStorage.setItem(LAST_VALID_KEY, JSON.stringify(point));
     } catch {}
-
-    // ── Notification live toutes les 30s ────────────────────────────────────
-    if (manualActive && !manualPaused) {
-      const now = Date.now();
-      if (now - _lastNotifTs >= NOTIF_INTERVAL_MS) {
-        _lastNotifTs = now;
-        try {
-          // Durée active = somme des segments (pauses exclues)
-          const segs = manualParsed?.segments ?? [];
-          let activeMs = 0;
-          for (const s of segs) {
-            activeMs += (s.end ?? now) - s.start;
-          }
-          const hh = Math.floor(activeMs / 3_600_000);
-          const mm = Math.floor((activeMs % 3_600_000) / 60_000);
-          const durationStr = hh > 0
-            ? `${hh}h${String(mm).padStart(2, '0')}`
-            : `${mm} min`;
-
-          // Remplacer la notification précédente
-          const prevId = await AsyncStorage.getItem(LIVE_NOTIF_ID_KEY).catch(() => null);
-          if (prevId) await Notifications.dismissNotificationAsync(prevId).catch(() => {});
-
-          const notifId = await Notifications.scheduleNotificationAsync({
-            content: {
-              title: 'Trajet en cours — Yoann 2.0',
-              body: `${_tripDistKm.toFixed(1)} km · ${durationStr}`,
-              data: { type: 'trip_progress' },
-            },
-            trigger: null,
-          });
-          await AsyncStorage.setItem(LIVE_NOTIF_ID_KEY, notifId);
-        } catch {}
-      }
-    }
   }
 
   await purgeOldData();
