@@ -11,6 +11,7 @@ const PRIMARY: ColorProp = '#FFC107';
 const TEXT: ColorProp    = '#FFFFFF';
 const MUTED: ColorProp   = '#9E9E9E';
 const GREEN: ColorProp   = '#4CAF50';
+const ORANGE: ColorProp  = '#FF9800';
 const RED: ColorProp     = '#F44336';
 const SCHEME = 'yoann2';
 
@@ -23,13 +24,12 @@ export interface TodayApptNav {
 
 export function NavigationWidget({
   shortcuts,
-  manualTripActive = false,
+  tripStatus = 'idle',
 }: {
   shortcuts: NavShortcut[];
   todayAppt?: TodayApptNav | null;
-  manualTripActive?: boolean;
+  tripStatus?: 'idle' | 'active' | 'paused';
 }) {
-  // 2 shortcut slots + TripButton + FuelButton = 4 columns
   const slots: (NavShortcut | null)[] = Array.from({ length: 2 }, (_, i) => shortcuts[i] ?? null);
 
   return (
@@ -46,7 +46,7 @@ export function NavigationWidget({
     >
       <ShortcutButton slot={slots[0] ?? null} />
       <ShortcutButton slot={slots[1] ?? null} />
-      <TripButton active={manualTripActive} />
+      <TripButton status={tripStatus} />
       <FuelButton />
     </FlexWidget>
   );
@@ -97,14 +97,78 @@ function ShortcutButton({ slot }: { slot: NavShortcut | null }) {
   );
 }
 
-function TripButton({ active }: { active: boolean }) {
+function TripButton({ status }: { status: 'idle' | 'active' | 'paused' }) {
+  if (status === 'paused') {
+    // État pause : deux boutons côte à côte (Reprendre + Terminer), flex:2
+    return (
+      <FlexWidget
+        style={{
+          flex: 2,
+          height: 'match_parent',
+          flexDirection: 'row',
+          flexGap: 4,
+        }}
+      >
+        <FlexWidget
+          clickAction="MANUAL_TRIP_RESUME"
+          style={{
+            flex: 1,
+            height: 'match_parent',
+            backgroundColor: '#1A2A1A',
+            borderRadius: 10,
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexDirection: 'column',
+            padding: 4,
+            flexGap: 2,
+          }}
+        >
+          <TextWidget
+            text="▶"
+            style={{ fontSize: 20, color: GREEN, fontFamily: 'sans-serif-medium' }}
+          />
+          <TextWidget
+            text="Reprendre"
+            style={{ fontSize: 9, color: GREEN, fontFamily: 'sans-serif' }}
+          />
+        </FlexWidget>
+
+        <FlexWidget
+          clickAction="MANUAL_TRIP_END"
+          style={{
+            flex: 1,
+            height: 'match_parent',
+            backgroundColor: '#2A1A1A',
+            borderRadius: 10,
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexDirection: 'column',
+            padding: 4,
+            flexGap: 2,
+          }}
+        >
+          <TextWidget
+            text="⏹"
+            style={{ fontSize: 20, color: RED, fontFamily: 'sans-serif-medium' }}
+          />
+          <TextWidget
+            text="Terminer"
+            style={{ fontSize: 9, color: RED, fontFamily: 'sans-serif' }}
+          />
+        </FlexWidget>
+      </FlexWidget>
+    );
+  }
+
+  // États idle et active : un seul bouton, flex:1
+  const isActive = status === 'active';
   return (
     <FlexWidget
-      clickAction={active ? 'MANUAL_TRIP_END' : 'MANUAL_TRIP_START'}
+      clickAction={isActive ? 'MANUAL_TRIP_PAUSE' : 'MANUAL_TRIP_START'}
       style={{
         flex: 1,
         height: 'match_parent',
-        backgroundColor: active ? '#1A2A1A' : '#1A1A2A',
+        backgroundColor: isActive ? '#1A2200' : '#1A1A2A',
         borderRadius: 10,
         alignItems: 'center',
         justifyContent: 'center',
@@ -114,18 +178,18 @@ function TripButton({ active }: { active: boolean }) {
       }}
     >
       <TextWidget
-        text={active ? '⏹' : '▶'}
+        text={isActive ? '⏸' : '▶'}
         style={{
           fontSize: 22,
-          color: active ? RED : GREEN,
+          color: isActive ? ORANGE : GREEN,
           fontFamily: 'sans-serif-medium',
         }}
       />
       <TextWidget
-        text={active ? 'Fin' : 'Départ'}
+        text={isActive ? 'Pause' : 'Départ'}
         style={{
           fontSize: 10,
-          color: active ? RED : GREEN,
+          color: isActive ? ORANGE : GREEN,
           fontFamily: 'sans-serif',
         }}
       />

@@ -2,19 +2,19 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import React from 'react';
 import { requestWidgetUpdate } from 'react-native-android-widget';
 
+import { getManualTripStatus } from '@/utils/manualTripStorage';
 import { getNavShortcuts } from '@/utils/navigationShortcuts';
-import { isManualTripActive } from '@/utils/manualTripStorage';
 import type { TodayApptNav } from './NavigationWidget';
 import { NavigationWidget } from './NavigationWidget';
 
 export async function updateNavWidget(): Promise<void> {
   try {
-    const [shortcuts, rawAppts, manualTripActive] = await Promise.all([
+    const [shortcuts, rawAppts, tripStatus] = await Promise.all([
       getNavShortcuts(),
       AsyncStorage.getItem('@yoann2_appointments')
         .then(r => (r ? (JSON.parse(r) as any[]) : []))
         .catch(() => [] as any[]),
-      isManualTripActive(),
+      getManualTripStatus(),
     ]);
 
     const todayStr = new Date().toISOString().slice(0, 10);
@@ -39,7 +39,7 @@ export async function updateNavWidget(): Promise<void> {
         <NavigationWidget
           shortcuts={shortcuts}
           todayAppt={todayAppt}
-          manualTripActive={manualTripActive}
+          tripStatus={tripStatus}
         />
       ),
       widgetNotFound: () => {},

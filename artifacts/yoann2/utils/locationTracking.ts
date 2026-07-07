@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
+import * as Notifications from 'expo-notifications';
 import * as TaskManager from 'expo-task-manager';
 
 import { autoBackup } from '@/utils/locationBackup';
@@ -11,6 +12,29 @@ export { haversineKm };
 export const LOCATION_TASK_NAME = 'background-location-task';
 const KEY_PREFIX = '@yoann2_location_';
 const MAX_DAYS = 7;
+
+// ── Live trip notification ────────────────────────────────────────────────────
+export const LIVE_NOTIF_ID_KEY = '@yoann2_live_notif_id';
+const NOTIF_INTERVAL_MS = 30_000; // mise à jour notification toutes les 30s
+
+// Accumulateurs en mémoire (réinitialisés sur resetTripTracking ou redémarrage)
+let _tripDistKm = 0;
+let _lastNotifTs = 0;
+
+export function resetTripTracking(): void {
+  _tripDistKm = 0;
+  _lastNotifTs = 0;
+}
+
+export async function dismissLiveNotification(): Promise<void> {
+  try {
+    const id = await AsyncStorage.getItem(LIVE_NOTIF_ID_KEY);
+    if (id) {
+      await Notifications.dismissNotificationAsync(id).catch(() => {});
+      await AsyncStorage.removeItem(LIVE_NOTIF_ID_KEY);
+    }
+  } catch {}
+}
 
 export type ActivityType = 'walk' | 'car' | 'unknown';
 
@@ -317,9 +341,10 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
 
   // ── Vérification trajet manuel (une seule lecture par batch) ─────────────────
   const manualRaw = await AsyncStorage.getItem('@yoann2_manual_trip').catch(() => null);
-  const manualActive = manualRaw
-    ? (JSON.parse(manualRaw) as { active?: boolean }).active === true
-    : false;
+  type ManualRaw = { active?: boolean; paused?: boolean; startTime?: number; segments?: { start: number; end?: number }[] };
+  const manualParsed: ManualRaw | null = manualRaw ? (JSON.parse(manualRaw) as ManualRaw) : null;
+  const manualActive = manualParsed?.active === true;
+  const manualPaused = manualParsed?.paused === true;
 
   // ── Process each location ───────────────────────────────────────────────────
   for (const loc of locations) {
@@ -355,10 +380,51 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
     if (!manualActive) {
       await processPointForTrip(point).catch(() => {});
     }
+
+    // ── Suivi distance trajet manuel (actif, non en pause) ──────────────────
+    if (manualActive && !manualPaused && lastValid) {
+      _tripDistKm += haversineKm(lastValid.lat, lastValid.lng, lat, lng);
+    }
+
     lastValid = point;
     try {
       await AsyncStorage.setItem(LAST_VALID_KEY, JSON.stringify(point));
     } catch {}
+
+    // ── Notification live toutes les 30s ────────────────────────────────────
+    if (manualActive && !manualPaused) {
+      const now = Date.now();
+      if (now - _lastNotifTs >= NOTIF_INTERVAL_MS) {
+        _lastNotifTs = now;
+        try {
+          // Durée active = somme des segments (pauses exclues)
+          const segs = manualParsed?.segments ?? [];
+          let activeMs = 0;
+          for (const s of segs) {
+            activeMs += (s.end ?? now) - s.start;
+          }
+          const hh = Math.floor(activeMs / 3_600_000);
+          const mm = Math.floor((activeMs % 3_600_000) / 60_000);
+          const durationStr = hh > 0
+            ? `${hh}h${String(mm).padStart(2, '0')}`
+            : `${mm} min`;
+
+          // Remplacer la notification précédente
+          const prevId = await AsyncStorage.getItem(LIVE_NOTIF_ID_KEY).catch(() => null);
+          if (prevId) await Notifications.dismissNotificationAsync(prevId).catch(() => {});
+
+          const notifId = await Notifications.scheduleNotificationAsync({
+            content: {
+              title: 'Trajet en cours — Yoann 2.0',
+              body: `${_tripDistKm.toFixed(1)} km · ${durationStr}`,
+              data: { type: 'trip_progress' },
+            },
+            trigger: null,
+          });
+          await AsyncStorage.setItem(LIVE_NOTIF_ID_KEY, notifId);
+        } catch {}
+      }
+    }
   }
 
   await purgeOldData();

@@ -10,11 +10,18 @@ import type { RoutePoint, Trip } from '@/types/trips';
 import { reverseGeocode } from '@/utils/geocoding';
 import { haversineKm } from '@/utils/haversine';
 import { genId } from '@/utils/ids';
-import { dateKey, loadDayPoints, startManualTracking, stopTracking } from '@/utils/locationTracking';
+import {
+  dateKey,
+  dismissLiveNotification,
+  loadDayPoints,
+  resetTripTracking,
+  startManualTracking,
+  stopTracking,
+} from '@/utils/locationTracking';
 import {
   clearManualTripState,
   getManualTripState,
-  isManualTripActive,
+  getManualTripStatus,
   saveManualTripState,
 } from '@/utils/manualTripStorage';
 import { getNavShortcuts } from '@/utils/navigationShortcuts';
@@ -27,14 +34,12 @@ import type { TodayApptNav } from './NavigationWidget';
 import { NavigationWidget } from './NavigationWidget';
 import { TodoWidget } from './TodoWidget';
 
-const SPIN_FRAMES   = 8;    // frames
-const SPIN_INTERVAL = 250;  // ms per frame  →  8 × 250 = 2 s
-const SPIN_TOTAL    = 720;  // degrees  →  2 full rotations
+const SPIN_FRAMES   = 8;
+const SPIN_INTERVAL = 250;
+const SPIN_TOTAL    = 720;
 
 const BATTERY_OPT_PROMPTED_KEY = '@yoann2_battery_opt_prompted';
 
-// Sends a one-time notification asking the user to exempt the app from battery
-// optimisation (Samsung One UI kills background foreground services otherwise).
 async function maybeSuggestBatteryOptimization(): Promise<void> {
   if (Platform.OS !== 'android') return;
   try {
@@ -49,14 +54,12 @@ async function maybeSuggestBatteryOptimization(): Promise<void> {
       },
       trigger: null,
     });
-  } catch {
-    // best-effort
-  }
+  } catch {}
 }
 
 async function renderNavWidget(
   renderWidget: WidgetTaskHandlerProps['renderWidget'],
-  manualTripActive: boolean,
+  tripStatus: 'idle' | 'active' | 'paused',
 ): Promise<void> {
   const [shortcuts, rawAppts] = await Promise.all([
     getNavShortcuts(),
@@ -76,53 +79,117 @@ async function renderNavWidget(
   const todayAppt: TodayApptNav | null = todayApptRaw
     ? { title: todayApptRaw.title, time: todayApptRaw.time ?? '', lat: todayApptRaw.addressLat, lng: todayApptRaw.addressLng }
     : null;
-  renderWidget(<NavigationWidget shortcuts={shortcuts} todayAppt={todayAppt} manualTripActive={manualTripActive} />);
+  renderWidget(<NavigationWidget shortcuts={shortcuts} todayAppt={todayAppt} tripStatus={tripStatus} />);
 }
+
+// ── START ──────────────────────────────────────────────────────────────────────
 
 async function handleManualTripStart(
   renderWidget: WidgetTaskHandlerProps['renderWidget'],
 ): Promise<void> {
-  // One-time battery optimisation prompt (Samsung One UI kills FG services).
   await maybeSuggestBatteryOptimization();
 
+  resetTripTracking();
+
   try {
-    // High accuracy (real GPS chip) + 12 s timeout to let the chip converge.
     const loc = await Promise.race<Location.LocationObject | null>([
       Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High }),
       new Promise<null>(resolve => setTimeout(() => resolve(null), 12_000)),
     ]);
 
+    const now = Date.now();
     await saveManualTripState({
       active: true,
-      startTime: Date.now(),
+      paused: false,
+      startTime: now,
       startLat: loc?.coords.latitude ?? 0,
       startLon: loc?.coords.longitude ?? 0,
+      segments: [{ start: now }],
     });
 
     await startManualTracking();
   } catch {
     // ignore — trip state saved, GPS best-effort
   }
-  await renderNavWidget(renderWidget, true);
+  await renderNavWidget(renderWidget, 'active');
 }
+
+// ── PAUSE ──────────────────────────────────────────────────────────────────────
+
+async function handleManualTripPause(
+  renderWidget: WidgetTaskHandlerProps['renderWidget'],
+): Promise<void> {
+  const state = await getManualTripState();
+  if (!state || !state.active || state.paused) {
+    const status = await getManualTripStatus();
+    await renderNavWidget(renderWidget, status);
+    return;
+  }
+
+  // Arrêt GPS immédiat
+  await stopTracking().catch(() => {});
+
+  // Clore le segment courant
+  const now = Date.now();
+  const segments = state.segments.map((s, i) =>
+    i === state.segments.length - 1 && !s.end ? { ...s, end: now } : s
+  );
+
+  await saveManualTripState({ ...state, paused: true, segments });
+  await dismissLiveNotification();
+
+  await renderNavWidget(renderWidget, 'paused');
+}
+
+// ── RESUME ─────────────────────────────────────────────────────────────────────
+
+async function handleManualTripResume(
+  renderWidget: WidgetTaskHandlerProps['renderWidget'],
+): Promise<void> {
+  const state = await getManualTripState();
+  if (!state || !state.active || !state.paused) {
+    const status = await getManualTripStatus();
+    await renderNavWidget(renderWidget, status);
+    return;
+  }
+
+  const now = Date.now();
+  const segments = [...state.segments, { start: now }];
+
+  await saveManualTripState({ ...state, paused: false, segments });
+  await startManualTracking();
+
+  await renderNavWidget(renderWidget, 'active');
+}
+
+// ── END ────────────────────────────────────────────────────────────────────────
 
 async function handleManualTripEnd(
   renderWidget: WidgetTaskHandlerProps['renderWidget'],
 ): Promise<void> {
   const manualState = await getManualTripState();
 
-  // Arrêt GPS en tout état de cause
+  // GPS et notification live en tout état de cause
   await stopTracking().catch(() => {});
+  await dismissLiveNotification();
 
   if (!manualState) {
     await clearManualTripState();
-    await renderNavWidget(renderWidget, false);
+    await renderNavWidget(renderWidget, 'idle');
     return;
   }
 
   const endTime = Date.now();
 
-  // Position de fin — High accuracy + 12 s pour laisser la puce GPS converger.
+  // Clore le segment courant si le trajet n'était pas déjà en pause
+  let segments = manualState.segments;
+  if (!manualState.paused && segments.length > 0) {
+    segments = segments.map((s, i) =>
+      i === segments.length - 1 && !s.end ? { ...s, end: endTime } : s
+    );
+  }
+
+  // Position de fin
   const endLoc = await Promise.race<Location.LocationObject | null>([
     Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High }),
     new Promise<null>(resolve => setTimeout(() => resolve(null), 12_000)),
@@ -131,7 +198,7 @@ async function handleManualTripEnd(
   const endLat = endLoc?.coords.latitude ?? manualState.startLat;
   const endLon = endLoc?.coords.longitude ?? manualState.startLon;
 
-  // Récupération des points GPS enregistrés entre Start et End
+  // Points GPS : filtrés sur les segments actifs uniquement (GPS coupé pendant pauses)
   const today = dateKey(new Date());
   const yesterday = dateKey(new Date(endTime - 86_400_000));
   const [todayPts, yesterdayPts] = await Promise.all([
@@ -139,11 +206,18 @@ async function handleManualTripEnd(
     loadDayPoints(yesterday),
   ]);
 
-  const rawPts = [...yesterdayPts, ...todayPts]
-    .filter(p => p.timestamp >= manualState.startTime && p.timestamp <= endTime)
-    .sort((a, b) => a.timestamp - b.timestamp);
+  const allPts = [...yesterdayPts, ...todayPts].sort((a, b) => a.timestamp - b.timestamp);
 
-  // Construction de la route (points GPS + fix de départ/arrivée)
+  const rawPts = allPts.filter(p => {
+    if (segments.length === 0) {
+      return p.timestamp >= manualState.startTime && p.timestamp <= endTime;
+    }
+    return segments.some(s =>
+      p.timestamp >= s.start && p.timestamp <= (s.end ?? endTime)
+    );
+  });
+
+  // Construction de la route (points GPS + fix départ/arrivée)
   let routePoints: RoutePoint[] = rawPts.map(p => ({ lat: p.lat, lng: p.lng }));
   if (routePoints.length === 0 || routePoints[0]!.lat !== manualState.startLat) {
     routePoints = [{ lat: manualState.startLat, lng: manualState.startLon }, ...routePoints];
@@ -164,7 +238,10 @@ async function handleManualTripEnd(
   if (osrmRoute && osrmRoute.length >= 2) {
     distanceKm = computeRouteDistanceKm(osrmRoute);
   } else {
-    distanceKm = haversineKm(manualState.startLat, manualState.startLon, endLat, endLon);
+    // Fallback : somme haversine des points bruts (respecte les virages)
+    distanceKm = rawPts.length >= 2
+      ? computeRouteDistanceKm(rawPts.map(p => ({ lat: p.lat, lng: p.lng })))
+      : haversineKm(manualState.startLat, manualState.startLon, endLat, endLon);
   }
 
   const finalRoute = simplifyRoute(osrmRoute ?? routePoints);
@@ -182,6 +259,7 @@ async function handleManualTripEnd(
     endLon,
     route: finalRoute,
     routeSource: osrmRoute ? 'osrm' : 'gps',
+    source: 'manual',
   };
 
   // Géocodage start + end
@@ -214,33 +292,39 @@ async function handleManualTripEnd(
     trigger: null,
   }).catch(() => {});
 
+  resetTripTracking();
   await clearManualTripState();
-  await renderNavWidget(renderWidget, false);
+  await renderNavWidget(renderWidget, 'idle');
 }
+
+// ── Widget task handler ────────────────────────────────────────────────────────
 
 export async function widgetTaskHandler(props: WidgetTaskHandlerProps): Promise<void> {
   const { widgetInfo, widgetAction, clickAction, renderWidget } = props;
   const widgetName = widgetInfo.widgetName;
 
-  // ── NavigationWidget ────────────────────────────────────────────────────────
   if (widgetName === 'NavigationWidget') {
     switch (widgetAction) {
       case 'WIDGET_ADDED':
       case 'WIDGET_UPDATE':
       case 'WIDGET_RESIZED': {
-        const manualTripActive = await isManualTripActive();
-        await renderNavWidget(renderWidget, manualTripActive);
+        const tripStatus = await getManualTripStatus();
+        await renderNavWidget(renderWidget, tripStatus);
         break;
       }
 
       case 'WIDGET_CLICK': {
         if (clickAction === 'MANUAL_TRIP_START') {
           await handleManualTripStart(renderWidget);
+        } else if (clickAction === 'MANUAL_TRIP_PAUSE') {
+          await handleManualTripPause(renderWidget);
+        } else if (clickAction === 'MANUAL_TRIP_RESUME') {
+          await handleManualTripResume(renderWidget);
         } else if (clickAction === 'MANUAL_TRIP_END') {
           await handleManualTripEnd(renderWidget);
         } else {
-          const manualTripActive = await isManualTripActive();
-          await renderNavWidget(renderWidget, manualTripActive);
+          const tripStatus = await getManualTripStatus();
+          await renderNavWidget(renderWidget, tripStatus);
         }
         break;
       }
@@ -251,7 +335,7 @@ export async function widgetTaskHandler(props: WidgetTaskHandlerProps): Promise<
     return;
   }
 
-  // ── TodoWidget (default) ────────────────────────────────────────────────────
+  // ── TodoWidget (default) ───────────────────────────────────────────────────
   switch (widgetAction) {
     case 'WIDGET_ADDED':
     case 'WIDGET_UPDATE':
@@ -265,10 +349,8 @@ export async function widgetTaskHandler(props: WidgetTaskHandlerProps): Promise<
       const data = await getWidgetDataFromStorage();
 
       if (clickAction === 'REFRESH') {
-        // Frame 0 — render immediately via the current task slot
         renderWidget(<TodoWidget {...data} spinAngle={0} />);
 
-        // Frames 1–8 — push updates at SPIN_INTERVAL cadence
         for (let i = 1; i <= SPIN_FRAMES; i++) {
           await new Promise<void>(res => setTimeout(res, SPIN_INTERVAL));
           const angle = (i / SPIN_FRAMES) * SPIN_TOTAL;
@@ -279,7 +361,6 @@ export async function widgetTaskHandler(props: WidgetTaskHandlerProps): Promise<
           });
         }
 
-        // Final frame — snap back to 0°
         await requestWidgetUpdate({
           widgetName: 'TodoWidget',
           renderWidget: () => <TodoWidget {...data} spinAngle={0} />,
