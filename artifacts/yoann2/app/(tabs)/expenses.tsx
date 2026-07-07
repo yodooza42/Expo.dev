@@ -28,16 +28,20 @@ import {
   addRecurringTransfer,
   addTransaction,
   BankTransaction,
+  CategoryConfig,
   computeCurrentBalance,
+  DEFAULT_CATEGORY_CONFIGS,
   deleteRecurringExpense,
   deleteRecurringTransfer,
   deleteTransaction,
   EXPENSE_CATEGORIES,
+  getCategoryConfigs,
   getRecurringExpenses,
   getRecurringTransfers,
   getSavingsBalance,
   getTransactions,
   INCOME_CATEGORIES,
+  matchCategoryByKeyword,
   processRecurringExpenses,
   processRecurringTransfers,
   RecurringExpense,
@@ -154,9 +158,13 @@ export default function FinanceScreen() {
   const [recurringExpenseStart, setRecurringExpenseStart] = useState<Date>(new Date());
   const [showRecExpDatePicker, setShowRecExpDatePicker] = useState(false);
 
+  const [categoryConfigs, setCategoryConfigs] = useState<CategoryConfig[]>(DEFAULT_CATEGORY_CONFIGS);
+  const categoryLockedRef = useRef(false);
+
   const slideAnim = useRef(new Animated.Value(0)).current;
 
   async function load() {
+    getCategoryConfigs().then(setCategoryConfigs);
     await Promise.all([processRecurringTransfers(), processRecurringExpenses(), processMarketRecurrings()]);
     const [txs, sav, shown, recs, recExps, mktAssets, mktOps] = await Promise.all([
       getTransactions(),
@@ -301,6 +309,7 @@ export default function FinanceScreen() {
       } else {
         setNoteTaskId(null);
       }
+      categoryLockedRef.current = true;
       setForm({
         type: tx.type,
         amount: tx.amount.toString(),
@@ -315,6 +324,7 @@ export default function FinanceScreen() {
         })(),
       });
     } else {
+      categoryLockedRef.current = false;
       setEditId(null);
       setNoteProjId(null);
       setForm({ ...EMPTY_FORM, type });
@@ -496,7 +506,11 @@ export default function FinanceScreen() {
     load();
   }
 
-  const categories = form.type === 'income' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES;
+  const categories: string[] = (() => {
+    if (form.type !== 'income' && form.type !== 'expense') return [];
+    const names = categoryConfigs.filter(c => c.type === form.type).map(c => c.name);
+    return names.length > 0 ? names : (form.type === 'income' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES);
+  })();
 
   function renderTransaction({ item: tx }: { item: BankTransaction }) {
     const cfg = TYPE_CONFIG[tx.type];
@@ -575,6 +589,13 @@ export default function FinanceScreen() {
             style={[pH.btn, { backgroundColor: colors.card, borderColor: colors.border }]}
           >
             <CameraOcrIcon size={18} color={colors.primary} />
+          </Pressable>
+          <Pressable
+            onPress={() => router.push('/category-settings')}
+            hitSlop={8}
+            style={[pH.btn, { backgroundColor: colors.card, borderColor: colors.border }]}
+          >
+            <MaterialCommunityIcons name="tag-multiple-outline" size={18} color={colors.mutedForeground} />
           </Pressable>
           <Pressable
             onPress={() => router.push('/expense-stats')}
@@ -883,7 +904,13 @@ export default function FinanceScreen() {
             {/* Libellé */}
             <TextInput
               value={form.label}
-              onChangeText={v => setForm(f => ({ ...f, label: v }))}
+              onChangeText={v => {
+                const autoType = (form.type === 'income' || form.type === 'expense') ? form.type : null;
+                const matched = autoType && !categoryLockedRef.current
+                  ? matchCategoryByKeyword(v, categoryConfigs, autoType)
+                  : '';
+                setForm(f => ({ ...f, label: v, ...(matched ? { category: matched } : {}) }));
+              }}
               placeholder="Libellé"
               placeholderTextColor={colors.mutedForeground}
               style={[styles.input, { color: colors.foreground, backgroundColor: colors.background, borderColor: colors.border }]}
@@ -949,7 +976,10 @@ export default function FinanceScreen() {
                 return (
                   <Pressable
                     key={cat}
-                    onPress={() => setForm(f => ({ ...f, category: cat }))}
+                    onPress={() => {
+                      categoryLockedRef.current = true;
+                      setForm(f => ({ ...f, category: cat }));
+                    }}
                     style={[
                       styles.catChip,
                       active

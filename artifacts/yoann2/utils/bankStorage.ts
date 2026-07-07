@@ -262,3 +262,70 @@ export const EXPENSE_CATEGORIES = [
   'Alimentation', 'Transport', 'Carburant', 'Logement', 'Santé', 'Loisirs',
   'Abonnements', 'Vêtements', 'Matériaux / Projet', 'Restauration', 'Autre',
 ];
+
+// ── Category configs (name + keywords) ───────────────────────────────────────
+
+export interface CategoryConfig {
+  id: string;
+  name: string;
+  type: 'income' | 'expense';
+  keywords: string[];
+}
+
+const CATEGORIES_KEY = '@yoann2/bank_categories_v2';
+
+export const DEFAULT_EXPENSE_CATEGORY_CONFIGS: CategoryConfig[] = [
+  { id: 'alimentation', name: 'Alimentation', type: 'expense', keywords: ['courses'] },
+  { id: 'transport',    name: 'Transport',     type: 'expense', keywords: [] },
+  { id: 'carburant',    name: 'Carburant',     type: 'expense', keywords: ['essence', 'carburant'] },
+  { id: 'logement',     name: 'Logement',      type: 'expense', keywords: ['loyer'] },
+  { id: 'sante',        name: 'Santé',         type: 'expense', keywords: [] },
+  { id: 'loisirs',      name: 'Loisirs',       type: 'expense', keywords: [] },
+  { id: 'abonnements',  name: 'Abonnements',   type: 'expense', keywords: [] },
+  { id: 'vetements',    name: 'Vêtements',     type: 'expense', keywords: [] },
+  { id: 'materiaux',    name: 'Matériaux / Projet', type: 'expense', keywords: [] },
+  { id: 'restauration', name: 'Restauration',  type: 'expense', keywords: ['restaurant'] },
+  { id: 'autre',        name: 'Autre',         type: 'expense', keywords: [] },
+];
+
+export const DEFAULT_INCOME_CATEGORY_CONFIGS: CategoryConfig[] = [
+  { id: 'salaire',        name: 'Salaire',        type: 'income', keywords: ['salaire'] },
+  { id: 'freelance',      name: 'Freelance',       type: 'income', keywords: [] },
+  { id: 'remboursement',  name: 'Remboursement',   type: 'income', keywords: ['remboursement', 'rbt'] },
+  { id: 'vente',          name: 'Vente',           type: 'income', keywords: [] },
+  { id: 'autre-revenu',   name: 'Autre revenu',    type: 'income', keywords: [] },
+];
+
+export const DEFAULT_CATEGORY_CONFIGS: CategoryConfig[] = [
+  ...DEFAULT_EXPENSE_CATEGORY_CONFIGS,
+  ...DEFAULT_INCOME_CATEGORY_CONFIGS,
+];
+
+export async function getCategoryConfigs(): Promise<CategoryConfig[]> {
+  try {
+    const raw = await AsyncStorage.getItem(CATEGORIES_KEY);
+    if (raw) return JSON.parse(raw) as CategoryConfig[];
+  } catch {}
+  return DEFAULT_CATEGORY_CONFIGS.map(c => ({ ...c }));
+}
+
+export async function saveCategoryConfigs(configs: CategoryConfig[]): Promise<void> {
+  try {
+    await AsyncStorage.setItem(CATEGORIES_KEY, JSON.stringify(configs));
+  } catch {}
+}
+
+/** Retourne le nom de la catégorie dont un mot-clé correspond au libellé (insensible à la casse). */
+export function matchCategoryByKeyword(
+  label: string,
+  configs: CategoryConfig[],
+  type: 'income' | 'expense',
+): string {
+  const lower = label.toLowerCase();
+  for (const cfg of configs.filter(c => c.type === type)) {
+    for (const kw of cfg.keywords) {
+      if (kw && lower.includes(kw.toLowerCase())) return cfg.name;
+    }
+  }
+  return '';
+}
