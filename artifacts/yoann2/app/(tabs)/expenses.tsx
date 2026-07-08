@@ -26,20 +26,17 @@ import { useColors } from '@/hooks/useColors';
 import {
   addRecurringExpense,
   addRecurringTransfer,
-  addTransaction,
   BankTransaction,
   CategoryConfig,
   computeCurrentBalance,
   DEFAULT_CATEGORY_CONFIGS,
   deleteRecurringExpense,
   deleteRecurringTransfer,
-  deleteTransaction,
   EXPENSE_CATEGORIES,
   getCategoryConfigs,
   getRecurringExpenses,
   getRecurringTransfers,
   getSavingsBalance,
-  getTransactions,
   INCOME_CATEGORIES,
   matchCategoryByKeyword,
   processRecurringExpenses,
@@ -49,7 +46,6 @@ import {
   RecurringTransfer,
   setSavingsBalance,
   TransactionType,
-  updateTransaction,
 } from '@/utils/bankStorage';
 import { fmtDateShort } from '@/utils/date';
 import { fmtEuro } from '@/utils/money';
@@ -125,9 +121,7 @@ export default function FinanceScreen() {
   const colors  = useColors();
   const insets  = useSafeAreaInsets();
   const router  = useRouter();
-  const { expenses, projects, tasks, addExpense, updateExpense, deleteExpense } = useApp();
-
-  const [transactions, setTransactions]   = useState<BankTransaction[]>([]);
+  const { transactions, projects, tasks, addTransactionCtx, updateTransactionCtx, deleteTransactionCtx, reloadTransactions } = useApp();
   const [savingsBalance, setSavingsBal]   = useState(0);
   const [marketBalance, setMarketBal]     = useState(0);
   const [showAmounts, setShowAmounts]         = useState(false);
@@ -166,8 +160,7 @@ export default function FinanceScreen() {
   async function load() {
     getCategoryConfigs().then(setCategoryConfigs);
     await Promise.all([processRecurringTransfers(), processRecurringExpenses(), processMarketRecurrings()]);
-    const [txs, sav, shown, recs, recExps, mktAssets, mktOps] = await Promise.all([
-      getTransactions(),
+    const [sav, shown, recs, recExps, mktAssets, mktOps] = await Promise.all([
       getSavingsBalance(),
       AsyncStorage.getItem(SHOW_AMOUNTS_KEY),
       getRecurringTransfers(),
@@ -175,7 +168,6 @@ export default function FinanceScreen() {
       getMarketAssets(),
       getMarketOperations(),
     ]);
-    setTransactions(txs);
     setSavingsBal(sav);
     setRecurringList(recs);
     setRecurringExpenseList(recExps);
@@ -202,6 +194,7 @@ export default function FinanceScreen() {
       currentMktVal = await getMarketBalance();
     }
     setMarketBal(currentMktVal);
+    await reloadTransactions();
   }
 
   useFocusEffect(useCallback(() => { load(); }, []));
@@ -222,33 +215,9 @@ export default function FinanceScreen() {
     });
   }
 
-  const projectExpenseTxIds = useMemo(() => {
-    const set = new Set<string>();
-    transactions.forEach(t => { if (t.fromExpenseId) set.add(t.fromExpenseId); });
-    return set;
-  }, [transactions]);
-
-  const allTransactions = useMemo((): BankTransaction[] => {
-    const projTxs: BankTransaction[] = expenses
-      .filter(e => !projectExpenseTxIds.has(e.id))
-      .map(e => ({
-        id: `proj_${e.id}`,
-        type: 'expense' as TransactionType,
-        amount: e.amount,
-        label: e.name,
-        category: e.category || 'Matériaux / Projet',
-        date: e.date,
-        note: projects.find(p => p.id === e.projectId)?.name,
-        fromExpenseId: e.id,
-      }));
-    return [...transactions, ...projTxs].sort(
-      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-    );
-  }, [transactions, expenses, projects, projectExpenseTxIds]);
-
   const filtered = useMemo(() =>
-    filter === 'all' ? allTransactions : allTransactions.filter(t => t.type === filter),
-    [allTransactions, filter]
+    filter === 'all' ? transactions : transactions.filter(t => t.type === filter),
+    [transactions, filter]
   );
 
   const searched = useMemo(() => {
@@ -265,11 +234,11 @@ export default function FinanceScreen() {
 
   const grouped = useMemo(() => groupByMonth(searched), [searched]);
 
-  const currentBalance = useMemo(() => computeCurrentBalance(allTransactions), [allTransactions]);
+  const currentBalance = useMemo(() => computeCurrentBalance(transactions), [transactions]);
 
   const monthIncome = useMemo(() => {
     const now = new Date();
-    return allTransactions
+    return transactions
       .filter(t => {
         const d = new Date(t.date);
         return !t.hidden
@@ -277,11 +246,11 @@ export default function FinanceScreen() {
           && (t.type === 'income' || t.type === 'transfer_from_savings');
       })
       .reduce((s, t) => s + t.amount, 0);
-  }, [allTransactions]);
+  }, [transactions]);
 
   const monthExpense = useMemo(() => {
     const now = new Date();
-    return allTransactions
+    return transactions
       .filter(t => {
         const d = new Date(t.date);
         return !t.hidden
@@ -289,7 +258,7 @@ export default function FinanceScreen() {
           && (t.type === 'expense' || t.type === 'transfer_to_savings');
       })
       .reduce((s, t) => s + t.amount, 0);
-  }, [allTransactions]);
+  }, [transactions]);
 
   function openForm(type: TransactionType = 'expense', tx?: BankTransaction) {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -298,24 +267,15 @@ export default function FinanceScreen() {
     setRecurringExpenseStart(new Date());
     if (tx) {
       setEditId(tx.id);
-      const noteVal = tx.note ?? '';
-      const matchedProj = projects.find(p => noteVal === p.name || noteVal.startsWith(p.name + ' · '));
-      setNoteProjId(matchedProj?.id ?? null);
-      // Restore linked task if any
-      if (matchedProj) {
-        const suffix = noteVal.slice(matchedProj.name.length + 3); // ' · '
-        const matchedTask = tasks.find(t => t.projectId === matchedProj.id && t.title === suffix);
-        setNoteTaskId(matchedTask?.id ?? null);
-      } else {
-        setNoteTaskId(null);
-      }
+      setNoteProjId(tx.projectId ?? null);
+      setNoteTaskId(tx.taskId ?? null);
       categoryLockedRef.current = true;
       setForm({
         type: tx.type,
         amount: tx.amount.toString(),
         label: tx.label,
         category: tx.category,
-        note: noteVal,
+        note: tx.note ?? '',
         userNote: tx.userNote ?? '',
         hidden: tx.hidden ?? false,
         date: (() => {
@@ -364,44 +324,19 @@ export default function FinanceScreen() {
     const userNoteVal = form.userNote.trim() || undefined;
 
     if (editId) {
-      if (editId.startsWith('proj_')) {
-        // Transaction is a project expense displayed as a fake Finance row
-        const originalId = editId.slice(5);
-        updateExpense(originalId, { name: label, amount, date: isoDate, category: cat });
-      } else {
-        // Real bank transaction — update it
-        const existingTx = transactions.find(t => t.id === editId);
-        await updateTransaction(editId, {
-          type:     form.type,
-          amount,
-          label,
-          category: cat,
-          date:     isoDate,
-          note:     form.note.trim() || undefined,
-          userNote: userNoteVal,
-          hidden:   form.hidden || undefined,
-        });
-        // If it has a linked project expense, sync it too
-        if (existingTx?.fromExpenseId) {
-          const linkedExp = expenses.find(e => e.id === existingTx.fromExpenseId);
-          if (linkedExp) {
-            updateExpense(existingTx.fromExpenseId, {
-              name:      label,
-              amount,
-              date:      isoDate,
-              category:  cat,
-              projectId: noteProjId ?? linkedExp.projectId,
-              taskId:    noteTaskId ?? undefined,
-            });
-          }
-        }
-      }
+      await updateTransactionCtx(editId, {
+        type:      form.type,
+        amount,
+        label,
+        category:  cat,
+        date:      isoDate,
+        note:      form.note.trim() || undefined,
+        userNote:  userNoteVal,
+        hidden:    form.hidden || undefined,
+        projectId: noteProjId ?? undefined,
+        taskId:    noteTaskId ?? undefined,
+      });
     } else {
-      // Build common project expense data when a project is linked
-      const projExpenseData = noteProjId && form.type === 'expense'
-        ? { projectId: noteProjId, taskId: noteTaskId ?? undefined, name: label, amount, date: isoDate, category: cat }
-        : null;
-
       // If recurring expense (abonnement), save template + first occurrence
       if (isRecurringExpense && (form.type === 'expense' || form.type === 'income')) {
         const nextDate = new Date(recurringExpenseStart);
@@ -416,32 +351,30 @@ export default function FinanceScreen() {
           nextDate: nextDate.toISOString(),
           userNote: userNoteVal,
         });
-        // First occurrence
-        const projExp = projExpenseData ? addExpense({ ...projExpenseData, date: recurringExpenseStart.toISOString() }) : null;
-        await addTransaction({
-          type:            form.type,
+        await addTransactionCtx({
+          type:      form.type,
           amount,
           label,
-          category:        cat,
-          date:            recurringExpenseStart.toISOString(),
-          note:            `Récurrent · ${recurringExpenseFreq === 'monthly' ? 'mensuel' : 'hebdomadaire'}`,
-          userNote:        userNoteVal,
-          hidden:          form.hidden || undefined,
-          fromExpenseId:   projExp?.id,
+          category:  cat,
+          date:      recurringExpenseStart.toISOString(),
+          note:      `Récurrent · ${recurringExpenseFreq === 'monthly' ? 'mensuel' : 'hebdomadaire'}`,
+          userNote:  userNoteVal,
+          hidden:    form.hidden || undefined,
+          projectId: noteProjId ?? undefined,
+          taskId:    noteTaskId ?? undefined,
         });
       } else {
-        // One-shot transaction
-        const projExp = projExpenseData ? addExpense(projExpenseData) : null;
-        await addTransaction({
-          type:          form.type,
+        await addTransactionCtx({
+          type:      form.type,
           amount,
           label,
-          category:      cat,
-          date:          isoDate,
-          note:          form.note.trim() || undefined,
-          userNote:      userNoteVal,
-          hidden:        form.hidden || undefined,
-          fromExpenseId: projExp?.id,
+          category:  cat,
+          date:      isoDate,
+          note:      form.note.trim() || undefined,
+          userNote:  userNoteVal,
+          hidden:    form.hidden || undefined,
+          projectId: noteProjId ?? undefined,
+          taskId:    noteTaskId ?? undefined,
         });
       }
     }
@@ -457,9 +390,7 @@ export default function FinanceScreen() {
       {
         text: 'Supprimer', style: 'destructive',
         onPress: async () => {
-          await deleteTransaction(id);
-          // Also remove the linked project expense (if any)
-          if (tx?.fromExpenseId) deleteExpense(tx.fromExpenseId);
+          await deleteTransactionCtx(id);
           closeForm();
           load();
         },
@@ -488,7 +419,7 @@ export default function FinanceScreen() {
         : Math.max(0, savingsBalance - amount);
       await setSavingsBalance(newSavings);
       const type: TransactionType = transferDir === 'to' ? 'transfer_to_savings' : 'transfer_from_savings';
-      await addTransaction({
+      await addTransactionCtx({
         type,
         amount,
         label: transferDir === 'to' ? 'Virement vers épargne' : 'Virement depuis épargne',
@@ -867,7 +798,7 @@ export default function FinanceScreen() {
               <Text style={[styles.formTitle, { color: colors.foreground }]}>
                 {editId ? 'Modifier la transaction' : 'Nouvelle transaction'}
               </Text>
-              {editId && !editId.startsWith('proj_') && (
+              {editId && (
                 <Pressable
                   onPress={() => handleDelete(editId)}
                   hitSlop={8}

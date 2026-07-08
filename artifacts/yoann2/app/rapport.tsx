@@ -28,7 +28,7 @@ export default function RapportScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { projects, tasks, expenses, appointments } = useApp();
+  const { projects, tasks, transactions, appointments } = useApp();
   const [period, setPeriod] = useState<Period>('weekly');
 
   const topPad = Platform.OS === 'web' ? 67 : insets.top;
@@ -49,8 +49,8 @@ export default function RapportScreen() {
       return t.dueDate && new Date(t.dueDate) < now;
     }).length;
 
-    const newExpenses = expenses.filter(e => new Date(e.date) >= since);
-    const expensesTotal = newExpenses.reduce((s, e) => s + e.amount, 0);
+    const newExpenses = transactions.filter(t => t.type === 'expense' && new Date(t.date) >= since);
+    const expensesTotal = newExpenses.reduce((s, t) => s + t.amount, 0);
     const expensesCount = newExpenses.length;
 
     const projectsUpdated = projects.filter(p => {
@@ -65,8 +65,8 @@ export default function RapportScreen() {
 
     const newTasks = tasks.filter(t => new Date(t.createdAt) >= since).length;
 
-    const expByCategory = newExpenses.reduce<Record<string, number>>((acc, e) => {
-      acc[e.category] = (acc[e.category] ?? 0) + e.amount;
+    const expByCategory = newExpenses.reduce<Record<string, number>>((acc, t) => {
+      acc[t.category] = (acc[t.category] ?? 0) + t.amount;
       return acc;
     }, {});
 
@@ -90,7 +90,7 @@ export default function RapportScreen() {
       topCategories,
       tasksByPriority,
     };
-  }, [period, tasks, expenses, projects, appointments]);
+  }, [period, tasks, transactions, projects, appointments]);
 
   const periodLabel = period === 'weekly' ? '7 derniers jours' : '30 derniers jours';
 
@@ -173,7 +173,7 @@ export default function RapportScreen() {
                 icon="tag-outline"
                 label={cat}
                 value={fmtEuro(amt)}
-                accent={['#FFC107', '#FF9800', '#2196F3'][i] ?? colors.primary}
+                accent={(['#FFC107', '#FF9800', '#2196F3'] as string[])[i] ?? colors.primary}
               />
             ))}
           </View>

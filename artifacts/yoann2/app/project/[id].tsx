@@ -6,7 +6,7 @@ import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Dimensions,
@@ -26,7 +26,8 @@ import { ProgressBar } from '@/components/ProgressBar';
 import { TaskCard } from '@/components/TaskCard';
 import { useApp } from '@/contexts/AppContext';
 import { useColors } from '@/hooks/useColors';
-import type { Expense, ProjectStatus, Task } from '@/types';
+import type { ProjectStatus, Task } from '@/types';
+import { BankTransaction, CategoryConfig, getCategoryConfigs } from '@/utils/bankStorage';
 import { resolveProjectDirForBatch, savePhotoToProject } from '@/utils/photoStorage';
 
 const { width } = Dimensions.get('window');
@@ -65,7 +66,7 @@ export default function ProjectDetailScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { projects, getProjectTasks, getProjectExpenses, updateProject, deleteProject, archiveProject, unarchiveProject, addExpense, updateExpense, deleteExpense, deleteTask, expenseCategories } = useApp();
+  const { projects, getProjectTasks, getProjectExpenses, updateProject, deleteProject, archiveProject, unarchiveProject, addTransactionCtx, updateTransactionCtx, deleteTransactionCtx, deleteTask } = useApp();
 
   const projectMaybe = projects.find(p => p.id === id);
   const tasks = useMemo(() => getProjectTasks(id ?? ''), [getProjectTasks, id]);
@@ -80,8 +81,14 @@ export default function ProjectDetailScreen() {
   }, [projectMaybe, tasks]);
 
   const [tab, setTab] = useState<'tasks' | 'expenses' | 'photos'>('tasks');
+  const [expCatConfigs, setExpCatConfigs] = useState<CategoryConfig[]>([]);
+
+  useEffect(() => {
+    getCategoryConfigs().then(cs => setExpCatConfigs(cs.filter(c => c.type === 'expense')));
+  }, []);
+
   const [addExpenseVisible, setAddExpenseVisible] = useState(false);
-  const [editingExpense, setEditingExpense] = useState<import('@/types').Expense | null>(null);
+  const [editingExpense, setEditingExpense] = useState<BankTransaction | null>(null);
   const [expName, setExpName] = useState('');
   const [expAmount, setExpAmount] = useState('');
   const [expCat, setExpCat] = useState('');
@@ -208,33 +215,38 @@ export default function ProjectDetailScreen() {
     setEditingExpense(null);
   }
 
-  function openEditExpense(e: import('@/types').Expense) {
+  function openEditExpense(e: BankTransaction) {
     setEditingExpense(e);
-    setExpName(e.name);
+    setExpName(e.label);
     setExpAmount(String(e.amount));
     setExpCat(e.category);
     setExpDate(new Date(e.date).toLocaleDateString('fr-FR'));
-    setExpDescription(e.description ?? '');
+    setExpDescription(e.userNote ?? '');
     setAddExpenseVisible(true);
   }
 
-  function handleAddExpense() {
+  async function handleAddExpense() {
     if (!expName.trim() || !expAmount.trim()) return;
     const amount = parseFloat(expAmount);
     if (isNaN(amount) || amount <= 0) return;
-    const payload = {
-      name: expName.trim(),
-      amount,
-      date: parseFrDate(expDate),
-      category: expCat.trim() || 'Général',
-      description: expDescription.trim() || undefined,
-    };
     if (editingExpense) {
-      updateExpense(editingExpense.id, payload);
-      updateProject(project.id, { spent: totalSpent - editingExpense.amount + amount });
+      await updateTransactionCtx(editingExpense.id, {
+        label: expName.trim(),
+        amount,
+        date: parseFrDate(expDate),
+        category: expCat.trim() || 'Autre',
+        userNote: expDescription.trim() || undefined,
+      });
     } else {
-      addExpense({ projectId: project.id, ...payload });
-      updateProject(project.id, { spent: totalSpent + amount });
+      await addTransactionCtx({
+        type: 'expense',
+        label: expName.trim(),
+        amount,
+        date: parseFrDate(expDate),
+        category: expCat.trim() || 'Autre',
+        userNote: expDescription.trim() || undefined,
+        projectId: project.id,
+      });
     }
     resetExpenseForm();
     setAddExpenseVisible(false);
@@ -280,7 +292,7 @@ export default function ProjectDetailScreen() {
 
       const expenseRows = expenses.map((e, i) => `
         <tr class="${i % 2 === 1 ? 'row-alt' : ''}">
-          <td class="exp-name">${e.name}</td>
+          <td class="exp-name">${e.label}</td>
           <td class="exp-cat">${e.category || '—'}</td>
           <td class="exp-date">${new Date(e.date).toLocaleDateString('fr-FR')}</td>
           <td class="exp-amount">${e.amount.toFixed(2)} €</td>
@@ -717,12 +729,12 @@ export default function ProjectDetailScreen() {
                               </Text>
                             </View>
                           )}
-                          <Text style={[styles.expName, { color: colors.foreground }]}>{e.name}</Text>
+                          <Text style={[styles.expName, { color: colors.foreground }]}>{e.label}</Text>
                           {e.category.length > 0 && (
                             <Text style={[styles.expMeta, { color: colors.mutedForeground }]}>{e.category}</Text>
                           )}
-                          {e.description ? (
-                            <Text style={[styles.expMeta, { color: colors.mutedForeground }]} numberOfLines={2}>{e.description}</Text>
+                          {e.userNote ? (
+                            <Text style={[styles.expMeta, { color: colors.mutedForeground }]} numberOfLines={2}>{e.userNote}</Text>
                           ) : null}
                           <Text style={[styles.expMeta, { color: colors.mutedForeground }]}>
                             {new Date(e.date).toLocaleDateString('fr-FR')}
@@ -733,7 +745,7 @@ export default function ProjectDetailScreen() {
                           <MaterialCommunityIcons name="pencil-outline" size={18} color={colors.mutedForeground} />
                         </Pressable>
                         {!linkedTask && (
-                          <Pressable onPress={() => deleteExpense(e.id)} hitSlop={8}>
+                          <Pressable onPress={() => deleteTransactionCtx(e.id)} hitSlop={8}>
                             <MaterialCommunityIcons name="trash-can-outline" size={18} color={colors.mutedForeground} />
                           </Pressable>
                         )}
@@ -835,7 +847,7 @@ export default function ProjectDetailScreen() {
 
             <Text style={[styles.inputLabel, { color: colors.mutedForeground }]}>Catégorie</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 4 }}>
-              {expenseCategories.map(cat => {
+              {expCatConfigs.map(cat => {
                 const active = expCat === cat.name;
                 return (
                   <Pressable

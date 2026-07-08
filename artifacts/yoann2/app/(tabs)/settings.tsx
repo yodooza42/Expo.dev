@@ -31,6 +31,8 @@ import {
 import { listBackups, restoreBackup, saveBackup } from '@/utils/backup';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { reconfigureStorage, SAF_ROOT_KEY } from '@/utils/photoStorage';
+import { CategoryConfig, DEFAULT_EXPENSE_CATEGORY_CONFIGS, getCategoryConfigs, saveCategoryConfigs } from '@/utils/bankStorage';
+import { genId } from '@/utils/ids';
 
 function SettingRow({
   icon,
@@ -72,7 +74,7 @@ function SettingRow({
 export default function SettingsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { resetData, projects, tasks, categories, addCategory, deleteCategory, expenseCategories, addExpenseCategory, deleteExpenseCategory } = useApp();
+  const { resetData, projects, tasks, categories, addCategory, deleteCategory } = useApp();
   const router = useRouter();
 
   const [showBackupList,    setShowBackupList]    = useState(false);
@@ -90,6 +92,28 @@ export default function SettingsScreen() {
   const [lastBackupDate,    setLastBackupDate]    = useState<Date | null>(null);
   const [backupCount,       setBackupCount]       = useState(0);
   const [configuringFolder, setConfiguringFolder] = useState(false);
+  const [expCatConfigs, setExpCatConfigs] = useState<CategoryConfig[]>(DEFAULT_EXPENSE_CATEGORY_CONFIGS);
+
+  async function handleAddExpCat(name: string) {
+    const allConfigs = await getCategoryConfigs();
+    const bankConfigs = allConfigs.filter(c => c.type !== 'expense');
+    const newCat: CategoryConfig = { id: genId(), name, type: 'expense', keywords: [] };
+    const newExpConfigs = [...expCatConfigs, newCat];
+    setExpCatConfigs(newExpConfigs);
+    await saveCategoryConfigs([...bankConfigs, ...newExpConfigs]);
+  }
+
+  async function handleDeleteExpCat(id: string) {
+    const allConfigs = await getCategoryConfigs();
+    const bankConfigs = allConfigs.filter(c => c.type !== 'expense');
+    const newExpConfigs = expCatConfigs.filter(c => c.id !== id);
+    setExpCatConfigs(newExpConfigs);
+    await saveCategoryConfigs([...bankConfigs, ...newExpConfigs]);
+  }
+
+  useEffect(() => {
+    getCategoryConfigs().then(cs => setExpCatConfigs(cs.filter(c => c.type === 'expense')));
+  }, []);
 
   useEffect(() => {
     getNotifPrefs().then(prefs => {
@@ -245,7 +269,7 @@ export default function SettingsScreen() {
         <SettingRow
           icon="cash-multiple"
           label="Catégories de dépenses"
-          sublabel={`${expenseCategories.length} catégorie${expenseCategories.length !== 1 ? 's' : ''}`}
+          sublabel={`${expCatConfigs.length} catégorie${expCatConfigs.length !== 1 ? 's' : ''}`}
           onPress={() => setExpCatModalVisible(true)}
           colors={colors}
         />
@@ -501,22 +525,22 @@ export default function SettingsScreen() {
                 placeholder="Nouvelle catégorie…"
                 placeholderTextColor={colors.mutedForeground}
                 style={[styles.catInputField, { color: colors.foreground }]}
-                onSubmitEditing={() => { if (newExpCatName.trim()) { addExpenseCategory(newExpCatName.trim()); setNewExpCatName(''); } }}
+                onSubmitEditing={() => { if (newExpCatName.trim()) { handleAddExpCat(newExpCatName.trim()); setNewExpCatName(''); } }}
                 returnKeyType="done"
               />
               <Pressable
-                onPress={() => { if (newExpCatName.trim()) { addExpenseCategory(newExpCatName.trim()); setNewExpCatName(''); } }}
+                onPress={() => { if (newExpCatName.trim()) { handleAddExpCat(newExpCatName.trim()); setNewExpCatName(''); } }}
                 style={[styles.catAddBtn, { backgroundColor: colors.primary }]}
               >
                 <MaterialCommunityIcons name="plus" size={18} color={colors.primaryForeground} />
               </Pressable>
             </View>
             <ScrollView style={{ maxHeight: 240 }}>
-              {expenseCategories.map(c => (
+              {expCatConfigs.map(c => (
                 <View key={c.id} style={[styles.catRow, { borderBottomColor: colors.border }]}>
                   <MaterialCommunityIcons name="cash-multiple" size={14} color={colors.primary} />
                   <Text style={[styles.catName, { color: colors.foreground, flex: 1 }]}>{c.name}</Text>
-                  <Pressable onPress={() => deleteExpenseCategory(c.id)} hitSlop={8}>
+                  <Pressable onPress={() => handleDeleteExpCat(c.id)} hitSlop={8}>
                     <MaterialCommunityIcons name="close" size={16} color={colors.mutedForeground} />
                   </Pressable>
                 </View>

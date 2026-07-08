@@ -123,7 +123,11 @@ export default function ExpensesScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { projects, expenses, expenseCategories } = useApp();
+  const { projects, transactions } = useApp();
+  const expenses = useMemo(
+    () => transactions.filter(t => t.type === 'expense'),
+    [transactions]
+  );
 
   // ── État existant ─────────────────────────────────────────────────────────
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -792,7 +796,7 @@ export default function ExpensesScreen() {
                   >
                     <View style={{ flex: 1, gap: 2 }}>
                       <Text style={[styles.catSheetRowName, { color: colors.foreground }]} numberOfLines={1}>
-                        {exp.name}
+                        {exp.label}
                       </Text>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                         {proj && (

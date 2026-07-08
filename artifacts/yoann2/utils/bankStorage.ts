@@ -7,6 +7,7 @@ const KEYS = {
   SAVINGS_BALANCE: '@yoann2/bank_savings_balance',
   RECURRING: '@yoann2/bank_recurring_transfers',
   RECURRING_EXPENSES: '@yoann2/bank_recurring_expenses',
+  MIGRATION_V1: '@yoann2/migration_expenses_v1',
 };
 
 export type TransactionType = 'income' | 'expense' | 'transfer_to_savings' | 'transfer_from_savings' | 'transfer_to_market' | 'transfer_from_market';
@@ -21,6 +22,8 @@ export interface BankTransaction {
   note?: string;
   userNote?: string;
   hidden?: boolean;
+  projectId?: string;
+  taskId?: string;
   fromExpenseId?: string;
   fromRecurringExpenseId?: string;
 }
@@ -252,15 +255,22 @@ export async function processRecurringExpenses(): Promise<number> {
   return executed;
 }
 
-// ── Categories ───────────────────────────────────────────────────────────────
+// ── Categories (liste unifiée) ────────────────────────────────────────────────
 
 export const INCOME_CATEGORIES = [
   'Salaire', 'Freelance', 'Remboursement', 'Vente', 'Autre revenu',
 ];
 
+/** Liste unifiée — vie courante + travaux/projets */
 export const EXPENSE_CATEGORIES = [
-  'Alimentation', 'Transport', 'Carburant', 'Logement', 'Santé', 'Loisirs',
-  'Abonnements', 'Vêtements', 'Matériaux / Projet', 'Restauration', 'Autre',
+  // Vie courante
+  'Alimentation', 'Transport', 'Carburant', 'Logement', 'Santé',
+  'Loisirs', 'Abonnements', 'Vêtements', 'Restauration',
+  // Travaux / projets
+  'Outillage', 'Électroménager', 'Consommable', 'Mobilier',
+  'Matériaux', 'Main d\'œuvre', 'Quincaillerie', 'Équipement',
+  // Autre
+  'Autre',
 ];
 
 // ── Category configs (name + keywords) ───────────────────────────────────────
@@ -275,25 +285,35 @@ export interface CategoryConfig {
 const CATEGORIES_KEY = '@yoann2/bank_categories_v2';
 
 export const DEFAULT_EXPENSE_CATEGORY_CONFIGS: CategoryConfig[] = [
-  { id: 'alimentation', name: 'Alimentation', type: 'expense', keywords: ['courses'] },
-  { id: 'transport',    name: 'Transport',     type: 'expense', keywords: [] },
-  { id: 'carburant',    name: 'Carburant',     type: 'expense', keywords: ['essence', 'carburant'] },
-  { id: 'logement',     name: 'Logement',      type: 'expense', keywords: ['loyer'] },
-  { id: 'sante',        name: 'Santé',         type: 'expense', keywords: [] },
-  { id: 'loisirs',      name: 'Loisirs',       type: 'expense', keywords: [] },
-  { id: 'abonnements',  name: 'Abonnements',   type: 'expense', keywords: [] },
-  { id: 'vetements',    name: 'Vêtements',     type: 'expense', keywords: [] },
-  { id: 'materiaux',    name: 'Matériaux / Projet', type: 'expense', keywords: [] },
-  { id: 'restauration', name: 'Restauration',  type: 'expense', keywords: ['restaurant'] },
-  { id: 'autre',        name: 'Autre',         type: 'expense', keywords: [] },
+  // Vie courante
+  { id: 'alimentation', name: 'Alimentation',   type: 'expense', keywords: ['courses'] },
+  { id: 'transport',    name: 'Transport',       type: 'expense', keywords: [] },
+  { id: 'carburant',    name: 'Carburant',       type: 'expense', keywords: ['essence', 'carburant', 'sp98', 'sp95', 'gazole'] },
+  { id: 'logement',     name: 'Logement',        type: 'expense', keywords: ['loyer'] },
+  { id: 'sante',        name: 'Santé',           type: 'expense', keywords: ['pharmacie', 'medecin', 'docteur'] },
+  { id: 'loisirs',      name: 'Loisirs',         type: 'expense', keywords: [] },
+  { id: 'abonnements',  name: 'Abonnements',     type: 'expense', keywords: [] },
+  { id: 'vetements',    name: 'Vêtements',       type: 'expense', keywords: [] },
+  { id: 'restauration', name: 'Restauration',    type: 'expense', keywords: ['restaurant'] },
+  // Travaux / projets
+  { id: 'outillage',    name: 'Outillage',       type: 'expense', keywords: ['outil', 'perceuse', 'scie'] },
+  { id: 'electromenager', name: 'Électroménager', type: 'expense', keywords: [] },
+  { id: 'consommable',  name: 'Consommable',     type: 'expense', keywords: [] },
+  { id: 'mobilier',     name: 'Mobilier',        type: 'expense', keywords: [] },
+  { id: 'materiaux',    name: 'Matériaux',       type: 'expense', keywords: ['beton', 'parpaing', 'bois', 'placo'] },
+  { id: 'maindoeuvre',  name: 'Main d\'œuvre',   type: 'expense', keywords: [] },
+  { id: 'quincaillerie', name: 'Quincaillerie',  type: 'expense', keywords: [] },
+  { id: 'equipement',   name: 'Équipement',      type: 'expense', keywords: [] },
+  // Autre
+  { id: 'autre',        name: 'Autre',           type: 'expense', keywords: [] },
 ];
 
 export const DEFAULT_INCOME_CATEGORY_CONFIGS: CategoryConfig[] = [
-  { id: 'salaire',        name: 'Salaire',        type: 'income', keywords: ['salaire'] },
-  { id: 'freelance',      name: 'Freelance',       type: 'income', keywords: [] },
-  { id: 'remboursement',  name: 'Remboursement',   type: 'income', keywords: ['remboursement', 'rbt'] },
-  { id: 'vente',          name: 'Vente',           type: 'income', keywords: [] },
-  { id: 'autre-revenu',   name: 'Autre revenu',    type: 'income', keywords: [] },
+  { id: 'salaire',       name: 'Salaire',       type: 'income', keywords: ['salaire'] },
+  { id: 'freelance',     name: 'Freelance',      type: 'income', keywords: [] },
+  { id: 'remboursement', name: 'Remboursement',  type: 'income', keywords: ['remboursement', 'rbt'] },
+  { id: 'vente',         name: 'Vente',          type: 'income', keywords: [] },
+  { id: 'autre-revenu',  name: 'Autre revenu',   type: 'income', keywords: [] },
 ];
 
 export const DEFAULT_CATEGORY_CONFIGS: CategoryConfig[] = [
@@ -304,7 +324,13 @@ export const DEFAULT_CATEGORY_CONFIGS: CategoryConfig[] = [
 export async function getCategoryConfigs(): Promise<CategoryConfig[]> {
   try {
     const raw = await AsyncStorage.getItem(CATEGORIES_KEY);
-    if (raw) return JSON.parse(raw) as CategoryConfig[];
+    if (raw) {
+      const stored = JSON.parse(raw) as CategoryConfig[];
+      // Merge any new default categories not yet in stored list
+      const storedIds = new Set(stored.map(c => c.id));
+      const missing = DEFAULT_CATEGORY_CONFIGS.filter(c => !storedIds.has(c.id));
+      return missing.length > 0 ? [...stored, ...missing] : stored;
+    }
   } catch {}
   return DEFAULT_CATEGORY_CONFIGS.map(c => ({ ...c }));
 }
@@ -328,4 +354,81 @@ export function matchCategoryByKeyword(
     }
   }
   return '';
+}
+
+// ── Migration : expenses AppContext → BankTransactions ───────────────────────
+
+interface LegacyExpense {
+  id: string;
+  projectId: string;
+  taskId?: string;
+  name: string;
+  amount: number;
+  date: string;
+  category: string;
+  description?: string;
+}
+
+/** Migration one-shot : convertit les anciennes dépenses projet en BankTransactions.
+ *  Idempotente : ne s'exécute qu'une fois (flag AsyncStorage). */
+export async function migrateExpensesToTransactions(): Promise<void> {
+  try {
+    const done = await AsyncStorage.getItem(KEYS.MIGRATION_V1);
+    if (done) return;
+
+    const raw = await AsyncStorage.getItem('@yoann2_expenses');
+    if (!raw) {
+      await AsyncStorage.setItem(KEYS.MIGRATION_V1, 'done');
+      return;
+    }
+
+    const legacyExpenses: LegacyExpense[] = JSON.parse(raw);
+    if (!legacyExpenses.length) {
+      await AsyncStorage.setItem(KEYS.MIGRATION_V1, 'done');
+      return;
+    }
+
+    const existingTxs = await getTransactions();
+
+    // Map fromExpenseId → transaction for quick lookup
+    const fromExpenseMap = new Map<string, BankTransaction>();
+    existingTxs.forEach(t => {
+      if (t.fromExpenseId) fromExpenseMap.set(t.fromExpenseId, t);
+    });
+
+    let updated = [...existingTxs];
+
+    for (const exp of legacyExpenses) {
+      const linked = fromExpenseMap.get(exp.id);
+      if (linked) {
+        // Patch existing bank transaction with projectId/taskId
+        updated = updated.map(t =>
+          t.id === linked.id
+            ? { ...t, projectId: exp.projectId, taskId: exp.taskId ?? undefined }
+            : t
+        );
+      } else {
+        // Pas de bank transaction → créer une nouvelle
+        const newTx: BankTransaction = {
+          id: genId(),
+          type: 'expense',
+          amount: exp.amount,
+          label: exp.name,
+          category: exp.category || 'Autre',
+          date: exp.date,
+          projectId: exp.projectId,
+          taskId: exp.taskId ?? undefined,
+          userNote: exp.description ?? undefined,
+          fromExpenseId: exp.id,
+        };
+        updated = [newTx, ...updated];
+      }
+    }
+
+    await saveTransactions(updated);
+    await AsyncStorage.setItem(KEYS.MIGRATION_V1, 'done');
+  } catch (e) {
+    // Migration failed silently — retry next launch
+    console.error('[migration] expenses→transactions failed:', e);
+  }
 }

@@ -22,6 +22,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useApp } from '@/contexts/AppContext';
 import { useColors } from '@/hooks/useColors';
+import { CategoryConfig, getCategoryConfigs } from '@/utils/bankStorage';
 import { displayDateToIso, OcrLine, parseBankStatementText } from '@/utils/parseBankStatement';
 
 type Step = 'pick' | 'processing' | 'review';
@@ -35,7 +36,11 @@ interface Props {
 export function OcrScanModal({ visible, onClose }: Props) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { projects, expenseCategories, addExpense } = useApp();
+  const { projects, addTransactionCtx } = useApp();
+  const [expCatConfigs, setExpCatConfigs] = React.useState<CategoryConfig[]>([]);
+  React.useEffect(() => {
+    getCategoryConfigs().then(cs => setExpCatConfigs(cs.filter(c => c.type === 'expense')));
+  }, []);
 
   const [step, setStep] = useState<Step>('pick');
   const [lines, setLines] = useState<OcrLine[]>([]);
@@ -131,7 +136,7 @@ export function OcrScanModal({ visible, onClose }: Props) {
 
   const selectedLines = lines.filter(l => l.selected);
 
-  function handleImport() {
+  async function handleImport() {
     const toImport = selectedLines.filter(l => l.name.trim() && parseFloat(l.amount) > 0);
     if (toImport.length === 0) {
       Alert.alert('Aucune dépense valide', 'Renseignez au moins un nom et un montant pour chaque ligne sélectionnée.');
@@ -142,16 +147,17 @@ export function OcrScanModal({ visible, onClose }: Props) {
       return;
     }
 
-    toImport.forEach(l => {
-      addExpense({
+    for (const l of toImport) {
+      await addTransactionCtx({
+        type: 'expense',
         projectId: l.projectId,
-        name: l.name.trim(),
+        label: l.name.trim(),
         amount: parseFloat(l.amount) || 0,
         date: displayDateToIso(l.date),
         category: l.category,
-        description: 'Importé via OCR',
+        userNote: 'Importé via OCR',
       });
-    });
+    }
 
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     Alert.alert('Importé !', `${toImport.length} dépense${toImport.length > 1 ? 's ajoutées' : ' ajoutée'} avec succès.`, [
@@ -264,7 +270,7 @@ export function OcrScanModal({ visible, onClose }: Props) {
                   key={line.id}
                   line={line}
                   index={idx}
-                  expenseCategories={expenseCategories}
+                  expenseCategories={expCatConfigs}
                   projects={projects}
                   onChange={patch => updateLine(line.id, patch)}
                   onDelete={() => deleteLine(line.id)}
@@ -316,7 +322,7 @@ export function OcrScanModal({ visible, onClose }: Props) {
           <View style={[styles.pickerSheet, { backgroundColor: cardBg, borderColor: border, paddingBottom: insets.bottom + 8 }]}>
             <Text style={[styles.pickerTitle, { color: fg }]}>Catégorie</Text>
             <ScrollView showsVerticalScrollIndicator={false}>
-              {['', ...expenseCategories.map(c => c.name)].map((name, i) => {
+              {['', ...expCatConfigs.map((c: CategoryConfig) => c.name)].map((name, i) => {
                 const isSelected = catPickerLine?.category === name;
                 return (
                   <Pressable

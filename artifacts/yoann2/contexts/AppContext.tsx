@@ -2,9 +2,18 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 
-import type { Appointment, AppStats, Category, Expense, Priority, Project, ProjectStatus, Task, TaskStatus } from '@/types';
+import type { Appointment, AppStats, Category, Priority, Project, Task, TaskStatus } from '@/types';
 import { saveBackup } from '@/utils/backup';
 import { genId } from '@/utils/ids';
+import {
+  BankTransaction,
+  getTransactions,
+  saveTransactions,
+  addTransaction as bankAddTx,
+  updateTransaction as bankUpdateTx,
+  deleteTransaction as bankDeleteTx,
+  migrateExpensesToTransactions,
+} from '@/utils/bankStorage';
 import {
   SEED_APPOINTMENTS,
   SEED_BANK_RECURRING,
@@ -37,19 +46,6 @@ const STORAGE_KEYS = {
   INITIALIZED: '@yoann2_initialized',
   SEED_VERSION: '@yoann2_seed_version',
 };
-
-const DEFAULT_EXPENSE_CATEGORIES: Category[] = [
-  { id: 'ecat_outillage', name: 'Outillage' },
-  { id: 'ecat_electromenager', name: 'Électroménager' },
-  { id: 'ecat_consommable', name: 'Consommable' },
-  { id: 'ecat_mobilier', name: 'Mobilier' },
-  { id: 'ecat_materiaux', name: 'Matériaux' },
-  { id: 'ecat_maindoeuvre', name: "Main d'œuvre" },
-  { id: 'ecat_quincaillerie', name: 'Quincaillerie' },
-  { id: 'ecat_equipement', name: 'Équipement' },
-  { id: 'ecat_transport', name: 'Transport' },
-  { id: 'ecat_divers', name: 'Divers' },
-];
 
 const DEFAULT_CATEGORIES: Category[] = [
   { id: 'cat_garage', name: 'Garage' },
@@ -101,7 +97,7 @@ function makeTask(
   };
 }
 
-function createSampleData(): { projects: Project[]; tasks: Task[]; expenses: Expense[] } {
+function createSampleData(): { projects: Project[]; tasks: Task[] } {
   const now = new Date().toISOString();
   const inMonth = new Date();
   inMonth.setMonth(inMonth.getMonth() + 2);
@@ -175,34 +171,14 @@ function createSampleData(): { projects: Project[]; tasks: Task[]; expenses: Exp
     makeTask(p3.id, 'Finition', 'idea', 'low', 75),
   ];
 
-  const expenses: Expense[] = [
-    {
-      id: genId(),
-      projectId: p1.id,
-      name: 'Panneaux OSB',
-      amount: 180,
-      date: new Date().toISOString(),
-      category: 'Matériaux',
-    },
-    {
-      id: genId(),
-      projectId: p1.id,
-      name: 'Visserie et fixations',
-      amount: 60,
-      date: new Date().toISOString(),
-      category: 'Quincaillerie',
-    },
-  ];
-
-  return { projects: [p1, p2, p3], tasks, expenses };
+  return { projects: [p1, p2, p3], tasks };
 }
 
 interface AppContextValue {
   projects: Project[];
   tasks: Task[];
-  expenses: Expense[];
+  transactions: BankTransaction[];
   categories: Category[];
-  expenseCategories: Category[];
   appointments: Appointment[];
   loading: boolean;
   addProject: (p: Omit<Project, 'id' | 'createdAt' | 'updatedAt'>) => void;
@@ -213,20 +189,19 @@ interface AppContextValue {
   addTask: (t: Omit<Task, 'id' | 'createdAt' | 'eisenhower'>) => void;
   updateTask: (id: string, updates: Partial<Task>) => void;
   deleteTask: (id: string) => void;
-  addExpense: (e: Omit<Expense, 'id'>) => Expense;
-  updateExpense: (id: string, updates: Partial<Expense>) => void;
-  deleteExpense: (id: string) => void;
-  getTaskExpenses: (taskId: string) => Expense[];
+  addTransactionCtx: (tx: Omit<BankTransaction, 'id'>) => Promise<BankTransaction>;
+  updateTransactionCtx: (id: string, updates: Partial<Omit<BankTransaction, 'id'>>) => Promise<void>;
+  deleteTransactionCtx: (id: string) => Promise<void>;
+  reloadTransactions: () => Promise<void>;
+  getProjectExpenses: (projectId: string) => BankTransaction[];
+  getTaskExpenses: (taskId: string) => BankTransaction[];
   addCategory: (name: string) => void;
   deleteCategory: (id: string) => void;
   reorderProjects: (newOrder: Project[]) => void;
-  addExpenseCategory: (name: string) => void;
-  deleteExpenseCategory: (id: string) => void;
   addAppointment: (a: Omit<Appointment, 'id' | 'createdAt'>) => void;
   updateAppointment: (id: string, updates: Partial<Appointment>) => void;
   deleteAppointment: (id: string) => void;
   getProjectTasks: (projectId: string) => Task[];
-  getProjectExpenses: (projectId: string) => Expense[];
   getStats: () => AppStats;
   resetData: () => void;
 }
@@ -236,9 +211,8 @@ const AppContext = createContext<AppContextValue | null>(null);
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [transactions, setTransactions] = useState<BankTransaction[]>([]);
   const [categories, setCategories] = useState<Category[]>(DEFAULT_CATEGORIES);
-  const [expenseCategories, setExpenseCategories] = useState<Category[]>(DEFAULT_EXPENSE_CATEGORIES);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -246,16 +220,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const widgetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const projectsRef = useRef<Project[]>([]);
   const tasksRef = useRef<Task[]>([]);
-  const expensesRef = useRef<Expense[]>([]);
   const categoriesRef = useRef<Category[]>(DEFAULT_CATEGORIES);
-  const expenseCategoriesRef = useRef<Category[]>(DEFAULT_EXPENSE_CATEGORIES);
   const appointmentsRef = useRef<Appointment[]>([]);
 
   useEffect(() => { projectsRef.current = projects; }, [projects]);
   useEffect(() => { tasksRef.current = tasks; }, [tasks]);
-  useEffect(() => { expensesRef.current = expenses; }, [expenses]);
   useEffect(() => { categoriesRef.current = categories; }, [categories]);
-  useEffect(() => { expenseCategoriesRef.current = expenseCategories; }, [expenseCategories]);
   useEffect(() => { appointmentsRef.current = appointments; }, [appointments]);
 
   useEffect(() => {
@@ -274,7 +244,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     };
   }, [tasks, appointments, loading]);
 
-  // Reschedule appointment reminder notifications when appointments change
   useEffect(() => {
     if (loading) return;
     getApptReminderPref().then(enabled => {
@@ -316,9 +285,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (needsSeed) {
         setProjects(SEED_PROJECTS);
         setTasks(SEED_TASKS);
-        setExpenses(SEED_EXPENSES);
         setCategories(SEED_CATEGORIES);
-        setExpenseCategories(SEED_EXPENSE_CATEGORIES);
         setAppointments(SEED_APPOINTMENTS);
         await AsyncStorage.multiSet([
           [STORAGE_KEYS.PROJECTS, JSON.stringify(SEED_PROJECTS)],
@@ -329,7 +296,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           [STORAGE_KEYS.APPOINTMENTS, JSON.stringify(SEED_APPOINTMENTS)],
           [STORAGE_KEYS.INITIALIZED, 'true'],
           [STORAGE_KEYS.SEED_VERSION, SEED_VERSION],
-          // Finance & extras from real backup
           ['@yoann2/bank_transactions', SEED_BANK_TRANSACTIONS],
           ['@yoann2/bank_savings_balance', SEED_BANK_SAVINGS],
           ['@yoann2/bank_recurring_transfers', SEED_BANK_RECURRING],
@@ -339,21 +305,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           ['@yoann2_trips', SEED_TRIPS],
         ]);
       } else {
-        const [pRaw, tRaw, eRaw, cRaw, ecRaw, aRaw] = await AsyncStorage.multiGet([
+        const [pRaw, tRaw, cRaw, aRaw] = await AsyncStorage.multiGet([
           STORAGE_KEYS.PROJECTS,
           STORAGE_KEYS.TASKS,
-          STORAGE_KEYS.EXPENSES,
           STORAGE_KEYS.CATEGORIES,
-          STORAGE_KEYS.EXPENSE_CATEGORIES,
           STORAGE_KEYS.APPOINTMENTS,
         ]);
         if (pRaw[1]) setProjects(JSON.parse(pRaw[1]));
         if (tRaw[1]) setTasks(JSON.parse(tRaw[1]));
-        if (eRaw[1]) setExpenses(JSON.parse(eRaw[1]));
         if (cRaw[1]) setCategories(JSON.parse(cRaw[1]));
-        if (ecRaw[1]) setExpenseCategories(JSON.parse(ecRaw[1]));
         if (aRaw[1]) setAppointments(JSON.parse(aRaw[1]));
       }
+
+      // Migration one-shot : convert @yoann2_expenses → BankTransactions with projectId
+      await migrateExpensesToTransactions();
+
+      // Load bank transactions (source unique de vérité pour les dépenses)
+      const txs = await getTransactions();
+      setTransactions(txs);
     } catch (e) {
       console.error('Error loading data', e);
     } finally {
@@ -364,17 +333,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   async function persist(
     p: Project[] = projects,
     t: Task[] = tasks,
-    e: Expense[] = expenses,
     c: Category[] = categories,
-    ec: Category[] = expenseCategories,
     a: Appointment[] = appointments
   ) {
     await AsyncStorage.multiSet([
       [STORAGE_KEYS.PROJECTS, JSON.stringify(p)],
       [STORAGE_KEYS.TASKS, JSON.stringify(t)],
-      [STORAGE_KEYS.EXPENSES, JSON.stringify(e)],
       [STORAGE_KEYS.CATEGORIES, JSON.stringify(c)],
-      [STORAGE_KEYS.EXPENSE_CATEGORIES, JSON.stringify(ec)],
       [STORAGE_KEYS.APPOINTMENTS, JSON.stringify(a)],
     ]);
   }
@@ -419,9 +384,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       AsyncStorage.setItem(STORAGE_KEYS.TASKS, JSON.stringify(next));
       return next;
     });
-    setExpenses(prev => {
-      const next = prev.filter(e => e.projectId !== id);
-      AsyncStorage.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(next));
+    // Also remove project-linked bank transactions
+    setTransactions(prev => {
+      const next = prev.filter(t => t.projectId !== id);
+      saveTransactions(next);
       return next;
     });
   }, []);
@@ -468,7 +434,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       let next = prev.map(t => {
         if (t.id !== id) return t;
         const updated = { ...t, ...updates };
-        // Auto-stamp completedAt only when transitioning into 'done' (not on re-saves of already-done tasks)
         if (updates.status === 'done' && t.status !== 'done') {
           const now = new Date();
           const dd   = String(now.getDate()).padStart(2, '0');
@@ -476,14 +441,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           const yyyy = now.getFullYear();
           updated.completedAt = `${dd}/${mm}/${yyyy}`;
         }
-        // Clear completedAt if task is moved back out of done
         if (updates.status && updates.status !== 'done') {
           updated.completedAt = undefined;
         }
         updated.eisenhower = computeEisenhower(updated.urgency, updated.importance);
         return updated;
       });
-      // ── Recurrence: spawn next instance when a recurring task is marked done ──
       const task = prev.find(t => t.id === id);
       if (task && task.recurrence && updates.status === 'done' && task.status !== 'done') {
         const due = new Date(task.dueDate);
@@ -518,40 +481,36 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       markDirty();
       return next;
     });
-    setExpenses(prev => {
-      const next = prev.filter(e => e.taskId !== id);
-      AsyncStorage.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(next));
+    // Also remove task-linked bank transactions
+    setTransactions(prev => {
+      const next = prev.filter(t => t.taskId !== id);
+      saveTransactions(next);
       return next;
     });
   }, []);
 
-  const addExpense = useCallback((e: Omit<Expense, 'id'>): Expense => {
-    const newE: Expense = { ...e, id: genId() };
-    setExpenses(prev => {
-      const next = [...prev, newE];
-      AsyncStorage.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(next));
-      markDirty();
-      return next;
-    });
-    return newE;
+  const addTransactionCtx = useCallback(async (tx: Omit<BankTransaction, 'id'>): Promise<BankTransaction> => {
+    const newTx = await bankAddTx(tx);
+    setTransactions(prev => [newTx, ...prev]);
+    markDirty();
+    return newTx;
   }, []);
 
-  const updateExpense = useCallback((id: string, updates: Partial<Expense>) => {
-    setExpenses(prev => {
-      const next = prev.map(e => (e.id === id ? { ...e, ...updates } : e));
-      AsyncStorage.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(next));
-      markDirty();
-      return next;
-    });
+  const updateTransactionCtx = useCallback(async (id: string, updates: Partial<Omit<BankTransaction, 'id'>>): Promise<void> => {
+    await bankUpdateTx(id, updates);
+    setTransactions(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t));
+    markDirty();
   }, []);
 
-  const deleteExpense = useCallback((id: string) => {
-    setExpenses(prev => {
-      const next = prev.filter(e => e.id !== id);
-      AsyncStorage.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(next));
-      markDirty();
-      return next;
-    });
+  const deleteTransactionCtx = useCallback(async (id: string): Promise<void> => {
+    await bankDeleteTx(id);
+    setTransactions(prev => prev.filter(t => t.id !== id));
+    markDirty();
+  }, []);
+
+  const reloadTransactions = useCallback(async (): Promise<void> => {
+    const txs = await getTransactions();
+    setTransactions(txs);
   }, []);
 
   const addCategory = useCallback((name: string) => {
@@ -567,23 +526,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setCategories(prev => {
       const next = prev.filter(c => c.id !== id);
       AsyncStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(next));
-      return next;
-    });
-  }, []);
-
-  const addExpenseCategory = useCallback((name: string) => {
-    const newC: Category = { id: genId(), name };
-    setExpenseCategories(prev => {
-      const next = [...prev, newC];
-      AsyncStorage.setItem(STORAGE_KEYS.EXPENSE_CATEGORIES, JSON.stringify(next));
-      return next;
-    });
-  }, []);
-
-  const deleteExpenseCategory = useCallback((id: string) => {
-    setExpenseCategories(prev => {
-      const next = prev.filter(c => c.id !== id);
-      AsyncStorage.setItem(STORAGE_KEYS.EXPENSE_CATEGORIES, JSON.stringify(next));
       return next;
     });
   }, []);
@@ -622,13 +564,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   );
 
   const getProjectExpenses = useCallback(
-    (projectId: string) => expenses.filter(e => e.projectId === projectId),
-    [expenses]
+    (projectId: string) => transactions.filter(t => t.type === 'expense' && t.projectId === projectId),
+    [transactions]
   );
 
   const getTaskExpenses = useCallback(
-    (taskId: string) => expenses.filter(e => e.taskId === taskId),
-    [expenses]
+    (taskId: string) => transactions.filter(t => t.type === 'expense' && t.taskId === taskId),
+    [transactions]
   );
 
   const getStats = useCallback((): AppStats => {
@@ -653,16 +595,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const sample = createSampleData();
     setProjects(sample.projects);
     setTasks(sample.tasks);
-    setExpenses(sample.expenses);
     setCategories(DEFAULT_CATEGORIES);
-    setExpenseCategories(DEFAULT_EXPENSE_CATEGORIES);
     setAppointments([]);
     AsyncStorage.multiSet([
       [STORAGE_KEYS.PROJECTS, JSON.stringify(sample.projects)],
       [STORAGE_KEYS.TASKS, JSON.stringify(sample.tasks)],
-      [STORAGE_KEYS.EXPENSES, JSON.stringify(sample.expenses)],
       [STORAGE_KEYS.CATEGORIES, JSON.stringify(DEFAULT_CATEGORIES)],
-      [STORAGE_KEYS.EXPENSE_CATEGORIES, JSON.stringify(DEFAULT_EXPENSE_CATEGORIES)],
       [STORAGE_KEYS.APPOINTMENTS, JSON.stringify([])],
       [STORAGE_KEYS.INITIALIZED, 'true'],
     ]);
@@ -674,9 +612,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       value={{
         projects,
         tasks,
-        expenses,
+        transactions,
         categories,
-        expenseCategories,
         appointments,
         loading,
         addProject,
@@ -688,19 +625,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         addTask,
         updateTask,
         deleteTask,
-        addExpense,
-        updateExpense,
-        deleteExpense,
-        getTaskExpenses,
+        addTransactionCtx,
+        updateTransactionCtx,
+        deleteTransactionCtx,
+        reloadTransactions,
         addCategory,
         deleteCategory,
-        addExpenseCategory,
-        deleteExpenseCategory,
         addAppointment,
         updateAppointment,
         deleteAppointment,
         getProjectTasks,
         getProjectExpenses,
+        getTaskExpenses,
         getStats,
         resetData,
       }}

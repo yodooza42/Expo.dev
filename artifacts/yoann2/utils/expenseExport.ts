@@ -2,7 +2,8 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 
-import type { Expense, Project } from '@/types';
+import type { BankTransaction } from '@/utils/bankStorage';
+import type { Project } from '@/types';
 
 function escapeCsv(val: string | number): string {
   const s = String(val ?? '');
@@ -13,20 +14,20 @@ function escapeCsv(val: string | number): string {
 }
 
 export async function exportExpensesCSV(
-  expenses: Expense[],
+  expenses: BankTransaction[],
   projects: Project[],
   label: string
 ): Promise<void> {
-  const header = 'Date,Projet,Nom,Catégorie,Montant (€),Description';
+  const header = 'Date,Projet,Libellé,Catégorie,Montant (€),Note';
   const rows = expenses.map(e => {
     const proj = projects.find(p => p.id === e.projectId);
     return [
       escapeCsv(new Date(e.date).toLocaleDateString('fr-FR')),
       escapeCsv(proj?.name ?? ''),
-      escapeCsv(e.name),
+      escapeCsv(e.label),
       escapeCsv(e.category),
       escapeCsv(e.amount.toFixed(2)),
-      escapeCsv(e.description ?? ''),
+      escapeCsv(e.userNote ?? ''),
     ].join(',');
   });
   const csv = [header, ...rows].join('\n');
@@ -45,7 +46,7 @@ export async function exportExpensesCSV(
 }
 
 function buildExpensePdfHtml(
-  expenses: Expense[],
+  expenses: BankTransaction[],
   projects: Project[],
   label: string
 ): string {
@@ -72,7 +73,7 @@ function buildExpensePdfHtml(
       return `<tr>
         <td>${new Date(e.date).toLocaleDateString('fr-FR')}</td>
         <td>${proj?.name ?? '—'}</td>
-        <td>${e.name}</td>
+        <td>${e.label}</td>
         <td>${e.category}</td>
         <td style="text-align:right;font-weight:bold">${e.amount.toFixed(2)} €</td>
       </tr>`;
@@ -101,7 +102,7 @@ function buildExpensePdfHtml(
   <tbody>${catRows}</tbody></table>
 
   <h2>Détail des dépenses (${expenses.length})</h2>
-  <table><thead><tr><th>Date</th><th>Projet</th><th>Nom</th><th>Catégorie</th><th>Montant</th></tr></thead>
+  <table><thead><tr><th>Date</th><th>Projet</th><th>Libellé</th><th>Catégorie</th><th>Montant</th></tr></thead>
   <tbody>${expRows}</tbody></table>
 
   <div class="footer">Yoann2.0 — Rapport dépenses</div>
@@ -109,7 +110,7 @@ function buildExpensePdfHtml(
 }
 
 export async function exportExpensesPDF(
-  expenses: Expense[],
+  expenses: BankTransaction[],
   projects: Project[],
   label: string
 ): Promise<void> {

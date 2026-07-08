@@ -40,7 +40,7 @@ export default function TaskDetailScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { tasks, projects, updateTask, deleteTask, addExpense, deleteExpense, getTaskExpenses } = useApp();
+  const { tasks, projects, updateTask, deleteTask, addTransactionCtx, deleteTransactionCtx, getTaskExpenses } = useApp();
 
   const taskMaybe = tasks.find(t => t.id === id);
   const project = taskMaybe ? projects.find(p => p.id === taskMaybe.projectId) : null;
@@ -115,17 +115,18 @@ export default function TaskDetailScreen() {
     return new Date().toISOString();
   }
 
-  function handleAddExpense() {
+  async function handleAddExpense() {
     if (!expName.trim() || !expAmount.trim()) return;
     const amount = parseFloat(expAmount);
     if (isNaN(amount) || amount <= 0) return;
-    addExpense({
-      projectId: task.projectId,
-      taskId: task.id,
-      name: expName.trim(),
+    await addTransactionCtx({
+      type: 'expense',
+      label: expName.trim(),
       amount,
       date: parseFrDate(expDate),
-      category: expDetails.trim() || '',
+      category: expDetails.trim() || 'Autre',
+      projectId: task.projectId,
+      taskId: task.id,
     });
     setExpName('');
     setExpAmount('');
@@ -306,7 +307,7 @@ export default function TaskDetailScreen() {
               taskExpenses.map(e => (
                 <View key={e.id} style={[styles.expRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
                   <View style={{ flex: 1 }}>
-                    <Text style={[styles.expName, { color: colors.foreground }]}>{e.name}</Text>
+                    <Text style={[styles.expName, { color: colors.foreground }]}>{e.label}</Text>
                     {e.category.length > 0 && (
                       <Text style={[styles.expMeta, { color: colors.mutedForeground }]}>{e.category}</Text>
                     )}
@@ -315,7 +316,7 @@ export default function TaskDetailScreen() {
                     </Text>
                   </View>
                   <Text style={[styles.expAmount, { color: colors.primary }]}>{e.amount}€</Text>
-                  <Pressable onPress={() => deleteExpense(e.id)} hitSlop={8}>
+                  <Pressable onPress={() => deleteTransactionCtx(e.id)} hitSlop={8}>
                     <MaterialCommunityIcons name="trash-can-outline" size={18} color={colors.mutedForeground} />
                   </Pressable>
                 </View>
