@@ -1,7 +1,7 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useFocusEffect, useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AppState,
   Image,
@@ -23,18 +23,10 @@ import { getFuelEntries } from '@/utils/fuelStorage';
 import type { FuelEntry } from '@/types/fuel';
 import { computeOdometer, getTrips, getVehicleSettings } from '@/utils/tripStorage';
 
-// ── Turnaround — 6 individual frames ──────────────────────────────────────────
-// Clockwise order: front-left-3/4 → front → right-side → rear-right-3/4 → rear → left-side
-const DOBLO_FRAMES = [
-  require('@/assets/images/doblo-2-front34.png'),  // 0 — front-left 3/4 (DEFAULT)
-  require('@/assets/images/doblo-1-front.png'),     // 1 — front
-  require('@/assets/images/doblo-3-rightside.png'), // 2 — right side
-  require('@/assets/images/doblo-5-rear34.png'),    // 3 — rear-right 3/4
-  require('@/assets/images/doblo-6-rear.png'),      // 4 — rear
-  require('@/assets/images/doblo-4-leftside.png'),  // 5 — left side
-] as const;
+// ── Doblo image ───────────────────────────────────────────────────────────────
+const DOBLO_IMG = require('@/assets/images/doblo-main.png');
 
-interface TurnaroundCardProps {
+interface VehicleCardProps {
   vehicle: Vehicle;
   odo: number;
   fillPct: number | null;
@@ -45,45 +37,10 @@ interface TurnaroundCardProps {
   colors: ReturnType<typeof import('@/hooks/useColors').useColors>;
 }
 
-function TurnaroundCard({ vehicle, odo, fillPct, remaining, isReserve, gaugeColor, hasData, colors }: TurnaroundCardProps) {
-  const [frameIdx, setFrameIdx] = useState(0); // 0 = front-left 3/4 (default)
-  const animating = useRef(false);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  function startTurnaround() {
-    if (animating.current) return;
-    animating.current = true;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    let step = 1;
-    const TOTAL = DOBLO_FRAMES.length * 2; // 2 full loops
-
-    function advance() {
-      setFrameIdx(step % DOBLO_FRAMES.length);
-      step++;
-      if (step < TOTAL) {
-        timerRef.current = setTimeout(advance, 110);
-      } else {
-        timerRef.current = setTimeout(() => {
-          setFrameIdx(0);
-          animating.current = false;
-        }, 110);
-      }
-    }
-    timerRef.current = setTimeout(advance, 110);
-  }
-
-  useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
-
+function TurnaroundCard({ vehicle, odo, fillPct, remaining, isReserve, gaugeColor, hasData, colors }: VehicleCardProps) {
   return (
-    <Pressable
-      onPress={startTurnaround}
-      style={[trStyles.card, { backgroundColor: colors.card, borderColor: colors.border }]}
-    >
-      <Image
-        source={DOBLO_FRAMES[frameIdx]}
-        style={trStyles.carImg}
-        resizeMode="contain"
-      />
+    <View style={[trStyles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+      <Image source={DOBLO_IMG} style={trStyles.carImg} resizeMode="contain" />
       <Text style={[trStyles.odoVal, { color: colors.foreground }]}>{odo.toFixed(0)}</Text>
       <Text style={[trStyles.odoLabel, { color: colors.mutedForeground }]}>KM {vehicle.name.toUpperCase()}</Text>
       {hasData && (
@@ -98,8 +55,7 @@ function TurnaroundCard({ vehicle, odo, fillPct, remaining, isReserve, gaugeColo
           </Text>
         </View>
       )}
-      <Text style={[trStyles.tapHint, { color: colors.mutedForeground }]}>appuyer pour tourner</Text>
-    </Pressable>
+    </View>
   );
 }
 
@@ -120,7 +76,6 @@ const trStyles = StyleSheet.create({
   gaugeTrack: { width: '100%', height: 5, borderRadius: 3, overflow: 'hidden' },
   gaugeFill: { height: 5, borderRadius: 3 },
   gaugeLabel: { fontSize: 10, fontFamily: 'Inter_500Medium' },
-  tapHint: { fontSize: 9, fontFamily: 'Inter_400Regular', opacity: 0.4, marginTop: 2 },
 });
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
