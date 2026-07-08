@@ -37,6 +37,18 @@ const LINE_COLORS = [
   '#9C27B0', '#FF9800', '#00BCD4', '#E91E63',
 ];
 
+// Couleurs par catégorie de revenu
+const INCOME_CAT_COLORS: Record<string, string> = {
+  'Salaire':          '#4CAF50',
+  'Freelance':        '#66BB6A',
+  'Vente':            '#26A69A',
+  'Allocation':       '#00BCD4',
+  'Remboursement':    '#29B6F6',
+  'Investissement':   '#8BC34A',
+  'Autre revenu':     '#43A047',
+  'Non classé':       '#9E9E9E',
+};
+
 // Couleurs par catégorie de dépense
 const CAT_COLORS: Record<string, string> = {
   'Alimentation': '#FF9800',
@@ -128,6 +140,10 @@ export default function ExpensesScreen() {
     () => transactions.filter(t => t.type === 'expense'),
     [transactions]
   );
+  const incomes = useMemo(
+    () => transactions.filter(t => t.type === 'income'),
+    [transactions]
+  );
 
   // ── État existant ─────────────────────────────────────────────────────────
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -211,6 +227,23 @@ export default function ExpensesScreen() {
   }, [expenses, depRange]);
 
   const depTotal = useMemo(() => depByCat.reduce((s, [, v]) => s + v, 0), [depByCat]);
+
+  const [statsView, setStatsView] = useState<'expense' | 'income'>('expense');
+
+  const incByCat = useMemo(() => {
+    const filtered = incomes.filter(e => {
+      const ts = new Date(e.date).getTime();
+      return ts >= depRange.startTs && ts <= depRange.endTs;
+    });
+    const map = new Map<string, number>();
+    filtered.forEach(e => {
+      const cat = e.category?.trim() || 'Non classé';
+      map.set(cat, (map.get(cat) ?? 0) + e.amount);
+    });
+    return Array.from(map.entries()).sort((a, b) => b[1] - a[1]);
+  }, [incomes, depRange]);
+
+  const incTotal = useMemo(() => incByCat.reduce((s, [, v]) => s + v, 0), [incByCat]);
 
   function depNavPrev() {
     Haptics.selectionAsync();
@@ -407,17 +440,45 @@ export default function ExpensesScreen() {
         ) : (
           <>
             {/* ═══════════════════════════════════════════════
-                SECTION : Dépenses (nouvelles statistiques)
+                SECTION : Dépenses / Revenus
             ════════════════════════════════════════════════ */}
-            <Text style={[styles.section, { color: colors.mutedForeground }]}>Dépenses</Text>
 
-            {/* Sélecteur de mode */}
+            {/* Toggle Dépenses / Revenus */}
+            <View style={[styles.statsToggleRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <Pressable
+                onPress={() => { Haptics.selectionAsync(); setStatsView('expense'); }}
+                style={[styles.statsToggleBtn, statsView === 'expense' && { backgroundColor: '#EF444420' }]}
+              >
+                <MaterialCommunityIcons name="arrow-up-circle-outline" size={16} color={statsView === 'expense' ? '#EF4444' : colors.mutedForeground} />
+                <Text style={[styles.statsToggleTxt, { color: statsView === 'expense' ? '#EF4444' : colors.mutedForeground }]}>Dépenses</Text>
+                {showAmounts && (
+                  <Text style={[styles.statsToggleAmt, { color: statsView === 'expense' ? '#EF4444' : colors.mutedForeground }]}>
+                    {fmtEuro(depTotal)}
+                  </Text>
+                )}
+              </Pressable>
+              <View style={{ width: 1, backgroundColor: colors.border, marginVertical: 6 }} />
+              <Pressable
+                onPress={() => { Haptics.selectionAsync(); setStatsView('income'); }}
+                style={[styles.statsToggleBtn, statsView === 'income' && { backgroundColor: '#4CAF5020' }]}
+              >
+                <MaterialCommunityIcons name="arrow-down-circle-outline" size={16} color={statsView === 'income' ? '#4CAF50' : colors.mutedForeground} />
+                <Text style={[styles.statsToggleTxt, { color: statsView === 'income' ? '#4CAF50' : colors.mutedForeground }]}>Revenus</Text>
+                {showAmounts && (
+                  <Text style={[styles.statsToggleAmt, { color: statsView === 'income' ? '#4CAF50' : colors.mutedForeground }]}>
+                    {fmtEuro(incTotal)}
+                  </Text>
+                )}
+              </Pressable>
+            </View>
+
+            {/* Sélecteur de mode (partagé) */}
             <View style={[styles.tabRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
               {(['mensuel', 'saisonnier', 'annuel'] as DepMode[]).map(mode => (
                 <Pressable
                   key={mode}
                   onPress={() => { Haptics.selectionAsync(); setDepMode(mode); }}
-                  style={[styles.tabBtn, depMode === mode && { backgroundColor: colors.primary }]}
+                  style={[styles.tabBtn, depMode === mode && { backgroundColor: statsView === 'income' ? '#4CAF50' : colors.primary }]}
                 >
                   <Text style={[styles.tabBtnTxt, { color: depMode === mode ? colors.primaryForeground : colors.mutedForeground }]}>
                     {mode === 'mensuel' ? 'Mensuel' : mode === 'saisonnier' ? 'Saisonnier' : 'Annuel'}
@@ -426,7 +487,7 @@ export default function ExpensesScreen() {
               ))}
             </View>
 
-            {/* Navigation période */}
+            {/* Navigation période (partagée) */}
             <View style={styles.depNavRow}>
               <Pressable onPress={depNavPrev} hitSlop={14} style={[styles.depNavBtn, { backgroundColor: colors.card, borderColor: colors.border }]}>
                 <MaterialCommunityIcons name="chevron-left" size={22} color={colors.foreground} />
@@ -437,52 +498,57 @@ export default function ExpensesScreen() {
               </Pressable>
             </View>
 
-            {depByCat.length === 0 ? (
-              <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                <View style={{ padding: 20, alignItems: 'center' }}>
-                  <Text style={[styles.emptyTxt, { color: colors.mutedForeground }]}>Aucune dépense sur cette période</Text>
-                </View>
-              </View>
-            ) : (
-              <>
-                {/* Totaliser la période */}
-                <View style={[styles.depTotalRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                  <Text style={[styles.depTotalLbl, { color: colors.mutedForeground }]}>Total période</Text>
-                  <Text style={[styles.depTotalAmt, { color: colors.primary }]}>
-                    {showAmounts ? fmtEuro(depTotal) : '••••'}
-                  </Text>
-                </View>
-
-                {/* Détail par catégorie */}
+            {/* Contenu conditionnel selon la vue */}
+            {(() => {
+              const byCat  = statsView === 'expense' ? depByCat  : incByCat;
+              const total  = statsView === 'expense' ? depTotal   : incTotal;
+              const colors_ = statsView === 'expense' ? CAT_COLORS : INCOME_CAT_COLORS;
+              const accentColor = statsView === 'expense' ? colors.primary : '#4CAF50';
+              const emptyLabel = statsView === 'expense' ? 'Aucune dépense sur cette période' : 'Aucun revenu sur cette période';
+              return byCat.length === 0 ? (
                 <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                  {depByCat.map(([cat, amt], i) => {
-                    const pct = depTotal > 0 ? (amt / depTotal) * 100 : 0;
-                    const catColor = CAT_COLORS[cat] ?? colors.primary;
-                    return (
-                      <View
-                        key={cat}
-                        style={[
-                          styles.catBlock,
-                          i < depByCat.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border },
-                        ]}
-                      >
-                        <View style={styles.catRowInner}>
-                          <View style={[styles.catDot, { backgroundColor: catColor }]} />
-                          <Text style={[styles.catName, { color: colors.foreground }]}>{cat}</Text>
-                          <Text style={[styles.catPct, { color: colors.mutedForeground }]}>{pct.toFixed(0)}%</Text>
-                          <Text style={[styles.catAmount, { color: catColor }]}>
-                            {showAmounts ? fmtEuro(amt) : '••••'}
-                          </Text>
-                        </View>
-                        <View style={[styles.catTrack, { backgroundColor: colors.border }]}>
-                          <View style={[styles.catFill, { width: `${pct}%` as any, backgroundColor: catColor }]} />
-                        </View>
-                      </View>
-                    );
-                  })}
+                  <View style={{ padding: 20, alignItems: 'center' }}>
+                    <Text style={[styles.emptyTxt, { color: colors.mutedForeground }]}>{emptyLabel}</Text>
+                  </View>
                 </View>
-              </>
-            )}
+              ) : (
+                <>
+                  <View style={[styles.depTotalRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                    <Text style={[styles.depTotalLbl, { color: colors.mutedForeground }]}>Total période</Text>
+                    <Text style={[styles.depTotalAmt, { color: accentColor }]}>
+                      {showAmounts ? fmtEuro(total) : '••••'}
+                    </Text>
+                  </View>
+                  <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                    {byCat.map(([cat, amt], i) => {
+                      const pct = total > 0 ? (amt / total) * 100 : 0;
+                      const catColor = colors_[cat] ?? accentColor;
+                      return (
+                        <View
+                          key={cat}
+                          style={[
+                            styles.catBlock,
+                            i < byCat.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border },
+                          ]}
+                        >
+                          <View style={styles.catRowInner}>
+                            <View style={[styles.catDot, { backgroundColor: catColor }]} />
+                            <Text style={[styles.catName, { color: colors.foreground }]}>{cat}</Text>
+                            <Text style={[styles.catPct, { color: colors.mutedForeground }]}>{pct.toFixed(0)}%</Text>
+                            <Text style={[styles.catAmount, { color: catColor }]}>
+                              {showAmounts ? fmtEuro(amt) : '••••'}
+                            </Text>
+                          </View>
+                          <View style={[styles.catTrack, { backgroundColor: colors.border }]}>
+                            <View style={[styles.catFill, { width: `${pct}%` as any, backgroundColor: catColor }]} />
+                          </View>
+                        </View>
+                      );
+                    })}
+                  </View>
+                </>
+              );
+            })()}
 
             {/* ═══════════════════════════════════════════════
                 Séparateur
@@ -860,6 +926,26 @@ const styles = StyleSheet.create({
     marginTop: 8,
     marginBottom: 2,
   },
+
+  // ── Toggle Dépenses / Revenus ─────────────────────────────────────────────
+  statsToggleRow: {
+    flexDirection: 'row',
+    borderRadius: 14,
+    borderWidth: 1,
+    overflow: 'hidden',
+    marginBottom: 4,
+  },
+  statsToggleBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 14,
+    paddingHorizontal: 8,
+  },
+  statsToggleTxt: { fontSize: 14, fontFamily: 'Inter_600SemiBold' },
+  statsToggleAmt: { fontSize: 12, fontFamily: 'Inter_500Medium' },
 
   // ── Dépenses : sélecteur de mode ──────────────────────────────────────────
   tabRow: {
