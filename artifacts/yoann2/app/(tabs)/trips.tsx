@@ -1,9 +1,10 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useFocusEffect, useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AppState,
+  Image,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -21,6 +22,135 @@ import { pH } from '@/styles/header';
 import { getFuelEntries } from '@/utils/fuelStorage';
 import type { FuelEntry } from '@/types/fuel';
 import { computeOdometer, getTrips, getVehicleSettings } from '@/utils/tripStorage';
+
+// ── Turnaround sprite-sheet constants ─────────────────────────────────────────
+// Source image: 1536×1024px → 3 cols × 2 rows → each frame 512×512px
+// Display container: FRAME_DP × FRAME_DP
+// Full image rendered at FRAME_DP/512 scale
+const FRAME_DP = 130;
+const IMG_W = (1536 / 512) * FRAME_DP; // 390
+const IMG_H = (1024 / 512) * FRAME_DP; // 260
+// Frame indices → col/row in the 3×2 grid
+// 0=front, 1=front-left-3/4, 2=right-side, 3=rear, 4=rear-left-3/4, 5=rear-right-3/4
+const SEQUENCE = [1, 0, 2, 5, 3, 4]; // turnaround order
+
+const DOBLO_IMG = require('@/assets/images/doblo-turnaround.png');
+
+function frameOffset(frameIdx: number) {
+  const col = frameIdx % 3;
+  const row = Math.floor(frameIdx / 3);
+  return { x: -col * FRAME_DP, y: -row * FRAME_DP };
+}
+
+interface TurnaroundCardProps {
+  vehicle: Vehicle;
+  odo: number;
+  fillPct: number | null;
+  remaining: number | null;
+  isReserve: boolean;
+  gaugeColor: string;
+  hasData: boolean;
+  colors: ReturnType<typeof import('@/hooks/useColors').useColors>;
+}
+
+function TurnaroundCard({ vehicle, odo, fillPct, remaining, isReserve, gaugeColor, hasData, colors }: TurnaroundCardProps) {
+  const [seqIdx, setSeqIdx] = useState(0); // index into SEQUENCE, default=0 → frame 1
+  const animating = useRef(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const frameIdx = SEQUENCE[seqIdx]!;
+  const { x, y } = frameOffset(frameIdx);
+
+  function startTurnaround() {
+    if (animating.current) return;
+    animating.current = true;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    let step = 1; // start at next frame
+    const TOTAL = SEQUENCE.length * 2; // 2 full loops
+
+    function advance() {
+      setSeqIdx(step % SEQUENCE.length);
+      step++;
+      if (step < TOTAL) {
+        timerRef.current = setTimeout(advance, 110);
+      } else {
+        // Return to default frame (index 0 = frame 1)
+        timerRef.current = setTimeout(() => {
+          setSeqIdx(0);
+          animating.current = false;
+        }, 110);
+      }
+    }
+    timerRef.current = setTimeout(advance, 110);
+  }
+
+  // Cleanup on unmount
+  useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
+
+  return (
+    <Pressable
+      onPress={startTurnaround}
+      style={[trStyles.card, { backgroundColor: colors.card, borderColor: colors.border }]}
+    >
+      {/* Sprite-sheet frame */}
+      <View style={trStyles.spriteContainer}>
+        <Image
+          source={DOBLO_IMG}
+          style={[trStyles.spriteImg, { width: IMG_W, height: IMG_H, transform: [{ translateX: x }, { translateY: y }] }]}
+          resizeMode="contain"
+        />
+      </View>
+
+      {/* Odometer */}
+      <Text style={[trStyles.odoVal, { color: colors.foreground }]}>{odo.toFixed(0)}</Text>
+      <Text style={[trStyles.odoLabel, { color: colors.mutedForeground }]}>KM {vehicle.name.toUpperCase()}</Text>
+
+      {/* Fuel gauge */}
+      {hasData && (
+        <View style={trStyles.gaugeWrapper}>
+          <View style={[trStyles.gaugeTrack, { backgroundColor: colors.muted }]}>
+            {fillPct !== null && (
+              <View style={[trStyles.gaugeFill, { width: `${fillPct * 100}%` as any, backgroundColor: gaugeColor }]} />
+            )}
+          </View>
+          <Text style={[trStyles.gaugeLabel, { color: isReserve ? '#F44336' : colors.mutedForeground }]}>
+            {isReserve ? '⚠ Réserve' : remaining !== null ? `~${remaining.toFixed(0)} km` : '—'}
+          </Text>
+        </View>
+      )}
+
+      {/* Tap hint (shown only when not animating — opacity trick via static element) */}
+      <Text style={[trStyles.tapHint, { color: colors.mutedForeground }]}>appuyer pour tourner</Text>
+    </Pressable>
+  );
+}
+
+const trStyles = StyleSheet.create({
+  card: {
+    flex: 1,
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    gap: 4,
+  },
+  spriteContainer: {
+    width: FRAME_DP,
+    height: FRAME_DP,
+    overflow: 'hidden',
+  },
+  spriteImg: {
+    position: 'absolute',
+  },
+  odoVal: { fontSize: 24, fontFamily: 'Inter_700Bold' },
+  odoLabel: { fontSize: 11, fontFamily: 'Inter_400Regular', textTransform: 'uppercase', letterSpacing: 0.5 },
+  gaugeWrapper: { width: '100%', alignItems: 'center', gap: 4, marginTop: 4 },
+  gaugeTrack: { width: '100%', height: 5, borderRadius: 3, overflow: 'hidden' },
+  gaugeFill: { height: 5, borderRadius: 3 },
+  gaugeLabel: { fontSize: 10, fontFamily: 'Inter_500Medium' },
+  tapHint: { fontSize: 9, fontFamily: 'Inter_400Regular', opacity: 0.4, marginTop: 2 },
+});
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function currentMonthLabel(): string {
@@ -262,9 +392,24 @@ export default function TripsScreen() {
                 : fillPct > 0.25 ? '#FF9800'
                 : '#F44336';
               const isReserve = hasRange && auto.kmSinceFillup > auto.estimatedRange!;
+              if (v.type === 'car') {
+                return (
+                  <TurnaroundCard
+                    key={v.id}
+                    vehicle={v}
+                    odo={odo}
+                    fillPct={fillPct}
+                    remaining={remaining}
+                    isReserve={isReserve}
+                    gaugeColor={gaugeColor}
+                    hasData={auto?.hasData ?? false}
+                    colors={colors}
+                  />
+                );
+              }
               return (
                 <View key={v.id} style={[styles.odoCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                  <MaterialCommunityIcons name={v.type === 'moto' ? 'motorbike' : 'car'} size={20} color={color} />
+                  <MaterialCommunityIcons name="motorbike" size={20} color={color} />
                   <Text style={[styles.odoVal, { color: colors.foreground }]}>{odo.toFixed(0)}</Text>
                   <Text style={[styles.odoLabel, { color: colors.mutedForeground }]}>km {v.name}</Text>
                   {auto?.hasData && (
