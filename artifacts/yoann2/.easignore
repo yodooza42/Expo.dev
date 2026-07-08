@@ -1,0 +1,17 @@
+# Exclude git history — not needed for the build
+.git
+
+# Exclude unrelated artifacts — only yoann2 is built here
+artifacts/api-server
+artifacts/mockup-sandbox
+
+# Exclude all node_modules — EAS installs from scratch
+node_modules
+**/node_modules
+
+# Exclude local/editor files
+.local
+.agents
+**/.expo
+**/dist
+**/*.tsbuildinfo
