@@ -37,6 +37,25 @@ const LINE_COLORS = [
   '#9C27B0', '#FF9800', '#00BCD4', '#E91E63',
 ];
 
+// Couleurs par catégorie de dépense
+const CAT_COLORS: Record<string, string> = {
+  'Alimentation': '#FF9800',
+  'Transport': '#2196F3',
+  'Carburant': '#F44336',
+  'Logement': '#4CAF50',
+  'Santé': '#E91E63',
+  'Loisirs': '#9C27B0',
+  'Abonnements': '#00BCD4',
+  'Vêtements': '#795548',
+  'Matériaux / Projet': '#607D8B',
+  'Restauration': '#FF5722',
+  'Autre': '#9E9E9E',
+  'Non classé': '#9E9E9E',
+};
+
+const SEASONS_LABELS = ['Printemps', 'Été', 'Automne', 'Hiver'];
+
+type DepMode = 'mensuel' | 'saisonnier' | 'annuel';
 type PeriodKey = '3m' | '6m' | '1y' | '2y' | 'custom';
 
 interface MonthPoint {
@@ -52,6 +71,16 @@ const PERIOD_OPTIONS: { key: PeriodKey; label: string }[] = [
   { key: '2y', label: '2 ans' },
   { key: 'custom', label: 'Période…' },
 ];
+
+function initSeason(): { season: number; year: number } {
+  const m = new Date().getMonth();
+  const y = new Date().getFullYear();
+  if (m <= 1)  return { season: 3, year: y };       // jan/fév → Hiver(Y)
+  if (m <= 4)  return { season: 0, year: y };       // mar-mai → Printemps(Y)
+  if (m <= 7)  return { season: 1, year: y };       // jun-aoû → Été(Y)
+  if (m <= 10) return { season: 2, year: y };       // sep-nov → Automne(Y)
+  return { season: 3, year: y + 1 };               // déc → Hiver(Y+1)
+}
 
 function parseFrDate(s: string): Date | null {
   const parts = s.split('/');
@@ -77,11 +106,7 @@ function getMonthsBetween(start: Date, end: Date): MonthPoint[] {
   return result;
 }
 
-function getMonthsForPeriod(
-  period: PeriodKey,
-  customStart: string,
-  customEnd: string
-): MonthPoint[] {
+function getMonthsForPeriod(period: PeriodKey, customStart: string, customEnd: string): MonthPoint[] {
   const now = new Date();
   if (period === 'custom') {
     const s = parseFrDate(customStart);
@@ -100,6 +125,7 @@ export default function ExpensesScreen() {
   const router = useRouter();
   const { projects, expenses, expenseCategories } = useApp();
 
+  // ── État existant ─────────────────────────────────────────────────────────
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [period, setPeriod] = useState<PeriodKey>('6m');
   const [selectedExpenseCat, setSelectedExpenseCat] = useState<string | null>(null);
@@ -127,11 +153,84 @@ export default function ExpensesScreen() {
     d.setMonth(d.getMonth() - 5);
     return `01/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
   });
-  const [customEnd, setCustomEnd] = useState(() => {
-    const d = new Date();
-    return fmtDateSlash(d);
-  });
+  const [customEnd, setCustomEnd] = useState(() => fmtDateSlash(new Date()));
 
+  // ── État section "Dépenses" (nouveau) ─────────────────────────────────────
+  const [depMode, setDepMode] = useState<DepMode>('mensuel');
+  const [depMonth, setDepMonth] = useState(() => ({
+    year: new Date().getFullYear(),
+    month: new Date().getMonth(),
+  }));
+  const [depSeason, setDepSeason] = useState(initSeason);
+  const [depYear, setDepYear] = useState(() => new Date().getFullYear());
+
+  // Plage de dates pour la période sélectionnée
+  const depRange = useMemo(() => {
+    if (depMode === 'mensuel') {
+      const start = new Date(depMonth.year, depMonth.month, 1);
+      const end = new Date(depMonth.year, depMonth.month + 1, 0, 23, 59, 59, 999);
+      const raw = start.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+      return { startTs: start.getTime(), endTs: end.getTime(), label: raw.charAt(0).toUpperCase() + raw.slice(1) };
+    }
+    if (depMode === 'saisonnier') {
+      const { season, year } = depSeason;
+      let start: Date, end: Date;
+      if (season === 0) {      // Printemps : mars-mai
+        start = new Date(year, 2, 1); end = new Date(year, 4, 31, 23, 59, 59, 999);
+      } else if (season === 1) { // Été : juin-août
+        start = new Date(year, 5, 1); end = new Date(year, 7, 31, 23, 59, 59, 999);
+      } else if (season === 2) { // Automne : sept-nov
+        start = new Date(year, 8, 1); end = new Date(year, 10, 30, 23, 59, 59, 999);
+      } else {                  // Hiver : déc(Y-1) – fév(Y)
+        start = new Date(year - 1, 11, 1); end = new Date(year, 2, 0, 23, 59, 59, 999);
+      }
+      return { startTs: start.getTime(), endTs: end.getTime(), label: `${SEASONS_LABELS[season]} ${year}` };
+    }
+    // Annuel
+    const start = new Date(depYear, 0, 1);
+    const end = new Date(depYear, 11, 31, 23, 59, 59, 999);
+    return { startTs: start.getTime(), endTs: end.getTime(), label: String(depYear) };
+  }, [depMode, depMonth, depSeason, depYear]);
+
+  // Totaux par catégorie pour la période sélectionnée
+  const depByCat = useMemo(() => {
+    const filtered = expenses.filter(e => {
+      const ts = new Date(e.date).getTime();
+      return ts >= depRange.startTs && ts <= depRange.endTs;
+    });
+    const map = new Map<string, number>();
+    filtered.forEach(e => {
+      const cat = e.category?.trim() || 'Non classé';
+      map.set(cat, (map.get(cat) ?? 0) + e.amount);
+    });
+    return Array.from(map.entries()).sort((a, b) => b[1] - a[1]);
+  }, [expenses, depRange]);
+
+  const depTotal = useMemo(() => depByCat.reduce((s, [, v]) => s + v, 0), [depByCat]);
+
+  function depNavPrev() {
+    Haptics.selectionAsync();
+    if (depMode === 'mensuel') {
+      setDepMonth(m => m.month === 0 ? { year: m.year - 1, month: 11 } : { year: m.year, month: m.month - 1 });
+    } else if (depMode === 'saisonnier') {
+      setDepSeason(s => s.season === 0 ? { season: 3, year: s.year - 1 } : { season: s.season - 1, year: s.year });
+    } else {
+      setDepYear(y => y - 1);
+    }
+  }
+
+  function depNavNext() {
+    Haptics.selectionAsync();
+    if (depMode === 'mensuel') {
+      setDepMonth(m => m.month === 11 ? { year: m.year + 1, month: 0 } : { year: m.year, month: m.month + 1 });
+    } else if (depMode === 'saisonnier') {
+      setDepSeason(s => s.season === 3 ? { season: 0, year: s.year + 1 } : { season: s.season + 1, year: s.year });
+    } else {
+      setDepYear(y => y + 1);
+    }
+  }
+
+  // ── Données section "Dépenses projets" (existant) ─────────────────────────
   useFocusEffect(
     useCallback(() => {
       if (selectedIds.size === 0 && projects.length > 0) {
@@ -189,7 +288,6 @@ export default function ExpensesScreen() {
 
   const innerW = CHART_W - PAD.left - PAD.right;
   const innerH = CHART_H - PAD.top - PAD.bottom;
-
   const labelStep = months.length <= 6 ? 1 : months.length <= 12 ? 2 : months.length <= 18 ? 3 : 4;
 
   async function handleExport() {
@@ -220,11 +318,8 @@ export default function ExpensesScreen() {
   function toggleProject(id: string) {
     setSelectedIds(prev => {
       const next = new Set(prev);
-      if (next.has(id)) {
-        if (next.size > 1) next.delete(id);
-      } else {
-        next.add(id);
-      }
+      if (next.has(id)) { if (next.size > 1) next.delete(id); }
+      else { next.add(id); }
       return next;
     });
   }
@@ -256,6 +351,7 @@ export default function ExpensesScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
+      {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
           <Pressable onPress={() => router.back()} hitSlop={8}>
@@ -302,14 +398,100 @@ export default function ExpensesScreen() {
         {expenses.length === 0 ? (
           <View style={styles.empty}>
             <MaterialCommunityIcons name="chart-line" size={48} color={colors.mutedForeground} />
-            <Text style={[styles.emptyTxt, { color: colors.mutedForeground }]}>
-              Aucune dépense enregistrée
-            </Text>
+            <Text style={[styles.emptyTxt, { color: colors.mutedForeground }]}>Aucune dépense enregistrée</Text>
           </View>
         ) : (
           <>
-            {/* Expense category totals */}
-            <Text style={[styles.section, { color: colors.mutedForeground }]}>Par catégorie de dépense</Text>
+            {/* ═══════════════════════════════════════════════
+                SECTION : Dépenses (nouvelles statistiques)
+            ════════════════════════════════════════════════ */}
+            <Text style={[styles.section, { color: colors.mutedForeground }]}>Dépenses</Text>
+
+            {/* Sélecteur de mode */}
+            <View style={[styles.tabRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              {(['mensuel', 'saisonnier', 'annuel'] as DepMode[]).map(mode => (
+                <Pressable
+                  key={mode}
+                  onPress={() => { Haptics.selectionAsync(); setDepMode(mode); }}
+                  style={[styles.tabBtn, depMode === mode && { backgroundColor: colors.primary }]}
+                >
+                  <Text style={[styles.tabBtnTxt, { color: depMode === mode ? colors.primaryForeground : colors.mutedForeground }]}>
+                    {mode === 'mensuel' ? 'Mensuel' : mode === 'saisonnier' ? 'Saisonnier' : 'Annuel'}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+
+            {/* Navigation période */}
+            <View style={styles.depNavRow}>
+              <Pressable onPress={depNavPrev} hitSlop={14} style={[styles.depNavBtn, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <MaterialCommunityIcons name="chevron-left" size={22} color={colors.foreground} />
+              </Pressable>
+              <Text style={[styles.depNavLabel, { color: colors.foreground }]}>{depRange.label}</Text>
+              <Pressable onPress={depNavNext} hitSlop={14} style={[styles.depNavBtn, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <MaterialCommunityIcons name="chevron-right" size={22} color={colors.foreground} />
+              </Pressable>
+            </View>
+
+            {depByCat.length === 0 ? (
+              <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <View style={{ padding: 20, alignItems: 'center' }}>
+                  <Text style={[styles.emptyTxt, { color: colors.mutedForeground }]}>Aucune dépense sur cette période</Text>
+                </View>
+              </View>
+            ) : (
+              <>
+                {/* Totaliser la période */}
+                <View style={[styles.depTotalRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                  <Text style={[styles.depTotalLbl, { color: colors.mutedForeground }]}>Total période</Text>
+                  <Text style={[styles.depTotalAmt, { color: colors.primary }]}>
+                    {showAmounts ? fmtEuro(depTotal) : '••••'}
+                  </Text>
+                </View>
+
+                {/* Détail par catégorie */}
+                <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                  {depByCat.map(([cat, amt], i) => {
+                    const pct = depTotal > 0 ? (amt / depTotal) * 100 : 0;
+                    const catColor = CAT_COLORS[cat] ?? colors.primary;
+                    return (
+                      <View
+                        key={cat}
+                        style={[
+                          styles.catBlock,
+                          i < depByCat.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border },
+                        ]}
+                      >
+                        <View style={styles.catRowInner}>
+                          <View style={[styles.catDot, { backgroundColor: catColor }]} />
+                          <Text style={[styles.catName, { color: colors.foreground }]}>{cat}</Text>
+                          <Text style={[styles.catPct, { color: colors.mutedForeground }]}>{pct.toFixed(0)}%</Text>
+                          <Text style={[styles.catAmount, { color: catColor }]}>
+                            {showAmounts ? fmtEuro(amt) : '••••'}
+                          </Text>
+                        </View>
+                        <View style={[styles.catTrack, { backgroundColor: colors.border }]}>
+                          <View style={[styles.catFill, { width: `${pct}%` as any, backgroundColor: catColor }]} />
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
+              </>
+            )}
+
+            {/* ═══════════════════════════════════════════════
+                Séparateur
+            ════════════════════════════════════════════════ */}
+            <View style={[styles.separator, { backgroundColor: colors.border }]} />
+
+            {/* ═══════════════════════════════════════════════
+                SECTION : Dépenses projets (statistiques existantes)
+            ════════════════════════════════════════════════ */}
+            <Text style={[styles.sectionProjects, { color: colors.mutedForeground }]}>Dépenses projets</Text>
+
+            {/* Par catégorie de dépense */}
+            <Text style={[styles.subsection, { color: colors.mutedForeground }]}>Par catégorie</Text>
             <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
               {expenseCategoryTotals.length === 0 ? (
                 <View style={styles.catRow}>
@@ -342,8 +524,8 @@ export default function ExpensesScreen() {
               })}
             </View>
 
-            {/* Per project */}
-            <Text style={[styles.section, { color: colors.mutedForeground }]}>Par projet</Text>
+            {/* Par projet */}
+            <Text style={[styles.subsection, { color: colors.mutedForeground }]}>Par projet</Text>
             {projectTotals.map(({ project, total }) => {
               const budget = project.budget;
               const pct = budget > 0 ? Math.min((total / budget) * 100, 100) : 0;
@@ -359,10 +541,7 @@ export default function ExpensesScreen() {
                     {budget > 0 && (
                       <>
                         <View style={[styles.budgetTrack, { backgroundColor: colors.border }]}>
-                          <View style={[styles.budgetFill, {
-                            width: `${pct}%`,
-                            backgroundColor: over ? colors.destructive : colors.primary,
-                          }]} />
+                          <View style={[styles.budgetFill, { width: `${pct}%`, backgroundColor: over ? colors.destructive : colors.primary }]} />
                         </View>
                         <Text style={[styles.budgetLbl, { color: over ? colors.destructive : colors.mutedForeground }]}>
                           {showAmounts ? `${fmtEuro(total)} / ${fmtEuro(budget)}` : '••••'}
@@ -377,12 +556,11 @@ export default function ExpensesScreen() {
               );
             })}
 
-            {/* Chart section */}
+            {/* Comparaison mensuelle */}
             {projects.length > 0 && (
               <>
-                <Text style={[styles.section, { color: colors.mutedForeground }]}>Comparaison mensuelle</Text>
+                <Text style={[styles.subsection, { color: colors.mutedForeground }]}>Comparaison mensuelle</Text>
 
-                {/* Period selector */}
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }} contentContainerStyle={{ gap: 8 }}>
                   {PERIOD_OPTIONS.map(opt => {
                     const active = period === opt.key;
@@ -405,7 +583,6 @@ export default function ExpensesScreen() {
                   })}
                 </ScrollView>
 
-                {/* Custom date range inputs */}
                 {period === 'custom' && (
                   <View style={[styles.customDateRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
                     <MaterialCommunityIcons name="calendar-start" size={16} color={colors.primary} />
@@ -444,7 +621,6 @@ export default function ExpensesScreen() {
                   </View>
                 ) : (
                   <>
-                    {/* Project selector chips */}
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }} contentContainerStyle={{ gap: 8 }}>
                       {projects.map((p, idx) => {
                         const on = selectedIds.has(p.id);
@@ -469,14 +645,12 @@ export default function ExpensesScreen() {
                       })}
                     </ScrollView>
 
-                    {/* Period info */}
                     <Text style={[styles.periodInfo, { color: colors.mutedForeground }]}>
                       {months[0]
-                        ? `${months[0].label} ${months[0].year} → ${months[months.length - 1].label} ${months[months.length - 1].year}  ·  ${months.length} mois`
+                        ? `${months[0].label} ${months[0].year} → ${months[months.length - 1]!.label} ${months[months.length - 1]!.year}  ·  ${months.length} mois`
                         : ''}
                     </Text>
 
-                    {/* SVG Line chart */}
                     <View style={[styles.chartBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
                       <Svg width={CHART_W - 32} height={CHART_H}>
                         {gridTicks.map(t => {
@@ -491,7 +665,6 @@ export default function ExpensesScreen() {
                             </React.Fragment>
                           );
                         })}
-
                         {months.map((m, i) => {
                           if (i % labelStep !== 0 && i !== months.length - 1) return null;
                           const shortLabel = m.label.replace('.', '');
@@ -504,7 +677,6 @@ export default function ExpensesScreen() {
                             </SvgText>
                           );
                         })}
-
                         {months.map((_, i) => {
                           const slotW = innerW / months.length;
                           const n = chartData.length || 1;
@@ -531,7 +703,6 @@ export default function ExpensesScreen() {
                           });
                         })}
                       </Svg>
-
                       <View style={styles.legend}>
                         {chartData.map(({ project, color }) => (
                           <View key={project.id} style={styles.legendItem}>
@@ -551,12 +722,11 @@ export default function ExpensesScreen() {
         )}
       </ScrollView>
 
-      {/* Category detail bottom sheet */}
+      {/* Modal détail catégorie */}
       <Modal visible={!!selectedExpenseCat} animationType="slide" transparent>
         <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.6)' }}>
           <Pressable style={{ flex: 1 }} onPress={() => setSelectedExpenseCat(null)} />
           <View style={[styles.catSheet, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            {/* Header */}
             <View style={styles.catSheetHeader}>
               <MaterialCommunityIcons name="tag-outline" size={18} color={colors.primary} />
               <Text style={[styles.catSheetTitle, { color: colors.foreground }]} numberOfLines={1}>
@@ -570,7 +740,6 @@ export default function ExpensesScreen() {
               </Pressable>
             </View>
 
-            {/* Sort chips */}
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingBottom: 4 }}>
               {([
                 { key: 'date-desc', label: 'Plus récent' },
@@ -599,7 +768,6 @@ export default function ExpensesScreen() {
               })}
             </ScrollView>
 
-            {/* Total for category */}
             <View style={[styles.catSheetTotal, { backgroundColor: colors.background, borderColor: colors.border }]}>
               <Text style={[styles.catSheetTotalLbl, { color: colors.mutedForeground }]}>Total</Text>
               <Text style={[styles.catSheetTotalAmt, { color: colors.primary }]}>
@@ -607,7 +775,6 @@ export default function ExpensesScreen() {
               </Text>
             </View>
 
-            {/* Expense list */}
             <ScrollView style={{ maxHeight: 320 }} showsVerticalScrollIndicator={false}>
               {catDetailExpenses.length === 0 ? (
                 <View style={{ alignItems: 'center', paddingVertical: 24 }}>
@@ -648,7 +815,6 @@ export default function ExpensesScreen() {
           </View>
         </View>
       </Modal>
-
     </View>
   );
 }
@@ -675,6 +841,67 @@ const styles = StyleSheet.create({
     marginTop: 12,
     marginBottom: 4,
   },
+  sectionProjects: {
+    fontSize: 12,
+    fontFamily: 'Inter_600SemiBold',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginBottom: 4,
+  },
+  subsection: {
+    fontSize: 11,
+    fontFamily: 'Inter_500Medium',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    marginTop: 8,
+    marginBottom: 2,
+  },
+
+  // ── Dépenses : sélecteur de mode ──────────────────────────────────────────
+  tabRow: {
+    flexDirection: 'row',
+    borderRadius: 12,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  tabBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tabBtnTxt: { fontSize: 13, fontFamily: 'Inter_600SemiBold' },
+
+  // ── Dépenses : navigation période ─────────────────────────────────────────
+  depNavRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  depNavBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  depNavLabel: { fontSize: 15, fontFamily: 'Inter_600SemiBold', textAlign: 'center', flex: 1 },
+
+  // ── Dépenses : total période ───────────────────────────────────────────────
+  depTotalRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  depTotalLbl: { fontSize: 13, fontFamily: 'Inter_500Medium' },
+  depTotalAmt: { fontSize: 20, fontFamily: 'Inter_700Bold' },
+
+  // ── Catégories ──────────────────────────────────────────────────────────────
   card: { borderRadius: 14, borderWidth: 1, overflow: 'hidden' },
   catRow: {
     flexDirection: 'row',
@@ -683,21 +910,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
   },
-  catBlock: {
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    gap: 6,
-  },
-  catRowInner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
+  catBlock: { paddingHorizontal: 14, paddingVertical: 10, gap: 6 },
+  catRowInner: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  catDot: { width: 10, height: 10, borderRadius: 5 },
   catName: { flex: 1, fontSize: 14, fontFamily: 'Inter_500Medium' },
   catPct: { fontSize: 12, fontFamily: 'Inter_400Regular' },
   catAmount: { fontSize: 15, fontFamily: 'Inter_700Bold' },
   catTrack: { height: 4, borderRadius: 2, overflow: 'hidden' },
   catFill: { height: 4, borderRadius: 2 },
+
+  // ── Séparateur ──────────────────────────────────────────────────────────────
+  separator: { height: 1, marginVertical: 8 },
+
+  // ── Projets ─────────────────────────────────────────────────────────────────
   projRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -712,12 +937,9 @@ const styles = StyleSheet.create({
   budgetFill: { height: 5, borderRadius: 3 },
   budgetLbl: { fontSize: 11, fontFamily: 'Inter_400Regular' },
   projAmount: { fontSize: 16, fontFamily: 'Inter_700Bold', minWidth: 60, textAlign: 'right' },
-  periodChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1,
-  },
+
+  // ── Graphe ───────────────────────────────────────────────────────────────────
+  periodChip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1 },
   periodChipTxt: { fontSize: 13, fontFamily: 'Inter_600SemiBold' },
   customDateRow: {
     flexDirection: 'row',
@@ -729,12 +951,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   customDateLabel: { fontSize: 11, fontFamily: 'Inter_400Regular', marginBottom: 3 },
-  customDateInput: {
-    fontSize: 14,
-    fontFamily: 'Inter_600SemiBold',
-    borderBottomWidth: 1,
-    paddingBottom: 2,
-  },
+  customDateInput: { fontSize: 14, fontFamily: 'Inter_600SemiBold', borderBottomWidth: 1, paddingBottom: 2 },
   customDateDivider: { width: 1, height: 36, marginHorizontal: 2 },
   periodInfo: { fontSize: 11, fontFamily: 'Inter_400Regular', textAlign: 'center', marginBottom: 4 },
   chip: {
@@ -749,19 +966,17 @@ const styles = StyleSheet.create({
   },
   chipDot: { width: 8, height: 8, borderRadius: 4 },
   chipTxt: { fontSize: 12, fontFamily: 'Inter_500Medium' },
-  chartBox: {
-    borderRadius: 16,
-    borderWidth: 1,
-    padding: 16,
-    gap: 12,
-    minHeight: 80,
-  },
+  chartBox: { borderRadius: 16, borderWidth: 1, padding: 16, gap: 12, minHeight: 80 },
   legend: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   legendDot: { width: 8, height: 8, borderRadius: 4 },
   legendTxt: { fontSize: 11, fontFamily: 'Inter_400Regular', maxWidth: 100 },
+
+  // ── États vides ──────────────────────────────────────────────────────────────
   empty: { alignItems: 'center', paddingVertical: 60, gap: 12 },
   emptyTxt: { fontSize: 15, fontFamily: 'Inter_400Regular' },
+
+  // ── Sheet catégorie ───────────────────────────────────────────────────────────
   catSheet: {
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
@@ -770,20 +985,9 @@ const styles = StyleSheet.create({
     gap: 14,
     maxHeight: '85%',
   },
-  catSheetHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  catSheetTitle: {
-    flex: 1,
-    fontSize: 17,
-    fontFamily: 'Inter_700Bold',
-  },
-  catSheetCount: {
-    fontSize: 12,
-    fontFamily: 'Inter_400Regular',
-  },
+  catSheetHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  catSheetTitle: { flex: 1, fontSize: 17, fontFamily: 'Inter_700Bold' },
+  catSheetCount: { fontSize: 12, fontFamily: 'Inter_400Regular' },
   catSheetTotal: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -795,20 +999,10 @@ const styles = StyleSheet.create({
   },
   catSheetTotalLbl: { fontSize: 13, fontFamily: 'Inter_500Medium' },
   catSheetTotalAmt: { fontSize: 18, fontFamily: 'Inter_700Bold' },
-  catSheetRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingVertical: 12,
-  },
+  catSheetRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 },
   catSheetRowName: { fontSize: 14, fontFamily: 'Inter_500Medium' },
   catSheetRowSub: { fontSize: 12, fontFamily: 'Inter_400Regular' },
   catSheetRowAmt: { fontSize: 15, fontFamily: 'Inter_700Bold', minWidth: 70, textAlign: 'right' },
-  sortChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    borderWidth: 1,
-  },
+  sortChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, borderWidth: 1 },
   sortChipTxt: { fontSize: 12, fontFamily: 'Inter_500Medium' },
 });
