@@ -201,10 +201,9 @@ export default function SettingsScreen() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       Alert.alert(
         'Restauration réussie',
-        'Les données ont été restaurées. Fermez et relancez l\'app pour voir vos données.',
-        [{ text: 'OK' }],
+        'Les données ont été restaurées. L\'app va redémarrer.',
+        [{ text: 'OK', onPress: () => router.replace('/') }],
       );
-      await loadStorageStatus();
     } else {
       Alert.alert('Erreur', result.error ?? 'Impossible d\'importer ce fichier.');
     }

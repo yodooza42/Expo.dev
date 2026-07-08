@@ -163,8 +163,8 @@ export async function importBackupFromFile(): Promise<{ ok: boolean; canceled?: 
     });
 
     const parsed = JSON.parse(raw) as { version?: number; data?: Record<string, string | null> };
-    if (!parsed?.data || typeof parsed.data !== 'object') {
-      return { ok: false, error: 'Format de fichier invalide. Vérifiez qu\'il s\'agit bien d\'une sauvegarde Yoann2.0.' };
+    if (parsed?.version !== 1 || !parsed?.data || typeof parsed.data !== 'object') {
+      return { ok: false, error: 'Format de fichier invalide. Vérifiez qu\'il s\'agit bien d\'une sauvegarde Yoann2.0 (version 1).' };
     }
 
     const pairs: [string, string][] = Object.entries(parsed.data)
@@ -174,13 +174,26 @@ export async function importBackupFromFile(): Promise<{ ok: boolean; canceled?: 
     await AsyncStorage.multiSet(pairs);
 
     const ts = Date.now();
-    const filename = asset.name ?? 'backup_importé.json';
-    const list = await getBackupList();
-    list.push({ uri: asset.uri, ts, filename });
-    if (list.length > MAX_BACKUPS) list.splice(0, list.length - MAX_BACKUPS);
-    await setBackupList(list);
-    await AsyncStorage.setItem(LAST_BACKUP_KEY, String(ts));
+    const filename = asset.name ?? `backup_importé_${new Date(ts).toISOString().replace(/[:.]/g, '-').slice(0, 19)}.json`;
 
+    // Copy into the managed SAF backup folder so the list entry has a durable URI.
+    // If no folder is configured yet, skip adding to the list (data is restored regardless).
+    const backupDir = await getBackupDir();
+    if (backupDir) {
+      try {
+        const safUri = await SAF.createFileAsync(backupDir, filename, 'application/json');
+        const base64 = Buffer.from(raw).toString('base64');
+        await SAF.writeAsStringAsync(safUri, base64, { encoding: FileSystem.EncodingType.Base64 });
+        const list = await getBackupList();
+        list.push({ uri: safUri, ts, filename });
+        if (list.length > MAX_BACKUPS) list.splice(0, list.length - MAX_BACKUPS);
+        await setBackupList(list);
+      } catch {
+        // Durable copy failed — data is still restored, just not in the list
+      }
+    }
+
+    await AsyncStorage.setItem(LAST_BACKUP_KEY, String(ts));
     return { ok: true };
   } catch {
     return { ok: false, error: 'Impossible de lire ce fichier.' };
