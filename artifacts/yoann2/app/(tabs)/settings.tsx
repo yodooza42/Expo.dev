@@ -28,7 +28,7 @@ import {
   scheduleWeeklyReport,
   setApptReminderPref,
 } from '@/utils/notificationScheduler';
-import { importBackupFromFile, listBackups, restoreBackup, saveBackup } from '@/utils/backup';
+import { importBackupFromFile, listBackups, rebuildBackupListFromSAF, restoreBackup, saveBackup } from '@/utils/backup';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { reconfigureStorage, SAF_ROOT_KEY } from '@/utils/photoStorage';
 import { CategoryConfig, DEFAULT_EXPENSE_CATEGORY_CONFIGS, getCategoryConfigs, saveCategoryConfigs } from '@/utils/bankStorage';
@@ -93,6 +93,7 @@ export default function SettingsScreen() {
   const [lastBackupDate,    setLastBackupDate]    = useState<Date | null>(null);
   const [backupCount,       setBackupCount]       = useState(0);
   const [configuringFolder, setConfiguringFolder] = useState(false);
+  const [rebuildingList,    setRebuildingList]    = useState(false);
   const [expCatConfigs, setExpCatConfigs] = useState<CategoryConfig[]>(DEFAULT_EXPENSE_CATEGORY_CONFIGS);
 
   async function handleAddExpCat(name: string) {
@@ -206,6 +207,23 @@ export default function SettingsScreen() {
       );
     } else {
       Alert.alert('Erreur', result.error ?? 'Impossible d\'importer ce fichier.');
+    }
+  }
+
+  async function handleRebuildList() {
+    if (!folderConfigured) {
+      Alert.alert('Dossier non configuré', 'Configurez d\'abord le dossier Yoann2.0 ci-dessous.');
+      return;
+    }
+    setRebuildingList(true);
+    const found = await rebuildBackupListFromSAF(true);
+    setRebuildingList(false);
+    if (found) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      loadStorageStatus();
+      Alert.alert('Liste reconstruite', 'Les sauvegardes ont été retrouvées dans le dossier et la liste a été mise à jour.');
+    } else {
+      Alert.alert('Aucune sauvegarde trouvée', 'Aucun fichier backup_*.json n\'a été trouvé dans le dossier Sauvegarde.');
     }
   }
 
@@ -414,6 +432,13 @@ export default function SettingsScreen() {
           label={importingFile ? 'Sélection en cours…' : 'Importer depuis un fichier'}
           sublabel="Pointer manuellement un fichier backup_*.json existant"
           onPress={handleImportFromFile}
+          colors={colors}
+        />
+        <SettingRow
+          icon="folder-search-outline"
+          label={rebuildingList ? 'Scan en cours…' : 'Scanner le dossier Sauvegarde'}
+          sublabel="Reconstruire la liste depuis les fichiers présents sur le disque"
+          onPress={handleRebuildList}
           colors={colors}
         />
 

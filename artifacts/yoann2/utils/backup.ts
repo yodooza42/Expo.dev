@@ -200,6 +200,51 @@ export async function importBackupFromFile(): Promise<{ ok: boolean; canceled?: 
   }
 }
 
+// ── Rebuild backup list from SAF folder ──────────────────────────────────────
+//
+// Scans the configured SAF backup folder for backup_*.json files and
+// reconstructs @yoann2_backup_list from what is actually on disk.
+// Only runs if the list is empty (unless force=true).
+
+export async function rebuildBackupListFromSAF(force = false): Promise<boolean> {
+  try {
+    const backupDir = await getBackupDir();
+    if (!backupDir) return false;
+
+    if (!force) {
+      const existing = await getBackupList();
+      if (existing.length > 0) return false;
+    }
+
+    const uris = await SAF.readDirectoryAsync(backupDir);
+
+    const backupEntries: BackupEntry[] = [];
+    for (const uri of uris) {
+      const decoded = decodeURIComponent(uri);
+      const filename = decoded.split('/').pop() ?? '';
+      if (!filename.startsWith('backup_') || !filename.endsWith('.json')) continue;
+
+      // Filename format: backup_YYYY-MM-DDTHH-MM-SS.json
+      const dateStr = filename.slice('backup_'.length, -'.json'.length);
+      const parts = dateStr.split('T');
+      if (parts.length !== 2) continue;
+      const [datePart, timePart] = parts;
+      const isoStr = `${datePart}T${timePart.replace(/-/g, ':')}`;
+      const ts = new Date(isoStr).getTime();
+      if (isNaN(ts)) continue;
+
+      backupEntries.push({ uri, ts, filename });
+    }
+
+    backupEntries.sort((a, b) => a.ts - b.ts);
+    const kept = backupEntries.slice(-MAX_BACKUPS);
+    await setBackupList(kept);
+    return kept.length > 0;
+  } catch {
+    return false;
+  }
+}
+
 // ── Restore from a backup entry ───────────────────────────────────────────────
 //
 // Reads the JSON file and restores every key back into AsyncStorage.

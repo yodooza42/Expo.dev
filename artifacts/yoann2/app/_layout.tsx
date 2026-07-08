@@ -22,7 +22,7 @@ import { AppProvider, useApp } from '@/contexts/AppContext';
 import { SplashProvider } from '@/contexts/SplashContext';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 import type { Trip, VehicleType } from '@/types/trips';
-import { runDailyBackupIfNeeded } from '@/utils/backup';
+import { rebuildBackupListFromSAF, runDailyBackupIfNeeded } from '@/utils/backup';
 import { purgeOldData, requestLocationPermissions, startManualTracking, LOCATION_TASK_NAME } from '@/utils/locationTracking';
 import { isManualTripActive } from '@/utils/manualTripStorage';
 import { runMaintenanceScheduler } from '@/utils/maintenanceScheduler';
@@ -88,6 +88,7 @@ function RootLayoutNav() {
     bootstrapLocationTracking();
     checkPendingTrips();
     runScheduler();
+    rebuildBackupListFromSAF().catch(() => {});
     runDailyBackupIfNeeded().catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [checkPendingTrips]);
