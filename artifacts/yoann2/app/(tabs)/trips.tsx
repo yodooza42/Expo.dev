@@ -23,24 +23,16 @@ import { getFuelEntries } from '@/utils/fuelStorage';
 import type { FuelEntry } from '@/types/fuel';
 import { computeOdometer, getTrips, getVehicleSettings } from '@/utils/tripStorage';
 
-// ── Turnaround sprite-sheet constants ─────────────────────────────────────────
-// Source image: 1536×1024px → 3 cols × 2 rows → each frame 512×512px
-// Display container: FRAME_DP × FRAME_DP
-// Full image rendered at FRAME_DP/512 scale
-const FRAME_DP = 130;
-const IMG_W = (1536 / 512) * FRAME_DP; // 390
-const IMG_H = (1024 / 512) * FRAME_DP; // 260
-// Frame indices → col/row in the 3×2 grid
-// 0=front, 1=front-left-3/4, 2=right-side, 3=rear, 4=rear-left-3/4, 5=rear-right-3/4
-const SEQUENCE = [1, 0, 2, 5, 3, 4]; // turnaround order
-
-const DOBLO_IMG = require('@/assets/images/doblo-turnaround.png');
-
-function frameOffset(frameIdx: number) {
-  const col = frameIdx % 3;
-  const row = Math.floor(frameIdx / 3);
-  return { x: -col * FRAME_DP, y: -row * FRAME_DP };
-}
+// ── Turnaround — 6 individual frames ──────────────────────────────────────────
+// Clockwise order: front-left-3/4 → front → right-side → rear-right-3/4 → rear → left-side
+const DOBLO_FRAMES = [
+  require('@/assets/images/doblo-2-front34.png'),  // 0 — front-left 3/4 (DEFAULT)
+  require('@/assets/images/doblo-1-front.png'),     // 1 — front
+  require('@/assets/images/doblo-3-rightside.png'), // 2 — right side
+  require('@/assets/images/doblo-5-rear34.png'),    // 3 — rear-right 3/4
+  require('@/assets/images/doblo-6-rear.png'),      // 4 — rear
+  require('@/assets/images/doblo-4-leftside.png'),  // 5 — left side
+] as const;
 
 interface TurnaroundCardProps {
   vehicle: Vehicle;
@@ -54,29 +46,25 @@ interface TurnaroundCardProps {
 }
 
 function TurnaroundCard({ vehicle, odo, fillPct, remaining, isReserve, gaugeColor, hasData, colors }: TurnaroundCardProps) {
-  const [seqIdx, setSeqIdx] = useState(0); // index into SEQUENCE, default=0 → frame 1
+  const [frameIdx, setFrameIdx] = useState(0); // 0 = front-left 3/4 (default)
   const animating = useRef(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const frameIdx = SEQUENCE[seqIdx]!;
-  const { x, y } = frameOffset(frameIdx);
 
   function startTurnaround() {
     if (animating.current) return;
     animating.current = true;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    let step = 1; // start at next frame
-    const TOTAL = SEQUENCE.length * 2; // 2 full loops
+    let step = 1;
+    const TOTAL = DOBLO_FRAMES.length * 2; // 2 full loops
 
     function advance() {
-      setSeqIdx(step % SEQUENCE.length);
+      setFrameIdx(step % DOBLO_FRAMES.length);
       step++;
       if (step < TOTAL) {
         timerRef.current = setTimeout(advance, 110);
       } else {
-        // Return to default frame (index 0 = frame 1)
         timerRef.current = setTimeout(() => {
-          setSeqIdx(0);
+          setFrameIdx(0);
           animating.current = false;
         }, 110);
       }
@@ -84,7 +72,6 @@ function TurnaroundCard({ vehicle, odo, fillPct, remaining, isReserve, gaugeColo
     timerRef.current = setTimeout(advance, 110);
   }
 
-  // Cleanup on unmount
   useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
 
   return (
@@ -92,20 +79,13 @@ function TurnaroundCard({ vehicle, odo, fillPct, remaining, isReserve, gaugeColo
       onPress={startTurnaround}
       style={[trStyles.card, { backgroundColor: colors.card, borderColor: colors.border }]}
     >
-      {/* Sprite-sheet frame */}
-      <View style={trStyles.spriteContainer}>
-        <Image
-          source={DOBLO_IMG}
-          style={[trStyles.spriteImg, { width: IMG_W, height: IMG_H, transform: [{ translateX: x }, { translateY: y }] }]}
-          resizeMode="contain"
-        />
-      </View>
-
-      {/* Odometer */}
+      <Image
+        source={DOBLO_FRAMES[frameIdx]}
+        style={trStyles.carImg}
+        resizeMode="contain"
+      />
       <Text style={[trStyles.odoVal, { color: colors.foreground }]}>{odo.toFixed(0)}</Text>
       <Text style={[trStyles.odoLabel, { color: colors.mutedForeground }]}>KM {vehicle.name.toUpperCase()}</Text>
-
-      {/* Fuel gauge */}
       {hasData && (
         <View style={trStyles.gaugeWrapper}>
           <View style={[trStyles.gaugeTrack, { backgroundColor: colors.muted }]}>
@@ -118,8 +98,6 @@ function TurnaroundCard({ vehicle, odo, fillPct, remaining, isReserve, gaugeColo
           </Text>
         </View>
       )}
-
-      {/* Tap hint (shown only when not animating — opacity trick via static element) */}
       <Text style={[trStyles.tapHint, { color: colors.mutedForeground }]}>appuyer pour tourner</Text>
     </Pressable>
   );
@@ -135,14 +113,7 @@ const trStyles = StyleSheet.create({
     alignItems: 'center',
     gap: 4,
   },
-  spriteContainer: {
-    width: FRAME_DP,
-    height: FRAME_DP,
-    overflow: 'hidden',
-  },
-  spriteImg: {
-    position: 'absolute',
-  },
+  carImg: { width: 140, height: 110 },
   odoVal: { fontSize: 24, fontFamily: 'Inter_700Bold' },
   odoLabel: { fontSize: 11, fontFamily: 'Inter_400Regular', textTransform: 'uppercase', letterSpacing: 0.5 },
   gaugeWrapper: { width: '100%', alignItems: 'center', gap: 4, marginTop: 4 },
