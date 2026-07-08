@@ -77,14 +77,22 @@ function formatAmount(amount: number, masked: boolean): string {
 }
 
 
-function groupByMonth(txs: BankTransaction[]): { label: string; items: BankTransaction[] }[] {
-  const map = new Map<string, BankTransaction[]>();
+function groupByMonth(txs: BankTransaction[]): { label: string; items: BankTransaction[]; sortKey: number }[] {
+  const map = new Map<string, { items: BankTransaction[]; sortKey: number }>();
   for (const tx of txs) {
-    const key = new Date(tx.date).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
-    if (!map.has(key)) map.set(key, []);
-    map.get(key)!.push(tx);
+    const d = new Date(tx.date);
+    const key = d.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+    const sortKey = d.getFullYear() * 100 + d.getMonth();
+    if (!map.has(key)) map.set(key, { items: [], sortKey });
+    map.get(key)!.items.push(tx);
   }
-  return Array.from(map.entries()).map(([label, items]) => ({ label, items }));
+  return Array.from(map.entries())
+    .map(([label, { items, sortKey }]) => ({
+      label,
+      sortKey,
+      items: items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
+    }))
+    .sort((a, b) => b.sortKey - a.sortKey);
 }
 
 type FilterType = 'all' | TransactionType;
@@ -232,7 +240,24 @@ export default function FinanceScreen() {
     });
   }, [filtered, searchQuery]);
 
-  const grouped = useMemo(() => groupByMonth(searched), [searched]);
+  const [visibleYears, setVisibleYears] = useState<Set<number>>(() => new Set([new Date().getFullYear()]));
+
+  const allYears = useMemo(() => {
+    const set = new Set(transactions.map(t => new Date(t.date).getFullYear()));
+    return Array.from(set).sort((a, b) => b - a);
+  }, [transactions]);
+
+  const yearFiltered = useMemo(() => {
+    if (searchQuery.trim()) return searched;
+    return searched.filter(t => visibleYears.has(new Date(t.date).getFullYear()));
+  }, [searched, visibleYears, searchQuery]);
+
+  const grouped = useMemo(() => groupByMonth(yearFiltered), [yearFiltered]);
+
+  const hiddenYears = useMemo(() =>
+    allYears.filter(y => !visibleYears.has(y)),
+    [allYears, visibleYears]
+  );
 
   const currentBalance = useMemo(() => computeCurrentBalance(transactions), [transactions]);
 
@@ -751,6 +776,23 @@ export default function FinanceScreen() {
             ))}
           </View>
         ))}
+
+        {/* ── Voir années précédentes ── */}
+        {!searchQuery.trim() && hiddenYears.length > 0 && (
+          <View style={{ paddingHorizontal: 16, paddingTop: 4, paddingBottom: 12, gap: 8 }}>
+            {hiddenYears.map(year => (
+              <Pressable
+                key={year}
+                onPress={() => { Haptics.selectionAsync(); setVisibleYears(prev => new Set([...prev, year])); }}
+                style={({ pressed }) => [styles.loadYearBtn, { borderColor: colors.border, backgroundColor: colors.card, opacity: pressed ? 0.7 : 1 }]}
+              >
+                <MaterialCommunityIcons name="calendar-outline" size={15} color={colors.primary} />
+                <Text style={[styles.loadYearTxt, { color: colors.primary }]}>Voir {year}</Text>
+                <MaterialCommunityIcons name="chevron-down" size={15} color={colors.mutedForeground} />
+              </Pressable>
+            ))}
+          </View>
+        )}
 
         {/* ── Abonnements récurrents ── */}
         {recurringExpenseList.length > 0 && (
@@ -1378,6 +1420,8 @@ const styles = StyleSheet.create({
   monthLabel: { fontSize: 12, fontFamily: 'Inter_600SemiBold', textTransform: 'capitalize', minWidth: 90 },
   monthDivider: { flex: 1, height: 1 },
   monthTotal: { fontSize: 12, fontFamily: 'Inter_600SemiBold' },
+  loadYearBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 13, borderRadius: 12, borderWidth: 1 },
+  loadYearTxt: { fontSize: 14, fontFamily: 'Inter_600SemiBold' },
 
   txRow: {
     flexDirection: 'row',
