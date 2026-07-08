@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 
 import { SAF_BACKUP_KEY } from '@/utils/photoStorage';
@@ -138,6 +139,52 @@ export async function deleteBackup(uri: string): Promise<void> {
   const next = list.filter(e => e.uri !== uri);
   await setBackupList(next);
   FileSystem.deleteAsync(uri, { idempotent: true }).catch(() => {});
+}
+
+// ── Import from any file picked by the user (document picker) ────────────────
+//
+// Lets the user select any backup_*.json from their device storage, bypassing
+// the AsyncStorage backup list (useful after reinstall where the list was wiped).
+
+export async function importBackupFromFile(): Promise<{ ok: boolean; canceled?: boolean; error?: string }> {
+  try {
+    const result = await DocumentPicker.getDocumentAsync({
+      type: ['application/json', '*/*'],
+      copyToCacheDirectory: true,
+    });
+
+    if (result.canceled) return { ok: false, canceled: true };
+
+    const asset = result.assets[0];
+    if (!asset) return { ok: false, error: 'Aucun fichier sélectionné.' };
+
+    const raw = await FileSystem.readAsStringAsync(asset.uri, {
+      encoding: FileSystem.EncodingType.UTF8,
+    });
+
+    const parsed = JSON.parse(raw) as { version?: number; data?: Record<string, string | null> };
+    if (!parsed?.data || typeof parsed.data !== 'object') {
+      return { ok: false, error: 'Format de fichier invalide. Vérifiez qu\'il s\'agit bien d\'une sauvegarde Yoann2.0.' };
+    }
+
+    const pairs: [string, string][] = Object.entries(parsed.data)
+      .filter((entry): entry is [string, string] => typeof entry[1] === 'string')
+      .map(([k, v]) => [k, v]);
+
+    await AsyncStorage.multiSet(pairs);
+
+    const ts = Date.now();
+    const filename = asset.name ?? 'backup_importé.json';
+    const list = await getBackupList();
+    list.push({ uri: asset.uri, ts, filename });
+    if (list.length > MAX_BACKUPS) list.splice(0, list.length - MAX_BACKUPS);
+    await setBackupList(list);
+    await AsyncStorage.setItem(LAST_BACKUP_KEY, String(ts));
+
+    return { ok: true };
+  } catch {
+    return { ok: false, error: 'Impossible de lire ce fichier.' };
+  }
 }
 
 // ── Restore from a backup entry ───────────────────────────────────────────────

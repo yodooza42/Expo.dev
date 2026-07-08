@@ -28,7 +28,7 @@ import {
   scheduleWeeklyReport,
   setApptReminderPref,
 } from '@/utils/notificationScheduler';
-import { listBackups, restoreBackup, saveBackup } from '@/utils/backup';
+import { importBackupFromFile, listBackups, restoreBackup, saveBackup } from '@/utils/backup';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { reconfigureStorage, SAF_ROOT_KEY } from '@/utils/photoStorage';
 import { CategoryConfig, DEFAULT_EXPENSE_CATEGORY_CONFIGS, getCategoryConfigs, saveCategoryConfigs } from '@/utils/bankStorage';
@@ -81,6 +81,7 @@ export default function SettingsScreen() {
   const [backupList,        setBackupList]        = useState<Awaited<ReturnType<typeof listBackups>>>([]);
   const [savingBackup,      setSavingBackup]      = useState(false);
   const [restoringUri,      setRestoringUri]      = useState<string | null>(null);
+  const [importingFile,     setImportingFile]     = useState(false);
   const [catModalVisible,   setCatModalVisible]   = useState(false);
   const [expCatModalVisible,setExpCatModalVisible]= useState(false);
   const [newCatName,        setNewCatName]        = useState('');
@@ -189,6 +190,24 @@ export default function SettingsScreen() {
     const list = await listBackups();
     setBackupList(list);
     setShowBackupList(true);
+  }
+
+  async function handleImportFromFile() {
+    setImportingFile(true);
+    const result = await importBackupFromFile();
+    setImportingFile(false);
+    if (result.canceled) return;
+    if (result.ok) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert(
+        'Restauration réussie',
+        'Les données ont été restaurées. Fermez et relancez l\'app pour voir vos données.',
+        [{ text: 'OK' }],
+      );
+      await loadStorageStatus();
+    } else {
+      Alert.alert('Erreur', result.error ?? 'Impossible d\'importer ce fichier.');
+    }
   }
 
   async function handleRestore(uri: string, filename: string) {
@@ -389,6 +408,13 @@ export default function SettingsScreen() {
           label={restoringUri ? 'Restauration en cours…' : 'Restaurer une sauvegarde'}
           sublabel="Choisir parmi les 5 dernières archives"
           onPress={handleOpenRestoreList}
+          colors={colors}
+        />
+        <SettingRow
+          icon="file-import-outline"
+          label={importingFile ? 'Sélection en cours…' : 'Importer depuis un fichier'}
+          sublabel="Pointer manuellement un fichier backup_*.json existant"
+          onPress={handleImportFromFile}
           colors={colors}
         />
 
