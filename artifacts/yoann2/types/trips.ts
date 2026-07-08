@@ -62,6 +62,15 @@ export interface MaintenanceItem {
   cost?: number;
 }
 
+export interface VehicleInsurance {
+  /** Annual premium in EUR */
+  annualCost: number;
+  /** ISO date "YYYY-MM-DD" of the last payment */
+  paymentDate: string;
+  /** BankTransaction id of the last recorded payment (to detect duplicates) */
+  transactionId?: string;
+}
+
 export interface Vehicle {
   id: string;
   name: string;
@@ -73,6 +82,8 @@ export interface Vehicle {
   maintenanceProjectId?: string;
   /** Whether costPerKm is manually entered or auto-calculated from fuel + maintenance */
   costMode?: 'manual' | 'auto';
+  /** Annual insurance data */
+  insurance?: VehicleInsurance;
 }
 
 /** Array of vehicles — replaces the old {car, moto} fixed object */

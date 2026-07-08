@@ -165,6 +165,21 @@ export default function TripsScreen() {
     return list;
   }, [trips, settings]);
 
+  // ── Rappels assurance (15 jours avant renouvellement) ─────────────────────
+  const insuranceAlerts = useMemo(() => {
+    const now = Date.now();
+    return settings
+      .filter(v => v.insurance?.paymentDate && v.insurance.annualCost > 0)
+      .map(v => {
+        const pay = new Date(v.insurance!.paymentDate);
+        const renewal = new Date(pay);
+        renewal.setFullYear(renewal.getFullYear() + 1);
+        const daysUntil = Math.round((renewal.getTime() - now) / (24 * 3_600_000));
+        return { vehicleName: v.name, daysUntil, renewalDate: renewal };
+      })
+      .filter(a => a.daysUntil <= 15);
+  }, [settings]);
+
   const catIds = useMemo(() => new Set(categories.map(c => c.id)), [categories]);
   const activeCats = useMemo(() => categories.filter(c => trips.some(t => t.categoryId === c.id)), [categories, trips]);
   const uncategorized = useMemo(() => trips.filter(t => !t.categoryId || !catIds.has(t.categoryId)), [trips, catIds]);
@@ -403,6 +418,31 @@ export default function TripsScreen() {
           </View>
           <MaterialCommunityIcons name="chevron-right" size={18} color={colors.mutedForeground} />
         </Pressable>
+
+        {/* ── Rappels assurance ── */}
+        {insuranceAlerts.length > 0 && (
+          <View style={styles.section}>
+            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Assurance</Text>
+            {insuranceAlerts.map((a, i) => (
+              <Pressable
+                key={`ins-${i}`}
+                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/vehicle-settings' as any); }}
+                style={[styles.alertCard, { backgroundColor: '#7C3AED18', borderColor: '#7C3AED' }]}
+              >
+                <MaterialCommunityIcons name="shield-car" size={18} color="#7C3AED" />
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.alertTitle, { color: '#7C3AED' }]}>Paiement assurance {a.vehicleName}</Text>
+                  <Text style={[styles.alertSub, { color: colors.mutedForeground }]}>
+                    {a.daysUntil <= 0
+                      ? 'Échéance dépassée'
+                      : `Dans ${a.daysUntil} jour${a.daysUntil > 1 ? 's' : ''} — ${a.renewalDate.toLocaleDateString('fr-FR')}`}
+                  </Text>
+                </View>
+                <MaterialCommunityIcons name="chevron-right" size={18} color="#7C3AED" />
+              </Pressable>
+            ))}
+          </View>
+        )}
 
         {/* ── Maintenance ── */}
         {(alerts.length > 0 || upcoming.length > 0) ? (

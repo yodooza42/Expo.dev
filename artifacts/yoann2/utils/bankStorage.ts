@@ -293,6 +293,7 @@ export const DEFAULT_EXPENSE_CATEGORY_CONFIGS: CategoryConfig[] = [
   { id: 'sante',        name: 'Santé',           type: 'expense', keywords: ['pharmacie', 'medecin', 'docteur'] },
   { id: 'loisirs',      name: 'Loisirs',         type: 'expense', keywords: [] },
   { id: 'abonnements',  name: 'Abonnements',     type: 'expense', keywords: [] },
+  { id: 'assurance',   name: 'Assurance',       type: 'expense', keywords: ['assurance'] },
   { id: 'vetements',    name: 'Vêtements',       type: 'expense', keywords: [] },
   { id: 'restauration', name: 'Restauration',    type: 'expense', keywords: ['restaurant'] },
   // Travaux / projets

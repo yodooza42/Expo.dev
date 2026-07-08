@@ -17,10 +17,13 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import DateTimePicker from '@react-native-community/datetimepicker';
+
 import { useApp } from '@/contexts/AppContext';
 import { useColors } from '@/hooks/useColors';
-import type { MaintenanceItem, Vehicle } from '@/types/trips';
+import type { MaintenanceItem, Vehicle, VehicleInsurance } from '@/types/trips';
 import { computeAutoCostPerKm } from '@/utils/costPerKm';
+import { addTransaction } from '@/utils/bankStorage';
 import { computeOdometer, getTrips, getVehicleSettings, saveVehicleSettings } from '@/utils/tripStorage';
 import { genId } from '@/utils/ids';
 
@@ -46,6 +49,9 @@ export default function VehicleSettingsScreen() {
   const [newVehicleType, setNewVehicleType] = useState<'car' | 'moto' | 'other'>('car');
 
   const [projectPickerVisible, setProjectPickerVisible] = useState(false);
+
+  const [activeVehicleTab, setActiveVehicleTab] = useState<'general' | 'maintenance' | 'insurance'>('general');
+  const [insDatePickerVisible, setInsDatePickerVisible] = useState(false);
 
   const load = useCallback(async () => {
     const [v, t] = await Promise.all([getVehicleSettings(), getTrips()]);
@@ -126,6 +132,25 @@ export default function VehicleSettingsScreen() {
         },
       },
     ]);
+  }
+
+  async function recordInsurancePayment() {
+    if (!selected || !selected.insurance || selected.insurance.annualCost <= 0) return;
+    const today = new Date().toISOString().split('T')[0]!;
+    const year = new Date().getFullYear();
+    const tx = await addTransaction({
+      type: 'expense',
+      label: `Assurance - ${selected.name} - ${year}`,
+      category: 'Assurance',
+      amount: selected.insurance.annualCost,
+      date: today,
+    });
+    const updatedIns: VehicleInsurance = { ...selected.insurance, paymentDate: today, transactionId: tx.id };
+    const updatedVehicles = vehicles.map(v => v.id === selected.id ? { ...v, insurance: updatedIns } : v);
+    setVehicles(updatedVehicles);
+    await saveVehicleSettings(updatedVehicles);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    Alert.alert('Paiement enregistré', `Assurance - ${selected.name} - ${year} ajouté aux finances.`);
   }
 
   function deleteItem(id: string) {
@@ -227,12 +252,31 @@ export default function VehicleSettingsScreen() {
         </ScrollView>
       </View>
 
+      {/* ── Inner tab bar ── */}
+      {selected && (
+        <View style={[styles.innerTabBar, { borderBottomColor: colors.border }]}>
+          {([['general', 'Général'], ['maintenance', 'Entretien'], ['insurance', 'Assurance']] as const).map(([tab, label]) => {
+            const isActive = activeVehicleTab === tab;
+            return (
+              <Pressable
+                key={tab}
+                onPress={() => { Haptics.selectionAsync(); setActiveVehicleTab(tab); }}
+                style={[styles.innerTab, isActive && { borderBottomColor: tabColor, borderBottomWidth: 2 }]}
+              >
+                <Text style={[styles.innerTabText, { color: isActive ? tabColor : colors.mutedForeground }]}>{label}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      )}
+
       {selected ? (
         <ScrollView
           style={{ flex: 1 }}
           contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 24 }]}
           keyboardShouldPersistTaps="handled"
         >
+          {activeVehicleTab === 'general' && (<>
           {/* Vehicle name */}
           <View style={styles.section}>
             <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>NOM DU VÉHICULE</Text>
@@ -347,8 +391,10 @@ export default function VehicleSettingsScreen() {
               <MaterialCommunityIcons name="chevron-right" size={18} color={colors.mutedForeground} />
             </Pressable>
           </View>
+          </>)}
 
-          {/* Maintenance items */}
+          {activeVehicleTab === 'maintenance' && (<>
+          {/* Rappels d'entretien */}
           <View style={styles.section}>
             <View style={styles.sectionRow}>
               <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>RAPPELS D'ENTRETIEN</Text>
@@ -440,15 +486,95 @@ export default function VehicleSettingsScreen() {
               })
             )}
           </View>
+          </>)}
 
-          {/* Delete vehicle (not for default car/moto) */}
-          <Pressable
-            onPress={handleDeleteVehicle}
-            style={[styles.deleteVehicleBtn, { borderColor: '#EF4444' }]}
-          >
-            <MaterialCommunityIcons name="trash-can-outline" size={16} color="#EF4444" />
-            <Text style={[styles.deleteVehicleText, { color: '#EF4444' }]}>Supprimer {selected.name}</Text>
-          </Pressable>
+          {activeVehicleTab === 'general' && (
+            <Pressable
+              onPress={handleDeleteVehicle}
+              style={[styles.deleteVehicleBtn, { borderColor: '#EF4444' }]}
+            >
+              <MaterialCommunityIcons name="trash-can-outline" size={16} color="#EF4444" />
+              <Text style={[styles.deleteVehicleText, { color: '#EF4444' }]}>Supprimer {selected.name}</Text>
+            </Pressable>
+          )}
+
+          {/* ── Assurance ── */}
+          {activeVehicleTab === 'insurance' && (<>
+            <View style={styles.section}>
+              <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>PRIME ANNUELLE (€)</Text>
+              <TextInput
+                style={[styles.input, { backgroundColor: colors.input, borderColor: colors.border, color: colors.foreground }]}
+                value={selected.insurance?.annualCost ? String(selected.insurance.annualCost) : ''}
+                onChangeText={t => {
+                  const v = parseFloat(t.replace(',', '.'));
+                  updateSelected({ insurance: { ...selected.insurance, annualCost: isNaN(v) ? 0 : v, paymentDate: selected.insurance?.paymentDate ?? '', transactionId: selected.insurance?.transactionId } });
+                }}
+                keyboardType="numeric"
+                placeholder="Ex: 850"
+                placeholderTextColor={colors.mutedForeground}
+              />
+            </View>
+
+            <View style={styles.section}>
+              <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>DATE DU DERNIER PAIEMENT</Text>
+              <Pressable
+                onPress={() => setInsDatePickerVisible(true)}
+                style={[styles.input, styles.inputPressable, { backgroundColor: colors.input, borderColor: colors.border }]}
+              >
+                <Text style={{ color: selected.insurance?.paymentDate ? colors.foreground : colors.mutedForeground, fontSize: 15 }}>
+                  {selected.insurance?.paymentDate
+                    ? new Date(selected.insurance.paymentDate).toLocaleDateString('fr-FR')
+                    : 'Choisir une date…'}
+                </Text>
+                <MaterialCommunityIcons name="calendar" size={18} color={colors.mutedForeground} />
+              </Pressable>
+              {insDatePickerVisible && (
+                <DateTimePicker
+                  value={selected.insurance?.paymentDate ? new Date(selected.insurance.paymentDate) : new Date()}
+                  mode="date"
+                  display="default"
+                  onChange={(_, date) => {
+                    setInsDatePickerVisible(false);
+                    if (date) {
+                      const iso = date.toISOString().split('T')[0]!;
+                      updateSelected({ insurance: { annualCost: selected.insurance?.annualCost ?? 0, paymentDate: iso, transactionId: selected.insurance?.transactionId } });
+                    }
+                  }}
+                />
+              )}
+            </View>
+
+            {selected.insurance?.paymentDate && selected.insurance.annualCost > 0 && (() => {
+              const pay = new Date(selected.insurance.paymentDate);
+              const renewal = new Date(pay);
+              renewal.setFullYear(renewal.getFullYear() + 1);
+              const daysUntil = Math.round((renewal.getTime() - Date.now()) / (24 * 3_600_000));
+              const isOverdue = daysUntil <= 0;
+              const isWarning = daysUntil <= 15 && !isOverdue;
+              const cardColor = isOverdue ? '#EF4444' : isWarning ? '#FF9800' : '#4CAF50';
+              return (
+                <View style={[styles.insStatusCard, { backgroundColor: cardColor + '18', borderColor: cardColor }]}>
+                  <MaterialCommunityIcons name="shield-check-outline" size={22} color={cardColor} />
+                  <View style={{ flex: 1, gap: 2 }}>
+                    <Text style={[styles.insStatusTitle, { color: cardColor }]}>
+                      {isOverdue ? 'Échéance dépassée' : isWarning ? `Renouvellement dans ${daysUntil} jour${daysUntil > 1 ? 's' : ''}` : `Valide encore ${daysUntil} jours`}
+                    </Text>
+                    <Text style={[styles.insStatusSub, { color: colors.mutedForeground }]}>
+                      Échéance : {renewal.toLocaleDateString('fr-FR')} · {selected.insurance.annualCost} €/an
+                    </Text>
+                  </View>
+                </View>
+              );
+            })()}
+
+            <Pressable
+              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); recordInsurancePayment(); }}
+              style={[styles.insPayBtn, { backgroundColor: tabColor + '22', borderColor: tabColor }]}
+            >
+              <MaterialCommunityIcons name="cash-plus" size={18} color={tabColor} />
+              <Text style={[styles.insPayBtnText, { color: tabColor }]}>Enregistrer le paiement dans les finances</Text>
+            </Pressable>
+          </>)}
         </ScrollView>
       ) : null}
 
@@ -656,6 +782,27 @@ const styles = StyleSheet.create({
     padding: 14, borderRadius: 12, borderWidth: 1, marginTop: 8,
   },
   deleteVehicleText: { fontSize: 14, fontFamily: 'Inter_500Medium' },
+
+  innerTabBar: {
+    flexDirection: 'row', borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  innerTab: {
+    flex: 1, alignItems: 'center', paddingVertical: 10, borderBottomWidth: 2, borderBottomColor: 'transparent',
+  },
+  innerTabText: { fontSize: 13, fontFamily: 'Inter_600SemiBold' },
+
+  insStatusCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    borderRadius: 12, borderWidth: 1, padding: 14,
+  },
+  insStatusTitle: { fontSize: 14, fontFamily: 'Inter_600SemiBold' },
+  insStatusSub: { fontSize: 12, fontFamily: 'Inter_400Regular' },
+
+  insPayBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    padding: 14, borderRadius: 12, borderWidth: 1,
+  },
+  insPayBtnText: { fontSize: 14, fontFamily: 'Inter_500Medium' },
 
   modalBackdrop: { flex: 1, backgroundColor: '#00000066', justifyContent: 'center', alignItems: 'center', padding: 24 },
   modalCard: { width: '100%', borderRadius: 16, borderWidth: 1, padding: 20, gap: 8 },

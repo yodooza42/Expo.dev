@@ -18,11 +18,14 @@ export interface CostBreakdown {
   fuelCostPer100km: number;
   maintenanceCostPerKm: number;
   maintenanceCostPer100km: number;
+  insuranceCostPerKm: number;
+  insuranceCostPer100km: number;
   totalCostPerKm: number;
   totalCostPer100km: number;
   kmInPeriod: number;
   fuelTotalEUR: number;
   maintenanceTotalEUR: number;
+  insuranceTotalEUR: number;
   periodStartMs: number;
 }
 
@@ -66,20 +69,30 @@ export async function computeAutoCostPerKm(vehicle: Vehicle): Promise<CostBreakd
   );
   const maintenanceTotalEUR = maintInPeriod.reduce((s, i) => s + (i.cost ?? 0), 0);
 
+  // Insurance cost in period: annual premium prorated over period length
+  const periodDays = (Date.now() - periodStartMs) / (24 * 3_600_000);
+  const insuranceTotalEUR = vehicle.insurance?.annualCost
+    ? vehicle.insurance.annualCost * (periodDays / 365)
+    : 0;
+
   const fuelCostPerKm        = fuelTotalEUR / kmInPeriod;
   const maintenanceCostPerKm = maintenanceTotalEUR / kmInPeriod;
-  const totalCostPerKm       = fuelCostPerKm + maintenanceCostPerKm;
+  const insuranceCostPerKm   = insuranceTotalEUR / kmInPeriod;
+  const totalCostPerKm       = fuelCostPerKm + maintenanceCostPerKm + insuranceCostPerKm;
 
   return {
     fuelCostPerKm,
-    fuelCostPer100km:        fuelCostPerKm * 100,
+    fuelCostPer100km:          fuelCostPerKm * 100,
     maintenanceCostPerKm,
-    maintenanceCostPer100km: maintenanceCostPerKm * 100,
+    maintenanceCostPer100km:   maintenanceCostPerKm * 100,
+    insuranceCostPerKm,
+    insuranceCostPer100km:     insuranceCostPerKm * 100,
     totalCostPerKm,
-    totalCostPer100km:       totalCostPerKm * 100,
+    totalCostPer100km:         totalCostPerKm * 100,
     kmInPeriod,
     fuelTotalEUR,
     maintenanceTotalEUR,
+    insuranceTotalEUR,
     periodStartMs,
   };
 }
