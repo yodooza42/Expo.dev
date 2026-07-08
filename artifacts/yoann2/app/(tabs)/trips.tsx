@@ -23,8 +23,9 @@ import { getFuelEntries } from '@/utils/fuelStorage';
 import type { FuelEntry } from '@/types/fuel';
 import { computeOdometer, getTrips, getVehicleSettings } from '@/utils/tripStorage';
 
-// ── Doblo image ───────────────────────────────────────────────────────────────
+// ── Vehicle images ────────────────────────────────────────────────────────────
 const DOBLO_IMG = require('@/assets/images/doblo-main.png');
+const MSX_IMG   = require('@/assets/images/msx-main.png');
 
 interface VehicleCardProps {
   vehicle: Vehicle;
@@ -334,23 +335,19 @@ export default function TripsScreen() {
                 );
               }
               return (
-                <View key={v.id} style={[styles.odoCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                  <MaterialCommunityIcons name="motorbike" size={20} color={color} />
-                  <Text style={[styles.odoVal, { color: colors.foreground }]}>{odo.toFixed(0)}</Text>
-                  <Text style={[styles.odoLabel, { color: colors.mutedForeground }]}>km {v.name}</Text>
+                <View key={v.id} style={[trStyles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                  <Image source={MSX_IMG} style={trStyles.carImg} resizeMode="contain" />
+                  <Text style={[trStyles.odoVal, { color: colors.foreground }]}>{odo.toFixed(0)}</Text>
+                  <Text style={[trStyles.odoLabel, { color: colors.mutedForeground }]}>KM {v.name.toUpperCase()}</Text>
                   {auto?.hasData && (
-                    <View style={styles.gaugeWrapper}>
-                      <View style={[styles.gaugeTrack, { backgroundColor: colors.muted }]}>
+                    <View style={trStyles.gaugeWrapper}>
+                      <View style={[trStyles.gaugeTrack, { backgroundColor: colors.muted }]}>
                         {fillPct !== null && (
-                          <View style={[styles.gaugeFill, { width: `${fillPct * 100}%` as any, backgroundColor: gaugeColor }]} />
+                          <View style={[trStyles.gaugeFill, { width: `${fillPct * 100}%` as any, backgroundColor: gaugeColor }]} />
                         )}
                       </View>
-                      <Text style={[styles.gaugeLabel, { color: isReserve ? '#F44336' : colors.mutedForeground }]}>
-                        {isReserve
-                          ? 'Réserve'
-                          : remaining !== null
-                            ? `~${remaining.toFixed(0)} km`
-                            : `${auto.kmSinceFillup.toFixed(0)} km`}
+                      <Text style={[trStyles.gaugeLabel, { color: isReserve ? '#F44336' : colors.mutedForeground }]}>
+                        {isReserve ? '⚠ Réserve' : remaining !== null ? `~${remaining.toFixed(0)} km` : '—'}
                       </Text>
                     </View>
                   )}
