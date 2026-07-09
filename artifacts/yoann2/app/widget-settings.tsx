@@ -301,10 +301,10 @@ const styles = StyleSheet.create({
   dayRow: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 38 },
   dayLabel: { width: 78, fontSize: 13, fontFamily: 'Inter_500Medium' },
   reposTxt: { flex: 1, fontSize: 13, fontFamily: 'Inter_400Regular' },
-  timeGroup: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  timeGroup: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   timeInput: {
-    flex: 1,
-    height: 34,
+    width: 52,
+    height: 32,
     borderWidth: 1,
     borderRadius: 8,
     textAlign: 'center',
@@ -313,7 +313,7 @@ const styles = StyleSheet.create({
     paddingVertical: 0,
   },
   timeSep: { fontSize: 13 },
-  reposToggle: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
+  reposToggle: { paddingHorizontal: 8, paddingVertical: 5, borderRadius: 8 },
   reposToggleTxt: { fontSize: 11, fontFamily: 'Inter_500Medium' },
   notifRow: {
     flexDirection: 'row',
