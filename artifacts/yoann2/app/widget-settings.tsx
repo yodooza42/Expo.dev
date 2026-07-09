@@ -42,12 +42,6 @@ const DAY_ROWS: { label: string; idx: number }[] = [
   { label: 'Dimanche', idx: 0 },
 ];
 
-const FONT_SIZES = [
-  { label: 'Petit', value: 13 },
-  { label: 'Moyen', value: 16 },
-  { label: 'Grand', value: 19 },
-];
-
 export default function WidgetSettingsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -225,31 +219,6 @@ export default function WidgetSettingsScreen() {
               onValueChange={v => setSettings(s => ({ ...s, shiftNotif: v }))}
               trackColor={{ true: colors.primary, false: colors.border }}
             />
-          </View>
-        </View>
-
-        <Text style={[styles.section, { color: colors.mutedForeground }]}>Taille du texte des tâches</Text>
-        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <View style={styles.chipRow}>
-            {FONT_SIZES.map(fs => (
-              <Pressable
-                key={fs.value}
-                onPress={() => setSettings(s => ({ ...s, taskFontSize: fs.value }))}
-                style={[
-                  styles.chip,
-                  settings.taskFontSize === fs.value
-                    ? { backgroundColor: colors.primary }
-                    : { backgroundColor: colors.background, borderColor: colors.border, borderWidth: 1 },
-                ]}
-              >
-                <Text style={[
-                  styles.chipTxt,
-                  { color: settings.taskFontSize === fs.value ? colors.primaryForeground : colors.mutedForeground },
-                ]}>
-                  {fs.label}
-                </Text>
-              </Pressable>
-            ))}
           </View>
         </View>
 

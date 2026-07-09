@@ -9,7 +9,6 @@ export interface DaySchedule {
 }
 
 export interface WidgetSettings {
-  taskFontSize: number;
   primaryColor: string;
   bgColor: string;
   workSchedule: DaySchedule[]; // index 0=Dimanche .. 6=Samedi (convention Date.getDay())
@@ -28,7 +27,6 @@ export const DEFAULT_WORK_SCHEDULE: DaySchedule[] = [
 ];
 
 export const DEFAULT_WIDGET_SETTINGS: WidgetSettings = {
-  taskFontSize: 16,
   primaryColor: '#FFC107',
   bgColor: '#121212',
   workSchedule: DEFAULT_WORK_SCHEDULE,
