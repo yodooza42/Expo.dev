@@ -30,7 +30,7 @@ import {
 } from '@/utils/notificationScheduler';
 import { importBackupFromFile, listBackups, rebuildBackupListFromSAF, restoreBackup, saveBackup } from '@/utils/backup';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { reconfigureStorage, SAF_ROOT_KEY } from '@/utils/photoStorage';
+import { reconfigureStorage, recoverAllPhotosFromExternal, SAF_ROOT_KEY } from '@/utils/photoStorage';
 import { CategoryConfig, DEFAULT_EXPENSE_CATEGORY_CONFIGS, getCategoryConfigs, saveCategoryConfigs } from '@/utils/bankStorage';
 import { genId } from '@/utils/ids';
 
@@ -74,7 +74,7 @@ function SettingRow({
 export default function SettingsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { resetData, projects, tasks, categories, addCategory, deleteCategory } = useApp();
+  const { resetData, projects, tasks, categories, addCategory, deleteCategory, updateProject } = useApp();
   const router = useRouter();
 
   const [showBackupList,    setShowBackupList]    = useState(false);
@@ -94,6 +94,7 @@ export default function SettingsScreen() {
   const [backupCount,       setBackupCount]       = useState(0);
   const [configuringFolder, setConfiguringFolder] = useState(false);
   const [rebuildingList,    setRebuildingList]    = useState(false);
+  const [recoveringAll,     setRecoveringAll]     = useState(false);
   const [expCatConfigs, setExpCatConfigs] = useState<CategoryConfig[]>(DEFAULT_EXPENSE_CATEGORY_CONFIGS);
 
   async function handleAddExpCat(name: string) {
@@ -224,6 +225,36 @@ export default function SettingsScreen() {
       Alert.alert('Liste reconstruite', 'Les sauvegardes ont été retrouvées dans le dossier et la liste a été mise à jour.');
     } else {
       Alert.alert('Aucune sauvegarde trouvée', 'Aucun fichier backup_*.json n\'a été trouvé dans le dossier Sauvegarde.');
+    }
+  }
+
+  async function handleRecoverAllPhotos() {
+    if (!folderConfigured) {
+      Alert.alert('Dossier non configur\u00e9', 'Configurez d\u2019abord le dossier Yoann2.0 ci-dessus.');
+      return;
+    }
+    setRecoveringAll(true);
+    const names = projects.map(p => p.name);
+    const recovered = await recoverAllPhotosFromExternal(names);
+    setRecoveringAll(false);
+
+    let total = 0;
+    for (const r of recovered) {
+      const proj = projects.find(p => p.name === r.projectName);
+      if (proj) {
+        updateProject(proj.id, { photos: [...proj.photos, ...r.uris] });
+        total += r.uris.length;
+      }
+    }
+
+    if (total > 0) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert(
+        'Photos r\u00e9cup\u00e9r\u00e9es',
+        `${total} photo${total > 1 ? 's' : ''} restaur\u00e9e${total > 1 ? 's' : ''} sur ${recovered.length} projet${recovered.length > 1 ? 's' : ''}.`
+      );
+    } else {
+      Alert.alert('Aucune photo', 'Aucune image trouv\u00e9e dans les dossiers externes.');
     }
   }
 
@@ -439,6 +470,13 @@ export default function SettingsScreen() {
           label={rebuildingList ? 'Scan en cours…' : 'Scanner le dossier Sauvegarde'}
           sublabel="Reconstruire la liste depuis les fichiers présents sur le disque"
           onPress={handleRebuildList}
+          colors={colors}
+        />
+        <SettingRow
+          icon="image-multiple"
+          label={recoveringAll ? 'Récupération en cours…' : 'Récupérer toutes les photos'}
+          sublabel="Copier les images du dossier Yoann2.0/Photos vers tous les projets"
+          onPress={handleRecoverAllPhotos}
           colors={colors}
         />
 

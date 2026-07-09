@@ -292,3 +292,57 @@ export async function hasExternalPhotos(projectName: string): Promise<boolean> {
     return false;
   }
 }
+
+// ── Recover ALL external photos across every project folder ─────────────────────
+//
+// Iterates over every project name, finds the matching external SAF folder,
+// copies every image back into the app's private storage, and returns the
+// mappings so the caller can batch-update project states.
+
+export async function recoverAllPhotosFromExternal(
+  projectNames: string[],
+): Promise<{ projectName: string; uris: string[] }[]> {
+  const photosDir = await getOrRequestPhotosDir();
+  if (!photosDir) return [];
+
+  const localDir = FileSystem.documentDirectory + 'project_photos/';
+  const localDirInfo = await FileSystem.getInfoAsync(localDir);
+  if (!localDirInfo.exists) {
+    await FileSystem.makeDirectoryAsync(localDir, { intermediates: true });
+  }
+
+  const results: { projectName: string; uris: string[] }[] = [];
+
+  for (const projectName of projectNames) {
+    const key = sanitize(projectName);
+    try {
+      const children = await SAF.readDirectoryAsync(photosDir);
+      const found = children.find(uri => {
+        const decoded = decodeURIComponent(uri).toLowerCase();
+        return decoded.endsWith('/' + key.toLowerCase());
+      });
+      if (!found) continue;
+
+      const files = await SAF.readDirectoryAsync(found);
+      const uris: string[] = [];
+      for (const fileUri of files) {
+        const decoded = decodeURIComponent(fileUri);
+        if (!/\.(jpe?g|png|gif|webp|heic)$/i.test(decoded)) continue;
+        const filename = decoded.split('/').pop() ?? `recovered_${Date.now()}.jpg`;
+        const base64 = await SAF.readAsStringAsync(fileUri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        const localPath = localDir + filename;
+        await FileSystem.writeAsStringAsync(localPath, base64, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        uris.push(localPath);
+      }
+      if (uris.length > 0) results.push({ projectName, uris });
+    } catch {
+      // ignore per-project errors
+    }
+  }
+
+  return results;
+}
