@@ -26,7 +26,7 @@ import { rebuildBackupListFromSAF, runDailyBackupIfNeeded } from '@/utils/backup
 import { purgeOldData, requestLocationPermissions, startManualTracking, LOCATION_TASK_NAME } from '@/utils/locationTracking';
 import { isManualTripActive } from '@/utils/manualTripStorage';
 import { runMaintenanceScheduler } from '@/utils/maintenanceScheduler';
-import { updateNavWidget } from '@/widgets/updateNavWidget';
+import { updateTodoWidget } from '@/widgets/updateWidget';
 import {
   computeOdometer,
   getTrips,
@@ -97,7 +97,7 @@ function RootLayoutNav() {
     const sub = AppState.addEventListener('change', nextState => {
       if (nextState === 'active') {
         checkPendingTrips();
-        updateNavWidget().catch(() => {});
+        updateTodoWidget().catch(() => {});
         runScheduler();
         runDailyBackupIfNeeded().catch(() => {});
         // Watchdog: redémarre le GPS si l'OS l'a tué et qu'un trajet manuel est actif

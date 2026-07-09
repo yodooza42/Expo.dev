@@ -28,10 +28,8 @@ import { matchRouteOSRM, computeRouteDistanceKm } from '@/utils/osrmMatching';
 import { findNearestPlace } from '@/utils/placesStorage';
 import { simplifyRoute } from '@/utils/routeSimplification';
 import { saveTrip } from '@/utils/tripStorage';
+import { AllInOneWidget } from './AllInOneWidget';
 import { getWidgetDataFromStorage } from './data';
-import type { TodayApptNav } from './NavigationWidget';
-import { NavigationWidget } from './NavigationWidget';
-import { TodoWidget } from './TodoWidget';
 
 const SPIN_FRAMES   = 8;
 const SPIN_INTERVAL = 250;
@@ -56,29 +54,21 @@ async function maybeSuggestBatteryOptimization(): Promise<void> {
   } catch {}
 }
 
-async function renderNavWidget(
+async function renderAllInOneWidget(
   renderWidget: WidgetTaskHandlerProps['renderWidget'],
   tripStatus: 'idle' | 'active' | 'paused',
 ): Promise<void> {
-  const [shortcuts, rawAppts] = await Promise.all([
+  const [data, shortcuts] = await Promise.all([
+    getWidgetDataFromStorage(),
     getNavShortcuts(),
-    AsyncStorage.getItem('@yoann2_appointments')
-      .then(r => (r ? (JSON.parse(r) as any[]) : []))
-      .catch(() => [] as any[]),
   ]);
-  const todayStr = new Date().toISOString().slice(0, 10);
-  const todayApptRaw = rawAppts.find((a: any) => {
-    if (!a.addressLat || !a.addressLng) return false;
-    try {
-      const d = new Date(a.date);
-      const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-      return k === todayStr;
-    } catch { return false; }
-  });
-  const todayAppt: TodayApptNav | null = todayApptRaw
-    ? { title: todayApptRaw.title, time: todayApptRaw.time ?? '', lat: todayApptRaw.addressLat, lng: todayApptRaw.addressLng }
-    : null;
-  renderWidget(<NavigationWidget shortcuts={shortcuts} todayAppt={todayAppt} tripStatus={tripStatus} />);
+  renderWidget(
+    <AllInOneWidget
+      {...data}
+      shortcuts={shortcuts.map(s => ({ name: s.name, lat: s.lat, lng: s.lng }))}
+      tripStatus={tripStatus}
+    />
+  );
 }
 
 // ── START ──────────────────────────────────────────────────────────────────────
@@ -110,7 +100,7 @@ async function handleManualTripStart(
   } catch {
     // ignore — trip state saved, GPS best-effort
   }
-  await renderNavWidget(renderWidget, 'active');
+  await renderAllInOneWidget(renderWidget, 'active');
 }
 
 // ── PAUSE ──────────────────────────────────────────────────────────────────────
@@ -137,7 +127,7 @@ async function handleManualTripPause(
   await saveManualTripState({ ...state, paused: true, segments });
   // stopTracking() ci-dessus a arrêté le foreground service → notification disparaît automatiquement
 
-  await renderNavWidget(renderWidget, 'paused');
+  await renderAllInOneWidget(renderWidget, 'paused');
 }
 
 // ── RESUME ─────────────────────────────────────────────────────────────────────
@@ -158,7 +148,7 @@ async function handleManualTripResume(
   await saveManualTripState({ ...state, paused: false, segments });
   await startManualTracking();
 
-  await renderNavWidget(renderWidget, 'active');
+  await renderAllInOneWidget(renderWidget, 'active');
 }
 
 // ── END ────────────────────────────────────────────────────────────────────────
@@ -292,7 +282,7 @@ async function handleManualTripEnd(
 
   resetTripTracking();
   await clearManualTripState();
-  await renderNavWidget(renderWidget, 'idle');
+  await renderAllInOneWidget(renderWidget, 'idle');
 }
 
 // ── Widget task handler ────────────────────────────────────────────────────────
@@ -301,45 +291,13 @@ export async function widgetTaskHandler(props: WidgetTaskHandlerProps): Promise<
   const { widgetInfo, widgetAction, clickAction, renderWidget } = props;
   const widgetName = widgetInfo.widgetName;
 
-  if (widgetName === 'NavigationWidget') {
-    switch (widgetAction) {
-      case 'WIDGET_ADDED':
-      case 'WIDGET_UPDATE':
-      case 'WIDGET_RESIZED': {
-        const tripStatus = await getManualTripStatus();
-        await renderNavWidget(renderWidget, tripStatus);
-        break;
-      }
-
-      case 'WIDGET_CLICK': {
-        if (clickAction === 'MANUAL_TRIP_START') {
-          await handleManualTripStart(renderWidget);
-        } else if (clickAction === 'MANUAL_TRIP_PAUSE') {
-          await handleManualTripPause(renderWidget);
-        } else if (clickAction === 'MANUAL_TRIP_RESUME') {
-          await handleManualTripResume(renderWidget);
-        } else if (clickAction === 'MANUAL_TRIP_END') {
-          await handleManualTripEnd(renderWidget);
-        } else {
-          const tripStatus = await getManualTripStatus();
-          await renderNavWidget(renderWidget, tripStatus);
-        }
-        break;
-      }
-
-      default:
-        break;
-    }
-    return;
-  }
-
-  // ── TodoWidget (default) ───────────────────────────────────────────────────
+  // — Single all-in-one widget (replaces both TodoWidget + NavigationWidget)
   switch (widgetAction) {
     case 'WIDGET_ADDED':
     case 'WIDGET_UPDATE':
     case 'WIDGET_RESIZED': {
-      const data = await getWidgetDataFromStorage();
-      renderWidget(<TodoWidget {...data} />);
+      const tripStatus = await getManualTripStatus();
+      await renderAllInOneWidget(renderWidget, tripStatus);
       break;
     }
 
@@ -347,25 +305,35 @@ export async function widgetTaskHandler(props: WidgetTaskHandlerProps): Promise<
       const data = await getWidgetDataFromStorage();
 
       if (clickAction === 'REFRESH') {
-        renderWidget(<TodoWidget {...data} spinAngle={0} />);
+        const tripStatus = await getManualTripStatus();
+        renderWidget(<AllInOneWidget {...data} shortcuts={[]} tripStatus={tripStatus} spinAngle={0} />);
 
         for (let i = 1; i <= SPIN_FRAMES; i++) {
           await new Promise<void>(res => setTimeout(res, SPIN_INTERVAL));
           const angle = (i / SPIN_FRAMES) * SPIN_TOTAL;
           await requestWidgetUpdate({
             widgetName: 'TodoWidget',
-            renderWidget: () => <TodoWidget {...data} spinAngle={angle} />,
+            renderWidget: () => <AllInOneWidget {...data} shortcuts={[]} tripStatus={tripStatus} spinAngle={angle} />,
             widgetNotFound: () => {},
           });
         }
 
         await requestWidgetUpdate({
           widgetName: 'TodoWidget',
-          renderWidget: () => <TodoWidget {...data} spinAngle={0} />,
+          renderWidget: () => <AllInOneWidget {...data} shortcuts={[]} tripStatus={tripStatus} spinAngle={0} />,
           widgetNotFound: () => {},
         });
+      } else if (clickAction === 'MANUAL_TRIP_START') {
+        await handleManualTripStart(renderWidget);
+      } else if (clickAction === 'MANUAL_TRIP_PAUSE') {
+        await handleManualTripPause(renderWidget);
+      } else if (clickAction === 'MANUAL_TRIP_RESUME') {
+        await handleManualTripResume(renderWidget);
+      } else if (clickAction === 'MANUAL_TRIP_END') {
+        await handleManualTripEnd(renderWidget);
       } else {
-        renderWidget(<TodoWidget {...data} />);
+        const tripStatus = await getManualTripStatus();
+        await renderAllInOneWidget(renderWidget, tripStatus);
       }
       break;
     }
