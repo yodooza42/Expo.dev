@@ -18,18 +18,23 @@ const PERIODS: { key: Period; label: string }[] = [
 const MKT_GREEN  = '#8B5CF6';
 const COST_COLOR = '#6B7280';
 const CHART_H    = 130;
+const MINI_H     = 80;
 const PAD_TOP    = 8;
 const PAD_BOT    = 24;
+const MINI_PAD_BOT = 4;
 
 interface Props {
   data: PortfolioDataPoint[];
   masked?: boolean;
+  mini?: boolean;
 }
 
-export function PortfolioChart({ data, masked = false }: Props) {
+export function PortfolioChart({ data, masked = false, mini = false }: Props) {
   const colors = useColors();
   const [period, setPeriod] = useState<Period>('all');
-  const W = Dimensions.get('window').width - 32;
+  const W = mini
+    ? Dimensions.get('window').width - 64
+    : Dimensions.get('window').width - 32;
 
   const filtered = useMemo(() => {
     if (period === 'all' || data.length === 0) return data;
@@ -44,12 +49,14 @@ export function PortfolioChart({ data, masked = false }: Props) {
 
   const chart = useMemo(() => {
     if (filtered.length < 2) return null;
-    const n    = filtered.length;
+    const n      = filtered.length;
+    const chartH = mini ? MINI_H : CHART_H;
+    const padBot = mini ? MINI_PAD_BOT : PAD_BOT;
     const allV = [...filtered.map(d => d.projectedValue), ...filtered.map(d => d.costBasis)];
     const minV = Math.min(...allV) * 0.97;
     const maxV = Math.max(...allV) * 1.03;
     const range = maxV - minV || 1;
-    const cH   = CHART_H - PAD_TOP - PAD_BOT;
+    const cH   = chartH - PAD_TOP - padBot;
 
     const toX = (i: number) => (i / (n - 1)) * W;
     const toY = (v: number) => PAD_TOP + cH - ((v - minV) / range) * cH;
@@ -61,20 +68,38 @@ export function PortfolioChart({ data, masked = false }: Props) {
     const areaPath = `M 0,${toY(filtered[0].projectedValue)} ${valPts} L ${toX(n - 1)},${bottomY} L 0,${bottomY} Z`;
 
     const midIdx = Math.floor(n / 2);
-    const dateLabels = [
+    const dateLabels = mini ? [] : [
       { x: toX(0),       label: fmtMonthYear(filtered[0].date),       anchor: 'start'  },
       { x: toX(midIdx),  label: fmtMonthYear(filtered[midIdx].date),   anchor: 'middle' },
       { x: toX(n - 1),   label: fmtMonthYear(filtered[n - 1].date),    anchor: 'end'    },
     ];
 
-    return { valPts, costPts, areaPath, dateLabels, last: filtered[n - 1] };
-  }, [filtered, W]);
+    return { valPts, costPts, areaPath, dateLabels, last: filtered[n - 1], chartH };
+  }, [filtered, W, mini]);
 
   if (data.length < 2 || !chart) return null;
 
   const pnl    = chart.last.projectedValue - chart.last.costBasis;
   const pnlPct = chart.last.costBasis > 0 ? (pnl / chart.last.costBasis) * 100 : 0;
   const pnlColor = pnl >= 0 ? MKT_GREEN : '#EF4444';
+
+  if (mini) {
+    return (
+      <View style={styles.miniContainer}>
+        <Svg width={W} height={MINI_H} style={{ overflow: 'hidden' }}>
+          <Defs>
+            <LinearGradient id="miniGrad" x1="0" y1="0" x2="0" y2="1">
+              <Stop offset="0%"   stopColor={MKT_GREEN} stopOpacity={0.20} />
+              <Stop offset="100%" stopColor={MKT_GREEN} stopOpacity={0.01} />
+            </LinearGradient>
+          </Defs>
+          <Path     d={chart.areaPath} fill="url(#miniGrad)" />
+          <Polyline points={chart.costPts} fill="none" stroke={COST_COLOR} strokeWidth={1} strokeDasharray="3,3" />
+          <Polyline points={chart.valPts}  fill="none" stroke={MKT_GREEN}  strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
+        </Svg>
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.container, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -147,6 +172,12 @@ const styles = StyleSheet.create({
     padding: 12,
     paddingBottom: 10,
     overflow: 'hidden',
+  },
+  miniContainer: {
+    marginTop: 8,
+    marginBottom: 4,
+    overflow: 'hidden',
+    borderRadius: 8,
   },
   periodRow: {
     flexDirection: 'row',

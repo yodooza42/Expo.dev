@@ -320,6 +320,9 @@ export default function MarketManagerScreen() {
           const priceKey  = asset.yahooSymbol ?? asset.ticker;
           const livePrice = priceKey ? prices[priceKey]?.price : undefined;
           const pnl = computeAssetPnl(aOps, asset.id, livePrice);
+          const miniSeries = isExpanded && aOps.length >= 2
+            ? buildPortfolioTimeSeries(aOps, [asset], priceMap)
+            : [];
           return (
             <View key={asset.id} style={[styles.assetCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
               {/* Asset header row */}
@@ -400,6 +403,11 @@ export default function MarketManagerScreen() {
                       <MaterialCommunityIcons name="trash-can-outline" size={15} color="#EF4444" />
                     </Pressable>
                   </View>
+
+                  {/* Mini performance chart */}
+                  {miniSeries.length >= 2 && (
+                    <PortfolioChart data={miniSeries} mini />
+                  )}
 
                   {/* Recurring templates */}
                   {aRecs.length > 0 && (
