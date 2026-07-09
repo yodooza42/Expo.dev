@@ -455,3 +455,9 @@ id = "6qetgH4NG_30UJsqx6Het"
 uri = "file://attached_assets/mockup_new_8s.png"
 type = "image"
 title = "8s — fin"
+
+[[outputs]]
+id = "D46myCHV1zYRH3ZBOvS6U"
+uri = "file://attached_assets/backup_merged_2026-07-09.json"
+type = "unspecified"
+title = "backup_merged_2026-07-09.json"
