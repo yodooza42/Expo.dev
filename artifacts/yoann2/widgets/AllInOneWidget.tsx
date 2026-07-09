@@ -8,15 +8,12 @@ import type { ColorProp, ImageWidgetSource } from 'react-native-android-widget';
 
 import type { WidgetData } from './data';
 
-const CARD: ColorProp    = '#202020';
-const NAVBAR: ColorProp  = '#121212';
-const TEXT: ColorProp    = '#FFFFFF';
-const MUTED: ColorProp   = '#9E9E9E';
+const CARD: ColorProp   = '#202020';
+const NAVBAR: ColorProp = '#121212';
+const TEXT: ColorProp   = '#FFFFFF';
+const MUTED: ColorProp  = '#9E9E9E';
 const PRIMARY: ColorProp = '#FFC107';
-const GREEN: ColorProp   = '#4CAF50';
-const ORANGE: ColorProp  = '#FF9800';
-const RED: ColorProp     = '#F44336';
-const SCHEME = 'yoann2';
+const ACCENT_BG         = '#1A2A00' as ColorProp;
 
 const IMG_RESET = require('../assets/icons/icon-reset.png') as ImageWidgetSource;
 const IMG_NAV   = require('../assets/icons/icon-nav.png')   as ImageWidgetSource;
@@ -31,55 +28,55 @@ export interface AllInOneWidgetProps extends WidgetData {
   spinAngle?: number;
 }
 
+/**
+ * Bouton générique — clickAction est n'importe quelle chaîne custom ou OPEN_URI.
+ * Pour OPEN_URI, passer uri. Pour tout le reste le handler JS prend le relais.
+ */
+function Btn({
+  image,
+  clickAction,
+  uri,
+  bg = CARD,
+  flex = 1,
+  rotation = 0,
+}: {
+  image: ImageWidgetSource;
+  clickAction: string;
+  uri?: string;
+  bg?: ColorProp;
+  flex?: number;
+  rotation?: number;
+}) {
+  return (
+    <FlexWidget
+      clickAction={clickAction}
+      clickActionData={uri ? { uri } : undefined}
+      style={{
+        flex,
+        height: 'match_parent',
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: bg,
+        borderRadius: 10,
+        padding: 4,
+      }}
+    >
+      <ImageWidget image={image} style={{ width: 32, height: 32, rotation }} />
+    </FlexWidget>
+  );
+}
+
 export function AllInOneWidget({
-  tasks, widgetAppts, todayWork, settings, todayDayNum,
-  marieCircleColor, shortcuts, tripStatus = 'idle', spinAngle = 0,
+  tasks,
+  widgetAppts,
+  todayWork,
+  todayDayNum,
+  marieCircleColor,
+  tripStatus = 'idle',
+  spinAngle = 0,
 }: AllInOneWidgetProps) {
-  const isRepos = todayWork === 'Repos';
-
-  // Next appt short label
-  const nextAppt = widgetAppts[0] ?? null;
-  const nextApptShort = nextAppt ? nextAppt.when.replace("Aujourd'hui · ", "").replace("Aujourd'hui", "") : null;
-
-  function NavItem({
-    image,
-    emoji,
-    clickAction,
-    uri,
-    rotation,
-    accent = false,
-    wide = false,
-  }: {
-    image?: ImageWidgetSource;
-    emoji?: string;
-    clickAction: string;
-    uri?: string;
-    rotation?: number;
-    accent?: boolean;
-    wide?: boolean;
-  }) {
-    return (
-      <FlexWidget
-        clickAction={clickAction}
-        clickActionData={uri ? { uri } : undefined}
-        style={{
-          flex: wide ? 1.5 : 1,
-          height: 'match_parent',
-          justifyContent: 'center',
-          alignItems: 'center',
-          backgroundColor: accent ? '#1A2A00' as ColorProp : CARD,
-          borderRadius: 10,
-          padding: 4,
-        }}
-      >
-        {image ? (
-          <ImageWidget image={image} style={{ width: 34, height: 34, rotation: rotation ?? 0 }} />
-        ) : (
-          <TextWidget text={emoji ?? ''} style={{ fontSize: 24, color: accent ? GREEN : TEXT }} />
-        )}
-      </FlexWidget>
-    );
-  }
+  const isRepos    = todayWork === 'Repos';
+  const nextAppt   = widgetAppts[0] ?? null;
 
   return (
     <FlexWidget
@@ -95,24 +92,24 @@ export function AllInOneWidget({
         flexDirection: 'column',
       }}
     >
-      {/* ── Row 1: Info bar ── */}
+      {/* ─── Ligne 1 : infos ─── */}
       <FlexWidget
         style={{
           width: 'match_parent',
           flexDirection: 'row',
           alignItems: 'center',
           marginBottom: 6,
-          paddingHorizontal: 4,
+          paddingHorizontal: 2,
         }}
       >
-        {/* Day circle */}
+        {/* Cercle jour → planning Marie */}
         <FlexWidget
           clickAction="OPEN_URI"
-          clickActionData={{ uri: `${SCHEME}:///marie` }}
+          clickActionData={{ uri: 'yoann2:///marie' }}
           style={{
-            width: 36,
-            height: 36,
-            borderRadius: 18,
+            width: 34,
+            height: 34,
+            borderRadius: 17,
             backgroundColor: marieCircleColor as ColorProp,
             alignItems: 'center',
             justifyContent: 'center',
@@ -120,38 +117,36 @@ export function AllInOneWidget({
         >
           <TextWidget
             text={String(todayDayNum)}
-            style={{ fontSize: 16, fontWeight: 'bold', color: '#FFFFFF' }}
+            style={{ fontSize: 15, fontWeight: 'bold', color: '#FFFFFF' }}
           />
         </FlexWidget>
 
-        {/* Work info */}
+        {/* Travail */}
         <FlexWidget
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            flex: 1,
-            marginLeft: 8,
-          }}
+          style={{ flex: 1, flexDirection: 'row', alignItems: 'center', marginLeft: 8 }}
         >
           <TextWidget text="💼 " style={{ fontSize: 11 }} />
           <TextWidget
             text={isRepos ? 'Repos' : todayWork}
             style={{ fontSize: 12, color: isRepos ? MUTED : PRIMARY, fontWeight: 'bold' }}
+            maxLines={1}
+            truncate="END"
           />
         </FlexWidget>
 
-        {/* Tasks count */}
-        <FlexWidget
-          style={{ flexDirection: 'row', alignItems: 'center', marginRight: 8 }}
-        >
-          <TextWidget text="📋" style={{ fontSize: 11, marginRight: 3 }} />
-          <TextWidget text={`${tasks.length}`} style={{ fontSize: 11, color: TEXT, fontWeight: 'bold' }} />
+        {/* Tâches */}
+        <FlexWidget style={{ flexDirection: 'row', alignItems: 'center', marginRight: 8 }}>
+          <TextWidget text="📋 " style={{ fontSize: 11 }} />
+          <TextWidget
+            text={String(tasks.length)}
+            style={{ fontSize: 11, color: TEXT, fontWeight: 'bold' }}
+          />
         </FlexWidget>
 
-        {/* Next appt */}
+        {/* Prochain RDV */}
         {nextAppt ? (
           <FlexWidget style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <TextWidget text="📅" style={{ fontSize: 11, marginRight: 3 }} />
+            <TextWidget text="📅 " style={{ fontSize: 11 }} />
             <TextWidget
               text={nextAppt.title}
               style={{ fontSize: 11, color: PRIMARY }}
@@ -162,7 +157,7 @@ export function AllInOneWidget({
         ) : null}
       </FlexWidget>
 
-      {/* ── Row 2: Nav buttons ── */}
+      {/* ─── Ligne 2 : boutons ─── */}
       <FlexWidget
         style={{
           flexDirection: 'row',
@@ -172,45 +167,37 @@ export function AllInOneWidget({
           flex: 1,
         }}
       >
-        <NavItem
-          image={IMG_NAV}
-          clickAction="OPEN_URI"
-          uri={`${SCHEME}:///navigate-to`}
-          wide
-        />
+        {/*
+          Naviguer vers — action custom NAVIGATE_TO traitée par le handler JS.
+          Le handler fait Linking.openURL('yoann2:///navigate-to') pour ouvrir
+          la liste des destinations et choisir une navigation Waze.
+        */}
+        <Btn image={IMG_NAV} clickAction="NAVIGATE_TO" bg={CARD} flex={2} />
 
-        {/* Trip button changes based on status */}
-        {tripStatus === 'paused' ? (
+        {/*
+          Bouton trajet : change selon l'état.
+          idle   → Play (MANUAL_TRIP_START)
+          active → Pause (MANUAL_TRIP_PAUSE)
+          paused → Play + Stop (MANUAL_TRIP_RESUME / MANUAL_TRIP_END)
+        */}
+        {tripStatus === 'idle' && (
+          <Btn image={IMG_PLAY} clickAction="MANUAL_TRIP_START" bg={ACCENT_BG} />
+        )}
+        {tripStatus === 'active' && (
+          <Btn image={IMG_PAUSE} clickAction="MANUAL_TRIP_PAUSE" bg={CARD} />
+        )}
+        {tripStatus === 'paused' && (
           <>
-            <NavItem
-              image={IMG_PLAY}
-              clickAction="MANUAL_TRIP_RESUME"
-              accent
-            />
-            <NavItem
-              image={IMG_STOP}
-              clickAction="MANUAL_TRIP_END"
-            />
+            <Btn image={IMG_PLAY}  clickAction="MANUAL_TRIP_RESUME" bg={ACCENT_BG} />
+            <Btn image={IMG_STOP}  clickAction="MANUAL_TRIP_END"    bg={CARD} />
           </>
-        ) : (
-          <NavItem
-            image={tripStatus === 'active' ? IMG_PAUSE : IMG_PLAY}
-            clickAction={tripStatus === 'active' ? 'MANUAL_TRIP_PAUSE' : 'MANUAL_TRIP_START'}
-            accent={tripStatus !== 'active'}
-          />
         )}
 
-        <NavItem
-          image={IMG_GAS}
-          clickAction="OPEN_URI"
-          uri={`${SCHEME}:///navigation?action=fuel`}
-        />
+        {/* Carburant — ouvre la page trajets/fuel via deep link */}
+        <Btn image={IMG_GAS} clickAction="OPEN_FUEL" bg={CARD} />
 
-        <NavItem
-          image={IMG_RESET}
-          clickAction="REFRESH"
-          rotation={spinAngle}
-        />
+        {/* Rafraîchir */}
+        <Btn image={IMG_RESET} clickAction="REFRESH" bg={CARD} rotation={spinAngle} />
       </FlexWidget>
     </FlexWidget>
   );
