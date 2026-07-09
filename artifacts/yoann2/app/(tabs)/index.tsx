@@ -426,7 +426,27 @@ export default function DashboardScreen() {
         colors={['#1A1500', colors.background]}
         style={[styles.header, { paddingTop: insets.top + 8, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border }]}
       >
-        <View style={pH.btnGroup}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+          {/* GAUCHE — paramètres */}
+          <View style={pH.btnGroup}>
+            <Pressable
+              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/(tabs)/settings' as any); }}
+              hitSlop={6}
+              style={[pH.btn, { backgroundColor: colors.card, borderColor: colors.border }]}
+            >
+              <MaterialCommunityIcons name="cog-outline" size={18} color={colors.mutedForeground} />
+            </Pressable>
+            <Pressable
+              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/widget-settings' as any); }}
+              hitSlop={6}
+              style={[pH.btn, { backgroundColor: '#E91E6328', borderColor: '#E91E63' }]}
+            >
+              <MaterialCommunityIcons name="tune" size={18} color="#E91E63" />
+            </Pressable>
+          </View>
+
+          {/* DROITE — fonctionnalités */}
+          <View style={pH.btnGroup}>
             <Pressable
               onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/(tabs)/kanban' as any); }}
               hitSlop={6}
@@ -440,13 +460,6 @@ export default function DashboardScreen() {
               style={[pH.btn, { backgroundColor: colors.card, borderColor: colors.border }]}
             >
               <MaterialCommunityIcons name="folder-multiple-outline" size={18} color={colors.mutedForeground} />
-            </Pressable>
-            <Pressable
-              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/(tabs)/settings' as any); }}
-              hitSlop={6}
-              style={[pH.btn, { backgroundColor: colors.card, borderColor: colors.border }]}
-            >
-              <MaterialCommunityIcons name="cog-outline" size={18} color={colors.mutedForeground} />
             </Pressable>
             <Pressable
               onPress={() => { setShowAppts(v => !v); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
@@ -470,6 +483,7 @@ export default function DashboardScreen() {
                 color={showPhotos ? colors.primary : colors.mutedForeground}
               />
             </Pressable>
+          </View>
         </View>
 
       </LinearGradient>
