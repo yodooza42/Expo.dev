@@ -90,8 +90,7 @@ export function IdeaBCompact() {
             flex: 1,
           }}
         >
-          <NavButton emoji="💼" label="Travail" />
-          <NavButton emoji="🏠" label="Maison" />
+          <NavButton emoji="🧭" label="Naviguer vers" wide />
           <NavButton emoji="▶" label="Départ" accent />
           <NavButton emoji="⛽" label="Essence" />
           <NavButton emoji="🔄" label="" small />
@@ -106,16 +105,18 @@ function NavButton({
   label,
   accent = false,
   small = false,
+  wide = false,
 }: {
   emoji: string;
   label: string;
   accent?: boolean;
   small?: boolean;
+  wide?: boolean;
 }) {
   return (
     <div
       style={{
-        flex: small ? 0.6 : 1,
+        flex: small ? 0.6 : wide ? 1.5 : 1,
         height: '100%',
         background: accent ? '#1A2A00' : CARD,
         borderRadius: 10,
