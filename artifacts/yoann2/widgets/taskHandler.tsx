@@ -111,7 +111,7 @@ async function handleManualTripPause(
   const state = await getManualTripState();
   if (!state || !state.active || state.paused) {
     const status = await getManualTripStatus();
-    await renderNavWidget(renderWidget, status);
+    await renderAllInOneWidget(renderWidget, status);
     return;
   }
 
@@ -138,7 +138,7 @@ async function handleManualTripResume(
   const state = await getManualTripState();
   if (!state || !state.active || !state.paused) {
     const status = await getManualTripStatus();
-    await renderNavWidget(renderWidget, status);
+    await renderAllInOneWidget(renderWidget, status);
     return;
   }
 
@@ -163,7 +163,7 @@ async function handleManualTripEnd(
 
   if (!manualState) {
     await clearManualTripState();
-    await renderNavWidget(renderWidget, 'idle');
+    await renderAllInOneWidget(renderWidget, 'idle');
     return;
   }
 

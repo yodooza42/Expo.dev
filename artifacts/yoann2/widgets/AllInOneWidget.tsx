@@ -163,7 +163,9 @@ export function AllInOneWidget({
             <TextWidget text="📅" style={{ fontSize: 11, marginRight: 3 }} />
             <TextWidget
               text={nextAppt.title}
-              style={{ fontSize: 11, color: PRIMARY, maxLines: 1, truncate: 'END' }}
+              style={{ fontSize: 11, color: PRIMARY }}
+              maxLines={1}
+              truncate="END"
             />
           </FlexWidget>
         ) : null}
@@ -182,7 +184,8 @@ export function AllInOneWidget({
         <NavItem
           emoji="🧭"
           label="Naviguer"
-          clickAction="NAVIGATE_TO"
+          clickAction="OPEN_URI"
+          uri={`${SCHEME}:///navigate-to`}
           wide
         />
 
