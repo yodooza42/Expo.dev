@@ -165,7 +165,7 @@ const styles = StyleSheet.create({
     color: WH,
   },
   btnIcon: {
-    width: 26,
-    height: 26,
+    width: 32,
+    height: 32,
   },
 });

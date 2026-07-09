@@ -73,7 +73,7 @@ export function AllInOneWidget({
         }}
       >
         {image ? (
-          <ImageWidget image={image} style={{ width: 26, height: 26, rotation: rotation ?? 0 }} />
+          <ImageWidget image={image} style={{ width: 34, height: 34, rotation: rotation ?? 0 }} />
         ) : (
           <TextWidget text={emoji ?? ''} style={{ fontSize: 24, color: accent ? GREEN : TEXT }} />
         )}
