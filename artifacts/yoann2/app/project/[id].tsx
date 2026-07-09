@@ -28,7 +28,7 @@ import { useApp } from '@/contexts/AppContext';
 import { useColors } from '@/hooks/useColors';
 import type { ProjectStatus, Task } from '@/types';
 import { BankTransaction, CategoryConfig, getCategoryConfigs } from '@/utils/bankStorage';
-import { resolveProjectDirForBatch, savePhotoToProject } from '@/utils/photoStorage';
+import { hasExternalPhotos, recoverPhotosFromExternal, resolveProjectDirForBatch, savePhotoToProject } from '@/utils/photoStorage';
 
 const { width } = Dimensions.get('window');
 
@@ -98,6 +98,8 @@ export default function ProjectDetailScreen() {
   const [currentPhotoIdx, setCurrentPhotoIdx] = useState(0);
   const photoListRef = useRef<FlatList<AllPhoto>>(null);
   const [exporting, setExporting] = useState(false);
+  const [canRecover, setCanRecover] = useState(false);
+  const [recovering, setRecovering] = useState(false);
 
   if (!projectMaybe) {
     return (
@@ -214,6 +216,30 @@ export default function ProjectDetailScreen() {
     setExpDate(new Date().toLocaleDateString('fr-FR'));
     setEditingExpense(null);
   }
+
+  async function handleRecover() {
+    if (!project) return;
+    setRecovering(true);
+    const recovered = await recoverPhotosFromExternal(project.name);
+    setRecovering(false);
+    if (recovered.length > 0) {
+      updateProject(project.id, { photos: [...project.photos, ...recovered] });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert(
+        'Photos récupérées',
+        `${recovered.length} photo${recovered.length > 1 ? 's' : ''} restaurée${recovered.length > 1 ? 's' : ''} depuis le dossier Yoann2.0/Photos.`
+      );
+    } else {
+      Alert.alert('Aucune photo', 'Aucune image trouvée dans le dossier externe du projet.');
+    }
+  }
+
+  useEffect(() => {
+    if (tab !== 'photos' || !project) { setCanRecover(false); return; }
+    let mounted = true;
+    hasExternalPhotos(project.name).then(v => { if (mounted) setCanRecover(v && project.photos.length === 0); });
+    return () => { mounted = false; };
+  }, [tab, project]);
 
   function openEditExpense(e: BankTransaction) {
     setEditingExpense(e);
@@ -770,6 +796,19 @@ export default function ProjectDetailScreen() {
                 <MaterialCommunityIcons name="camera-plus-outline" size={18} color={colors.primaryForeground} />
                 <Text style={[styles.addBtnLabel, { color: colors.primaryForeground }]}>Ajouter au projet</Text>
               </Pressable>
+
+              {canRecover && (
+                <Pressable
+                  onPress={handleRecover}
+                  disabled={recovering}
+                  style={[styles.addBtn, { backgroundColor: '#2196F3', opacity: recovering ? 0.6 : 1 }]}
+                >
+                  <MaterialCommunityIcons name="folder-download-outline" size={18} color="#FFFFFF" />
+                  <Text style={[styles.addBtnLabel, { color: '#FFFFFF' }]}>
+                    {recovering ? 'Récupération…' : 'Récupérer les photos'}
+                  </Text>
+                </Pressable>
+              )}
 
               {allPhotos.length === 0 ? (
                 <View style={styles.empty}>

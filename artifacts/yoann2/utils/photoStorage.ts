@@ -233,3 +233,62 @@ export async function resolveProjectDirForBatch(
     return null;
   }
 }
+
+// ── Recover photos from external storage after reinstall ─────────────────────
+//
+// Scans the SAF external folder for a project, copies every image file back
+// into the app's private project_photos/ dir, and returns the new local URIs.
+// This lets users recover photos after an APK reinstall without re-adding
+// them one by one.
+
+export async function recoverPhotosFromExternal(
+  projectName: string,
+): Promise<string[]> {
+  const photosDir = await getOrRequestPhotosDir();
+  if (!photosDir) return [];
+
+  const projectDir = await _resolveProjectDir(photosDir, projectName);
+  const localDir = FileSystem.documentDirectory + 'project_photos/';
+  const localDirInfo = await FileSystem.getInfoAsync(localDir);
+  if (!localDirInfo.exists) {
+    await FileSystem.makeDirectoryAsync(localDir, { intermediates: true });
+  }
+
+  const newUris: string[] = [];
+  try {
+    const files = await SAF.readDirectoryAsync(projectDir);
+    for (const fileUri of files) {
+      const decoded = decodeURIComponent(fileUri);
+      const isImage = /\.(jpe?g|png|gif|webp|heic)$/i.test(decoded);
+      if (!isImage) continue;
+
+      const filename = decoded.split('/').pop() ?? `recovered_${Date.now()}.jpg`;
+      const base64 = await SAF.readAsStringAsync(fileUri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      const localPath = localDir + filename;
+      await FileSystem.writeAsStringAsync(localPath, base64, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      newUris.push(localPath);
+    }
+  } catch {
+    // ignore scan errors
+  }
+
+  return newUris;
+}
+
+// ── Check whether external photos exist for a project ──────────────────────────
+
+export async function hasExternalPhotos(projectName: string): Promise<boolean> {
+  try {
+    const photosDir = await getOrRequestPhotosDir();
+    if (!photosDir) return false;
+    const projectDir = await _resolveProjectDir(photosDir, projectName);
+    const files = await SAF.readDirectoryAsync(projectDir);
+    return files.some(uri => /\.(jpe?g|png|gif|webp|heic)$/i.test(decodeURIComponent(uri)));
+  } catch {
+    return false;
+  }
+}
