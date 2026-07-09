@@ -4,7 +4,11 @@ import { Image, ImageSourcePropType, StyleSheet, Text, View } from 'react-native
 import type { WidgetData } from '@/widgets/data';
 
 const IMG_RESET = require('../assets/icons/icon-reset.png') as ImageSourcePropType;
-const IMG_HOME  = require('../assets/icons/icon-home.png')  as ImageSourcePropType;
+const IMG_NAV   = require('../assets/icons/icon-nav.png')   as ImageSourcePropType;
+const IMG_PLAY  = require('../assets/icons/icon-play.png')  as ImageSourcePropType;
+const IMG_PAUSE = require('../assets/icons/icon-pause.png') as ImageSourcePropType;
+const IMG_GAS   = require('../assets/icons/icon-gas.png')   as ImageSourcePropType;
+const IMG_STOP  = require('../assets/icons/icon-stop.png')  as ImageSourcePropType;
 
 const CARD   = '#202020';
 const NAVBAR = '#121212';
@@ -55,16 +59,13 @@ export function WidgetPreview({ data }: { data: WidgetData }) {
         {/* ── Row 2: Action buttons ── */}
         <View style={styles.rowActions}>
           <View style={[styles.btn, styles.btnWide]}>
-            <Text style={styles.btnEmoji}>🧭</Text>
-            <Text style={styles.btnLabel}>Naviguer</Text>
+            <Image source={IMG_NAV} style={styles.btnIcon} resizeMode="contain" />
           </View>
           <View style={styles.btn}>
-            <Text style={[styles.btnEmoji, { color: GREEN }]}>▶</Text>
-            <Text style={[styles.btnLabel, { color: GREEN }]}>Départ</Text>
+            <Image source={IMG_PLAY} style={styles.btnIcon} resizeMode="contain" />
           </View>
           <View style={styles.btn}>
-            <Text style={styles.btnEmoji}>⛽</Text>
-            <Text style={styles.btnLabel}>Essence</Text>
+            <Image source={IMG_GAS} style={styles.btnIcon} resizeMode="contain" />
           </View>
           <View style={styles.btn}>
             <Image source={IMG_RESET} style={styles.btnIcon} resizeMode="contain" />
@@ -160,17 +161,11 @@ const styles = StyleSheet.create({
     flex: 1.5,
   },
   btnEmoji: {
-    fontSize: 20,
+    fontSize: 24,
     color: WH,
   },
   btnIcon: {
-    width: 22,
-    height: 22,
-  },
-  btnLabel: {
-    fontSize: 10,
-    fontFamily: 'Inter_400Regular',
-    color: MUTED,
-    marginTop: 2,
+    width: 26,
+    height: 26,
   },
 });

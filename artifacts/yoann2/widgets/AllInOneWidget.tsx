@@ -18,8 +18,12 @@ const ORANGE: ColorProp  = '#FF9800';
 const RED: ColorProp     = '#F44336';
 const SCHEME = 'yoann2';
 
-const IMG_RESET  = require('../assets/icons/icon-reset.png') as ImageWidgetSource;
-const IMG_HOME   = require('../assets/icons/icon-home.png')  as ImageWidgetSource;
+const IMG_RESET = require('../assets/icons/icon-reset.png') as ImageWidgetSource;
+const IMG_NAV   = require('../assets/icons/icon-nav.png')   as ImageWidgetSource;
+const IMG_PLAY  = require('../assets/icons/icon-play.png')  as ImageWidgetSource;
+const IMG_PAUSE = require('../assets/icons/icon-pause.png') as ImageWidgetSource;
+const IMG_GAS   = require('../assets/icons/icon-gas.png')   as ImageWidgetSource;
+const IMG_STOP  = require('../assets/icons/icon-stop.png')  as ImageWidgetSource;
 
 export interface AllInOneWidgetProps extends WidgetData {
   shortcuts: { name: string; lat: number | null; lng: number | null }[];
@@ -40,7 +44,6 @@ export function AllInOneWidget({
   function NavItem({
     image,
     emoji,
-    label,
     clickAction,
     uri,
     rotation,
@@ -49,7 +52,6 @@ export function AllInOneWidget({
   }: {
     image?: ImageWidgetSource;
     emoji?: string;
-    label: string;
     clickAction: string;
     uri?: string;
     rotation?: number;
@@ -63,7 +65,6 @@ export function AllInOneWidget({
         style={{
           flex: wide ? 1.5 : 1,
           height: 'match_parent',
-          flexDirection: 'column',
           justifyContent: 'center',
           alignItems: 'center',
           backgroundColor: accent ? '#1A2A00' as ColorProp : CARD,
@@ -72,20 +73,10 @@ export function AllInOneWidget({
         }}
       >
         {image ? (
-          <ImageWidget image={image} style={{ width: 22, height: 22, rotation: rotation ?? 0 }} />
+          <ImageWidget image={image} style={{ width: 26, height: 26, rotation: rotation ?? 0 }} />
         ) : (
-          <TextWidget text={emoji ?? ''} style={{ fontSize: 20, color: accent ? GREEN : TEXT }} />
+          <TextWidget text={emoji ?? ''} style={{ fontSize: 24, color: accent ? GREEN : TEXT }} />
         )}
-        {label ? (
-          <TextWidget
-            text={label}
-            style={{
-              fontSize: 10,
-              color: accent ? GREEN : MUTED,
-              marginTop: 2,
-            }}
-          />
-        ) : null}
       </FlexWidget>
     );
   }
@@ -182,8 +173,7 @@ export function AllInOneWidget({
         }}
       >
         <NavItem
-          emoji="🧭"
-          label="Naviguer"
+          image={IMG_NAV}
           clickAction="OPEN_URI"
           uri={`${SCHEME}:///navigate-to`}
           wide
@@ -193,36 +183,31 @@ export function AllInOneWidget({
         {tripStatus === 'paused' ? (
           <>
             <NavItem
-              emoji="▶"
-              label="Reprendre"
+              image={IMG_PLAY}
               clickAction="MANUAL_TRIP_RESUME"
               accent
             />
             <NavItem
-              emoji="⏹"
-              label="Terminer"
+              image={IMG_STOP}
               clickAction="MANUAL_TRIP_END"
             />
           </>
         ) : (
           <NavItem
-            emoji={tripStatus === 'active' ? '⏸' : '▶'}
-            label={tripStatus === 'active' ? 'Pause' : 'Départ'}
+            image={tripStatus === 'active' ? IMG_PAUSE : IMG_PLAY}
             clickAction={tripStatus === 'active' ? 'MANUAL_TRIP_PAUSE' : 'MANUAL_TRIP_START'}
             accent={tripStatus !== 'active'}
           />
         )}
 
         <NavItem
-          emoji="⛽"
-          label="Essence"
+          image={IMG_GAS}
           clickAction="OPEN_URI"
           uri={`${SCHEME}:///navigation?action=fuel`}
         />
 
         <NavItem
           image={IMG_RESET}
-          label=""
           clickAction="REFRESH"
           rotation={spinAngle}
         />
