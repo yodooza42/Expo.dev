@@ -303,12 +303,18 @@ export function buildPortfolioTimeSeries(
 
     let projectedValue = 0;
     for (const [assetId, heldQty] of qtyByAsset.entries()) {
-      if (heldQty <= 0) continue;
+      const assetCost = costByAsset.get(assetId) ?? 0;
+      // Include asset if we have either qty or a positive cost basis.
+      // Operations without pricePerShare (e.g. recurring buys) have qty=0 but
+      // still represent real invested capital — fall back to cost basis for those.
+      if (heldQty <= 0 && assetCost <= 0) continue;
       const price = assetPriceMap.get(assetId);
-      if (price !== undefined && price > 0) {
+      if (heldQty > 0 && price !== undefined && price > 0) {
+        // Best case: we know qty and have a live price
         projectedValue += heldQty * price;
       } else {
-        projectedValue += costByAsset.get(assetId) ?? 0;
+        // Fallback: use cost basis, consistent with computePortfolioValue
+        projectedValue += assetCost;
       }
     }
 
