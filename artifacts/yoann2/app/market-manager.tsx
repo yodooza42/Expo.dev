@@ -2,7 +2,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -27,6 +27,7 @@ import {
   addMarketAsset,
   addMarketOperation,
   addMarketRecurring,
+  buildPortfolioTimeSeries,
   computeAssetBalance,
   computeAssetPnl,
   computeMarketBalance,
@@ -43,6 +44,7 @@ import {
 } from '@/utils/marketStorage';
 import { type LivePrice, fetchLivePrices, resolveYahooSymbol } from '@/utils/marketPrices';
 import { fmtEuro } from '@/utils/money';
+import { PortfolioChart } from '@/components/PortfolioChart';
 
 const MKT_GREEN = '#8B5CF6';
 
@@ -255,6 +257,12 @@ export default function MarketManagerScreen() {
   const totalPnl    = totalCurrentValue - totalBalance;
   const totalPnlPct = totalBalance > 0 ? (totalPnl / totalBalance) * 100 : 0;
 
+  const timeSeries = useMemo(
+    () => buildPortfolioTimeSeries(ops, assets, priceMap),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [ops, assets, prices],
+  );
+
   const assetRecs = (assetId: string) => recs.filter(r => r.assetId === assetId);
   const assetOps  = (assetId: string) => ops.filter(o => o.assetId === assetId);
 
@@ -293,6 +301,11 @@ export default function MarketManagerScreen() {
             </View>
           )}
         </View>
+
+        {/* Portfolio time series chart */}
+        {!pricesLoading && timeSeries.length >= 2 && (
+          <PortfolioChart data={timeSeries} />
+        )}
 
         {assets.length === 0 && (
           <View style={styles.emptyState}>

@@ -249,3 +249,84 @@ export async function getMarketBalance(): Promise<number> {
   const ops = await getMarketOperations();
   return computeMarketBalance(ops);
 }
+
+// ── Portfolio time series ─────────────────────────────────────────────────────
+
+export interface PortfolioDataPoint {
+  date: string;          // ISO yyyy-MM-dd
+  costBasis: number;     // cumulative cash invested at this point
+  projectedValue: number; // qty held × current price (or costBasis if no live price)
+}
+
+/**
+ * Builds a time series of portfolio value by replaying operations in
+ * chronological order and applying current prices to historical quantities.
+ * This is an approximation (not historical prices), but accurately shows
+ * how capital was deployed over time at today's valuation.
+ */
+export function buildPortfolioTimeSeries(
+  ops: MarketOperation[],
+  assets: MarketAsset[],
+  prices: Record<string, number>,
+): PortfolioDataPoint[] {
+  const sorted = [...ops].sort((a, b) => a.date.localeCompare(b.date));
+  if (sorted.length === 0) return [];
+
+  const assetPriceMap = new Map<string, number>();
+  for (const asset of assets) {
+    const key = asset.yahooSymbol ?? asset.ticker;
+    if (key && prices[key] !== undefined) {
+      assetPriceMap.set(asset.id, prices[key]);
+    }
+  }
+
+  const qtyByAsset  = new Map<string, number>();
+  const costByAsset = new Map<string, number>();
+  let totalCost = 0;
+  const points: PortfolioDataPoint[] = [];
+
+  for (const op of sorted) {
+    const qty     = op.qty ?? 0;
+    const prevQty = qtyByAsset.get(op.assetId) ?? 0;
+    const prevCost = costByAsset.get(op.assetId) ?? 0;
+
+    if (op.type === 'buy') {
+      qtyByAsset.set(op.assetId, prevQty + qty);
+      costByAsset.set(op.assetId, prevCost + op.amount + op.fees);
+      totalCost += op.amount + op.fees;
+    } else {
+      qtyByAsset.set(op.assetId, prevQty - qty);
+      const recovered = op.amount - op.fees;
+      costByAsset.set(op.assetId, Math.max(0, prevCost - recovered));
+      totalCost -= recovered;
+    }
+
+    let projectedValue = 0;
+    for (const [assetId, heldQty] of qtyByAsset.entries()) {
+      if (heldQty <= 0) continue;
+      const price = assetPriceMap.get(assetId);
+      if (price !== undefined && price > 0) {
+        projectedValue += heldQty * price;
+      } else {
+        projectedValue += costByAsset.get(assetId) ?? 0;
+      }
+    }
+
+    const date = op.date.slice(0, 10);
+    const point: PortfolioDataPoint = { date, costBasis: Math.max(0, totalCost), projectedValue };
+    if (points.length > 0 && points[points.length - 1].date === date) {
+      points[points.length - 1] = point;
+    } else {
+      points.push(point);
+    }
+  }
+
+  // Add today as the final point so the chart reaches the present
+  const today = new Date().toISOString().slice(0, 10);
+  const last = points[points.length - 1];
+  if (last && last.date !== today) {
+    points.push({ date: today, costBasis: last.costBasis, projectedValue: last.projectedValue });
+  }
+
+  return points;
+}
