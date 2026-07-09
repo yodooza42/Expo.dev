@@ -186,36 +186,74 @@ export default function TripsScreen() {
   const pending = uncategorized.filter(t => t.vehicle === null);
 
   // ── Autonomie par véhicule ─────────────────────────────────────────────────
+  // Algorithme :
+  //  1. Consommation (L/100) = 100 × litres_du_plein / km_depuis_plein_précédent
+  //     (on prend l'intervalle le plus récent avec km > 5)
+  //  2. On propage les litres restants plein par plein (depuis le 1er, réservoir vide)
+  //     → si on refait le plein avant d'être à sec, on additionne les litres restants
+  //  3. fillPct = litres_restants_maintenant / litres_total_au_dernier_plein
+  //  4. km_restants = litres_restants × 100 / conso
   const autonomieData = useMemo(() => {
     const result: Record<string, {
       kmSinceFillup: number;
-      estimatedRange: number | null;
+      fillPct: number | null;
+      remainingKm: number | null;
       hasData: boolean;
     }> = {};
     for (const v of settings) {
       const vFuel = fuelEntries
         .filter(e => e.vehicleId === v.id)
-        .sort((a, b) => b.timestamp - a.timestamp);
+        .sort((a, b) => b.timestamp - a.timestamp); // plus récent en premier
       if (vFuel.length === 0) {
-        result[v.id] = { kmSinceFillup: 0, estimatedRange: null, hasData: false };
+        result[v.id] = { kmSinceFillup: 0, fillPct: null, remainingKm: null, hasData: false };
         continue;
       }
       const lastFuel = vFuel[0]!;
       const kmSinceFillup = trips
         .filter(t => t.vehicle === v.id && t.startTime >= lastFuel.timestamp)
         .reduce((s, t) => s + t.distanceKm, 0);
-      let estimatedRange: number | null = null;
+
+      let fillPct: number | null = null;
+      let remainingKm: number | null = null;
+
       if (vFuel.length >= 2) {
-        const prev = vFuel[1]!;
-        const kmBetween = trips
-          .filter(t => t.vehicle === v.id && t.startTime >= prev.timestamp && t.startTime < lastFuel.timestamp)
-          .reduce((s, t) => s + t.distanceKm, 0);
-        if (kmBetween > 5) {
-          const consL100 = lastFuel.liters / kmBetween * 100;
-          estimatedRange = lastFuel.liters / consL100 * 100;
+        // Pleins du plus ancien au plus récent
+        const oldest = vFuel.slice().reverse();
+
+        // Conso de référence = intervalle le plus récent avec km > 5
+        let bestConso: number | null = null; // L/100km
+        for (let i = oldest.length - 1; i >= 1; i--) {
+          const fNew = oldest[i]!;
+          const fPrev = oldest[i - 1]!;
+          const kmBetween = trips
+            .filter(t => t.vehicle === v.id && t.startTime >= fPrev.timestamp && t.startTime < fNew.timestamp)
+            .reduce((s, t) => s + t.distanceKm, 0);
+          if (kmBetween > 5) {
+            bestConso = (100 * fNew.liters) / kmBetween;
+            break;
+          }
+        }
+
+        if (bestConso !== null && bestConso > 0) {
+          // Propagation des litres : on part du 1er plein (réservoir vide supposé)
+          let remLiters = oldest[0]!.liters;
+          for (let i = 1; i < oldest.length; i++) {
+            const fPrev = oldest[i - 1]!;
+            const fCurr = oldest[i]!;
+            const kmBetween = trips
+              .filter(t => t.vehicle === v.id && t.startTime >= fPrev.timestamp && t.startTime < fCurr.timestamp)
+              .reduce((s, t) => s + t.distanceKm, 0);
+            remLiters = Math.max(0, remLiters - (kmBetween * bestConso) / 100) + fCurr.liters;
+          }
+          // remLiters = litres dans le réservoir juste après le dernier plein
+          const totalAtFillup = remLiters;
+          const remNow = Math.max(0, remLiters - (kmSinceFillup * bestConso) / 100);
+          fillPct = totalAtFillup > 0 ? Math.min(1, remNow / totalAtFillup) : null;
+          remainingKm = (remNow * 100) / bestConso;
         }
       }
-      result[v.id] = { kmSinceFillup, estimatedRange, hasData: true };
+
+      result[v.id] = { kmSinceFillup, fillPct, remainingKm, hasData: true };
     }
     return result;
   }, [fuelEntries, trips, settings]);
@@ -324,16 +362,14 @@ export default function TripsScreen() {
               const odo = computeOdometer(trips, v.id, v.odometerBaseKm);
               const color = v.type === 'moto' ? motoColor : carColor;
               const auto = autonomieData[v.id];
-              const hasRange = auto?.hasData && auto.estimatedRange !== null;
-              const fillPct = hasRange
-                ? Math.max(0, Math.min(1, 1 - auto.kmSinceFillup / auto.estimatedRange!))
-                : null;
-              const remaining = hasRange ? Math.max(0, auto.estimatedRange! - auto.kmSinceFillup) : null;
+              const hasRange = auto?.hasData && auto.fillPct !== null;
+              const fillPct = auto?.fillPct ?? null;
+              const remaining = hasRange && auto!.remainingKm !== null ? Math.round(auto!.remainingKm!) : null;
               const gaugeColor = fillPct == null ? colors.muted
                 : fillPct > 0.5 ? '#4CAF50'
                 : fillPct > 0.25 ? '#FF9800'
                 : '#F44336';
-              const isReserve = hasRange && auto.kmSinceFillup > auto.estimatedRange!;
+              const isReserve = hasRange && (auto!.remainingKm ?? 1) <= 0;
               if (v.type === 'car') {
                 return (
                   <TurnaroundCard
