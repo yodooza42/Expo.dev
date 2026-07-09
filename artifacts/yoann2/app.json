@@ -72,28 +72,14 @@
           "widgets": [
             {
               "name": "TodoWidget",
-              "label": "Yoann2.0 — À faire",
+              "label": "Yoann2.0",
               "minWidth": "180dp",
-              "minHeight": "110dp",
+              "minHeight": "55dp",
               "targetCellWidth": 4,
-              "targetCellHeight": 5,
-              "resizeMode": "vertical",
-              "minResizeHeight": "110dp",
-              "description": "Tâches et rendez-vous du jour",
+              "targetCellHeight": 2,
+              "resizeMode": "none",
+              "description": "Tâches, rendez-vous et navigation",
               "updatePeriodMillis": 1800000
-            },
-            {
-              "name": "NavigationWidget",
-              "label": "Yoann2.0 — Y aller",
-              "minWidth": "180dp",
-              "minHeight": "74dp",
-              "targetCellWidth": 4,
-              "targetCellHeight": 1,
-              "resizeMode": "horizontal|vertical",
-              "minResizeWidth": "180dp",
-              "minResizeHeight": "74dp",
-              "description": "Raccourcis de navigation vers vos destinations",
-              "updatePeriodMillis": 0
             }
           ]
         }

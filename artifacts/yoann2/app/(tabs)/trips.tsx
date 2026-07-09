@@ -310,7 +310,7 @@ export default function TripsScreen() {
             <MaterialCommunityIcons name="map-marker-outline" size={18} color={colors.mutedForeground} />
           </Pressable>
           <Pressable
-            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/nav-widget' as any); }}
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/navigate-to' as any); }}
             hitSlop={8}
             style={[pH.btn, { backgroundColor: colors.card, borderColor: colors.border }]}
           >
