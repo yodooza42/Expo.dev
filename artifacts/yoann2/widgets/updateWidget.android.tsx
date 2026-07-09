@@ -3,7 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { requestWidgetUpdate } from 'react-native-android-widget';
 
 import { getManualTripStatus } from '@/utils/manualTripStorage';
-import { getNavShortcuts } from '@/utils/navigationShortcuts';
+import { getKnownPlaces } from '@/utils/placesStorage';
 
 import { AllInOneWidget } from './AllInOneWidget';
 import { buildWidgetData } from './data';
@@ -32,7 +32,7 @@ export async function updateTodoWidget(
       getWidgetSettings(),
       AsyncStorage.getItem('@marie_planning_v1'),
       AsyncStorage.getItem('@anna_badges_v1'),
-      getNavShortcuts(),
+      getKnownPlaces(),
       getManualTripStatus(),
     ]);
     const mariePlanning = mr ? (JSON.parse(mr) as Record<string, 'PB' | 'PD'>)             : {};

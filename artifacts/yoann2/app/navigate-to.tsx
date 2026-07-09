@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   FlatList,
-  Linking,
   Pressable,
   StyleSheet,
   Text,
@@ -11,9 +10,7 @@ import { useRouter } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 import type { KnownPlace } from '@/types/places';
-import type { NavShortcut } from '@/utils/navigationShortcuts';
 import { getKnownPlaces } from '@/utils/placesStorage';
-import { getNavShortcuts } from '@/utils/navigationShortcuts';
 import { openNavigation } from '@/utils/navigationShortcuts';
 
 const BG = '#121212';
@@ -28,7 +25,6 @@ interface PlaceItem {
   address: string;
   lat: number;
   lng: number;
-  source: 'shortcut' | 'place';
 }
 
 export default function NavigateToPage() {
@@ -38,44 +34,17 @@ export default function NavigateToPage() {
 
   const load = useCallback(async () => {
     try {
-      const [shortcuts, places] = await Promise.all([
-        getNavShortcuts(),
-        getKnownPlaces(),
-      ]);
-
-      const shortcutItems: PlaceItem[] = shortcuts
-        .filter((s): s is NavShortcut & { lat: number; lng: number } =>
-          s.lat != null && s.lng != null
-        )
-        .map(s => ({
-          id: `sc_${s.id}`,
-          name: s.name,
-          address: s.address,
-          lat: s.lat,
-          lng: s.lng,
-          source: 'shortcut',
-        }));
+      const places = await getKnownPlaces();
 
       const placeItems: PlaceItem[] = places.map((p: KnownPlace) => ({
-        id: `pl_${p.id}`,
+        id: p.id,
         name: p.name,
         address: p.address ?? `${p.lat}, ${p.lng}`,
         lat: p.lat,
         lng: p.lng,
-        source: 'place',
       }));
 
-      // Merge : shortcuts first, then places not already in shortcuts
-      const seen = new Set(shortcutItems.map(i => i.name.toLowerCase()));
-      const merged = [...shortcutItems];
-      for (const p of placeItems) {
-        if (!seen.has(p.name.toLowerCase())) {
-          merged.push(p);
-          seen.add(p.name.toLowerCase());
-        }
-      }
-
-      setItems(merged);
+      setItems(placeItems);
     } catch {
       setItems([]);
     } finally {
