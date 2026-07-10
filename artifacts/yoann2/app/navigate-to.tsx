@@ -8,6 +8,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { KnownPlace } from '@/types/places';
 import { getKnownPlaces } from '@/utils/placesStorage';
@@ -29,6 +30,7 @@ interface PlaceItem {
 
 export default function NavigateToPage() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [items, setItems] = useState<PlaceItem[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -62,12 +64,12 @@ export default function NavigateToPage() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
         <Pressable onPress={() => router.back()} style={styles.backBtn}>
-          <MaterialCommunityIcons name="arrow-left" size={22} color={TEXT} />
+          <MaterialCommunityIcons name="chevron-left" size={24} color={TEXT} />
         </Pressable>
         <Text style={styles.headerTitle}>🧭 Naviguer vers</Text>
-        <View style={{ width: 40 }} />
+        <View style={{ width: 36 }} />
       </View>
 
       {loading ? (
@@ -123,16 +125,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingTop: 48,
     paddingBottom: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#2A2A2A',
+    backgroundColor: BG,
   },
   backBtn: {
-    width: 40,
-    height: 40,
+    width: 36,
+    height: 36,
+    alignItems: 'center',
     justifyContent: 'center',
   },
   headerTitle: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '600',
     color: TEXT,
   },
