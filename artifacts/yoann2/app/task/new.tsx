@@ -152,7 +152,7 @@ export default function NewTaskScreen() {
             const asset = r.assets[0];
             const permanent = await persistPhoto(asset.uri);
             setPhotos(prev => [...prev, permanent]);
-            savePhotoToProject(asset.uri, projectName, asset.fileName);
+            savePhotoToProject(asset.uri, projectName, asset.fileName, undefined, 'taches');
           }
         },
       },
@@ -165,8 +165,8 @@ export default function NewTaskScreen() {
             setPhotos(prev => [...prev, ...permanents]);
             // Resolve the project folder once for the whole batch — avoids
             // repeated SAF directory creation that produces duplicate folders.
-            const batchDir = await resolveProjectDirForBatch(projectName);
-            r.assets.forEach(a => savePhotoToProject(a.uri, projectName, a.fileName, batchDir));
+            const batchDir = await resolveProjectDirForBatch(projectName, 'taches');
+            r.assets.forEach(a => savePhotoToProject(a.uri, projectName, a.fileName, batchDir, 'taches'));
           }
         },
       },

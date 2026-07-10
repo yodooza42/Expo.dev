@@ -191,12 +191,16 @@ export async function savePhotoToProject(
   projectName: string,
   originalFilename?: string | null,
   projectDirUri?: string | null,
+  subFolder?: string | null,
 ): Promise<void> {
   try {
     const photosDir = await getOrRequestPhotosDir();
     if (!photosDir) return;
 
-    const dir = projectDirUri ?? await _resolveProjectDir(photosDir, projectName);
+    let dir = projectDirUri ?? await _resolveProjectDir(photosDir, projectName);
+    if (subFolder) {
+      dir = await _findOrCreateSubfolder(dir, subFolder);
+    }
 
     const ext      = (sourceUri.split('.').pop()?.split('?')[0] ?? 'jpg').toLowerCase();
     const base     = originalFilename
@@ -224,11 +228,16 @@ export async function savePhotoToProject(
 
 export async function resolveProjectDirForBatch(
   projectName: string,
+  subFolder?: string,
 ): Promise<string | null> {
   try {
     const photosDir = await getOrRequestPhotosDir();
     if (!photosDir) return null;
-    return await _resolveProjectDir(photosDir, projectName);
+    let dir = await _resolveProjectDir(photosDir, projectName);
+    if (subFolder) {
+      dir = await _findOrCreateSubfolder(dir, subFolder);
+    }
+    return dir;
   } catch {
     return null;
   }
@@ -295,13 +304,21 @@ export async function hasExternalPhotos(projectName: string): Promise<boolean> {
 
 // ── Recover ALL external photos across every project folder ─────────────────────
 //
-// Iterates over every project name, finds the matching external SAF folder,
-// copies every image back into the app's private storage, and returns the
-// mappings so the caller can batch-update project states.
+// Iterates over every project name, finds the matching external SAF folder.
+// Root images → project photos.  Sub-folder "taches" → task photos.
+// Returns separate mappings so the caller can batch-update both project & tasks.
+
+export interface RecoverResult {
+  projectName: string;
+  /** Images from the project root folder */
+  projectUris: string[];
+  /** Images from the "taches" sub-folder */
+  taskUris: string[];
+}
 
 export async function recoverAllPhotosFromExternal(
   projectNames: string[],
-): Promise<{ projectName: string; uris: string[] }[]> {
+): Promise<RecoverResult[]> {
   const photosDir = await getOrRequestPhotosDir();
   if (!photosDir) return [];
 
@@ -311,7 +328,7 @@ export async function recoverAllPhotosFromExternal(
     await FileSystem.makeDirectoryAsync(localDir, { intermediates: true });
   }
 
-  const results: { projectName: string; uris: string[] }[] = [];
+  const results: RecoverResult[] = [];
 
   for (const projectName of projectNames) {
     const key = sanitize(projectName);
@@ -323,22 +340,55 @@ export async function recoverAllPhotosFromExternal(
       });
       if (!found) continue;
 
-      const files = await SAF.readDirectoryAsync(found);
-      const uris: string[] = [];
-      for (const fileUri of files) {
+      const projectUris: string[] = [];
+      const taskUris: string[] = [];
+
+      // Scan root files
+      const rootFiles = await SAF.readDirectoryAsync(found);
+      for (const fileUri of rootFiles) {
         const decoded = decodeURIComponent(fileUri);
-        if (!/\.(jpe?g|png|gif|webp|heic)$/i.test(decoded)) continue;
-        const filename = decoded.split('/').pop() ?? `recovered_${Date.now()}.jpg`;
-        const base64 = await SAF.readAsStringAsync(fileUri, {
-          encoding: FileSystem.EncodingType.Base64,
-        });
-        const localPath = localDir + filename;
-        await FileSystem.writeAsStringAsync(localPath, base64, {
-          encoding: FileSystem.EncodingType.Base64,
-        });
-        uris.push(localPath);
+        if (/\.(jpe?g|png|gif|webp|heic)$/i.test(decoded)) {
+          const filename = decoded.split('/').pop() ?? `recovered_${Date.now()}.jpg`;
+          const base64 = await SAF.readAsStringAsync(fileUri, {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+          const localPath = localDir + filename;
+          await FileSystem.writeAsStringAsync(localPath, base64, {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+          projectUris.push(localPath);
+        }
       }
-      if (uris.length > 0) results.push({ projectName, uris });
+
+      // Scan "taches" sub-folder
+      try {
+        const subChildren = await SAF.readDirectoryAsync(found);
+        const tachesDir = subChildren.find(uri => {
+          const decoded = decodeURIComponent(uri).toLowerCase();
+          return decoded.endsWith('/taches');
+        });
+        if (tachesDir) {
+          const taskFiles = await SAF.readDirectoryAsync(tachesDir);
+          for (const fileUri of taskFiles) {
+            const decoded = decodeURIComponent(fileUri);
+            if (/\.(jpe?g|png|gif|webp|heic)$/i.test(decoded)) {
+              const filename = decoded.split('/').pop() ?? `recovered_${Date.now()}.jpg`;
+              const base64 = await SAF.readAsStringAsync(fileUri, {
+                encoding: FileSystem.EncodingType.Base64,
+              });
+              const localPath = localDir + filename;
+              await FileSystem.writeAsStringAsync(localPath, base64, {
+                encoding: FileSystem.EncodingType.Base64,
+              });
+              taskUris.push(localPath);
+            }
+          }
+        }
+      } catch { /* sub-folder may not exist */ }
+
+      if (projectUris.length > 0 || taskUris.length > 0) {
+        results.push({ projectName, projectUris, taskUris });
+      }
     } catch {
       // ignore per-project errors
     }

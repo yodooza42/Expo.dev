@@ -524,11 +524,13 @@ export default function ExpensesScreen() {
                       const pct = total > 0 ? (amt / total) * 100 : 0;
                       const catColor = colors_[cat] ?? accentColor;
                       return (
-                        <View
+                        <Pressable
                           key={cat}
-                          style={[
+                          onPress={() => { Haptics.selectionAsync(); setSelectedExpenseCat(cat); }}
+                          style={({ pressed }) => [
                             styles.catBlock,
                             i < byCat.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border },
+                            pressed && { opacity: 0.75 },
                           ]}
                         >
                           <View style={styles.catRowInner}>
@@ -538,11 +540,12 @@ export default function ExpensesScreen() {
                             <Text style={[styles.catAmount, { color: catColor }]}>
                               {showAmounts ? fmtEuro(amt) : '••••'}
                             </Text>
+                            <MaterialCommunityIcons name="chevron-right" size={16} color={colors.mutedForeground} />
                           </View>
                           <View style={[styles.catTrack, { backgroundColor: colors.border }]}>
                             <View style={[styles.catFill, { width: `${pct}%` as any, backgroundColor: catColor }]} />
                           </View>
-                        </View>
+                        </Pressable>
                       );
                     })}
                   </View>

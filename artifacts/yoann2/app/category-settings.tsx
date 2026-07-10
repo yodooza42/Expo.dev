@@ -102,7 +102,8 @@ export default function CategorySettingsScreen() {
   function confirmAddCategory() {
     const trimmed = addCatDraft.trim();
     if (!trimmed || !addCatModal) { setAddCatModal(null); return; }
-    const newCat: CategoryConfig = { id: genId(), name: trimmed, type: addCatModal, keywords: [] };
+    const maxOrder = Math.max(0, ...configs.filter(c => c.type === addCatModal).map(c => c.order ?? 0));
+    const newCat: CategoryConfig = { id: genId(), name: trimmed, type: addCatModal, keywords: [], order: maxOrder + 1 };
     persist([...configs, newCat]);
     setAddCatModal(null);
     setAddCatDraft('');
@@ -112,12 +113,38 @@ export default function CategorySettingsScreen() {
   const expense = configs.filter(c => c.type === 'expense');
   const income  = configs.filter(c => c.type === 'income');
 
+  function moveUp(type: 'income' | 'expense', idx: number) {
+    if (idx <= 0) return;
+    const list = configs.filter(c => c.type === type);
+    const other = configs.filter(c => c.type !== type);
+    const reordered = [...list];
+    const temp = reordered[idx]!;
+    reordered[idx] = reordered[idx - 1]!;
+    reordered[idx - 1] = temp;
+    reordered.forEach((c, i) => (c.order = i + 1));
+    Haptics.selectionAsync();
+    persist([...reordered, ...other]);
+  }
+
+  function moveDown(type: 'income' | 'expense', idx: number) {
+    const list = configs.filter(c => c.type === type);
+    if (idx >= list.length - 1) return;
+    const other = configs.filter(c => c.type !== type);
+    const reordered = [...list];
+    const temp = reordered[idx]!;
+    reordered[idx] = reordered[idx + 1]!;
+    reordered[idx + 1] = temp;
+    reordered.forEach((c, i) => (c.order = i + 1));
+    Haptics.selectionAsync();
+    persist([...reordered, ...other]);
+  }
+
   function renderSection(label: string, list: CategoryConfig[], type: 'income' | 'expense') {
     const accent = type === 'expense' ? '#EF4444' : '#4CAF50';
     return (
       <View style={styles.section}>
         <Text style={[styles.sectionTitle, { color: colors.foreground }]}>{label}</Text>
-        {list.map(cat => (
+        {list.map((cat, idx) => (
           <View key={cat.id} style={[styles.catCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
 
             {/* Name row */}
@@ -126,6 +153,13 @@ export default function CategorySettingsScreen() {
               <Text style={[styles.catName, { color: colors.foreground }]} numberOfLines={1}>
                 {cat.name}
               </Text>
+              {/* Order arrows */}
+              <Pressable onPress={() => moveUp(type, idx)} hitSlop={8} style={styles.iconBtn} disabled={idx === 0}>
+                <MaterialCommunityIcons name="chevron-up" size={16} color={idx === 0 ? colors.muted : colors.mutedForeground} />
+              </Pressable>
+              <Pressable onPress={() => moveDown(type, idx)} hitSlop={8} style={styles.iconBtn} disabled={idx === list.length - 1}>
+                <MaterialCommunityIcons name="chevron-down" size={16} color={idx === list.length - 1 ? colors.muted : colors.mutedForeground} />
+              </Pressable>
               <Pressable onPress={() => openRename(cat)} hitSlop={8} style={styles.iconBtn}>
                 <MaterialCommunityIcons name="pencil-outline" size={16} color={colors.mutedForeground} />
               </Pressable>

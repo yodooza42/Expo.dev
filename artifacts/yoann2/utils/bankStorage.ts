@@ -280,6 +280,8 @@ export interface CategoryConfig {
   name: string;
   type: 'income' | 'expense';
   keywords: string[];
+  /** Display order — lower = first */
+  order?: number;
 }
 
 const CATEGORIES_KEY = '@yoann2/bank_categories_v2';
@@ -330,10 +332,16 @@ export async function getCategoryConfigs(): Promise<CategoryConfig[]> {
       // Merge any new default categories not yet in stored list
       const storedIds = new Set(stored.map(c => c.id));
       const missing = DEFAULT_CATEGORY_CONFIGS.filter(c => !storedIds.has(c.id));
-      return missing.length > 0 ? [...stored, ...missing] : stored;
+      const merged = missing.length > 0 ? [...stored, ...missing] : stored;
+      // Backfill missing order values for existing configs
+      const maxOrder = Math.max(...merged.map((c, i) => c.order ?? i), 0);
+      let nextOrder = maxOrder + 1;
+      return merged
+        .map(c => (c.order == null ? { ...c, order: nextOrder++ } : c))
+        .sort((a, b) => (a.order! - b.order!));
     }
   } catch {}
-  return DEFAULT_CATEGORY_CONFIGS.map(c => ({ ...c }));
+  return DEFAULT_CATEGORY_CONFIGS.map((c, i) => ({ ...c, order: i + 1 }));
 }
 
 export async function saveCategoryConfigs(configs: CategoryConfig[]): Promise<void> {

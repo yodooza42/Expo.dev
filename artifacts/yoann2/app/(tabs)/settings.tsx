@@ -74,7 +74,7 @@ function SettingRow({
 export default function SettingsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { resetData, projects, tasks, categories, addCategory, deleteCategory, updateProject } = useApp();
+  const { resetData, projects, tasks, categories, addCategory, deleteCategory, updateProject, updateTask } = useApp();
   const router = useRouter();
 
   const [showBackupList,    setShowBackupList]    = useState(false);
@@ -100,7 +100,8 @@ export default function SettingsScreen() {
   async function handleAddExpCat(name: string) {
     const allConfigs = await getCategoryConfigs();
     const bankConfigs = allConfigs.filter(c => c.type !== 'expense');
-    const newCat: CategoryConfig = { id: genId(), name, type: 'expense', keywords: [] };
+    const maxOrder = Math.max(0, ...expCatConfigs.map(c => c.order ?? 0));
+    const newCat: CategoryConfig = { id: genId(), name, type: 'expense', keywords: [], order: maxOrder + 1 };
     const newExpConfigs = [...expCatConfigs, newCat];
     setExpCatConfigs(newExpConfigs);
     await saveCategoryConfigs([...bankConfigs, ...newExpConfigs]);
@@ -238,23 +239,43 @@ export default function SettingsScreen() {
     const recovered = await recoverAllPhotosFromExternal(names);
     setRecoveringAll(false);
 
-    let total = 0;
+    let totalProject = 0;
+    let totalTask = 0;
     for (const r of recovered) {
       const proj = projects.find(p => p.name === r.projectName);
-      if (proj) {
-        updateProject(proj.id, { photos: [...proj.photos, ...r.uris] });
-        total += r.uris.length;
+      if (!proj) continue;
+
+      // Project photos (root folder)
+      if (r.projectUris.length > 0) {
+        updateProject(proj.id, { photos: [...proj.photos, ...r.projectUris] });
+        totalProject += r.projectUris.length;
+      }
+
+      // Task photos (sub-folder "taches") — distribute evenly across tasks
+      if (r.taskUris.length > 0) {
+        const projTasks = tasks.filter(t => t.projectId === proj.id);
+        if (projTasks.length > 0) {
+          for (let i = 0; i < r.taskUris.length; i++) {
+            const task = projTasks[i % projTasks.length]!;
+            updateTask(task.id, { photos: [...task.photos, r.taskUris[i]!] });
+          }
+        } else {
+          // No tasks in this project — fall back to project photos
+          updateProject(proj.id, { photos: [...proj.photos, ...r.taskUris] });
+        }
+        totalTask += r.taskUris.length;
       }
     }
 
+    const total = totalProject + totalTask;
     if (total > 0) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       Alert.alert(
-        'Photos r\u00e9cup\u00e9r\u00e9es',
-        `${total} photo${total > 1 ? 's' : ''} restaur\u00e9e${total > 1 ? 's' : ''} sur ${recovered.length} projet${recovered.length > 1 ? 's' : ''}.`
+        'Photos récupérées',
+        `${total} photo${total > 1 ? 's' : ''} restaurée${total > 1 ? 's' : ''} (${totalProject} projet / ${totalTask} tâches) sur ${recovered.length} projet${recovered.length > 1 ? 's' : ''}.`
       );
     } else {
-      Alert.alert('Aucune photo', 'Aucune image trouv\u00e9e dans les dossiers externes.');
+      Alert.alert('Aucune photo', 'Aucune image trouvée dans les dossiers externes.');
     }
   }
 
