@@ -314,7 +314,7 @@ export default function TripsScreen() {
             hitSlop={8}
             style={[pH.btn, { backgroundColor: colors.card, borderColor: colors.border }]}
           >
-            <MaterialCommunityIcons name="widgets-outline" size={18} color={colors.mutedForeground} />
+            <Image source={require('@/assets/icons/icon-nav.png')} style={{ width: 20, height: 20 }} />
           </Pressable>
           <Pressable
             onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/fuel-log' as any); }}
