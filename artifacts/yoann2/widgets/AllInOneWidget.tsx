@@ -81,10 +81,10 @@ export function AllInOneWidget({
         backgroundColor: NAVBAR,
         borderRadius: 14,
         paddingHorizontal: 8,
-        paddingTop: 5,
-        paddingBottom: 5,
+        paddingTop: 3,
+        paddingBottom: 3,
         flexDirection: 'column',
-        flexGap: 4,
+        flexGap: 3,
       }}
     >
       {/* ─── Ligne 1 : infos ─── */}
@@ -93,7 +93,7 @@ export function AllInOneWidget({
           width: 'match_parent',
           flexDirection: 'row',
           alignItems: 'center',
-          flex: 1,
+          height: 22,
           flexGap: 6,
         }}
       >
