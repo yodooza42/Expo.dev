@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useColors } from '@/hooks/useColors';
 import { computeCurrentBalance, getTransactions } from '@/utils/bankStorage';
+import { getTodayEntries } from '@/utils/consumptionStorage';
 import { fmtEuro } from '@/utils/money';
 import { getTrips } from '@/utils/tripStorage';
 import type { WidgetData } from '@/widgets/data';
@@ -31,18 +32,23 @@ export default function AccueilScreen() {
   const [monthBalance, setMonthBalance] = useState<number | null>(null);
   const [allBalance,   setAllBalance]   = useState<number | null>(null);
   const [monthKm,      setMonthKm]      = useState<number | null>(null);
+  const [todayCoffee,  setTodayCoffee]  = useState(0);
+  const [todayCigs,    setTodayCigs]    = useState(0);
 
   useFocusEffect(useCallback(() => {
     let active = true;
     (async () => {
-      const [wd, txs, trips] = await Promise.all([
+      const [wd, txs, trips, todayEntries] = await Promise.all([
         getWidgetDataFromStorage(),
         getTransactions(),
         getTrips(),
+        getTodayEntries(),
       ]);
       if (!active) return;
 
       setWData(wd);
+      setTodayCoffee(todayEntries.filter(e => e.type === 'coffee').length);
+      setTodayCigs(todayEntries.filter(e => e.type === 'cigarette').length);
       setAllBalance(computeCurrentBalance(txs));
 
       const now          = new Date();
@@ -79,14 +85,23 @@ export default function AccueilScreen() {
           <Text style={[styles.greeting, { color: colors.foreground }]}>Bonjour Yoann</Text>
           <Text style={[styles.dateLabel, { color: colors.mutedForeground }]}>{dayLabel}</Text>
         </View>
-        {wData && (
+        <View style={styles.rowCenter}>
           <Pressable
-            onPress={() => { Haptics.selectionAsync(); router.push('/marie'); }}
-            style={[styles.marieCircle, { backgroundColor: wData.marieCircleColor as any }]}
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/counters' as any); }}
+            style={styles.counterBadges}
           >
-            <Text style={styles.marieDay}>{today.getDate()}</Text>
+            <Text style={[styles.counterText, { color: '#A1887F' }]}>☕ {todayCoffee}</Text>
+            <Text style={[styles.counterText, { color: '#90A4AE' }]}>🚬 {todayCigs}</Text>
           </Pressable>
-        )}
+          {wData && (
+            <Pressable
+              onPress={() => { Haptics.selectionAsync(); router.push('/marie'); }}
+              style={[styles.marieCircle, { backgroundColor: wData.marieCircleColor as any }]}
+            >
+              <Text style={styles.marieDay}>{today.getDate()}</Text>
+            </Pressable>
+          )}
+        </View>
       </View>
 
       {/* ── Finance + Trajets ── */}
@@ -267,5 +282,7 @@ const styles = StyleSheet.create({
     flex: 1, borderRadius: 12, borderWidth: 1,
     paddingVertical: 14, alignItems: 'center', gap: 6,
   },
-  actionLabel: { fontSize: 12, fontFamily: 'Inter_500Medium' },
+  actionLabel:    { fontSize: 12, fontFamily: 'Inter_500Medium' },
+  counterBadges:  { flexDirection: 'column', alignItems: 'flex-end', marginRight: 10, gap: 2 },
+  counterText:    { fontSize: 13, fontFamily: 'Inter_600SemiBold' },
 });

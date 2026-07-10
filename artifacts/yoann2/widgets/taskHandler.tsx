@@ -41,6 +41,7 @@ import {
   getManualTripStatus,
   saveManualTripState,
 } from '@/utils/manualTripStorage';
+import { addConsumption } from '@/utils/consumptionStorage';
 import { getNavShortcuts } from '@/utils/navigationShortcuts';
 import { matchRouteOSRM, computeRouteDistanceKm } from '@/utils/osrmMatching';
 import { findNearestPlace, getKnownPlaces } from '@/utils/placesStorage';
@@ -469,6 +470,20 @@ export async function widgetTaskHandler(props: WidgetTaskHandlerProps): Promise<
 
           case 'MANUAL_TRIP_END':
             await handleTripEnd(doRender);
+            break;
+
+          case 'ADD_COFFEE':
+            await addConsumption('coffee');
+            break;
+
+          case 'ADD_CIGARETTE':
+            await addConsumption('cigarette');
+            break;
+
+          case 'ADD_TRANSACTION':
+            await Linking.openURL('yoann2:///(tabs)/expenses?add=1').catch(() => {
+              Linking.openURL('yoann2://').catch(() => {});
+            });
             break;
 
           default:
