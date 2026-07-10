@@ -421,11 +421,6 @@ export default function ExpensesScreen() {
               color={colors.mutedForeground}
             />
           </Pressable>
-          <View style={[styles.totalBadge, { backgroundColor: colors.primary + '18' }]}>
-            <Text style={[styles.totalTxt, { color: colors.primary }]}>
-              {showAmounts ? fmtEuro(totalAll) : '••••'}
-            </Text>
-          </View>
         </View>
       </View>
 
@@ -906,8 +901,6 @@ const styles = StyleSheet.create({
   backBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
   title: { fontSize: 17, fontFamily: 'Inter_600SemiBold', flex: 1, textAlign: 'center' },
   exportBtn: { width: 34, height: 34, borderRadius: 10, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
-  totalBadge: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20 },
-  totalTxt: { fontSize: 16, fontFamily: 'Inter_700Bold' },
   content: { paddingHorizontal: 16, gap: 8 },
   section: {
     fontSize: 12,
