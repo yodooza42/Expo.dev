@@ -5,6 +5,7 @@ import type { WidgetData } from '@/widgets/data';
 
 const IMG_RESET = require('../assets/icons/icon-reset.png') as ImageSourcePropType;
 const IMG_NAV   = require('../assets/icons/icon-nav.png')   as ImageSourcePropType;
+const IMG_HOME  = require('../assets/icons/icon-home.png')  as ImageSourcePropType;
 const IMG_PLAY  = require('../assets/icons/icon-play.png')  as ImageSourcePropType;
 const IMG_PAUSE = require('../assets/icons/icon-pause.png') as ImageSourcePropType;
 const IMG_GAS   = require('../assets/icons/icon-gas.png')   as ImageSourcePropType;
@@ -62,6 +63,9 @@ export function WidgetPreview({ data }: { data: WidgetData }) {
             <Image source={IMG_NAV} style={styles.btnIcon} resizeMode="contain" />
           </View>
           <View style={styles.btn}>
+            <Image source={IMG_HOME} style={styles.btnIcon} resizeMode="contain" />
+          </View>
+          <View style={styles.btn}>
             <Image source={IMG_PLAY} style={styles.btnIcon} resizeMode="contain" />
           </View>
           <View style={styles.btn}>
@@ -95,14 +99,14 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   dayCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
   dayNum: {
-    fontSize: 16,
+    fontSize: 12,
     fontFamily: 'Inter_700Bold',
     color: WH,
   },

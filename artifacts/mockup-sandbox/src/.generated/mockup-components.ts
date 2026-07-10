@@ -5,6 +5,7 @@ export const modules: ModuleMap = {
   "./components/mockups/widget/AddressesPage.tsx": () => import("../components/mockups/widget/AddressesPage.tsx"),
   "./components/mockups/widget/IdeaBCompact.tsx": () => import("../components/mockups/widget/IdeaBCompact.tsx"),
   "./components/mockups/widget/TodoAndroidWidget.tsx": () => import("../components/mockups/widget/TodoAndroidWidget.tsx"),
+  "./components/mockups/widget/WidgetApercu.tsx": () => import("../components/mockups/widget/WidgetApercu.tsx"),
   "./components/mockups/widget/YoannWidget.tsx": () => import("../components/mockups/widget/YoannWidget.tsx"),
   "./components/mockups/yoann-indigo/BoldEditorial.tsx": () => import("../components/mockups/yoann-indigo/BoldEditorial.tsx"),
   "./components/mockups/yoann-indigo/FlatAere.tsx": () => import("../components/mockups/yoann-indigo/FlatAere.tsx"),
