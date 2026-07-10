@@ -1,5 +1,5 @@
 import React from 'react';
-import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -24,14 +24,12 @@ export function SubPageHeader({
   const insets = useSafeAreaInsets();
   const colors = useColors();
 
-  const paddingTop = Platform.OS === 'web' ? 75 : insets.top + 8;
-
   return (
     <View
       style={[
         styles.header,
         {
-          paddingTop,
+          paddingTop: insets.top + 8,
           borderBottomColor: colors.border,
           backgroundColor: colors.background,
         },
