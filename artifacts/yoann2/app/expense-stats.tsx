@@ -901,7 +901,7 @@ const styles = StyleSheet.create({
   backBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
   title: { fontSize: 17, fontFamily: 'Inter_600SemiBold', flex: 1, textAlign: 'center' },
   exportBtn: { width: 34, height: 34, borderRadius: 10, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
-  content: { paddingHorizontal: 16, gap: 8 },
+  content: { paddingHorizontal: 16, paddingTop: 16, gap: 8 },
   section: {
     fontSize: 12,
     fontFamily: 'Inter_600SemiBold',
