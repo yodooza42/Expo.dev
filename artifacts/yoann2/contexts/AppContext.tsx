@@ -5,6 +5,7 @@ import { AppState } from 'react-native';
 import type { Appointment, AppStats, Category, Priority, Project, Task, TaskStatus } from '@/types';
 import { saveBackup } from '@/utils/backup';
 import { genId } from '@/utils/ids';
+import { ensureAllTaskFolders, ensureTaskFolder } from '@/utils/photoStorage';
 import {
   BankTransaction,
   getTransactions,
@@ -325,6 +326,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       // Load bank transactions (source unique de vérité pour les dépenses)
       const txs = await getTransactions();
       setTransactions(txs);
+
+      // Pré-créer les dossiers SAF de toutes les tâches existantes (fire-and-forget)
+      // Permet de déposer des photos depuis le gestionnaire de fichiers sans ouvrir l'app.
+      {
+        const pRaw = await AsyncStorage.getItem(STORAGE_KEYS.PROJECTS);
+        const tRaw = await AsyncStorage.getItem(STORAGE_KEYS.TASKS);
+        const loadedProjects: Project[] = pRaw ? JSON.parse(pRaw) : [];
+        const loadedTasks: Task[] = tRaw ? JSON.parse(tRaw) : [];
+        const taskItems = loadedTasks
+          .filter(t => t.status !== 'done')
+          .map(t => {
+            const proj = loadedProjects.find(p => p.id === t.projectId);
+            return { title: t.title, projectName: proj?.name ?? 'Divers' };
+          });
+        ensureAllTaskFolders(taskItems).catch(() => {});
+      }
     } catch (e) {
       console.error('Error loading data', e);
     } finally {
@@ -429,7 +446,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       markDirty();
       return next;
     });
-  }, []);
+    // Pré-créer le dossier SAF de la tâche en arrière-plan (fire-and-forget)
+    const proj = projects.find(p => p.id === newT.projectId);
+    if (proj) ensureTaskFolder(proj.name, newT.title).catch(() => {});
+  }, [projects]);
 
   const updateTask = useCallback((id: string, updates: Partial<Task>) => {
     setTasks(prev => {

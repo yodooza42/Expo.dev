@@ -78,6 +78,46 @@ export async function resetPhotosDir(): Promise<void> {
   _pendingPermission = null;
 }
 
+// ── Version silencieuse (pas de dialog) ──────────────────────────────────────
+// Retourne null si l'utilisateur n'a pas encore configuré le dossier SAF.
+// Utilisée pour la création proactive de dossiers (aucune interaction voulue).
+
+async function _getPhotosDirSilent(): Promise<string | null> {
+  try {
+    return await AsyncStorage.getItem(SAF_KEY);
+  } catch {
+    return null;
+  }
+}
+
+// ── Pré-création du dossier d'une tâche ──────────────────────────────────────
+// Fire-and-forget : à appeler à la création d'une tâche ou au démarrage.
+// Ne fait rien si le dossier SAF n'est pas configuré.
+
+export async function ensureTaskFolder(projectName: string, taskTitle: string): Promise<void> {
+  try {
+    const photosDir = await _getPhotosDirSilent();
+    if (!photosDir) return;
+    const projDir = await _resolveProjectDir(photosDir, projectName);
+    await _findOrCreateSubfolder(projDir, sanitize(taskTitle));
+  } catch { /* silent */ }
+}
+
+// ── Bulk : pré-créer les dossiers de toutes les tâches existantes ─────────────
+
+export async function ensureAllTaskFolders(
+  tasks: Array<{ title: string; projectName: string }>,
+): Promise<void> {
+  const photosDir = await _getPhotosDirSilent();
+  if (!photosDir) return;
+  for (const t of tasks) {
+    try {
+      const projDir = await _resolveProjectDir(photosDir, t.projectName);
+      await _findOrCreateSubfolder(projDir, sanitize(t.title));
+    } catch { /* continue on any per-task error */ }
+  }
+}
+
 // ── Find an existing subfolder in a SAF tree, or create it ───────────────────
 //
 // readDirectoryAsync returns opaque content URIs. For ExternalStorageProvider,
