@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import type { Trip, TripDetectionState, Vehicle, VehicleSettings } from '@/types/trips';
+import type { Trip, TripDetectionState, RouteSegment, Vehicle, VehicleSettings } from '@/types/trips';
 
 const KEY_TRIPS = '@yoann2_trips';
 const KEY_VEHICLE_SETTINGS = '@yoann2_vehicle_settings';
@@ -20,6 +20,8 @@ const DEFAULT_DETECTION_STATE: TripDetectionState = {
   distanceKm: 0,
   pointCount: 0,
   routePoints: [],
+  segments: [],
+  osrmSegmentsCount: 0,
 };
 
 export const DEFAULT_VEHICLES: Vehicle[] = [
@@ -65,11 +67,18 @@ export async function getTripDetectionState(): Promise<TripDetectionState> {
   try {
     const raw = await AsyncStorage.getItem(KEY_DETECTION_STATE);
     if (!raw) return { ...DEFAULT_DETECTION_STATE };
-    const parsed = JSON.parse(raw) as TripDetectionState;
+    const parsed = JSON.parse(raw) as TripDetectionState & { segments?: RouteSegment[]; osrmSegmentsCount?: number };
     if (!Array.isArray(parsed.routePoints)) {
       parsed.routePoints = [];
     }
-    return parsed;
+    // Migration: old states didn't have segments. Treat the current routePoints as the active segment.
+    if (!Array.isArray(parsed.segments)) {
+      parsed.segments = [];
+    }
+    if (typeof parsed.osrmSegmentsCount !== 'number') {
+      parsed.osrmSegmentsCount = parsed.segments.filter(s => s.source === 'osrm').length;
+    }
+    return parsed as TripDetectionState;
   } catch {
     return { ...DEFAULT_DETECTION_STATE };
   }

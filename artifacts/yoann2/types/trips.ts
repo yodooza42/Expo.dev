@@ -5,6 +5,12 @@ export interface RoutePoint {
   lng: number;
 }
 
+export interface RouteSegment {
+  points: RoutePoint[];
+  distanceKm: number;
+  source: 'osrm' | 'gps';
+}
+
 export interface Trip {
   id: string;
   startTime: number;
@@ -34,6 +40,8 @@ export interface Trip {
   isReturn?: boolean;
   /** How the trip was created. */
   source?: 'auto' | 'manual';
+  /** Number of OSRM-matched segments (debug info for long trips). */
+  osrmSegments?: number;
 }
 
 /** A named group of trips with a similar start/end geography. */
@@ -102,6 +110,10 @@ export interface TripDetectionState {
   lastMovingTime: number;
   distanceKm: number;
   pointCount: number;
-  /** Raw GPS points accumulated during the current trip (capped at 3 000). */
+  /** Raw GPS points accumulated during the current segment (capped at 3 000). */
   routePoints: RoutePoint[];
+  /** Already-matched segments: their OSRM-corrected distance and route. */
+  segments: RouteSegment[];
+  /** Number of successfully OSRM-matched segments (debug). */
+  osrmSegmentsCount: number;
 }

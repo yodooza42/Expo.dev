@@ -13,19 +13,24 @@ import {
   saveTripDetectionState,
 } from '@/utils/tripStorage';
 import { findNearestPlace } from '@/utils/placesStorage';
-import type { RoutePoint, Trip, TripDetectionState } from '@/types/trips';
+import type { RoutePoint, RouteSegment, Trip, TripDetectionState } from '@/types/trips';
 
 const VEHICLE_SPEED_KMH = 15;
 const CANDIDATE_DURATION_MS = 30_000;
 const STOP_DURATION_MS = 180_000;
 const MIN_TRIP_KM = 0.3;
-// Cap raw points to avoid huge AsyncStorage entries (~3 000 pts ≈ 10 km at 3-sec interval)
+// Cap raw points per segment to avoid huge AsyncStorage entries
+// (~3 000 pts ≈ 10 km at 3-sec interval, then flush to OSRM)
 const MAX_RAW_ROUTE_POINTS = 3_000;
 
 // Key shared with locationTracking to signal desired GPS frequency
 export const TRACKING_MODE_KEY = '@yoann2_tracking_mode';
 
 
+/**
+ * Append a GPS point to the current trip state.
+ * Accumulates haversine distance and stores the point.
+ */
 function addDistance(
   s: TripDetectionState,
   lat: number,
@@ -39,10 +44,99 @@ function addDistance(
   s.lastLon = lng;
   s.lastTimestamp = now;
   s.pointCount += 1;
-  if (s.routePoints.length < MAX_RAW_ROUTE_POINTS) {
-    s.routePoints.push({ lat, lng } as RoutePoint);
-  }
+  s.routePoints.push({ lat, lng });
 }
+
+/**
+ * Flush the current segment to OSRM when it reaches the point cap.
+ * - Snap the points via OSRM match API.
+ * - Store the matched segment (corrected distance + snapped route).
+ * - Start a new segment with the last point of the old one as seed (no gap).
+ * - If OSRM fails, fallback to haversine for this segment only (distanceKm
+ *   already accumulated by addDistance) and continue.
+ */
+async function flushSegment(state: TripDetectionState): Promise<void> {
+  if (state.routePoints.length < 2) return;
+
+  const points = state.routePoints;
+  const osrmRoute = await matchRouteOSRM(points);
+
+  if (osrmRoute) {
+    const dist = Math.round(computeRouteDistanceKm(osrmRoute) * 100) / 100;
+    state.segments.push({ points: osrmRoute, distanceKm: dist, source: 'osrm' });
+    state.osrmSegmentsCount += 1;
+  } else {
+    // OSRM failed for this segment only: fallback to haversine distance
+    // that was already accumulated in state.distanceKm during addDistance.
+    // We derive the segment distance from the raw points directly for clarity.
+    const rawDist = Math.round(computeRouteDistanceKm(points) * 100) / 100;
+    state.segments.push({ points: [...points], distanceKm: rawDist, source: 'gps' });
+  }
+
+  // Seed next segment with the last point so the path is continuous.
+  const lastPoint = points[points.length - 1]!;
+  state.routePoints = [lastPoint];
+}
+
+/**
+ * Compute final trip distance from segments + current segment.
+ */
+function computeFinalDistance(state: TripDetectionState): number {
+  let total = state.segments.reduce((sum, seg) => sum + seg.distanceKm, 0);
+
+  // Current (unflushed) segment
+  if (state.routePoints.length >= 2) {
+    total += Math.round(computeRouteDistanceKm(state.routePoints) * 100) / 100;
+  }
+
+  return Math.round(total * 100) / 100;
+}
+
+/**
+ * Build the full route for storage: concatenate all matched segment routes,
+ * then append the current (unflushed) segment simplified.
+ */
+function buildFullRoute(state: TripDetectionState): RoutePoint[] {
+  const full: RoutePoint[] = [];
+  for (const seg of state.segments) {
+    for (const p of seg.points) {
+      full.push(p);
+    }
+  }
+  // Append current segment simplified to keep storage size reasonable
+  if (state.routePoints.length > 0) {
+    const simplified = simplifyRoute(state.routePoints);
+    for (const p of simplified) {
+      full.push(p);
+    }
+  }
+  return full;
+}
+
+/**
+ * Determine overall routeSource for the trip.
+ * 'osrm' if ALL flushed segments were OSRM-matched, 'gps' otherwise.
+ */
+function overallRouteSource(state: TripDetectionState): 'osrm' | 'gps' {
+  if (state.segments.length === 0) return 'gps';
+  return state.segments.every(s => s.source === 'osrm') ? 'osrm' : 'gps';
+}
+
+/**
+ * Reset state to idle after a trip completes or is abandoned.
+ */
+function resetToIdle(state: TripDetectionState): void {
+  state.status = 'idle';
+  state.distanceKm = 0;
+  state.pointCount = 0;
+  state.lastTimestamp = 0;
+  state.routePoints = [];
+  state.segments = [];
+  state.osrmSegmentsCount = 0;
+  state.candidateSince = 0;
+  state.candidatePauseSince = 0;
+}
+
 
 export async function processPointForTrip(point: LocationPoint): Promise<Trip | null> {
   const state = await getTripDetectionState();
@@ -68,6 +162,8 @@ export async function processPointForTrip(point: LocationPoint): Promise<Trip | 
         state.distanceKm = 0;
         state.pointCount = 1;
         state.routePoints = [{ lat, lng }];
+        state.segments = [];
+        state.osrmSegmentsCount = 0;
       }
       break;
     }
@@ -84,12 +180,7 @@ export async function processPointForTrip(point: LocationPoint): Promise<Trip | 
         if (state.candidatePauseSince === 0) {
           state.candidatePauseSince = now;
         } else if (now - state.candidatePauseSince >= 30_000) {
-          state.status = 'idle';
-          state.distanceKm = 0;
-          state.pointCount = 0;
-          state.lastTimestamp = 0;
-          state.routePoints = [];
-          state.candidatePauseSince = 0;
+          resetToIdle(state);
         }
       }
       break;
@@ -114,11 +205,9 @@ export async function processPointForTrip(point: LocationPoint): Promise<Trip | 
         const stoppedMs = now - state.lastMovingTime;
         if (stoppedMs >= STOP_DURATION_MS) {
           if (state.distanceKm >= MIN_TRIP_KM) {
-            const osrmRoute = await matchRouteOSRM(state.routePoints);
-            const route = osrmRoute ?? simplifyRoute(state.routePoints);
-            const distanceKm = osrmRoute
-              ? Math.round(computeRouteDistanceKm(osrmRoute) * 100) / 100
-              : Math.round(state.distanceKm * 100) / 100;
+            const distanceKm = computeFinalDistance(state);
+            const route = buildFullRoute(state);
+            const routeSource = overallRouteSource(state);
             completedTrip = {
               id: genId(),
               startTime: state.startTime,
@@ -131,18 +220,23 @@ export async function processPointForTrip(point: LocationPoint): Promise<Trip | 
               endLat: state.lastLat,
               endLon: state.lastLon,
               route,
-              routeSource: osrmRoute ? 'osrm' : 'gps',
+              routeSource,
+              osrmSegments: state.osrmSegmentsCount,
             };
           }
-          state.status = 'idle';
-          state.distanceKm = 0;
-          state.pointCount = 0;
-          state.lastTimestamp = 0;
-          state.routePoints = [];
+          resetToIdle(state);
         }
       }
       break;
     }
+  }
+
+  // ── Segment flush: when current segment hits the cap, OSRM-match it immediately ──
+  if (
+    (state.status === 'active' || state.status === 'ending') &&
+    state.routePoints.length >= MAX_RAW_ROUTE_POINTS
+  ) {
+    await flushSegment(state);
   }
 
   await saveTripDetectionState(state);
@@ -185,7 +279,7 @@ export async function processPointForTrip(point: LocationPoint): Promise<Trip | 
     await Notifications.scheduleNotificationAsync({
       content: {
         title: 'Trajet terminé — Yoann 2.0',
-        body: `${completedTrip.distanceKm.toFixed(1)} km · Tapez pour choisir le véhicule et la catégorie`,
+        body: `${completedTrip.distanceKm.toFixed(1)} km${completedTrip.osrmSegments ? ` · ${completedTrip.osrmSegments} tronçon${completedTrip.osrmSegments > 1 ? 's' : ''} OSRM` : ''} · Tapez pour choisir le véhicule et la catégorie`,
         data: { url: '/(tabs)/trips', type: 'trip_completed' },
       },
       trigger: null,
