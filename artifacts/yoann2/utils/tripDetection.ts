@@ -4,6 +4,7 @@ import * as Notifications from 'expo-notifications';
 import type { LocationPoint } from '@/utils/locationTracking';
 import { haversineKm } from '@/utils/haversine';
 import { matchRouteOSRM, computeRouteDistanceKm } from '@/utils/osrmMatching';
+import { computeCleanedDistanceKm } from '@/utils/fallbackMatching';
 import { reverseGeocode } from '@/utils/geocoding';
 import { genId } from '@/utils/ids';
 import { simplifyRoute } from '@/utils/routeSimplification';
@@ -66,10 +67,9 @@ async function flushSegment(state: TripDetectionState): Promise<void> {
     state.segments.push({ points: osrmRoute, distanceKm: dist, source: 'osrm' });
     state.osrmSegmentsCount += 1;
   } else {
-    // OSRM failed for this segment only: fallback to haversine distance
-    // that was already accumulated in state.distanceKm during addDistance.
-    // We derive the segment distance from the raw points directly for clarity.
-    const rawDist = Math.round(computeRouteDistanceKm(points) * 100) / 100;
+    // OSRM failed for this segment only: use local cleaned fallback pipeline
+    // (outlier removal + smoothing + corrected haversine) as approximation.
+    const rawDist = Math.round(computeCleanedDistanceKm(points) * 100) / 100;
     state.segments.push({ points: [...points], distanceKm: rawDist, source: 'gps' });
   }
 
@@ -84,9 +84,9 @@ async function flushSegment(state: TripDetectionState): Promise<void> {
 function computeFinalDistance(state: TripDetectionState): number {
   let total = state.segments.reduce((sum, seg) => sum + seg.distanceKm, 0);
 
-  // Current (unflushed) segment
+  // Current (unflushed) segment — use cleaned fallback for better accuracy
   if (state.routePoints.length >= 2) {
-    total += Math.round(computeRouteDistanceKm(state.routePoints) * 100) / 100;
+    total += Math.round(computeCleanedDistanceKm(state.routePoints) * 100) / 100;
   }
 
   return Math.round(total * 100) / 100;

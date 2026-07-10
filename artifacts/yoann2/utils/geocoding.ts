@@ -1,19 +1,88 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { haversineKm } from '@/utils/haversine';
+
 /**
  * Simplified reverse-geocoding for trip start/end addresses.
  *
  * - Returns "numéro rue, ville" extracted from Nominatim address components.
- * - In-memory cache keyed to 4-decimal precision (~11 m), avoiding redundant calls.
+ * - Persistent cache (AsyncStorage) keyed to 3-decimal precision (~100 m).
+ *   A cache hit is accepted if the stored point is within 150 m of the query point,
+ *   matching the "known place" proximity system so both caches feel consistent.
+ * - In-memory hot cache on top of AsyncStorage for speed.
  * - Module-level rate limiter enforces ≥1 100 ms between requests (Nominatim ToS).
  */
 
 const BASE    = 'https://nominatim.openstreetmap.org';
 const HEADERS = { 'User-Agent': 'Yoann2.0-App/1.0 (contact@yoann.app)' };
 
-const cache         = new Map<string, string>();
+const CACHE_KEY = '@yoann2_geocode_cache';
+const CACHE_RADIUS_M = 150;
+
+interface CacheEntry {
+  lat: number;
+  lng: number;
+  address: string;
+  ts: number;
+}
+
+// In-memory hot cache (loaded from AsyncStorage lazily)
+const _memCache = new Map<string, CacheEntry>();
+let _memCacheLoaded = false;
+
 let   lastCallMs    = 0;
 
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function cacheKey(lat: number, lng: number): string {
+  return `${lat.toFixed(3)},${lng.toFixed(3)}`;
+}
+
+async function loadCache(): Promise<Map<string, CacheEntry>> {
+  if (_memCacheLoaded) return _memCache;
+  try {
+    const raw = await AsyncStorage.getItem(CACHE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as Record<string, CacheEntry>;
+      for (const [k, v] of Object.entries(parsed)) {
+        _memCache.set(k, v);
+      }
+    }
+  } catch {}
+  _memCacheLoaded = true;
+  return _memCache;
+}
+
+async function saveCache(): Promise<void> {
+  try {
+    const obj: Record<string, CacheEntry> = {};
+    for (const [k, v] of _memCache) {
+      obj[k] = v;
+    }
+    await AsyncStorage.setItem(CACHE_KEY, JSON.stringify(obj));
+  } catch {}
+}
+
+/**
+ * Look up a nearby cached address within CACHE_RADIUS_M metres.
+ * Returns the cached address string if found, null otherwise.
+ */
+async function lookupCache(lat: number, lng: number): Promise<string | null> {
+  const cache = await loadCache();
+  for (const entry of cache.values()) {
+    const distM = haversineKm(lat, lng, entry.lat, entry.lng) * 1000;
+    if (distM <= CACHE_RADIUS_M) {
+      return entry.address;
+    }
+  }
+  return null;
+}
+
+async function setCache(lat: number, lng: number, address: string): Promise<void> {
+  const key = cacheKey(lat, lng);
+  _memCache.set(key, { lat, lng, address, ts: Date.now() });
+  await saveCache();
 }
 
 async function fetchSimplifiedAddress(lat: number, lng: number): Promise<string | null> {
@@ -62,15 +131,25 @@ async function fetchSimplifiedAddress(lat: number, lng: number): Promise<string 
 
 /**
  * Reverse-geocode a coordinate pair to a short human-readable address.
- * Results are cached; a 1.1 s rate limit is enforced between Nominatim calls.
+ *
+ * 1. Check persistent cache first (150 m radius). Cache never expires — a geographic
+ *    place name does not change.
+ * 2. If cache miss, call Nominatim with the existing 1.1 s rate limit.
+ * 3. Store result in persistent cache for future reuse.
+ *
  * Returns null on network failure or when Nominatim returns no result.
  */
 export async function reverseGeocode(lat: number, lng: number): Promise<string | null> {
-  const key = `${lat.toFixed(4)},${lng.toFixed(4)}`;
-  if (cache.has(key)) return cache.get(key)!;
+  // 1. Persistent cache lookup (radius-based, matches known-place proximity)
+  const cached = await lookupCache(lat, lng);
+  if (cached) return cached;
 
+  // 2. Nominatim call with rate limit
   const result = await fetchSimplifiedAddress(lat, lng);
-  if (result) cache.set(key, result);
+  if (result) {
+    // 3. Store in persistent cache
+    await setCache(lat, lng, result);
+  }
   return result;
 }
 
