@@ -204,7 +204,7 @@ export default function AccueilScreen() {
       <View style={styles.rowPad}>
         <Pressable
           style={[styles.actionBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
-          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/(tabs)/expenses'); }}
+          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/(tabs)/expenses?add=1' as any); }}
         >
           <MaterialCommunityIcons name="plus-circle-outline" size={26} color="#4CAF50" />
         </Pressable>
@@ -216,7 +216,7 @@ export default function AccueilScreen() {
         </Pressable>
         <Pressable
           style={[styles.actionBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
-          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/event/new' as any); }}
+          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/appointment/new' as any); }}
         >
           <MaterialCommunityIcons name="calendar-plus" size={26} color="#2196F3" />
         </Pressable>

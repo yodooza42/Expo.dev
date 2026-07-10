@@ -1,7 +1,7 @@
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
@@ -134,6 +134,7 @@ export default function FinanceScreen() {
   const colors  = useColors();
   const insets  = useSafeAreaInsets();
   const router  = useRouter();
+  const params  = useLocalSearchParams<{ add?: string }>();
   const { transactions, projects, tasks, addTransactionCtx, updateTransactionCtx, deleteTransactionCtx, reloadTransactions } = useApp();
   const [savingsBalance, setSavingsBal]   = useState(0);
   const [marketBalance, setMarketBal]     = useState(0);
@@ -219,6 +220,10 @@ export default function FinanceScreen() {
   }
 
   useFocusEffect(useCallback(() => { load(); }, []));
+
+  useEffect(() => {
+    if (params.add === '1') openForm('expense');
+  }, [params.add]);
 
   function toggleSummary() {
     Haptics.selectionAsync();
