@@ -2,7 +2,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
-import { resolveProjectDirForBatch, savePhotoToProject } from '@/utils/photoStorage';
+import { resolveProjectDirForBatch, sanitize, savePhotoToProject } from '@/utils/photoStorage';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useMemo, useState } from 'react';
@@ -152,7 +152,7 @@ export default function NewTaskScreen() {
             const asset = r.assets[0];
             const permanent = await persistPhoto(asset.uri);
             setPhotos(prev => [...prev, permanent]);
-            savePhotoToProject(asset.uri, projectName, asset.fileName, undefined, 'taches');
+            savePhotoToProject(asset.uri, projectName, asset.fileName, undefined, sanitize(title || 'Nouvelle tâche'));
           }
         },
       },
@@ -165,8 +165,9 @@ export default function NewTaskScreen() {
             setPhotos(prev => [...prev, ...permanents]);
             // Resolve the project folder once for the whole batch — avoids
             // repeated SAF directory creation that produces duplicate folders.
-            const batchDir = await resolveProjectDirForBatch(projectName, 'taches');
-            r.assets.forEach(a => savePhotoToProject(a.uri, projectName, a.fileName, batchDir, 'taches'));
+            const taskFolder = sanitize(title || 'Nouvelle tâche');
+            const batchDir = await resolveProjectDirForBatch(projectName, taskFolder);
+            r.assets.forEach(a => savePhotoToProject(a.uri, projectName, a.fileName, batchDir, taskFolder));
           }
         },
       },

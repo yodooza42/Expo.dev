@@ -5,6 +5,7 @@ import { genId } from '@/utils/ids';
 import { getTrips, updateTrip } from '@/utils/tripStorage';
 
 const KEY_CATEGORIES = '@yoann2_trip_categories';
+const KEY_CATEGORIES_LEGACY = '@yoann2_categories';
 
 /** Radius in meters within which start or end points count as "the same place". */
 export const MATCH_RADIUS_M = 400;
@@ -40,7 +41,15 @@ export function tripIsReturnOf(trip: Trip, cat: TripCategory): boolean {
 
 export async function getCategories(): Promise<TripCategory[]> {
   try {
-    const raw = await AsyncStorage.getItem(KEY_CATEGORIES);
+    let raw = await AsyncStorage.getItem(KEY_CATEGORIES);
+    // Migration silencieuse : si la nouvelle clé est vide, essayer l'ancienne
+    if (!raw) {
+      raw = await AsyncStorage.getItem(KEY_CATEGORIES_LEGACY);
+      if (raw) {
+        // Migrer vers la nouvelle clé (best-effort, ignore l'erreur)
+        await AsyncStorage.setItem(KEY_CATEGORIES, raw).catch(() => {});
+      }
+    }
     return raw ? (JSON.parse(raw) as TripCategory[]) : [];
   } catch {
     return [];

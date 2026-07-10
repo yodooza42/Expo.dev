@@ -251,7 +251,7 @@ export default function SettingsScreen() {
         totalProject += r.projectUris.length;
       }
 
-      // Task photos (sub-folder "taches") — distribute evenly across tasks
+      // Task photos (all sub-folders) — distribute evenly across tasks
       if (r.taskUris.length > 0) {
         const projTasks = tasks.filter(t => t.projectId === proj.id);
         if (projTasks.length > 0) {

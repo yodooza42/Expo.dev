@@ -18,7 +18,7 @@ let _pendingPermission: Promise<string | null> | null = null;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function sanitize(name: string): string {
+export function sanitize(name: string): string {
   return name.replace(/[/\\:*?"<>|]/g, '_').trim() || 'Sans_nom';
 }
 
@@ -312,7 +312,7 @@ export interface RecoverResult {
   projectName: string;
   /** Images from the project root folder */
   projectUris: string[];
-  /** Images from the "taches" sub-folder */
+  /** Images from every sub-folder (task folders) */
   taskUris: string[];
 }
 
@@ -343,13 +343,16 @@ export async function recoverAllPhotosFromExternal(
       const projectUris: string[] = [];
       const taskUris: string[] = [];
 
-      // Scan root files
-      const rootFiles = await SAF.readDirectoryAsync(found);
-      for (const fileUri of rootFiles) {
-        const decoded = decodeURIComponent(fileUri);
-        if (/\.(jpe?g|png|gif|webp|heic)$/i.test(decoded)) {
-          const filename = decoded.split('/').pop() ?? `recovered_${Date.now()}.jpg`;
-          const base64 = await SAF.readAsStringAsync(fileUri, {
+      const rootEntries = await SAF.readDirectoryAsync(found);
+
+      for (const entryUri of rootEntries) {
+        const decoded = decodeURIComponent(entryUri);
+        const lastSegment = decoded.split('/').pop() ?? '';
+
+        if (/\.(jpe?g|png|gif|webp|heic)$/i.test(lastSegment)) {
+          // Root image = project photo
+          const filename = lastSegment || `recovered_${Date.now()}.jpg`;
+          const base64 = await SAF.readAsStringAsync(entryUri, {
             encoding: FileSystem.EncodingType.Base64,
           });
           const localPath = localDir + filename;
@@ -357,34 +360,27 @@ export async function recoverAllPhotosFromExternal(
             encoding: FileSystem.EncodingType.Base64,
           });
           projectUris.push(localPath);
+        } else {
+          // Sub-folder = task photos (folder name = task name)
+          try {
+            const taskFiles = await SAF.readDirectoryAsync(entryUri);
+            for (const fileUri of taskFiles) {
+              const fileDecoded = decodeURIComponent(fileUri);
+              const fileName = fileDecoded.split('/').pop() ?? '';
+              if (/\.(jpe?g|png|gif|webp|heic)$/i.test(fileName)) {
+                const base64 = await SAF.readAsStringAsync(fileUri, {
+                  encoding: FileSystem.EncodingType.Base64,
+                });
+                const localPath = localDir + fileName;
+                await FileSystem.writeAsStringAsync(localPath, base64, {
+                  encoding: FileSystem.EncodingType.Base64,
+                });
+                taskUris.push(localPath);
+              }
+            }
+          } catch { /* sub-folder empty or unreadable */ }
         }
       }
-
-      // Scan "taches" sub-folder
-      try {
-        const subChildren = await SAF.readDirectoryAsync(found);
-        const tachesDir = subChildren.find(uri => {
-          const decoded = decodeURIComponent(uri).toLowerCase();
-          return decoded.endsWith('/taches');
-        });
-        if (tachesDir) {
-          const taskFiles = await SAF.readDirectoryAsync(tachesDir);
-          for (const fileUri of taskFiles) {
-            const decoded = decodeURIComponent(fileUri);
-            if (/\.(jpe?g|png|gif|webp|heic)$/i.test(decoded)) {
-              const filename = decoded.split('/').pop() ?? `recovered_${Date.now()}.jpg`;
-              const base64 = await SAF.readAsStringAsync(fileUri, {
-                encoding: FileSystem.EncodingType.Base64,
-              });
-              const localPath = localDir + filename;
-              await FileSystem.writeAsStringAsync(localPath, base64, {
-                encoding: FileSystem.EncodingType.Base64,
-              });
-              taskUris.push(localPath);
-            }
-          }
-        }
-      } catch { /* sub-folder may not exist */ }
 
       if (projectUris.length > 0 || taskUris.length > 0) {
         results.push({ projectName, projectUris, taskUris });
