@@ -3,6 +3,7 @@
  *
  * Actions custom (→ handler JS, pas d'intent Android direct) :
  *   NAVIGATE_TO        → ouvre yoann2:///navigate-to via Linking
+ *   NAVIGATE_HOME      → navigation Google Maps vers le lieu "Maison" (categoryId=home)
  *   OPEN_FUEL          → ouvre yoann2:///(tabs)/trips via Linking
  *   REFRESH            → rafraîchit le widget avec animation
  *   MANUAL_TRIP_START  → démarre un trajet manuel
@@ -42,7 +43,7 @@ import {
 } from '@/utils/manualTripStorage';
 import { getNavShortcuts } from '@/utils/navigationShortcuts';
 import { matchRouteOSRM, computeRouteDistanceKm } from '@/utils/osrmMatching';
-import { findNearestPlace } from '@/utils/placesStorage';
+import { findNearestPlace, getKnownPlaces } from '@/utils/placesStorage';
 import { simplifyRoute } from '@/utils/routeSimplification';
 import { saveTrip } from '@/utils/tripStorage';
 import { AllInOneWidget } from './AllInOneWidget';
@@ -152,6 +153,21 @@ async function handleNavigateTo(): Promise<void> {
 async function handleOpenFuel(): Promise<void> {
   await Linking.openURL('yoann2:///(tabs)/trips').catch(() => {
     Linking.openURL('yoann2://').catch(() => {});
+  });
+}
+
+async function handleNavigateHome(): Promise<void> {
+  const places = await getKnownPlaces();
+  const home   = places.find(p => p.categoryId === 'home');
+  if (!home) {
+    await Linking.openURL('yoann2:///navigate-to').catch(() => {});
+    return;
+  }
+  const uri = `google.navigation:q=${home.lat},${home.lng}&mode=d`;
+  await Linking.openURL(uri).catch(async () => {
+    // fallback : ouvre Maps en mode itineraire
+    const fallback = `https://maps.google.com/?daddr=${home.lat},${home.lng}&directionsmode=driving`;
+    await Linking.openURL(fallback).catch(() => {});
   });
 }
 
@@ -419,6 +435,10 @@ export async function widgetTaskHandler(props: WidgetTaskHandlerProps): Promise<
 
       case 'WIDGET_CLICK': {
         switch (clickAction) {
+          case 'NAVIGATE_HOME':
+            await handleNavigateHome();
+            break;
+
           case 'NAVIGATE_TO':
             await handleNavigateTo();
             break;
