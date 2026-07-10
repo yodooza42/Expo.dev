@@ -366,12 +366,15 @@ export default function ExpensesScreen() {
 
   const catDetailExpenses = useMemo(() => {
     if (!selectedExpenseCat) return [];
+    const source = statsView === 'income' ? incomes : expenses;
     const cat = selectedExpenseCat === 'Non classé' ? '' : selectedExpenseCat;
-    const filtered = expenses.filter(e =>
-      selectedExpenseCat === 'Non classé'
+    const filtered = source.filter(e => {
+      const ts = new Date(e.date).getTime();
+      if (ts < depRange.startTs || ts > depRange.endTs) return false;
+      return selectedExpenseCat === 'Non classé'
         ? !e.category?.trim()
-        : (e.category?.trim() || '') === cat
-    );
+        : (e.category?.trim() || '') === cat;
+    });
     return [...filtered].sort((a, b) => {
       if (catSort === 'date-desc') return new Date(b.date).getTime() - new Date(a.date).getTime();
       if (catSort === 'date-asc') return new Date(a.date).getTime() - new Date(b.date).getTime();
@@ -384,7 +387,7 @@ export default function ExpensesScreen() {
       }
       return 0;
     });
-  }, [selectedExpenseCat, expenses, catSort, projects]);
+  }, [selectedExpenseCat, statsView, expenses, incomes, depRange, catSort, projects]);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -806,7 +809,7 @@ export default function ExpensesScreen() {
                 {selectedExpenseCat}
               </Text>
               <Text style={[styles.catSheetCount, { color: colors.mutedForeground }]}>
-                {catDetailExpenses.length} dépense{catDetailExpenses.length !== 1 ? 's' : ''}
+                {catDetailExpenses.length} {statsView === 'income' ? 'revenu' : 'dépense'}{catDetailExpenses.length !== 1 ? 's' : ''}
               </Text>
               <Pressable onPress={() => setSelectedExpenseCat(null)} hitSlop={8}>
                 <MaterialCommunityIcons name="close" size={20} color={colors.mutedForeground} />
@@ -851,7 +854,7 @@ export default function ExpensesScreen() {
             <ScrollView style={{ maxHeight: 320 }} showsVerticalScrollIndicator={false}>
               {catDetailExpenses.length === 0 ? (
                 <View style={{ alignItems: 'center', paddingVertical: 24 }}>
-                  <Text style={[styles.catSheetTotalLbl, { color: colors.mutedForeground }]}>Aucune dépense</Text>
+                  <Text style={[styles.catSheetTotalLbl, { color: colors.mutedForeground }]}>Aucun{statsView === 'income' ? '' : 'e'} {statsView === 'income' ? 'revenu' : 'dépense'}</Text>
                 </View>
               ) : catDetailExpenses.map((exp, i) => {
                 const proj = projects.find(p => p.id === exp.projectId);
