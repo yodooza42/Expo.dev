@@ -9,10 +9,10 @@ export const modules: ModuleMap = {
   "./components/mockups/yoann-indigo/BoldEditorial.tsx": () => import("../components/mockups/yoann-indigo/BoldEditorial.tsx"),
   "./components/mockups/yoann-indigo/FlatAere.tsx": () => import("../components/mockups/yoann-indigo/FlatAere.tsx"),
   "./components/mockups/yoann-indigo/VioletGlass.tsx": () => import("../components/mockups/yoann-indigo/VioletGlass.tsx"),
-  "./components/mockups/yoann-v2/NeonBureau.tsx": () => import("../components/mockups/yoann-v2/NeonBureau.tsx"),
-  "./components/mockups/yoann-v2/Tarmac.tsx": () => import("../components/mockups/yoann-v2/Tarmac.tsx"),
-  "./components/mockups/yoann-v2/Terrain.tsx": () => import("../components/mockups/yoann-v2/Terrain.tsx"),
   "./components/mockups/yoann-redesign/Navigation.tsx": () => import("../components/mockups/yoann-redesign/Navigation.tsx"),
   "./components/mockups/yoann-redesign/Stats.tsx": () => import("../components/mockups/yoann-redesign/Stats.tsx"),
-  "./components/mockups/yoann-redesign/Trajets.tsx": () => import("../components/mockups/yoann-redesign/Trajets.tsx")
+  "./components/mockups/yoann-redesign/Trajets.tsx": () => import("../components/mockups/yoann-redesign/Trajets.tsx"),
+  "./components/mockups/yoann-v2/NeonBureau.tsx": () => import("../components/mockups/yoann-v2/NeonBureau.tsx"),
+  "./components/mockups/yoann-v2/Tarmac.tsx": () => import("../components/mockups/yoann-v2/Tarmac.tsx"),
+  "./components/mockups/yoann-v2/Terrain.tsx": () => import("../components/mockups/yoann-v2/Terrain.tsx")
 };
