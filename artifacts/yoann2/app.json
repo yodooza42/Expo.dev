@@ -74,9 +74,9 @@
               "name": "TodoWidget",
               "label": "Yoann2.0",
               "minWidth": "180dp",
-              "minHeight": "55dp",
+              "minHeight": "50dp",
               "targetCellWidth": 4,
-              "targetCellHeight": 2,
+              "targetCellHeight": 1,
               "resizeMode": "none",
               "description": "Tâches, rendez-vous et navigation",
               "updatePeriodMillis": 1800000
