@@ -163,12 +163,16 @@ async function handleNavigateHome(): Promise<void> {
     await Linking.openURL('yoann2:///navigate-to').catch(() => {});
     return;
   }
-  const uri = `google.navigation:q=${home.lat},${home.lng}&mode=d`;
-  await Linking.openURL(uri).catch(async () => {
-    // fallback : ouvre Maps en mode itineraire
-    const fallback = `https://maps.google.com/?daddr=${home.lat},${home.lng}&directionsmode=driving`;
-    await Linking.openURL(fallback).catch(() => {});
-  });
+  const wazeUrl   = `waze://?ll=${home.lat},${home.lng}&navigate=yes`;
+  const gmapsNative = `google.navigation:q=${home.lat},${home.lng}&mode=d`;
+  const gmapsWeb    = `https://maps.google.com/?daddr=${home.lat},${home.lng}&directionsmode=driving`;
+  if (await Linking.canOpenURL(wazeUrl)) {
+    await Linking.openURL(wazeUrl).catch(() => {});
+  } else if (await Linking.canOpenURL(gmapsNative)) {
+    await Linking.openURL(gmapsNative).catch(() => {});
+  } else {
+    await Linking.openURL(gmapsWeb).catch(() => {});
+  }
 }
 
 // ─── Trajet manuel ───────────────────────────────────────────────────────────
