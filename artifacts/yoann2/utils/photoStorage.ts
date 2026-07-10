@@ -94,26 +94,41 @@ async function _getPhotosDirSilent(): Promise<string | null> {
 // Fire-and-forget : à appeler à la création d'une tâche ou au démarrage.
 // Ne fait rien si le dossier SAF n'est pas configuré.
 
-export async function ensureTaskFolder(projectName: string, taskTitle: string): Promise<void> {
+/** Nom de dossier canonique pour une tâche : "<titre>_tache_<id>" */
+export function taskFolderName(taskTitle: string, taskId: string): string {
+  return `${sanitize(taskTitle)}_tache_${taskId}`;
+}
+
+/** Extrait l'ID embarqué dans un nom de dossier tâche, ou null si absent. */
+export function extractTaskId(folderName: string): string | null {
+  const m = folderName.match(/_tache_([a-z0-9]+)$/i);
+  return m ? m[1]! : null;
+}
+
+export async function ensureTaskFolder(
+  projectName: string,
+  taskTitle: string,
+  taskId: string,
+): Promise<void> {
   try {
     const photosDir = await _getPhotosDirSilent();
     if (!photosDir) return;
     const projDir = await _resolveProjectDir(photosDir, projectName);
-    await _findOrCreateSubfolder(projDir, sanitize(taskTitle));
+    await _findOrCreateSubfolder(projDir, taskFolderName(taskTitle, taskId));
   } catch { /* silent */ }
 }
 
 // ── Bulk : pré-créer les dossiers de toutes les tâches existantes ─────────────
 
 export async function ensureAllTaskFolders(
-  tasks: Array<{ title: string; projectName: string }>,
+  tasks: Array<{ id: string; title: string; projectName: string }>,
 ): Promise<void> {
   const photosDir = await _getPhotosDirSilent();
   if (!photosDir) return;
   for (const t of tasks) {
     try {
       const projDir = await _resolveProjectDir(photosDir, t.projectName);
-      await _findOrCreateSubfolder(projDir, sanitize(t.title));
+      await _findOrCreateSubfolder(projDir, taskFolderName(t.title, t.id));
     } catch { /* continue on any per-task error */ }
   }
 }
@@ -349,8 +364,10 @@ export async function hasExternalPhotos(projectName: string): Promise<boolean> {
 // Returns separate mappings so the caller can batch-update both project & tasks.
 
 export interface TaskFolderResult {
-  /** Nom du dossier SAF (= sanitize(task.title)) */
+  /** Nom brut du dossier SAF, ex: "Changer_roue_doblo_tache_m5k3x2abc" */
   folderName: string;
+  /** ID de tâche extrait du suffixe _tache_<id>, null pour anciens dossiers */
+  taskId: string | null;
   uris: string[];
 }
 
@@ -410,8 +427,9 @@ export async function recoverAllPhotosFromExternal(
           });
           projectUris.push(localPath);
         } else {
-          // Sub-folder → task photos; preserve folder name for matching
+          // Sub-folder → task photos; preserve folder name + extract embedded task ID
           const folderName = lastSegment;
+          const taskId = extractTaskId(folderName);
           const taskUris: string[] = [];
           try {
             const taskFiles = await SAF.readDirectoryAsync(entryUri);
@@ -430,7 +448,7 @@ export async function recoverAllPhotosFromExternal(
               }
             }
           } catch { /* sub-folder empty or unreadable */ }
-          if (taskUris.length > 0) taskFolders.push({ folderName, uris: taskUris });
+          if (taskUris.length > 0) taskFolders.push({ folderName, taskId, uris: taskUris });
         }
       }
 

@@ -338,7 +338,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           .filter(t => t.status !== 'done')
           .map(t => {
             const proj = loadedProjects.find(p => p.id === t.projectId);
-            return { title: t.title, projectName: proj?.name ?? 'Divers' };
+            return { id: t.id, title: t.title, projectName: proj?.name ?? 'Divers' };
           });
         ensureAllTaskFolders(taskItems).catch(() => {});
       }
@@ -448,7 +448,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
     // Pré-créer le dossier SAF de la tâche en arrière-plan (fire-and-forget)
     const proj = projects.find(p => p.id === newT.projectId);
-    if (proj) ensureTaskFolder(proj.name, newT.title).catch(() => {});
+    if (proj) ensureTaskFolder(proj.name, newT.title, newT.id).catch(() => {});
   }, [projects]);
 
   const updateTask = useCallback((id: string, updates: Partial<Task>) => {

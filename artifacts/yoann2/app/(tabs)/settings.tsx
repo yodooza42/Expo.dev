@@ -253,19 +253,22 @@ export default function SettingsScreen() {
         totalProject += r.projectUris.length;
       }
 
-      // Task photos — matched by folder name = sanitize(task.title)
+      // Task photos — match by embedded ID (_tache_<id>), fallback to sanitized name
       if (r.taskFolders.length > 0) {
         const projTasks = tasks.filter(t => t.projectId === proj.id);
         for (const folder of r.taskFolders) {
-          // Find the task whose sanitized title matches the folder name
-          const matched = projTasks.find(
-            t => t.title.replace(/[/\\:*?"<>|]/g, '_').trim().toLowerCase()
-              === folder.folderName.toLowerCase(),
-          );
+          const matched =
+            // 1) ID direct (nouveau schéma de nommage)
+            (folder.taskId ? projTasks.find(t => t.id === folder.taskId) : undefined) ??
+            // 2) Fallback : correspondance par titre sanitisé (anciens dossiers)
+            projTasks.find(
+              t => t.title.replace(/[/\\:*?"<>|]/g, '_').trim().toLowerCase()
+                === folder.folderName.toLowerCase(),
+            );
           if (matched) {
             updateTask(matched.id, { photos: [...matched.photos, ...folder.uris] });
           } else {
-            // No matching task found → fall back to project photos
+            // Aucune tâche trouvée → photos du projet en fallback
             updateProject(proj.id, { photos: [...proj.photos, ...folder.uris] });
           }
           totalTask += folder.uris.length;
