@@ -221,9 +221,12 @@ export default function FinanceScreen() {
 
   useFocusEffect(useCallback(() => { load(); }, []));
 
-  useEffect(() => {
-    if (params.add === '1') openForm('expense');
-  }, [params.add]);
+  useFocusEffect(useCallback(() => {
+    if (params.add === '1') {
+      openForm('expense');
+      router.setParams({ add: '' });
+    }
+  }, [params.add]));
 
   function toggleSummary() {
     Haptics.selectionAsync();
