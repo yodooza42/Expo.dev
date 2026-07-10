@@ -391,15 +391,13 @@ export default function ExpensesScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-          <Pressable onPress={() => router.back()} hitSlop={8}>
-            <MaterialCommunityIcons name="arrow-left" size={24} color={colors.foreground} />
-          </Pressable>
-          <Text style={[styles.title, { color: colors.foreground }]}>Statistiques</Text>
-        </View>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+      {/* Header — identique au standard (chevron-left, titre centré, borderBottom) */}
+      <View style={[styles.header, { paddingTop: insets.top + 8, borderBottomColor: colors.border, backgroundColor: colors.background }]}>
+        <Pressable onPress={() => router.back()} hitSlop={8} style={styles.backBtn}>
+          <MaterialCommunityIcons name="chevron-left" size={24} color={colors.foreground} />
+        </Pressable>
+        <Text style={[styles.title, { color: colors.foreground }]}>Statistiques</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <Pressable
             onPress={handleExport}
             disabled={exporting || expenses.length === 0}
@@ -903,8 +901,10 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingBottom: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  title: { fontSize: 28, fontFamily: 'Inter_700Bold' },
+  backBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
+  title: { fontSize: 17, fontFamily: 'Inter_600SemiBold', flex: 1, textAlign: 'center' },
   exportBtn: { width: 34, height: 34, borderRadius: 10, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   totalBadge: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20 },
   totalTxt: { fontSize: 16, fontFamily: 'Inter_700Bold' },
