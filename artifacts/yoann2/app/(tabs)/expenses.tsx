@@ -154,7 +154,7 @@ export default function FinanceScreen() {
   const [isRecurring, setIsRecurring]     = useState(false);
   const [recurringFreq, setRecurringFreq] = useState<RecurringFrequency>('monthly');
   const [recurringList, setRecurringList] = useState<RecurringTransfer[]>([]);
-  const [recurringStartDate, setRecurringStartDate] = useState<Date>(() => { const d = new Date(); d.setMonth(d.getMonth() + 1); return d; });
+  const [recurringStartDate, setRecurringStartDate] = useState<Date>(() => { const d = new Date(); d.setMonth(d.getMonth() + 1); d.setHours(0, 0, 0, 0); return d; });
   const [showRecurringDatePicker, setShowRecurringDatePicker] = useState(false);
   const [transferAmount, setTransferAmount] = useState('');
   const [transferDir, setTransferDir]     = useState<'to' | 'from'>('to');
@@ -163,7 +163,7 @@ export default function FinanceScreen() {
   const [recurringExpenseList, setRecurringExpenseList] = useState<RecurringExpense[]>([]);
   const [isRecurringExpense, setIsRecurringExpense]     = useState(false);
   const [recurringExpenseFreq, setRecurringExpenseFreq] = useState<RecurringFrequency>('monthly');
-  const [recurringExpenseStart, setRecurringExpenseStart] = useState<Date>(new Date());
+  const [recurringExpenseStart, setRecurringExpenseStart] = useState<Date>(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; });
   const [showRecExpDatePicker, setShowRecExpDatePicker] = useState(false);
 
   const [categoryConfigs, setCategoryConfigs] = useState<CategoryConfig[]>(DEFAULT_CATEGORY_CONFIGS);
@@ -310,7 +310,7 @@ export default function FinanceScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setIsRecurringExpense(false);
     setRecurringExpenseFreq('monthly');
-    setRecurringExpenseStart(new Date());
+    setRecurringExpenseStart(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; });
     if (tx) {
       setEditId(tx.id);
       setNoteProjId(tx.projectId ?? null);
@@ -478,7 +478,7 @@ export default function FinanceScreen() {
     setShowTransfer(false);
     setTransferAmount('');
     setIsRecurring(false);
-    const resetDate = new Date(); resetDate.setMonth(resetDate.getMonth() + 1);
+    const resetDate = new Date(); resetDate.setMonth(resetDate.getMonth() + 1); resetDate.setHours(0, 0, 0, 0);
     setRecurringStartDate(resetDate);
     load();
   }
@@ -1127,7 +1127,7 @@ export default function FinanceScreen() {
                           value={recurringExpenseStart}
                           mode="date"
                           display="calendar"
-                          onChange={(_e, d) => { setShowRecExpDatePicker(false); if (d) setRecurringExpenseStart(d); }}
+                          onChange={(_e, d) => { setShowRecExpDatePicker(false); if (d) { d.setHours(0, 0, 0, 0); setRecurringExpenseStart(d); } }}
                         />
                       )}
                     </View>
@@ -1272,7 +1272,7 @@ export default function FinanceScreen() {
                       minimumDate={new Date()}
                       onChange={(_e, selected) => {
                         setShowRecurringDatePicker(false);
-                        if (selected) setRecurringStartDate(selected);
+                        if (selected) { selected.setHours(0, 0, 0, 0); setRecurringStartDate(selected); }
                       }}
                     />
                   )}

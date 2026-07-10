@@ -154,6 +154,7 @@ function nextOccurrence(from: Date, frequency: RecurringFrequency): Date {
   } else {
     next.setDate(next.getDate() + 7);
   }
+  next.setHours(0, 0, 0, 0);
   return next;
 }
 
