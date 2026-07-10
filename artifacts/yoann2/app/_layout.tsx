@@ -159,7 +159,7 @@ function RootLayoutNav() {
         const updatedTrips = trips.map(t => t.id === tripId ? { ...t, vehicle } : t);
         const config = settings.find(v => v.id === vehicle);
         if (config) {
-          const odometer = computeOdometer(updatedTrips, vehicle, config.odometerBaseKm);
+          const odometer = computeOdometer(updatedTrips, vehicle, config.odometerBaseKm, config.odometerAdjustments);
           const overdue = config.maintenanceItems.filter(
             item => item.intervalKm > 0 && odometer - item.lastResetKm >= item.intervalKm,
           );

@@ -24,7 +24,7 @@ import { useColors } from '@/hooks/useColors';
 import type { MaintenanceItem, Vehicle, VehicleInsurance } from '@/types/trips';
 import { computeAutoCostPerKm } from '@/utils/costPerKm';
 import { addTransaction } from '@/utils/bankStorage';
-import { computeOdometer, getTrips, getVehicleSettings, saveVehicleSettings } from '@/utils/tripStorage';
+import { computeOdometer, getTrips, getVehicleSettings, saveVehicleSettings, recalibrateOdometer, lastOdometerRecalStatus } from '@/utils/tripStorage';
 import { genId } from '@/utils/ids';
 
 export default function VehicleSettingsScreen() {
@@ -53,6 +53,9 @@ export default function VehicleSettingsScreen() {
   const [activeVehicleTab, setActiveVehicleTab] = useState<'general' | 'maintenance' | 'insurance'>('general');
   const [insDatePickerVisible, setInsDatePickerVisible] = useState(false);
 
+  const [recalModalVisible, setRecalModalVisible] = useState(false);
+  const [recalValue, setRecalValue] = useState('');
+
   const load = useCallback(async () => {
     const [v, t] = await Promise.all([getVehicleSettings(), getTrips()]);
     setVehicles(v);
@@ -69,7 +72,7 @@ export default function VehicleSettingsScreen() {
   }, [vehicles, selectedId]);
 
   const selected = vehicles.find(v => v.id === selectedId) ?? vehicles[0];
-  const odo = selected ? computeOdometer(trips as any, selected.id, selected.odometerBaseKm) : 0;
+  const odo = selected ? computeOdometer(trips as any, selected.id, selected.odometerBaseKm, selected.odometerAdjustments) : 0;
   const tabColor = selected?.type === 'moto' ? '#FF9800' : '#2196F3';
 
   function updateSelected(partial: Partial<Vehicle>) {
@@ -80,6 +83,20 @@ export default function VehicleSettingsScreen() {
     await saveVehicleSettings(vehicles);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     router.back();
+  }
+
+  function confirmRecalibration() {
+    if (!selected) return;
+    const realKm = parseFloat(recalValue.replace(',', '.'));
+    if (isNaN(realKm) || realKm <= 0) {
+      Alert.alert('Valeur invalide', 'Veuillez entrer un kilométrage positif.');
+      return;
+    }
+    const updated = recalibrateOdometer(vehicles, selected.id, realKm, trips as any);
+    setVehicles(updated);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    setRecalModalVisible(false);
+    setRecalValue('');
   }
 
   function openAddModal() {
@@ -376,6 +393,37 @@ export default function VehicleSettingsScreen() {
               placeholderTextColor={colors.mutedForeground}
               placeholder="0"
             />
+          </View>
+
+          {/* Recalage odomètre */}
+          <View style={styles.section}>
+            <View style={styles.sectionRow}>
+              <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>RECALAGE ODOMÈTRE</Text>
+              <Pressable
+                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setRecalValue(''); setRecalModalVisible(true); }}
+                style={[styles.addBtn, { backgroundColor: tabColor + '22', borderColor: tabColor }]}
+              >
+                <MaterialCommunityIcons name="map-marker-question-outline" size={13} color={tabColor} />
+                <Text style={[styles.addBtnText, { color: tabColor }]}>Recaler</Text>
+              </Pressable>
+            </View>
+            {(() => {
+              const status = lastOdometerRecalStatus(selected);
+              if (status) {
+                const isOld = status.daysAgo > 90;
+                return (
+                  <Text style={{ color: isOld ? '#E65100' : colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 13 }}>
+                    {status.text}
+                    {isOld ? ' · Pensez à recaler' : ''}
+                  </Text>
+                );
+              }
+              return (
+                <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 13 }}>
+                  Jamais recalé. Le compteur théorique peut dériver si un trajet est manqué.
+                </Text>
+              );
+            })()}
           </View>
 
           {/* Maintenance project */}
@@ -723,6 +771,40 @@ export default function VehicleSettingsScreen() {
               )}
             />
           </View>
+        </Pressable>
+      </Modal>
+
+      {/* Recalibration modal */}
+      <Modal visible={recalModalVisible} transparent animationType="fade">
+        <Pressable style={styles.modalBackdrop} onPress={() => setRecalModalVisible(false)}>
+          <Pressable style={[styles.modalCard, { backgroundColor: colors.card, borderColor: colors.border, paddingBottom: insets.bottom + 20 }]}>
+            <Text style={[styles.modalTitle, { color: colors.foreground }]}>Recaler l'odomètre</Text>
+            <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>
+              Kilométrage réel affiché au compteur (km)
+            </Text>
+            <TextInput
+              style={[styles.input, { backgroundColor: colors.input, borderColor: colors.border, color: colors.foreground }]}
+              placeholder="ex: 45 328"
+              placeholderTextColor={colors.mutedForeground}
+              keyboardType="numeric"
+              value={recalValue}
+              onChangeText={setRecalValue}
+              autoFocus
+            />
+            {selected && (
+              <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 12, marginTop: 4 }}>
+                Théorique actuel : {computeOdometer(trips as any, selected.id, selected.odometerBaseKm, selected.odometerAdjustments).toFixed(1)} km
+              </Text>
+            )}
+            <View style={styles.modalActions}>
+              <Pressable onPress={() => setRecalModalVisible(false)} style={[styles.modalBtn, { backgroundColor: colors.muted, borderColor: colors.border }]}>
+                <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_500Medium', fontSize: 14 }}>Annuler</Text>
+              </Pressable>
+              <Pressable onPress={confirmRecalibration} style={[styles.modalBtn, { backgroundColor: tabColor, borderColor: tabColor }]}>
+                <Text style={{ color: '#fff', fontFamily: 'Inter_600SemiBold', fontSize: 14 }}>Recaler</Text>
+              </Pressable>
+            </View>
+          </Pressable>
         </Pressable>
       </Modal>
     </KeyboardAvoidingView>

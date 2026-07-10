@@ -52,7 +52,7 @@ export async function computeAutoCostPerKm(vehicle: Vehicle): Promise<CostBreakd
   }
 
   // KM in period: use odometer delta from period start to now
-  const odoNow    = computeOdometer(trips, vehicle.id, vehicle.odometerBaseKm);
+  const odoNow    = computeOdometer(trips, vehicle.id, vehicle.odometerBaseKm, vehicle.odometerAdjustments);
   const tripsBefore = vehicleTrips.filter(t => t.endTime < periodStartMs);
   const kmBefore  = tripsBefore.reduce((s, t) => s + t.distanceKm, 0);
   const kmInPeriod = Math.max(0, odoNow - vehicle.odometerBaseKm - kmBefore);

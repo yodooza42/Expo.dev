@@ -66,7 +66,7 @@ export async function runMaintenanceScheduler(opts: {
     const project = projects.find(p => p.id === vehicle.maintenanceProjectId);
     if (!project) continue;
 
-    const odo = computeOdometer(trips, vehicle.id, vehicle.odometerBaseKm);
+    const odo = computeOdometer(trips, vehicle.id, vehicle.odometerBaseKm, vehicle.odometerAdjustments);
 
     for (const item of vehicle.maintenanceItems) {
       let pct = 0;

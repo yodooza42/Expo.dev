@@ -146,7 +146,7 @@ export default function TripsScreen() {
     const list: { vehicleName: string; itemName: string; type: 'km' | 'date'; over: number }[] = [];
     const now = Date.now();
     for (const v of settings) {
-      const odo = computeOdometer(trips, v.id, v.odometerBaseKm);
+      const odo = computeOdometer(trips, v.id, v.odometerBaseKm, v.odometerAdjustments);
       for (const item of v.maintenanceItems) {
         if (item.intervalKm > 0) {
           const since = odo - item.lastResetKm;
@@ -263,7 +263,7 @@ export default function TripsScreen() {
     const list: { vehicleName: string; itemName: string; type: 'km' | 'date'; remaining: number }[] = [];
     const now = Date.now();
     for (const v of settings) {
-      const odo = computeOdometer(trips, v.id, v.odometerBaseKm);
+      const odo = computeOdometer(trips, v.id, v.odometerBaseKm, v.odometerAdjustments);
       for (const item of v.maintenanceItems) {
         if (item.intervalKm > 0) {
           const since = odo - item.lastResetKm;
@@ -359,7 +359,7 @@ export default function TripsScreen() {
         {settings.filter(v => v.type !== 'other').length > 0 && (
           <View style={styles.odoRow}>
             {settings.filter(v => v.type !== 'other').map(v => {
-              const odo = computeOdometer(trips, v.id, v.odometerBaseKm);
+              const odo = computeOdometer(trips, v.id, v.odometerBaseKm, v.odometerAdjustments);
               const color = v.type === 'moto' ? motoColor : carColor;
               const auto = autonomieData[v.id];
               const hasRange = auto?.hasData && auto.fillPct !== null;

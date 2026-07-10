@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import type { Trip, TripDetectionState, RouteSegment, Vehicle, VehicleSettings } from '@/types/trips';
+import type { Trip, TripDetectionState, RouteSegment, Vehicle, VehicleSettings, OdometerAdjustment } from '@/types/trips';
 
 const KEY_TRIPS = '@yoann2_trips';
 const KEY_VEHICLE_SETTINGS = '@yoann2_vehicle_settings';
@@ -96,11 +96,79 @@ export function computeOdometer(
   trips: Trip[],
   vehicleId: string,
   baseKm: number,
+  adjustments?: OdometerAdjustment[],
 ): number {
   const accumulated = trips
     .filter(t => t.vehicle === vehicleId)
     .reduce((sum, t) => sum + t.distanceKm, 0);
-  return Math.round((baseKm + accumulated) * 10) / 10;
+
+  let km = baseKm + accumulated;
+
+  // Apply cumulative delta from all manual recalibrations.
+  // Each adjustment already stores the gap at the time it was made;
+  // summing them gives the total correction to apply to the theoretical odometer.
+  if (adjustments && adjustments.length > 0) {
+    const totalDelta = adjustments.reduce((s, a) => s + a.deltaKm, 0);
+    km += totalDelta;
+  }
+
+  return Math.round(km * 10) / 10;
+}
+
+// ── Odometer recalibration ───────────────────────────────────────────────────────────────────────────
+
+/**
+ * Recalibrate a vehicle's odometer against the real compteur reading.
+ *
+ * @param vehicles   current vehicle settings array
+ * @param vehicleId  id of the vehicle to recalibrate
+ * @param realKm     km value read from the physical odometer
+ * @param trips      all trips (needed to compute the theoretical km at this moment)
+ *
+ * The adjustment is APPENDED to the vehicle's history, not retroactive.
+ * Past fuel-consumption calculations remain unchanged.
+ */
+export function recalibrateOdometer(
+  vehicles: VehicleSettings,
+  vehicleId: string,
+  realKm: number,
+  trips: Trip[],
+): VehicleSettings {
+  const vehicle = vehicles.find(v => v.id === vehicleId);
+  if (!vehicle) return vehicles;
+
+  const theoreticalKm = computeOdometer(
+    trips, vehicleId, vehicle.odometerBaseKm, vehicle.odometerAdjustments,
+  );
+  const deltaKm = realKm - theoreticalKm;
+
+  const adjustment: OdometerAdjustment = {
+    at: Date.now(),
+    realKm,
+    theoreticalKm,
+    deltaKm,
+  };
+
+  const prev = vehicle.odometerAdjustments ?? [];
+  return vehicles.map(v =>
+    v.id === vehicleId
+      ? { ...v, odometerAdjustments: [...prev, adjustment] }
+      : v,
+  );
+}
+
+/**
+ * Return a human-readable recalibration status message, or null if none.
+ */
+export function lastOdometerRecalStatus(
+  vehicle?: Vehicle,
+): { text: string; daysAgo: number } | null {
+  if (!vehicle?.odometerAdjustments?.length) return null;
+  const last = vehicle.odometerAdjustments[vehicle.odometerAdjustments.length - 1]!;
+  const daysAgo = Math.round((Date.now() - last.at) / (24 * 3_600_000));
+  const sign = last.deltaKm > 0 ? '+' : '';
+  const text = `Dernier recalage ${daysAgo}j (${sign}${last.deltaKm.toFixed(1)} km)`;
+  return { text, daysAgo };
 }
 
 // ── Vehicle settings with migration from legacy {car, moto} format ────────────

@@ -546,7 +546,7 @@ export default function TripListScreen() {
 
         <View style={styles.odoRow}>
           {settings.filter(v => v.type !== 'other').map(v => {
-            const odo = computeOdometer(trips, v.id, v.odometerBaseKm);
+            const odo = computeOdometer(trips, v.id, v.odometerBaseKm, v.odometerAdjustments);
             const color = v.type === 'moto' ? motoColor : carColor;
             return (
               <View key={v.id} style={[styles.odoCard, { backgroundColor: colors.card, borderColor: colors.border }]}>

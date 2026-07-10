@@ -79,6 +79,17 @@ export interface VehicleInsurance {
   transactionId?: string;
 }
 
+export interface OdometerAdjustment {
+  /** Timestamp when the user entered the recalibration. */
+  at: number;
+  /** The odometer reading the user typed (km). */
+  realKm: number;
+  /** The theoretical odometer at that moment (base + trips). */
+  theoreticalKm: number;
+  /** Gap = realKm - theoreticalKm (positive = the app was behind). */
+  deltaKm: number;
+}
+
 export interface Vehicle {
   id: string;
   name: string;
@@ -92,6 +103,8 @@ export interface Vehicle {
   costMode?: 'manual' | 'auto';
   /** Annual insurance data */
   insurance?: VehicleInsurance;
+  /** History of manual odometer recalibrations. */
+  odometerAdjustments?: OdometerAdjustment[];
 }
 
 /** Array of vehicles — replaces the old {car, moto} fixed object */
