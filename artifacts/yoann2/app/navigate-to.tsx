@@ -8,7 +8,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SubPageHeader } from '@/components/SubPageHeader';
 
 import type { KnownPlace } from '@/types/places';
 import { getKnownPlaces } from '@/utils/placesStorage';
@@ -30,7 +30,6 @@ interface PlaceItem {
 
 export default function NavigateToPage() {
   const router = useRouter();
-  const insets = useSafeAreaInsets();
   const [items, setItems] = useState<PlaceItem[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -64,13 +63,7 @@ export default function NavigateToPage() {
 
   return (
     <View style={styles.container}>
-      <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
-        <Pressable onPress={() => router.back()} style={styles.backBtn}>
-          <MaterialCommunityIcons name="chevron-left" size={24} color={TEXT} />
-        </Pressable>
-        <Text style={styles.headerTitle}>🧭 Naviguer vers</Text>
-        <View style={{ width: 36 }} />
-      </View>
+      <SubPageHeader title="🧭 Naviguer vers" />
 
       {loading ? (
         <Text style={styles.empty}>Chargement...</Text>

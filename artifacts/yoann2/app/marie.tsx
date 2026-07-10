@@ -18,6 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useApp } from '@/contexts/AppContext';
 import { useColors } from '@/hooks/useColors';
+import { SubPageHeader } from '@/components/SubPageHeader';
 import {
   type MariePlanning,
   type Shift,
@@ -324,32 +325,28 @@ export default function MarieScreen() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
 
-      {/* ── Header ── */}
-      <View style={[styles.header, { paddingTop: topPad + 12, backgroundColor: colors.background, borderBottomColor: colors.border }]}>
-        <Pressable onPress={() => router.back()} hitSlop={12} style={styles.backBtn}>
-          <MaterialCommunityIcons name="arrow-left" size={22} color={colors.foreground} />
-        </Pressable>
-        <View style={styles.headerCenter}>
-          <Text style={[styles.headerTitle, { color: colors.foreground }]}>Marie</Text>
-          <Text style={[styles.headerSub, { color: colors.mutedForeground }]}>Planning mensuel</Text>
-        </View>
-        <View style={styles.headerBtns}>
-          <Pressable
-            onPress={() => setRdvImportVisible(true)}
-            hitSlop={8}
-            style={[styles.importBtn, { backgroundColor: '#EC489920', borderColor: '#EC489955' }]}
-          >
-            <MaterialCommunityIcons name="calendar-arrow-left" size={16} color="#EC4899" />
-          </Pressable>
-          <Pressable
-            onPress={() => setImportVisible(true)}
-            hitSlop={8}
-            style={[styles.importBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
-          >
-            <MaterialCommunityIcons name="calendar-import" size={16} color={colors.primary} />
-          </Pressable>
-        </View>
-      </View>
+      <SubPageHeader
+        title="Marie"
+        subtitle="Planning mensuel"
+        right={
+          <View style={styles.headerBtns}>
+            <Pressable
+              onPress={() => setRdvImportVisible(true)}
+              hitSlop={8}
+              style={[styles.importBtn, { backgroundColor: '#EC489920', borderColor: '#EC489955' }]}
+            >
+              <MaterialCommunityIcons name="calendar-arrow-left" size={16} color="#EC4899" />
+            </Pressable>
+            <Pressable
+              onPress={() => setImportVisible(true)}
+              hitSlop={8}
+              style={[styles.importBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+            >
+              <MaterialCommunityIcons name="calendar-import" size={16} color={colors.primary} />
+            </Pressable>
+          </View>
+        }
+      />
 
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
 

@@ -16,6 +16,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useColors } from '@/hooks/useColors';
+import { SubPageHeader } from '@/components/SubPageHeader';
 import { cancelShiftNotifications, scheduleShiftNotifications } from '@/utils/notificationScheduler';
 import {
   type MonthlyReport,
@@ -405,14 +406,7 @@ export default function WorkScreen() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
 
-      {/* HEADER — no Appliquer here anymore */}
-      <View style={[styles.headerBar, { paddingTop: topPad + 8, borderBottomColor: colors.border }]}>
-        <Pressable onPress={() => router.back()} hitSlop={8}>
-          <MaterialCommunityIcons name="arrow-left" size={24} color={colors.foreground} />
-        </Pressable>
-        <Text style={[styles.title, { color: colors.foreground }]}>Travail</Text>
-        <View style={{ width: 70 }} />
-      </View>
+      <SubPageHeader title="Travail" />
 
       <ScrollView
         contentContainerStyle={[styles.content, { paddingBottom: 120 }]}

@@ -19,6 +19,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useColors } from '@/hooks/useColors';
+import { SubPageHeader } from '@/components/SubPageHeader';
 import type { FuelEntry } from '@/types/fuel';
 import type { Vehicle } from '@/types/trips';
 import { addTransaction } from '@/utils/bankStorage';
@@ -216,20 +217,18 @@ export default function FuelLogScreen() {
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
-      {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top + 8, backgroundColor: colors.background, borderBottomColor: colors.border }]}>
-        <Pressable onPress={() => router.back()} hitSlop={10} style={styles.backBtn}>
-          <MaterialCommunityIcons name="arrow-left" size={22} color={colors.foreground} />
-        </Pressable>
-        <Text style={[styles.headerTitle, { color: colors.foreground }]}>Carburant</Text>
-        <Pressable
-          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setFuelOpen(true); }}
-          style={[styles.addBtn, { backgroundColor: colors.primary }]}
-        >
-          <MaterialCommunityIcons name="gas-station" size={16} color="#121212" />
-          <Text style={styles.addBtnText}>Passage à la pompe</Text>
-        </Pressable>
-      </View>
+      <SubPageHeader
+        title="Carburant"
+        right={
+          <Pressable
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setFuelOpen(true); }}
+            style={[styles.addBtn, { backgroundColor: colors.primary }]}
+          >
+            <MaterialCommunityIcons name="gas-station" size={16} color="#121212" />
+            <Text style={styles.addBtnText}>Passage à la pompe</Text>
+          </Pressable>
+        }
+      />
 
       <ScrollView
         contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 80 }]}

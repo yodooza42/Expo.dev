@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useApp } from '@/contexts/AppContext';
 import { useColors } from '@/hooks/useColors';
+import { SubPageHeader } from '@/components/SubPageHeader';
 import type { Priority, ProjectStatus } from '@/types';
 
 const PRIORITIES: Priority[] = ['low', 'medium', 'high', 'critical'];
@@ -94,17 +95,14 @@ export default function NewProjectScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.headerBar, { paddingTop: topPad + 8, borderBottomColor: colors.border }]}>
-        <Pressable onPress={() => router.back()} hitSlop={8}>
-          <MaterialCommunityIcons name="arrow-left" size={24} color={colors.foreground} />
-        </Pressable>
-        <Text style={[styles.headerTitle, { color: colors.foreground }]}>
-          {isEditing ? 'Modifier le projet' : 'Nouveau projet'}
-        </Text>
-        <Pressable onPress={handleSave} style={[styles.saveBtn, { backgroundColor: colors.primary }]}>
-          <Text style={[styles.saveBtnTxt, { color: colors.primaryForeground }]}>Enregistrer</Text>
-        </Pressable>
-      </View>
+      <SubPageHeader
+        title={isEditing ? 'Modifier le projet' : 'Nouveau projet'}
+        right={
+          <Pressable onPress={handleSave} style={[styles.saveBtn, { backgroundColor: colors.primary }]}>
+            <Text style={[styles.saveBtnTxt, { color: colors.primaryForeground }]}>Enregistrer</Text>
+          </Pressable>
+        }
+      />
 
       <ScrollView contentContainerStyle={[styles.form, { paddingBottom: 100 }]} showsVerticalScrollIndicator={false}>
         <View>

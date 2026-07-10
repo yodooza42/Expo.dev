@@ -19,6 +19,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useColors } from '@/hooks/useColors';
+import { SubPageHeader } from '@/components/SubPageHeader';
 import { addTransaction } from '@/utils/bankStorage';
 import {
   type MarketAsset,
@@ -268,16 +269,14 @@ export default function MarketManagerScreen() {
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
-      {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top + 8, backgroundColor: colors.card, borderBottomColor: colors.border }]}>
-        <Pressable onPress={() => router.back()} hitSlop={12} style={styles.backBtn}>
-          <MaterialCommunityIcons name="arrow-left" size={22} color={colors.foreground} />
-        </Pressable>
-        <Text style={[styles.headerTitle, { color: colors.foreground }]}>📈 Marché</Text>
-        <Pressable onPress={openAddAsset} hitSlop={12} style={styles.addBtn}>
-          <MaterialCommunityIcons name="plus-circle-outline" size={24} color={MKT_GREEN} />
-        </Pressable>
-      </View>
+      <SubPageHeader
+        title="📈 Marché"
+        right={
+          <Pressable onPress={openAddAsset} hitSlop={12} style={styles.addBtn}>
+            <MaterialCommunityIcons name="plus-circle-outline" size={24} color={MKT_GREEN} />
+          </Pressable>
+        }
+      />
 
       <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}>
         {/* Total card */}

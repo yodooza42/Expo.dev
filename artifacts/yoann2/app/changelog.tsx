@@ -5,6 +5,7 @@ import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-n
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useColors } from '@/hooks/useColors';
+import { SubPageHeader } from '@/components/SubPageHeader';
 
 interface VersionEntry {
   version: string;
@@ -161,13 +162,7 @@ export default function ChangelogScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.header, { paddingTop: topPad + 12 }]}>
-        <Pressable onPress={() => router.back()} hitSlop={8} style={styles.backBtn}>
-          <MaterialCommunityIcons name="arrow-left" size={24} color={colors.foreground} />
-        </Pressable>
-        <Text style={[styles.title, { color: colors.foreground }]}>Recap MàJ</Text>
-        <View style={{ width: 24 }} />
-      </View>
+      <SubPageHeader title="Recap MàJ" />
 
       <ScrollView
         contentContainerStyle={[styles.scroll, { paddingBottom: 40 }]}

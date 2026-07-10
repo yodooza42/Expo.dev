@@ -20,6 +20,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PriorityBadge } from '@/components/PriorityBadge';
 import { useApp } from '@/contexts/AppContext';
 import { useColors } from '@/hooks/useColors';
+import { SubPageHeader } from '@/components/SubPageHeader';
 import type { TaskStatus } from '@/types';
 
 const { width } = Dimensions.get('window');
@@ -138,20 +139,20 @@ export default function TaskDetailScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.headerBar, { paddingTop: insets.top + 8, borderBottomColor: colors.border }]}>
-        <Pressable onPress={() => router.back()} hitSlop={8}>
-          <MaterialCommunityIcons name="arrow-left" size={24} color={colors.foreground} />
-        </Pressable>
-        <Text style={[styles.headerTitle, { color: colors.foreground }]} numberOfLines={1}>Détail tâche</Text>
-        <View style={styles.headerActions}>
-          <Pressable onPress={() => router.push(`/task/new?id=${task.id}`)} hitSlop={8}>
-            <MaterialCommunityIcons name="pencil-outline" size={22} color={colors.primary} />
-          </Pressable>
-          <Pressable onPress={handleDelete} hitSlop={8}>
-            <MaterialCommunityIcons name="trash-can-outline" size={22} color={colors.destructive} />
-          </Pressable>
-        </View>
-      </View>
+      <SubPageHeader
+        title="Détail tâche"
+        numberOfLines={1}
+        right={
+          <View style={styles.headerActions}>
+            <Pressable onPress={() => router.push(`/task/new?id=${task.id}`)} hitSlop={8}>
+              <MaterialCommunityIcons name="pencil-outline" size={22} color={colors.primary} />
+            </Pressable>
+            <Pressable onPress={handleDelete} hitSlop={8}>
+              <MaterialCommunityIcons name="trash-can-outline" size={22} color={colors.destructive} />
+            </Pressable>
+          </View>
+        }
+      />
 
       <ScrollView contentContainerStyle={{ paddingBottom: 80 }} showsVerticalScrollIndicator={false}>
         <View style={styles.body}>

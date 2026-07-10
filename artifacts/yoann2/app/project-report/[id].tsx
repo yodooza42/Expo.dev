@@ -20,6 +20,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useApp } from '@/contexts/AppContext';
 import { useColors } from '@/hooks/useColors';
+import { SubPageHeader } from '@/components/SubPageHeader';
 import type { Task } from '@/types';
 import { generateProjectReportHtml } from '@/utils/reportGenerator';
 import { fmtDateLong } from '@/utils/date';
@@ -126,28 +127,25 @@ export default function ProjectReportScreen() {
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
-      {/* ── Header ── */}
-      <View style={[styles.header, { paddingTop: insets.top + 8, borderBottomColor: colors.border }]}>
-        <Pressable onPress={() => router.back()} hitSlop={12}>
-          <MaterialCommunityIcons name="arrow-left" size={22} color={colors.mutedForeground} />
-        </Pressable>
-        <Text style={[styles.headerTitle, { color: colors.foreground }]} numberOfLines={1}>
-          {project.name}
-        </Text>
-        <Pressable
-          onPress={exportPdf}
-          disabled={exporting}
-          style={[styles.exportBtn, { backgroundColor: colors.primary + '22', borderColor: colors.primary }]}
-          hitSlop={8}
-        >
-          {exporting
-            ? <ActivityIndicator size="small" color={colors.primary} />
-            : <>
-                <MaterialCommunityIcons name="file-pdf-box" size={16} color={colors.primary} />
-                <Text style={[styles.exportLabel, { color: colors.primary }]}>PDF</Text>
-              </>}
-        </Pressable>
-      </View>
+      <SubPageHeader
+        title={project.name}
+        numberOfLines={1}
+        right={
+          <Pressable
+            onPress={exportPdf}
+            disabled={exporting}
+            style={[styles.exportBtn, { backgroundColor: colors.primary + '22', borderColor: colors.primary }]}
+            hitSlop={8}
+          >
+            {exporting
+              ? <ActivityIndicator size="small" color={colors.primary} />
+              : <>
+                  <MaterialCommunityIcons name="file-pdf-box" size={16} color={colors.primary} />
+                  <Text style={[styles.exportLabel, { color: colors.primary }]}>PDF</Text>
+                </>}
+          </Pressable>
+        }
+      />
 
       <ScrollView
         contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 40 }]}

@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useApp } from '@/contexts/AppContext';
 import { useColors } from '@/hooks/useColors';
+import { SubPageHeader } from '@/components/SubPageHeader';
 import { cancelDepartureAlert, scheduleDepartureAlert } from '@/utils/departureAlert';
 import { updateTodoWidget } from '@/widgets/updateWidget';
 
@@ -170,24 +171,21 @@ export default function NewAppointmentScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.headerBar, { paddingTop: topPad + 8, borderBottomColor: colors.border }]}>
-        <Pressable onPress={() => router.back()} hitSlop={8}>
-          <MaterialCommunityIcons name="arrow-left" size={24} color={colors.foreground} />
-        </Pressable>
-        <Text style={[styles.headerTitle, { color: colors.foreground }]}>
-          {isEditing ? 'Modifier le RDV' : 'Nouveau rendez-vous'}
-        </Text>
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          {isEditing && (
-            <Pressable onPress={handleDelete} hitSlop={8}>
-              <MaterialCommunityIcons name="delete-outline" size={22} color={colors.destructive} />
+      <SubPageHeader
+        title={isEditing ? 'Modifier le RDV' : 'Nouveau rendez-vous'}
+        right={
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            {isEditing && (
+              <Pressable onPress={handleDelete} hitSlop={8}>
+                <MaterialCommunityIcons name="delete-outline" size={22} color={colors.destructive} />
+              </Pressable>
+            )}
+            <Pressable onPress={handleSave} style={[styles.saveBtn, { backgroundColor: '#7C3AED' }]}>
+              <Text style={styles.saveBtnTxt}>Enregistrer</Text>
             </Pressable>
-          )}
-          <Pressable onPress={handleSave} style={[styles.saveBtn, { backgroundColor: '#7C3AED' }]}>
-            <Text style={styles.saveBtnTxt}>Enregistrer</Text>
-          </Pressable>
-        </View>
-      </View>
+          </View>
+        }
+      />
 
       <ScrollView
         contentContainerStyle={[styles.form, { paddingBottom: 100 }]}

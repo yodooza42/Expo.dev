@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useApp } from '@/contexts/AppContext';
 import { useColors } from '@/hooks/useColors';
+import { SubPageHeader } from '@/components/SubPageHeader';
 import { fmtEuro } from '@/utils/money';
 
 type Period = 'weekly' | 'monthly';
@@ -112,13 +113,7 @@ export default function RapportScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.header, { paddingTop: topPad + 8, borderBottomColor: colors.border }]}>
-        <Pressable onPress={() => router.back()} hitSlop={8} style={styles.backBtn}>
-          <MaterialCommunityIcons name="arrow-left" size={24} color={colors.foreground} />
-        </Pressable>
-        <Text style={[styles.title, { color: colors.foreground }]}>Rapports</Text>
-        <View style={{ width: 32 }} />
-      </View>
+      <SubPageHeader title="Rapports" />
 
       <View style={[styles.segmented, { backgroundColor: colors.card, borderColor: colors.border }]}>
         {(['weekly', 'monthly'] as Period[]).map(p => (

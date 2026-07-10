@@ -20,6 +20,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { WidgetPreview } from '@/components/WidgetPreview';
 import { useApp } from '@/contexts/AppContext';
 import { useColors } from '@/hooks/useColors';
+import { SubPageHeader } from '@/components/SubPageHeader';
 import { cancelShiftNotifications, scheduleShiftNotifications } from '@/utils/notificationScheduler';
 import { updateTodoWidget } from '@/widgets/updateWidget';
 import { buildWidgetData, type WidgetData } from '@/widgets/data';
@@ -128,21 +129,20 @@ export default function WidgetSettingsScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.headerBar, { paddingTop: topPad + 8, borderBottomColor: colors.border }]}>
-        <Pressable onPress={() => router.back()} hitSlop={8}>
-          <MaterialCommunityIcons name="arrow-left" size={24} color={colors.foreground} />
-        </Pressable>
-        <Text style={[styles.title, { color: colors.foreground }]}>Paramètres du widget</Text>
-        <Pressable
-          onPress={handleSave}
-          disabled={saving}
-          style={[styles.saveBtn, { backgroundColor: colors.primary, opacity: saving ? 0.6 : 1 }]}
-        >
-          <Text style={[styles.saveTxt, { color: colors.primaryForeground }]}>
-            {saving ? '…' : 'Appliquer'}
-          </Text>
-        </Pressable>
-      </View>
+      <SubPageHeader
+        title="Paramètres du widget"
+        right={
+          <Pressable
+            onPress={handleSave}
+            disabled={saving}
+            style={[styles.saveBtn, { backgroundColor: colors.primary, opacity: saving ? 0.6 : 1 }]}
+          >
+            <Text style={[styles.saveTxt, { color: colors.primaryForeground }]}>
+              {saving ? '…' : 'Appliquer'}
+            </Text>
+          </Pressable>
+        }
+      />
 
       <ScrollView
         contentContainerStyle={[styles.content, { paddingBottom: 120 }]}

@@ -14,6 +14,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useColors } from '@/hooks/useColors';
+import { SubPageHeader } from '@/components/SubPageHeader';
 import { loadAnnaBadges, NOUNOU_COLORS, saveAnnaBadges, type AnnaBadges, type Nounou } from '@/utils/annaStorage';
 import { loadMariePlanning, SHIFT_TIMES, type MariePlanning, type Shift } from '@/utils/marieStorage';
 
@@ -214,19 +215,15 @@ export default function AnnaScreen() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
 
-      {/* ── Header ── */}
-      <View style={[styles.header, { paddingTop: topPad + 12, backgroundColor: colors.background, borderBottomColor: colors.border }]}>
-        <Pressable onPress={() => router.back()} hitSlop={12} style={styles.backBtn}>
-          <MaterialCommunityIcons name="arrow-left" size={22} color={colors.foreground} />
-        </Pressable>
-        <View style={styles.headerCenter}>
-          <Text style={[styles.headerTitle, { color: colors.foreground }]}>Anna</Text>
-          <Text style={[styles.headerSub, { color: colors.mutedForeground }]}>Planning nounou</Text>
-        </View>
-        <Pressable onPress={handleShare} hitSlop={12} style={styles.shareBtn}>
-          <MaterialCommunityIcons name="share-variant-outline" size={20} color={colors.primary} />
-        </Pressable>
-      </View>
+      <SubPageHeader
+        title="Anna"
+        subtitle="Planning nounou"
+        right={
+          <Pressable onPress={handleShare} hitSlop={12} style={styles.shareBtn}>
+            <MaterialCommunityIcons name="share-variant-outline" size={20} color={colors.primary} />
+          </Pressable>
+        }
+      />
 
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
 

@@ -21,6 +21,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { useApp } from '@/contexts/AppContext';
 import { useColors } from '@/hooks/useColors';
+import { SubPageHeader } from '@/components/SubPageHeader';
 import { exportExpensesCSV, exportExpensesPDF } from '@/utils/expenseExport';
 import { fmtDateSlash } from '@/utils/date';
 import { fmtEuro } from '@/utils/money';
@@ -391,38 +392,36 @@ export default function ExpensesScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      {/* Header — identique au standard (chevron-left, titre centré, borderBottom) */}
-      <View style={[styles.header, { paddingTop: insets.top + 8, borderBottomColor: colors.border, backgroundColor: colors.background }]}>
-        <Pressable onPress={() => router.back()} hitSlop={8} style={styles.backBtn}>
-          <MaterialCommunityIcons name="chevron-left" size={24} color={colors.foreground} />
-        </Pressable>
-        <Text style={[styles.title, { color: colors.foreground }]}>Statistiques</Text>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <Pressable
-            onPress={handleExport}
-            disabled={exporting || expenses.length === 0}
-            hitSlop={8}
-            style={[styles.exportBtn, { backgroundColor: colors.card, borderColor: colors.border, opacity: expenses.length === 0 ? 0.4 : 1 }]}
-          >
-            <MaterialCommunityIcons
-              name={exporting ? 'loading' : 'export-variant'}
-              size={18}
-              color={colors.primary}
-            />
-          </Pressable>
-          <Pressable
-            onPress={toggleShowAmounts}
-            hitSlop={8}
-            style={[styles.exportBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
-          >
-            <MaterialCommunityIcons
-              name={showAmounts ? 'eye-outline' : 'eye-off-outline'}
-              size={18}
-              color={colors.mutedForeground}
-            />
-          </Pressable>
-        </View>
-      </View>
+      <SubPageHeader
+        title="Statistiques"
+        right={
+          <>
+            <Pressable
+              onPress={handleExport}
+              disabled={exporting || expenses.length === 0}
+              hitSlop={8}
+              style={[styles.exportBtn, { backgroundColor: colors.card, borderColor: colors.border, opacity: expenses.length === 0 ? 0.4 : 1 }]}
+            >
+              <MaterialCommunityIcons
+                name={exporting ? 'loading' : 'export-variant'}
+                size={18}
+                color={colors.primary}
+              />
+            </Pressable>
+            <Pressable
+              onPress={toggleShowAmounts}
+              hitSlop={8}
+              style={[styles.exportBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+            >
+              <MaterialCommunityIcons
+                name={showAmounts ? 'eye-outline' : 'eye-off-outline'}
+                size={18}
+                color={colors.mutedForeground}
+              />
+            </Pressable>
+          </>
+        }
+      />
 
       <ScrollView
         contentContainerStyle={[styles.content, { paddingBottom: 120 }]}

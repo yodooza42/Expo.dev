@@ -12,6 +12,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useColors } from '@/hooks/useColors';
+import { SubPageHeader } from '@/components/SubPageHeader';
 import type { FuelEntry } from '@/types/fuel';
 import type { Trip, TripCategory, Vehicle } from '@/types/trips';
 import { computeAutoCostPerKm, getEffectiveCostPerKm, type CostBreakdown } from '@/utils/costPerKm';
@@ -185,13 +186,7 @@ export default function TripStatsScreen() {
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top + 8, backgroundColor: colors.background, borderBottomColor: colors.border }]}>
-        <Pressable onPress={() => router.back()} hitSlop={12}>
-          <MaterialCommunityIcons name="chevron-left" size={26} color={colors.foreground} />
-        </Pressable>
-        <Text style={[styles.headerTitle, { color: colors.foreground }]}>Statistiques</Text>
-        <View style={{ width: 26 }} />
-      </View>
+      <SubPageHeader title="Statistiques" />
 
       <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 24 }]} showsVerticalScrollIndicator={false}>
 
