@@ -34,11 +34,15 @@ async function setBackupList(list: BackupEntry[]): Promise<void> {
   await AsyncStorage.setItem(BACKUP_LIST_KEY, JSON.stringify(list));
 }
 
-// ── Collect all @yoann2 data from AsyncStorage ────────────────────────────────
+// ── Collect all app data from AsyncStorage ────────────────────────────────────
+// Préfixes inclus : @yoann2 (principal) + modules Marie, Anna, Work qui
+// utilisent leurs propres préfixes et seraient perdus lors d'un transfert
+// si on ne les capture pas explicitement.
+const BACKUP_KEY_PREFIXES = ['@yoann2', '@marie_', '@anna_', '@work_'];
 
 async function collectAllData(): Promise<string> {
   const allKeys = await AsyncStorage.getAllKeys();
-  const keys = allKeys.filter(k => k.startsWith('@yoann2'));
+  const keys = allKeys.filter(k => BACKUP_KEY_PREFIXES.some(p => k.startsWith(p)));
   const pairs = await AsyncStorage.multiGet(keys);
   const data: Record<string, string | null> = {};
   for (const [k, v] of pairs) data[k] = v;

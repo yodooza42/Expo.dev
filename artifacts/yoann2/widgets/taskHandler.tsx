@@ -280,7 +280,10 @@ async function handleTripEnd(
   });
 
   let routePoints: RoutePoint[] = rawPts.map(p => ({ lat: p.lat, lng: p.lng }));
-  if (routePoints.length === 0 || routePoints[0]!.lat !== manualState.startLat) {
+  // Ne préfixer le point de départ que si on a des coordonnées valides
+  // (évite d'injecter (0,0) quand le GPS a timeout au démarrage du trajet).
+  const hasValidStart = manualState.startLat !== 0 || manualState.startLon !== 0;
+  if (hasValidStart && (routePoints.length === 0 || routePoints[0]!.lat !== manualState.startLat)) {
     routePoints = [{ lat: manualState.startLat, lng: manualState.startLon }, ...routePoints];
   }
   if (routePoints.length <= 1 || routePoints[routePoints.length - 1]!.lat !== endLat) {

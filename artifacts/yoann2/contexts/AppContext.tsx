@@ -281,7 +281,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         AsyncStorage.getItem(STORAGE_KEYS.INITIALIZED),
         AsyncStorage.getItem(STORAGE_KEYS.SEED_VERSION),
       ]);
-      const needsSeed = !initialized || storedSeedVersion !== SEED_VERSION;
+      // Seeder uniquement si l'app n'a jamais été initialisée.
+      // Un simple changement de SEED_VERSION ne doit PAS écraser les données réelles.
+      const needsSeed = !initialized;
       if (needsSeed) {
         setProjects(SEED_PROJECTS);
         setTasks(SEED_TASKS);

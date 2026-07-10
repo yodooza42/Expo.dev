@@ -12,6 +12,11 @@ export const LOCATION_TASK_NAME = 'background-location-task';
 const KEY_PREFIX = '@yoann2_location_';
 const MAX_DAYS = 7;
 
+// Throttle autoBackup : au maximum 1×/minute pour ne pas surcharger le stockage
+// à chaque point GPS (~3s en trajet actif).
+let _lastAutoBackupTs = 0;
+const AUTO_BACKUP_THROTTLE_MS = 60_000;
+
 // ── Live trip notification ────────────────────────────────────────────────────
 // Distance accumulée en mémoire — réinitialisée sur resetTripTracking()
 // ou redémarrage du processus (foreground service reste vivant via Samsung One UI).
@@ -94,7 +99,13 @@ export async function appendPoint(point: LocationPoint): Promise<void> {
     const points: LocationPoint[] = raw ? JSON.parse(raw) : [];
     points.push(point);
     await AsyncStorage.setItem(key, JSON.stringify(points));
-    await autoBackup();
+    // Throttle : backup au maximum 1×/minute pour ne pas écrire sur
+    // le stockage externe à chaque point GPS (~toutes les 3 s en trajet).
+    const now = Date.now();
+    if (now - _lastAutoBackupTs >= AUTO_BACKUP_THROTTLE_MS) {
+      _lastAutoBackupTs = now;
+      await autoBackup();
+    }
   } catch {
     // silently ignore storage errors
   }
