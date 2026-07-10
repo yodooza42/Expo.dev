@@ -143,6 +143,7 @@ const styles = StyleSheet.create({
   },
   list: {
     paddingHorizontal: 12,
+    paddingTop: 16,
     paddingBottom: 24,
     gap: 8,
   },
