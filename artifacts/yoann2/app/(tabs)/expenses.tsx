@@ -62,6 +62,11 @@ import { pH } from '@/styles/header';
 const SHOW_AMOUNTS_KEY      = '@yoann2/finance_show_amounts';
 const SUMMARY_COLLAPSED_KEY = '@yoann2/finance_summary_collapsed';
 
+// Cache prix marché — évite un appel réseau Yahoo à chaque focus (toutes les 5 min max)
+let _livePricesCache: Record<string, { price: number }> | null = null;
+let _livePricesCacheTs = 0;
+const LIVE_PRICES_CACHE_TTL = 5 * 60_000;
+
 const TYPE_CONFIG: Record<TransactionType, { label: string; icon: string; color: string; sign: string }> = {
   income:                  { label: 'Entrée',          icon: 'arrow-down-circle-outline',  color: '#4CAF50', sign: '+' },
   expense:                 { label: 'Sortie',           icon: 'arrow-up-circle-outline',    color: '#EF4444', sign: '-' },
@@ -190,7 +195,15 @@ export default function FinanceScreen() {
     let currentMktVal: number;
     if (symbols.length > 0) {
       try {
-        const livePrices = await fetchLivePrices(symbols);
+        const now = Date.now();
+        let livePrices: Record<string, { price: number }>;
+        if (_livePricesCache && now - _livePricesCacheTs < LIVE_PRICES_CACHE_TTL) {
+          livePrices = _livePricesCache;
+        } else {
+          livePrices = await fetchLivePrices(symbols);
+          _livePricesCache = livePrices;
+          _livePricesCacheTs = now;
+        }
         const priceMap: Record<string, number> = {};
         for (const [t, lp] of Object.entries(livePrices)) priceMap[t] = lp.price;
         const { currentValue } = computePortfolioValue(mktOps, mktAssets, priceMap);

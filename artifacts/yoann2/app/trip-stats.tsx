@@ -12,8 +12,10 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useColors } from '@/hooks/useColors';
+import type { FuelEntry } from '@/types/fuel';
 import type { Trip, TripCategory, Vehicle } from '@/types/trips';
 import { computeAutoCostPerKm, getEffectiveCostPerKm, type CostBreakdown } from '@/utils/costPerKm';
+import { getFuelEntries } from '@/utils/fuelStorage';
 import { getCategories } from '@/utils/tripCategories';
 import { getTrips, getVehicleSettings } from '@/utils/tripStorage';
 
@@ -127,6 +129,11 @@ export default function TripStatsScreen() {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [effectiveCostMap, setEffectiveCostMap] = useState<Map<string, number>>(new Map());
   const [fuelBreakdownMap, setFuelBreakdownMap] = useState<Map<string, CostBreakdown>>(new Map());
+  const [fuelEntries, setFuelEntries] = useState<FuelEntry[]>([]);
+
+  useEffect(() => {
+    getFuelEntries().then(setFuelEntries);
+  }, []);
 
   useEffect(() => {
     Promise.all([getTrips(), getCategories(), getVehicleSettings()]).then(async ([t, c, v]) => {
@@ -371,6 +378,39 @@ export default function TripStatsScreen() {
             ))}
           </View>
         )}
+
+        {/* Consommation L/100km par véhicule */}
+        {vehicles.length > 0 && fuelEntries.length > 0 && (() => {
+          const rows = vehicles.map(v => {
+            const liters = fuelEntries
+              .filter(e => e.vehicleId === v.id && !e.isExternal)
+              .reduce((s, e) => s + e.liters, 0);
+            const km = trips
+              .filter(t => t.vehicle === v.id && t.vehicle !== 'ignored')
+              .reduce((s, t) => s + t.distanceKm, 0);
+            const l100 = km > 0 ? (liters / km) * 100 : null;
+            return { v, liters, km, l100 };
+          }).filter(r => r.liters > 0);
+          if (rows.length === 0) return null;
+          return (
+            <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <Text style={[styles.cardTitle, { color: colors.foreground }]}>Consommation réelle</Text>
+              {rows.map(({ v, liters, km, l100 }) => (
+                <View key={v.id} style={styles.catRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.catName, { color: colors.foreground }]}>{v.name}</Text>
+                    <Text style={[styles.catSub, { color: colors.mutedForeground }]}>
+                      {liters.toFixed(1)} L · {km.toFixed(0)} km enregistrés
+                    </Text>
+                  </View>
+                  <Text style={[styles.cardTitle, { color: '#FF9800' }]}>
+                    {l100 !== null ? `${l100.toFixed(1)} L/100` : '—'}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          );
+        })()}
       </ScrollView>
     </View>
   );

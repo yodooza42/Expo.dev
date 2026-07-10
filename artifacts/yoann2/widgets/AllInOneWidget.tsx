@@ -173,6 +173,9 @@ export function AllInOneWidget({
         {tripStatus === 'active' && (
           <Btn image={IMG_PAUSE} clickAction="MANUAL_TRIP_PAUSE" bg={CARD} />
         )}
+        {tripStatus === 'active' && (
+          <Btn image={IMG_STOP} clickAction="MANUAL_TRIP_END" bg={CARD} />
+        )}
         {tripStatus === 'paused' && (
           <Btn image={IMG_PLAY} clickAction="MANUAL_TRIP_RESUME" bg={ACCENT_BG} />
         )}
