@@ -17,6 +17,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useColors } from '@/hooks/useColors';
+import { genId } from '@/utils/ids';
 import type { KnownPlace } from '@/types/places';
 import type { RoutePoint, Vehicle } from '@/types/trips';
 import { findNearestPlace, getKnownPlaces } from '@/utils/placesStorage';
@@ -237,7 +238,7 @@ export default function NewTripScreen() {
         findNearestPlace(endLat, endLon).catch(() => null),
       ]);
 
-      const tripId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+      const tripId = genId();
       await saveTrip({
         id: tripId,
         startTime: dateMs,

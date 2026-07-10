@@ -1,3 +1,5 @@
+import { genId } from '@/utils/ids';
+
 export interface OcrLine {
   id: string;
   selected: boolean;
@@ -9,7 +11,7 @@ export interface OcrLine {
 }
 
 function makeId(): string {
-  return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  return genId();
 }
 
 // ── Date parsing ────────────────────────────────────────────────────────────

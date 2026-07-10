@@ -43,13 +43,6 @@ function photoTimestamp(uri: string): number | null {
   return m ? parseInt(m[1]!, 10) : null;
 }
 
-function fmtDate(ts: number | string | null | undefined): string {
-  if (!ts) return '';
-  const d = new Date(ts);
-  if (isNaN(d.getTime())) return String(ts);
-  return fmtDateLong(d);
-}
-
 // ── Screen ────────────────────────────────────────────────────────────────────
 
 export default function ProjectReportScreen() {
@@ -167,7 +160,7 @@ export default function ProjectReportScreen() {
           <Text style={[styles.coverTitle, { color: colors.foreground }]}>{project.name}</Text>
           {(project.startDate || project.dueDate) && (
             <Text style={[styles.coverDates, { color: colors.mutedForeground }]}>
-              {project.startDate ? fmtDate(project.startDate) : ''}{project.startDate && project.dueDate ? ' → ' : ''}{project.dueDate ? fmtDate(project.dueDate) : ''}
+              {project.startDate ? fmtDateLong(project.startDate) : ''}{project.startDate && project.dueDate ? ' → ' : ''}{project.dueDate ? fmtDateLong(project.dueDate) : ''}
             </Text>
           )}
           <View style={styles.statsRow}>
@@ -310,7 +303,7 @@ function TaskSlide({
             >
               {task.photos.map((uri, pi) => {
                 const ts      = photoTimestamp(uri);
-                const dateStr = ts ? fmtDate(ts) : '';
+                const dateStr = ts ? fmtDateLong(ts) : '';
                 return (
                   <View key={`${uri}-${pi}`} style={styles.photoWrap}>
                     <Image

@@ -16,13 +16,6 @@ function esc(s: string): string {
     .replace(/\n/g, '<br/>');
 }
 
-function fmtDate(value: string | number | null | undefined): string {
-  if (!value) return '';
-  const d = new Date(value);
-  if (isNaN(d.getTime())) return String(value);
-  return fmtDateLong(d);
-}
-
 /** Extract timestamp embedded in photo filename: photo_1234567890_abc.jpg */
 function photoTs(uri: string): number | null {
   const m = uri.match(/photo_(\d+)_/);
@@ -127,7 +120,7 @@ export async function generateProjectReportHtml(
       const dataUri = await toDataUri(uri);
       if (!dataUri) continue;
       const ts      = photoTs(uri);
-      const dateStr = ts ? fmtDate(ts) : '';
+      const dateStr = ts ? fmtDateLong(ts) : '';
       photoParts.push(`
         <div class="photo-wrap">
           <img src="${dataUri}" class="photo-img" />
@@ -223,7 +216,7 @@ body{font-family:'Helvetica Neue',Arial,sans-serif;background:#121212;color:#e0e
   <div class="cover-eyebrow">Rapport de projet</div>
   <h1 class="cover-title">${esc(project.name)}</h1>
   <div class="cover-dates">
-    ${project.startDate ? fmtDate(project.startDate) : ''} ${project.startDate && project.dueDate ? '→' : ''} ${project.dueDate ? fmtDate(project.dueDate) : ''}
+    ${project.startDate ? fmtDateLong(project.startDate) : ''} ${project.startDate && project.dueDate ? '→' : ''} ${project.dueDate ? fmtDateLong(project.dueDate) : ''}
   </div>
   <div class="stats">
     ${durDays != null ? `<div class="stat"><div class="stat-val">${durDays}</div><div class="stat-lbl">Jours</div></div>` : ''}

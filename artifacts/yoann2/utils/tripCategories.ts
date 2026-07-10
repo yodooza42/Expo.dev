@@ -1,9 +1,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import type { Trip, TripCategory } from '@/types/trips';
+import { genId } from '@/utils/ids';
 import { getTrips, updateTrip } from '@/utils/tripStorage';
 
-const KEY_CATEGORIES = '@yoann2_categories';
+const KEY_CATEGORIES = '@yoann2_trip_categories';
 
 /** Radius in meters within which start or end points count as "the same place". */
 export const MATCH_RADIUS_M = 400;
@@ -54,7 +55,7 @@ export async function saveCategories(categories: TripCategory[]): Promise<void> 
 
 export async function createCategory(name: string, anchorTrip: Trip): Promise<TripCategory> {
   const cat: TripCategory = {
-    id: `cat_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    id: genId(),
     name: name.trim() || 'Catégorie',
     startLat: anchorTrip.startLat,
     startLon: anchorTrip.startLon,

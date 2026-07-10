@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 import { Linking, Platform } from 'react-native';
+import { genId } from '@/utils/ids';
 
 export interface NavShortcut {
   id: string;
@@ -83,7 +84,7 @@ export function createShortcut(
   lat?: number,
   lng?: number,
 ): NavShortcut {
-  const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  const id = genId();
   return { id, name, address, lat: lat ?? null, lng: lng ?? null };
 }
 
