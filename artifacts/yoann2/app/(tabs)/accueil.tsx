@@ -206,22 +206,19 @@ export default function AccueilScreen() {
           style={[styles.actionBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
           onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/(tabs)/expenses'); }}
         >
-          <MaterialCommunityIcons name="plus-circle-outline" size={22} color="#4CAF50" />
-          <Text style={[styles.actionLabel, { color: colors.foreground }]}>+ Dépense</Text>
+          <MaterialCommunityIcons name="plus-circle-outline" size={26} color="#4CAF50" />
         </Pressable>
         <Pressable
           style={[styles.actionBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
           onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/task/new' as any); }}
         >
-          <MaterialCommunityIcons name="playlist-plus" size={22} color={colors.primary} />
-          <Text style={[styles.actionLabel, { color: colors.foreground }]}>+ Tâche</Text>
+          <MaterialCommunityIcons name="playlist-plus" size={26} color={colors.primary} />
         </Pressable>
         <Pressable
           style={[styles.actionBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
-          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/navigate-to' as any); }}
+          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/event/new' as any); }}
         >
-          <MaterialCommunityIcons name="compass-outline" size={22} color="#2196F3" />
-          <Text style={[styles.actionLabel, { color: colors.foreground }]}>Naviguer</Text>
+          <MaterialCommunityIcons name="calendar-plus" size={26} color="#2196F3" />
         </Pressable>
       </View>
     </ScrollView>
