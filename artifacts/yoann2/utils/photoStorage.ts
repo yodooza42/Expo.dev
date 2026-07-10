@@ -348,12 +348,21 @@ export async function hasExternalPhotos(projectName: string): Promise<boolean> {
 // Root images → project photos.  Sub-folder "taches" → task photos.
 // Returns separate mappings so the caller can batch-update both project & tasks.
 
+export interface TaskFolderResult {
+  /** Nom du dossier SAF (= sanitize(task.title)) */
+  folderName: string;
+  uris: string[];
+}
+
 export interface RecoverResult {
   projectName: string;
   /** Images from the project root folder */
   projectUris: string[];
-  /** Images from every sub-folder (task folders) */
-  taskUris: string[];
+  /**
+   * Images from task sub-folders, grouped BY folder name.
+   * folderName = sanitize(task.title) — use it to find the matching task.
+   */
+  taskFolders: TaskFolderResult[];
 }
 
 export async function recoverAllPhotosFromExternal(
@@ -381,7 +390,7 @@ export async function recoverAllPhotosFromExternal(
       if (!found) continue;
 
       const projectUris: string[] = [];
-      const taskUris: string[] = [];
+      const taskFolders: TaskFolderResult[] = [];
 
       const rootEntries = await SAF.readDirectoryAsync(found);
 
@@ -390,7 +399,7 @@ export async function recoverAllPhotosFromExternal(
         const lastSegment = decoded.split('/').pop() ?? '';
 
         if (/\.(jpe?g|png|gif|webp|heic)$/i.test(lastSegment)) {
-          // Root image = project photo
+          // Root image → project photo
           const filename = lastSegment || `recovered_${Date.now()}.jpg`;
           const base64 = await SAF.readAsStringAsync(entryUri, {
             encoding: FileSystem.EncodingType.Base64,
@@ -401,7 +410,9 @@ export async function recoverAllPhotosFromExternal(
           });
           projectUris.push(localPath);
         } else {
-          // Sub-folder = task photos (folder name = task name)
+          // Sub-folder → task photos; preserve folder name for matching
+          const folderName = lastSegment;
+          const taskUris: string[] = [];
           try {
             const taskFiles = await SAF.readDirectoryAsync(entryUri);
             for (const fileUri of taskFiles) {
@@ -419,11 +430,12 @@ export async function recoverAllPhotosFromExternal(
               }
             }
           } catch { /* sub-folder empty or unreadable */ }
+          if (taskUris.length > 0) taskFolders.push({ folderName, uris: taskUris });
         }
       }
 
-      if (projectUris.length > 0 || taskUris.length > 0) {
-        results.push({ projectName, projectUris, taskUris });
+      if (projectUris.length > 0 || taskFolders.length > 0) {
+        results.push({ projectName, projectUris, taskFolders });
       }
     } catch {
       // ignore per-project errors

@@ -253,19 +253,23 @@ export default function SettingsScreen() {
         totalProject += r.projectUris.length;
       }
 
-      // Task photos (all sub-folders) — distribute evenly across tasks
-      if (r.taskUris.length > 0) {
+      // Task photos — matched by folder name = sanitize(task.title)
+      if (r.taskFolders.length > 0) {
         const projTasks = tasks.filter(t => t.projectId === proj.id);
-        if (projTasks.length > 0) {
-          for (let i = 0; i < r.taskUris.length; i++) {
-            const task = projTasks[i % projTasks.length]!;
-            updateTask(task.id, { photos: [...task.photos, r.taskUris[i]!] });
+        for (const folder of r.taskFolders) {
+          // Find the task whose sanitized title matches the folder name
+          const matched = projTasks.find(
+            t => t.title.replace(/[/\\:*?"<>|]/g, '_').trim().toLowerCase()
+              === folder.folderName.toLowerCase(),
+          );
+          if (matched) {
+            updateTask(matched.id, { photos: [...matched.photos, ...folder.uris] });
+          } else {
+            // No matching task found → fall back to project photos
+            updateProject(proj.id, { photos: [...proj.photos, ...folder.uris] });
           }
-        } else {
-          // No tasks in this project — fall back to project photos
-          updateProject(proj.id, { photos: [...proj.photos, ...r.taskUris] });
+          totalTask += folder.uris.length;
         }
-        totalTask += r.taskUris.length;
       }
     }
 
