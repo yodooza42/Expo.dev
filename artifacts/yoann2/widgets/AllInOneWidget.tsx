@@ -1,10 +1,11 @@
+"use no memo";
 import React from 'react';
 import {
   FlexWidget,
   ImageWidget,
   TextWidget,
 } from 'react-native-android-widget';
-import type { ColorProp, ImageWidgetSource } from 'react-native-android-widget';
+import type { ColorProp } from 'react-native-android-widget';
 
 import type { WidgetData } from './data';
 
@@ -15,12 +16,14 @@ const MUTED: ColorProp  = '#9E9E9E';
 const PRIMARY: ColorProp = '#FFC107';
 const ACCENT_BG         = '#1A2A00' as ColorProp;
 
-const IMG_RESET = require('../assets/icons/icon-reset.png') as ImageWidgetSource;
-const IMG_NAV   = require('../assets/icons/icon-nav.png')   as ImageWidgetSource;
-const IMG_PLAY  = require('../assets/icons/icon-play.png')  as ImageWidgetSource;
-const IMG_PAUSE = require('../assets/icons/icon-pause.png') as ImageWidgetSource;
-const IMG_GAS   = require('../assets/icons/icon-gas.png')   as ImageWidgetSource;
-const IMG_STOP  = require('../assets/icons/icon-stop.png')  as ImageWidgetSource;
+// Drawable resource names — resolus depuis android/res/drawable-nodpi/
+// Évite Image.resolveAssetSource() qui retourne asset:// non géré par ResourceUtils
+const IMG_RESET = 'icon_reset';
+const IMG_NAV   = 'icon_nav';
+const IMG_PLAY  = 'icon_play';
+const IMG_PAUSE = 'icon_pause';
+const IMG_GAS   = 'icon_gas';
+const IMG_STOP  = 'icon_stop';
 
 export interface AllInOneWidgetProps extends WidgetData {
   shortcuts: { name: string; lat: number | null; lng: number | null }[];
@@ -40,7 +43,7 @@ function Btn({
   flex = 1,
   rotation = 0,
 }: {
-  image: ImageWidgetSource;
+  image: string;
   clickAction: string;
   uri?: string;
   bg?: ColorProp;
@@ -61,7 +64,7 @@ function Btn({
         padding: 4,
       }}
     >
-      <ImageWidget image={image} style={{ width: 32, height: 32, rotation }} />
+      <ImageWidget image={image as any} style={{ width: 32, height: 32, rotation }} />
     </FlexWidget>
   );
 }
@@ -125,7 +128,6 @@ export function AllInOneWidget({
         <FlexWidget
           style={{ flex: 1, flexDirection: 'row', alignItems: 'center', marginLeft: 8 }}
         >
-          <TextWidget text="💼 " style={{ fontSize: 11 }} />
           <TextWidget
             text={isRepos ? 'Repos' : todayWork}
             style={{ fontSize: 12, color: isRepos ? MUTED : PRIMARY, fontWeight: 'bold' }}
@@ -136,24 +138,20 @@ export function AllInOneWidget({
 
         {/* Tâches */}
         <FlexWidget style={{ flexDirection: 'row', alignItems: 'center', marginRight: 8 }}>
-          <TextWidget text="📋 " style={{ fontSize: 11 }} />
           <TextWidget
-            text={String(tasks.length)}
-            style={{ fontSize: 11, color: TEXT, fontWeight: 'bold' }}
+            text={`${tasks.length} tache${tasks.length > 1 ? 's' : ''}`}
+            style={{ fontSize: 11, color: TEXT }}
           />
         </FlexWidget>
 
         {/* Prochain RDV */}
         {nextAppt ? (
-          <FlexWidget style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <TextWidget text="📅 " style={{ fontSize: 11 }} />
-            <TextWidget
-              text={nextAppt.title}
-              style={{ fontSize: 11, color: PRIMARY }}
-              maxLines={1}
-              truncate="END"
-            />
-          </FlexWidget>
+          <TextWidget
+            text={nextAppt.title}
+            style={{ fontSize: 11, color: PRIMARY }}
+            maxLines={1}
+            truncate="END"
+          />
         ) : null}
       </FlexWidget>
 
@@ -167,19 +165,8 @@ export function AllInOneWidget({
           flex: 1,
         }}
       >
-        {/*
-          Naviguer vers — action custom NAVIGATE_TO traitée par le handler JS.
-          Le handler fait Linking.openURL('yoann2:///navigate-to') pour ouvrir
-          la liste des destinations et choisir une navigation Waze.
-        */}
         <Btn image={IMG_NAV} clickAction="NAVIGATE_TO" bg={CARD} flex={2} />
 
-        {/*
-          Bouton trajet : change selon l'état.
-          idle   → Play (MANUAL_TRIP_START)
-          active → Pause (MANUAL_TRIP_PAUSE)
-          paused → Play + Stop (MANUAL_TRIP_RESUME / MANUAL_TRIP_END)
-        */}
         {tripStatus === 'idle' && (
           <Btn image={IMG_PLAY} clickAction="MANUAL_TRIP_START" bg={ACCENT_BG} />
         )}
@@ -187,16 +174,14 @@ export function AllInOneWidget({
           <Btn image={IMG_PAUSE} clickAction="MANUAL_TRIP_PAUSE" bg={CARD} />
         )}
         {tripStatus === 'paused' && (
-          <>
-            <Btn image={IMG_PLAY}  clickAction="MANUAL_TRIP_RESUME" bg={ACCENT_BG} />
-            <Btn image={IMG_STOP}  clickAction="MANUAL_TRIP_END"    bg={CARD} />
-          </>
+          <Btn image={IMG_PLAY} clickAction="MANUAL_TRIP_RESUME" bg={ACCENT_BG} />
+        )}
+        {tripStatus === 'paused' && (
+          <Btn image={IMG_STOP} clickAction="MANUAL_TRIP_END" bg={CARD} />
         )}
 
-        {/* Carburant — ouvre la page trajets/fuel via deep link */}
         <Btn image={IMG_GAS} clickAction="OPEN_FUEL" bg={CARD} />
 
-        {/* Rafraîchir */}
         <Btn image={IMG_RESET} clickAction="REFRESH" bg={CARD} rotation={spinAngle} />
       </FlexWidget>
     </FlexWidget>

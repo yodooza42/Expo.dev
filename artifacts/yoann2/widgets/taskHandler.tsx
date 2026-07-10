@@ -56,6 +56,20 @@ const SPIN_INTERVAL_MS  = 250;
 const GPS_TIMEOUT_MS    = 10_000;
 const BATTERY_KEY       = '@yoann2_battery_opt_prompted';
 
+// ─── Debug logging ────────────────────────────────────────────────────────────
+
+const WIDGET_LOG_KEY = '@yoann2_widget_debug_log';
+
+async function widgetLog(tag: string, data: unknown): Promise<void> {
+  try {
+    const entry = { t: new Date().toISOString(), tag, data: String(data) };
+    const raw = await AsyncStorage.getItem(WIDGET_LOG_KEY).catch(() => null);
+    const prev: unknown[] = raw ? (JSON.parse(raw) as unknown[]) : [];
+    const next = [...prev.slice(-19), entry]; // garder les 20 derniers
+    await AsyncStorage.setItem(WIDGET_LOG_KEY, JSON.stringify(next));
+  } catch {}
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 /** Rend le widget AllInOne avec l'état courant du trajet. */
@@ -63,18 +77,26 @@ async function renderWidget(
   doRender: WidgetTaskHandlerProps['renderWidget'],
   tripStatus?: 'idle' | 'active' | 'paused',
 ): Promise<void> {
-  const [data, shortcuts, status] = await Promise.all([
-    getWidgetDataFromStorage(),
-    getNavShortcuts(),
-    tripStatus !== undefined ? Promise.resolve(tripStatus) : getManualTripStatus(),
-  ]);
-  doRender(
-    <AllInOneWidget
-      {...data}
-      shortcuts={shortcuts.map(s => ({ name: s.name, lat: s.lat, lng: s.lng }))}
-      tripStatus={status}
-    />,
-  );
+  await widgetLog('renderWidget:start', `tripStatus=${tripStatus ?? 'auto'}`);
+  try {
+    const [data, shortcuts, status] = await Promise.all([
+      getWidgetDataFromStorage(),
+      getNavShortcuts(),
+      tripStatus !== undefined ? Promise.resolve(tripStatus) : getManualTripStatus(),
+    ]);
+    await widgetLog('renderWidget:data', `tasks=${data.tasks.length} shortcuts=${shortcuts.length} status=${status}`);
+    doRender(
+      <AllInOneWidget
+        {...data}
+        shortcuts={shortcuts.map(s => ({ name: s.name, lat: s.lat, lng: s.lng }))}
+        tripStatus={status}
+      />,
+    );
+    await widgetLog('renderWidget:done', 'ok');
+  } catch (err) {
+    await widgetLog('renderWidget:error', `${String(err)} | ${(err as any)?.stack?.slice(0, 300)}`);
+    throw err;
+  }
 }
 
 /** Rafraîchit tous les widgets de type TodoWidget (requestWidgetUpdate). */
@@ -121,20 +143,12 @@ async function maybeSuggestBatteryOptimization(): Promise<void> {
 
 // ─── Actions de navigation ────────────────────────────────────────────────────
 
-/**
- * Ouvre la liste des destinations (Lieux connus) via deep link.
- * Fonctionne que l'app soit ouverte ou fermée.
- */
 async function handleNavigateTo(): Promise<void> {
   await Linking.openURL('yoann2:///navigate-to').catch(() => {
-    // Si le deep link échoue, on ouvre simplement l'app
     Linking.openURL('yoann2://').catch(() => {});
   });
 }
 
-/**
- * Ouvre l'onglet trajets (pour saisie carburant).
- */
 async function handleOpenFuel(): Promise<void> {
   await Linking.openURL('yoann2:///(tabs)/trips').catch(() => {
     Linking.openURL('yoann2://').catch(() => {});
@@ -161,10 +175,8 @@ async function handleTripStart(
     segments: [{ start: now }],
   });
 
-  // Démarrage GPS best-effort (non bloquant)
   startManualTracking().catch(() => {});
 
-  // Notification de confirmation
   await Notifications.scheduleNotificationAsync({
     content: {
       title: 'Trajet démarré — Yoann 2.0',
@@ -182,7 +194,6 @@ async function handleTripPause(
 ): Promise<void> {
   const state = await getManualTripState();
 
-  // Garde : si pas de trajet actif, juste rafraîchir
   if (!state || !state.active || state.paused) {
     await renderWidget(doRender);
     return;
@@ -204,7 +215,6 @@ async function handleTripResume(
 ): Promise<void> {
   const state = await getManualTripState();
 
-  // Garde : si pas de trajet en pause, juste rafraîchir
   if (!state || !state.active || !state.paused) {
     await renderWidget(doRender);
     return;
@@ -225,7 +235,6 @@ async function handleTripResume(
 async function handleTripEnd(
   doRender: WidgetTaskHandlerProps['renderWidget'],
 ): Promise<void> {
-  // Arrêt GPS immédiat — ne pas attendre
   stopTracking().catch(() => {});
 
   const manualState = await getManualTripState();
@@ -238,7 +247,6 @@ async function handleTripEnd(
 
   const endTime = Date.now();
 
-  // Clore le segment ouvert si le trajet n'était pas en pause
   let segments = manualState.segments;
   if (!manualState.paused && segments.length > 0) {
     segments = segments.map((s, i) =>
@@ -246,18 +254,14 @@ async function handleTripEnd(
     );
   }
 
-  // Mettre à jour le widget immédiatement (idle) — le reste est async
   await clearManualTripState();
   resetTripTracking();
   await renderWidget(doRender, 'idle');
-
-  // --- Calcul du trajet en arrière-plan (ne bloque plus le widget) ---
 
   const endLoc = await getCurrentPosition();
   const endLat = endLoc?.coords.latitude  ?? manualState.startLat;
   const endLon = endLoc?.coords.longitude ?? manualState.startLon;
 
-  // Points GPS filtrés sur les segments actifs
   const today     = dateKey(new Date());
   const yesterday = dateKey(new Date(endTime - 86_400_000));
   const [todayPts, yesterdayPts] = await Promise.all([
@@ -275,7 +279,6 @@ async function handleTripEnd(
     );
   });
 
-  // Construction de la route
   let routePoints: RoutePoint[] = rawPts.map(p => ({ lat: p.lat, lng: p.lng }));
   if (routePoints.length === 0 || routePoints[0]!.lat !== manualState.startLat) {
     routePoints = [{ lat: manualState.startLat, lng: manualState.startLon }, ...routePoints];
@@ -284,7 +287,6 @@ async function handleTripEnd(
     routePoints = [...routePoints, { lat: endLat, lng: endLon }];
   }
 
-  // OSRM map-matching
   let osrmRoute: RoutePoint[] | null = null;
   let distanceKm: number;
   try {
@@ -320,7 +322,6 @@ async function handleTripEnd(
     source: 'manual',
   };
 
-  // Géocodage
   const [startPlace, endPlace] = await Promise.all([
     findNearestPlace(trip.startLat, trip.startLon).catch(() => null),
     findNearestPlace(trip.endLat, trip.endLon).catch(() => null),
@@ -366,12 +367,10 @@ async function handleRefresh(
 
   const shortcutsMapped = shortcuts.map(s => ({ name: s.name, lat: s.lat, lng: s.lng }));
 
-  // Rendu initial (angle 0)
   doRender(
     <AllInOneWidget {...data} shortcuts={shortcutsMapped} tripStatus={tripStatus} spinAngle={0} />,
   );
 
-  // Animation de rotation
   for (let i = 1; i <= SPIN_FRAMES; i++) {
     await new Promise<void>(res => setTimeout(res, SPIN_INTERVAL_MS));
     const angle = (i / SPIN_FRAMES) * 720;
@@ -384,7 +383,6 @@ async function handleRefresh(
     });
   }
 
-  // Rendu final (angle 0, données fraîches)
   const [freshData, freshShortcuts, freshStatus] = await Promise.all([
     getWidgetDataFromStorage(),
     getNavShortcuts(),
@@ -405,9 +403,10 @@ async function handleRefresh(
 export async function widgetTaskHandler(props: WidgetTaskHandlerProps): Promise<void> {
   const { widgetAction, clickAction, renderWidget: doRender } = props;
 
+  await widgetLog('handler:called', `action=${widgetAction} click=${clickAction ?? '-'}`);
+
   try {
     switch (widgetAction) {
-      // Ajout / mise à jour / redimensionnement → afficher l'état courant
       case 'WIDGET_ADDED':
       case 'WIDGET_UPDATE':
       case 'WIDGET_RESIZED': {
@@ -415,16 +414,13 @@ export async function widgetTaskHandler(props: WidgetTaskHandlerProps): Promise<
         break;
       }
 
-      // Clic sur un bouton du widget
       case 'WIDGET_CLICK': {
         switch (clickAction) {
           case 'NAVIGATE_TO':
-            // Ouvre la liste des destinations (Lieux connus → Waze)
             await handleNavigateTo();
             break;
 
           case 'OPEN_FUEL':
-            // Ouvre l'onglet trajets pour saisie carburant
             await handleOpenFuel();
             break;
 
@@ -449,7 +445,6 @@ export async function widgetTaskHandler(props: WidgetTaskHandlerProps): Promise<
             break;
 
           default:
-            // Action inconnue ou OPEN_APP / OPEN_URI natif → rafraîchir
             await renderWidget(doRender);
             break;
         }
@@ -459,10 +454,14 @@ export async function widgetTaskHandler(props: WidgetTaskHandlerProps): Promise<
       default:
         break;
     }
+
+    await widgetLog('handler:success', widgetAction);
   } catch (err) {
-    // En cas d'erreur inattendue : tenter de rafraîchir le widget sans crash
+    await widgetLog('handler:catch', `${String(err)} | ${(err as any)?.stack?.slice(0, 300)}`);
     try {
       await renderWidget(doRender);
-    } catch {}
+    } catch (err2) {
+      await widgetLog('handler:fallback:error', String(err2));
+    }
   }
 }

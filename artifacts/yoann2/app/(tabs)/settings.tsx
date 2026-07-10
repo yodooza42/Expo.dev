@@ -96,6 +96,8 @@ export default function SettingsScreen() {
   const [rebuildingList,    setRebuildingList]    = useState(false);
   const [recoveringAll,     setRecoveringAll]     = useState(false);
   const [expCatConfigs, setExpCatConfigs] = useState<CategoryConfig[]>(DEFAULT_EXPENSE_CATEGORY_CONFIGS);
+  const [widgetLogVisible, setWidgetLogVisible] = useState(false);
+  const [widgetLogEntries, setWidgetLogEntries] = useState<{ t: string; tag: string; data: string }[]>([]);
 
   async function handleAddExpCat(name: string) {
     const allConfigs = await getCategoryConfigs();
@@ -510,6 +512,22 @@ export default function SettingsScreen() {
           onPress={() => router.push('/widget-settings')}
           colors={colors}
         />
+        <SettingRow
+          icon="bug-outline"
+          label="Logs debug widget"
+          sublabel="Diagnostic HeadlessJS"
+          onPress={async () => {
+            try {
+              const raw = await AsyncStorage.getItem('@yoann2_widget_debug_log');
+              const entries = raw ? JSON.parse(raw) : [];
+              setWidgetLogEntries(entries.reverse());
+            } catch {
+              setWidgetLogEntries([]);
+            }
+            setWidgetLogVisible(true);
+          }}
+          colors={colors}
+        />
 
         {/* ── À PROPOS ── */}
         <Text style={[styles.section, { color: colors.mutedForeground }]}>À propos</Text>
@@ -656,6 +674,43 @@ export default function SettingsScreen() {
               ))}
             </ScrollView>
             <Pressable onPress={() => setExpCatModalVisible(false)} style={[styles.cancelBtn, { borderColor: colors.border }]}>
+              <Text style={[styles.cancelLabel, { color: colors.mutedForeground }]}>Fermer</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ── MODAL : Logs debug widget ── */}
+      <Modal visible={widgetLogVisible} animationType="slide" transparent>
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.7)' }]}>
+          <Pressable style={{ flex: 1 }} onPress={() => setWidgetLogVisible(false)} />
+          <View style={[styles.modal, { backgroundColor: colors.card, borderColor: colors.border, paddingBottom: 24 + insets.bottom }]}>
+            <Text style={[styles.modalTitle, { color: colors.foreground }]}>Logs widget</Text>
+            {widgetLogEntries.length === 0 ? (
+              <Text style={[styles.modalSub, { color: colors.mutedForeground, textAlign: 'center', marginVertical: 16 }]}>
+                Aucun log. Ajoutez le widget puis revenez ici.
+              </Text>
+            ) : (
+              <ScrollView style={{ maxHeight: 320 }}>
+                {widgetLogEntries.map((e, i) => (
+                  <View key={i} style={{ marginBottom: 8 }}>
+                    <Text style={{ color: colors.primary, fontSize: 10 }}>{e.t} [{e.tag}]</Text>
+                    <Text style={{ color: colors.foreground, fontSize: 11 }}>{e.data}</Text>
+                  </View>
+                ))}
+              </ScrollView>
+            )}
+            <Pressable
+              onPress={async () => {
+                await AsyncStorage.removeItem('@yoann2_widget_debug_log').catch(() => {});
+                setWidgetLogEntries([]);
+                setWidgetLogVisible(false);
+              }}
+              style={[styles.cancelBtn, { borderColor: colors.destructive, marginTop: 8 }]}
+            >
+              <Text style={[styles.cancelLabel, { color: colors.destructive }]}>Effacer les logs</Text>
+            </Pressable>
+            <Pressable onPress={() => setWidgetLogVisible(false)} style={[styles.cancelBtn, { borderColor: colors.border }]}>
               <Text style={[styles.cancelLabel, { color: colors.mutedForeground }]}>Fermer</Text>
             </Pressable>
           </View>
