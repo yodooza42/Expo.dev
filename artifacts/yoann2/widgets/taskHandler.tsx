@@ -133,6 +133,27 @@ async function acquireConsumptionLock(type: 'coffee' | 'cigarette'): Promise<boo
   }
 }
 
+// Navigation / fuel — 30 s par action indépendante (clé par action).
+const NAV_LOCK_MS = 30_000;
+
+async function acquireNavLock(action: string): Promise<boolean> {
+  const key = `@yoann2_nav_lock_${action}`;
+  try {
+    const raw = await AsyncStorage.getItem(key);
+    if (raw) {
+      const ts = parseInt(raw, 10);
+      if (!isNaN(ts) && Date.now() - ts < NAV_LOCK_MS) {
+        await widgetLog(`nav:debounced:${action}`, `${Date.now() - ts}ms since last`);
+        return false;
+      }
+    }
+    await AsyncStorage.setItem(key, String(Date.now()));
+    return true;
+  } catch {
+    return true;
+  }
+}
+
 async function acquireRefreshLock(): Promise<boolean> {
   try {
     const raw = await AsyncStorage.getItem(REFRESH_LOCK_KEY);
@@ -567,15 +588,25 @@ export async function widgetTaskHandler(props: WidgetTaskHandlerProps): Promise<
       case 'WIDGET_CLICK': {
         switch (clickAction) {
           case 'NAVIGATE_HOME':
-            await handleNavigateHome();
+            if (await acquireNavLock('NAVIGATE_HOME')) {
+              await handleNavigateHome();
+            }
+            // Re-rendre pour invalider les anciens PendingIntents (anti-storm)
+            await renderWidget(doRender);
             break;
 
           case 'NAVIGATE_TO':
-            await handleNavigateTo();
+            if (await acquireNavLock('NAVIGATE_TO')) {
+              await handleNavigateTo();
+            }
+            await renderWidget(doRender);
             break;
 
           case 'OPEN_FUEL':
-            await handleOpenFuel();
+            if (await acquireNavLock('OPEN_FUEL')) {
+              await handleOpenFuel();
+            }
+            await renderWidget(doRender);
             break;
 
           case 'REFRESH':
