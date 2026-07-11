@@ -474,10 +474,14 @@ export async function widgetTaskHandler(props: WidgetTaskHandlerProps): Promise<
 
           case 'ADD_COFFEE':
             await addConsumption('coffee');
+            // Re-rendre le widget pour invalider les anciens PendingIntents
+            // (évite qu'Android re-livre l'intent lors du prochain réveil d'écran)
+            await renderWidget(doRender);
             break;
 
           case 'ADD_CIGARETTE':
             await addConsumption('cigarette');
+            await renderWidget(doRender);
             break;
 
           case 'ADD_TRANSACTION':
