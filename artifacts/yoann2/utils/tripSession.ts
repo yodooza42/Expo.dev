@@ -99,6 +99,7 @@ async function setMetadata(title: string, artist: string): Promise<void> {
  * @param distKm Distance déjà parcourue (0 pour un départ frais, >0 pour reprise).
  */
 export async function startTripSession(distKm = 0): Promise<void> {
+  try {
   await initPlayer();
 
   if (_isRunning) {
@@ -131,6 +132,7 @@ export async function startTripSession(distKm = 0): Promise<void> {
 
   _isRunning    = true;
   _lastUpdateTs = 0;
+  } catch {}
 }
 
 /**

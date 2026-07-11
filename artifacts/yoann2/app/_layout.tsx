@@ -34,11 +34,6 @@ import {
   updateTrip,
 } from '@/utils/tripStorage';
 
-// Enregistrement du service RNTP — doit être appelé une seule fois au
-// démarrage de l'app, avant tout appel à TrackPlayer.setupPlayer().
-// Le handler vide suffit pour le ghost audio (pas de télécommandes media).
-TrackPlayer.registerPlaybackService(() => async () => {});
-
 // Canal Android pour les notifications de trajet (sticky, non-dismissable)
 if (Platform.OS === 'android') {
   Notifications.setNotificationChannelAsync('trip', {
@@ -99,6 +94,9 @@ function RootLayoutNav() {
   }, []);
 
   useEffect(() => {
+    // Enregistrement RNTP — doit se faire après le premier mount React,
+    // jamais au niveau module (crash avec New Architecture / Bridgeless).
+    try { TrackPlayer.registerPlaybackService(() => async () => {}); } catch {}
     bootstrapLocationTracking();
     checkPendingTrips();
     runScheduler();
