@@ -7,3 +7,5 @@
 - [notifee Expo plugin absent](notifee-expo-plugin.md) — @notifee/react-native 9.x has no Expo config plugin; do NOT add to app.json plugins; AAR manifest merges via Gradle automatically.
 - [RNTP non-swipeable notification](rntp-mediasession.md) — react-native-track-player creates a non-swipeable MediaStyle notification via Android MediaSession STATE_PLAYING; autoHandleInterruptions:false = handleAudioFocus=false in ExoPlayer (no Spotify interruption).
 - [RNTP TypeScript bundled assets](rntp-bundled-assets.md) — AddTrack.url type = string∩(string|ResourceObject)=string; must cast: `audioFile as unknown as string`; artwork not accepted in NowPlayingMetadata (string only, omit it).
+- [RNTP 4.1.2 Kotlin Bundle? patch](rntp-kotlin-patch.md) — MusicModule.kt lines 548/588 fail on RN 0.81.5 (Bundle? vs Bundle); fix via `patches/react-native-track-player@4.1.2.patch` in workspace root; pnpm-workspace.yaml patchedDependencies.
+- [pnpm patch-commit from monorepo subfolder](pnpm-patch-commit-subfolder.md) — run `pnpm patch-commit` from the package folder, but patches/ must exist at workspace root; pnpm-workspace.yaml patchedDependencies must reference root-level paths.
