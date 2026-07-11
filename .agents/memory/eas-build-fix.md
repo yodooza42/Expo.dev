@@ -15,20 +15,19 @@ Fix: `cd /home/runner/workspace && pnpm install` before every EAS build.
 `react-native-health-connect` pulls `androidx.health.connect:connect-client` which needs minSdkVersion ≥ 26, but expo prebuild defaults to 24 → manifest merger fails. Fix via `expo-build-properties` plugin in app.json.
 
 ## Build command (works)
-**Use the Replit workflow approach** (archive is ~347MB, compression takes ~53s, total >120s — bash tool times out):
+**Use the Replit workflow approach** (archive is ~347MB, compression takes ~66s, total >120s — bash tool times out):
 ```javascript
 await configureWorkflow({
   name: "EAS Build vXX",
-  command: `cd /home/runner/workspace/artifacts/yoann2 && EXPO_TOKEN="<token>" GIT_OPTIONAL_LOCKS=0 EAS_SKIP_AUTO_FINGERPRINT=1 /home/runner/workspace/.config/npm/node_global/bin/eas build --platform android --profile apk --non-interactive --no-wait 2>&1`,
+  command: `cd /home/runner/workspace/artifacts/yoann2 && EXPO_TOKEN="<token>" GIT_OPTIONAL_LOCKS=0 EAS_SKIP_AUTO_FINGERPRINT=1 /home/runner/workspace/.config/npm/node_global/bin/eas build --platform android --profile production --non-interactive --no-wait 2>&1`,
   outputType: "console",
   autoStart: true
 });
-// Wait ~2 minutes, then:
-const s = await getWorkflowStatus({ name: "EAS Build vXX", maxScrollbackLines: 80 });
+// Wait ~2.5 minutes (compression 66s + upload 5s + auth), then:
+const s = await getWorkflowStatus({ name: "EAS Build vXX", maxScrollbackLines: 100 });
 // Look for "See logs: https://..." in s.output
 await removeWorkflow({ name: "EAS Build vXX" });
 ```
-
 The global eas binary is at `/home/runner/workspace/.config/npm/node_global/bin/eas`.
 
 ## Account history (monthly quota)
@@ -38,15 +37,15 @@ The global eas binary is at `/home/runner/workspace/.config/npm/node_global/bin/
 | yoann42s-team | application-yoann20 | 875e84e9… | exhausted Jul 2026 |
 | stpyoann | yoann-20 | 5b936768-fba3-49ab-b3d6-ce5f820fb035 | exhausted Jul 2026 |
 | yozvfkzucbzbc | yoann-20 | 6774b277-b066-4921-bcbb-b88f0959acb4 | exhausted Jul 2026 |
+| **yoann420-team** | **yoann-20** | **4c6f8706-6d85-44d4-aeea-9c1edf3be837** | **ACTIVE — build ac3107aa soumis Jul 2026** |
 
-**app.json currently points to: yozvfkzucbzbc / yoann-20 / 6774b277-b066-4921-bcbb-b88f0959acb4**
-
-All free accounts have used their monthly Android build quota. Resets Aug 1, 2026.
+**app.json currently points to: yoann420-team / yoann-20 / 4c6f8706-6d85-44d4-aeea-9c1edf3be837**
 
 When user provides new token: update `EXPO_TOKEN` secret AND `app.json` → `expo.owner` + `expo.extra.eas.projectId`.
+Then check `eas whoami` output to confirm owner name matches before running build.
 
 ## Free plan quota
-~30 Android builds/month per account. Reset 1st of each month. Error message: "This account has used its Android builds from the Free plan this month".
+~30 Android builds/month per account. Reset 1st of each month. Error: "This account has used its Android builds from the Free plan this month".
 
 ## Reading EAS logs (brotli NDJSON)
 Get log URLs via GraphQL `builds.byId(buildId).logFiles`, fetch each, decode with Node: `zlib.brotliDecompressSync(raw).toString('utf8')`, split on `\n`, JSON.parse each line, read `.msg`.
@@ -55,4 +54,4 @@ Get log URLs via GraphQL `builds.byId(buildId).logFiles`, fetch each, decode wit
 MUST stay disabled (`experiments.reactCompiler: false` in app.json babel config).
 
 ## android/ dir in workspace (benign)
-There is an `android/` directory at `artifacts/yoann2/android/` (from a previous prebuild or local build). EAS warns "android directory detected" but still builds normally using managed workflow. The warning is cosmetic.
+`artifacts/yoann2/android/` exists (previous prebuild). EAS warns "android directory detected" but still builds fine. Cosmetic warning only.
