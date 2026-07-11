@@ -32,6 +32,7 @@ import {
   dateKey,
   loadDayPoints,
   resetTripTracking,
+  pauseManualTracking,
   startManualTracking,
   stopTracking,
 } from '@/utils/locationTracking';
@@ -65,6 +66,11 @@ const BATTERY_KEY       = '@yoann2_battery_opt_prompted';
 const TRIP_LOCK_KEY    = '@yoann2_trip_lock';
 const TRIP_LOCK_MS     = 5_000;
 
+// Debounce séparé pour REFRESH — fenêtre plus courte (3 s) car l'animation
+// dure 2 s et Android peut re-livrer le PendingIntent pendant ce temps.
+const REFRESH_LOCK_KEY = '@yoann2_refresh_lock';
+const REFRESH_LOCK_MS  = 3_000;
+
 async function acquireTripLock(): Promise<boolean> {
   try {
     const raw = await AsyncStorage.getItem(TRIP_LOCK_KEY);
@@ -79,6 +85,23 @@ async function acquireTripLock(): Promise<boolean> {
     return true;
   } catch {
     return true; // En cas d'erreur storage, on laisse passer
+  }
+}
+
+async function acquireRefreshLock(): Promise<boolean> {
+  try {
+    const raw = await AsyncStorage.getItem(REFRESH_LOCK_KEY);
+    if (raw) {
+      const ts = parseInt(raw, 10);
+      if (!isNaN(ts) && Date.now() - ts < REFRESH_LOCK_MS) {
+        await widgetLog('refresh:debounced', `${Date.now() - ts}ms since last`);
+        return false;
+      }
+    }
+    await AsyncStorage.setItem(REFRESH_LOCK_KEY, String(Date.now()));
+    return true;
+  } catch {
+    return true;
   }
 }
 
@@ -256,7 +279,9 @@ async function handleTripPause(
     return;
   }
 
-  await stopTracking().catch(() => {});
+  // Passe le GPS en basse fréquence (30 s / 50 m) SANS arrêter le foreground
+  // service → la notification reste non-dismissable en mode pause.
+  await pauseManualTracking().catch(() => {});
 
   const now = Date.now();
   const segments = state.segments.map((s, i) =>
@@ -428,6 +453,10 @@ async function handleTripEnd(
 async function handleRefresh(
   doRender: WidgetTaskHandlerProps['renderWidget'],
 ): Promise<void> {
+  // Debounce : l'animation dure 2 s, Android peut re-livrer le PendingIntent
+  // plusieurs fois pendant ce temps — on ignore les doublons dans la fenêtre.
+  if (!await acquireRefreshLock()) return;
+
   const [data, shortcuts, tripStatus] = await Promise.all([
     getWidgetDataFromStorage(),
     getNavShortcuts(),

@@ -253,27 +253,34 @@ export async function setTrackingPaused(paused: boolean): Promise<void> {
 // - idle  → economy mode (user-selected interval, balanced accuracy)
 // - active → dense mode (3s / 2m, high accuracy) for precise trace + distance
 async function buildLocationOptions(
-  tripPhase: 'active' | 'idle',
+  tripPhase: 'active' | 'paused' | 'idle',
 ): Promise<Location.LocationTaskOptions> {
   const baseInterval = await getGpsInterval();
   const isActive = tripPhase === 'active';
+  const isPaused = tripPhase === 'paused';
   return {
     accuracy: isActive ? Location.Accuracy.High : Location.Accuracy.Balanced,
-    timeInterval: isActive ? 3_000 : baseInterval.timeIntervalMs,
-    distanceInterval: isActive ? 2 : baseInterval.distanceIntervalM,
+    timeInterval: isActive ? 3_000 : isPaused ? 30_000 : baseInterval.timeIntervalMs,
+    distanceInterval: isActive ? 2 : isPaused ? 50 : baseInterval.distanceIntervalM,
     // Automotive navigation hint: tells FLP this is a navigation use-case so it
     // never throttles or pauses updates on its own (critical for widget trips).
     ...(isActive && {
       activityType: Location.ActivityType.AutomotiveNavigation,
       pausesUpdatesAutomatically: false,
     }),
-    showsBackgroundLocationIndicator: true,
+    showsBackgroundLocationIndicator: isActive,
     foregroundService: {
-      notificationTitle: isActive ? 'Yoann2.0 — Trajet en cours' : 'Yoann2.0',
+      notificationTitle: isActive
+        ? 'Yoann2.0 — Trajet en cours'
+        : isPaused
+          ? 'Yoann2.0 — Trajet en pause'
+          : 'Yoann2.0',
       notificationBody: isActive
         ? 'Suivi GPS actif — trajet en cours'
-        : 'Surveillance des déplacements en arrière-plan',
-      notificationColor: '#FFC107',
+        : isPaused
+          ? 'GPS en veille — appuie sur ▶ pour reprendre'
+          : 'Surveillance des déplacements en arrière-plan',
+      notificationColor: isPaused ? '#888888' : '#FFC107',
     },
   };
 }
@@ -334,6 +341,27 @@ export async function startManualTracking(): Promise<void> {
   // Use the same high-accuracy active options as the auto-tracking mode:
   // Accuracy.High (real GPS chip), 3s/2m intervals, automotive navigation hint.
   const opts = await buildLocationOptions('active');
+  await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, opts);
+}
+
+/**
+ * Passe le foreground service GPS en mode "pause" sans l'arrêter.
+ *
+ * Avantage : la notification du foreground service reste ACTIVE (et donc
+ * non-dismissable sur Android 13+), mais le GPS passe en basse fréquence
+ * (30 s / 50 m) pour économiser la batterie.
+ *
+ * La notification passe automatiquement à "Trajet en pause" via les options.
+ * À reprendre : appeler startManualTracking() pour revenir en haute fréquence.
+ */
+export async function pauseManualTracking(): Promise<void> {
+  const hasServices = await Location.hasServicesEnabledAsync();
+  if (!hasServices) return;
+
+  // startLocationUpdatesAsync sur une tâche déjà enregistrée patche les options
+  // (titre/corps/fréquence) sans recréer le foreground service — la notification
+  // reste à l'écran et ne peut pas être swipée.
+  const opts = await buildLocationOptions('paused');
   await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, opts);
 }
 
