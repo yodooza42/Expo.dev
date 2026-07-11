@@ -1,0 +1,22 @@
+# EAS archive exclusions (workspace root)
+# Excludes large assets and unrelated artifacts so the yoann2 archive
+# stays small and compresses quickly.
+
+# User-uploaded assets (images/videos from dev session — not part of the app)
+attached_assets/
+screenshots/
+
+# Other workspace artifacts — not needed for the yoann2 Expo build
+artifacts/api-server/
+artifacts/mockup-sandbox/
+
+# Shared libs and scripts (yoann2 has zero @workspace/* dependencies)
+lib/
+scripts/
+
+# Node modules (belt + suspenders on top of .gitignore)
+node_modules/
+
+# Local agent / task state
+.local/
+.agents/

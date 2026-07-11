@@ -1,6 +1,6 @@
 ---
 name: EAS Build fix — yoann2 Expo app
-description: How to fix EAS build failures for yoann2 Expo app in pnpm monorepo (lockfile, minSdkVersion, VCS upload)
+description: How to fix EAS build failures for yoann2 Expo app in pnpm monorepo (lockfile, minSdkVersion, VCS upload, quota)
 ---
 
 ## Lockfile sync (always do first)
@@ -12,44 +12,47 @@ Fix: `cd /home/runner/workspace && pnpm install` before every EAS build.
 - No `expo-glass-effect` in package.json — only in Replit's private registry, not public npm.
 
 ## minSdkVersion (native dep needs ≥ 26)
-`react-native-health-connect` pulls `androidx.health.connect:connect-client` which needs minSdkVersion ≥ 26, but expo prebuild defaults to 24 → manifest merger fails (`uses-sdk:minSdkVersion 24 cannot be smaller than 26`). EAS mislabels this as `EAS_BUILD_UNKNOWN_GRADLE_ERROR`.
-**Fix:** use the `expo-build-properties` config plugin in app.json (NOT a bare `android.minSdkVersion` field — that field is silently ignored by prebuild):
-```json
-["expo-build-properties", { "android": { "minSdkVersion": 26 } }]
-```
-Verify with `npx expo config --type prebuild` (shows the plugin) — prebuild log then prints `- minSdk: 26`.
-**Why:** EAS runs `expo prebuild` which CLEARS & REGENERATES the entire gitignored `android/` dir every build, so editing `android/*.gradle` directly is always wasted. Only tracked files (app.json, package.json, eas.json) reach EAS.
-
-## VCS / uploading uncommitted changes
-The NORMAL git flow (`eas build` with no EAS_NO_VCS) **does include uncommitted changes to tracked files** — confirmed: an uncommitted app.json edit reached EAS and changed the prebuild output. So just run the normal flow.
-**Avoid `EAS_NO_VCS=1`** here: its compression step is very slow (archives the whole working dir) and reliably gets killed by the agent's tool timeout / on tool return (even with setsid/nohup background), so no build ever starts.
+`react-native-health-connect` pulls `androidx.health.connect:connect-client` which needs minSdkVersion ≥ 26, but expo prebuild defaults to 24 → manifest merger fails. Fix via `expo-build-properties` plugin in app.json.
 
 ## Build command (works)
+**Use the Replit workflow approach** (archive is ~347MB, compression takes ~53s, total >120s — bash tool times out):
+```javascript
+await configureWorkflow({
+  name: "EAS Build vXX",
+  command: `cd /home/runner/workspace/artifacts/yoann2 && EXPO_TOKEN="<token>" GIT_OPTIONAL_LOCKS=0 EAS_SKIP_AUTO_FINGERPRINT=1 /home/runner/workspace/.config/npm/node_global/bin/eas build --platform android --profile apk --non-interactive --no-wait 2>&1`,
+  outputType: "console",
+  autoStart: true
+});
+// Wait ~2 minutes, then:
+const s = await getWorkflowStatus({ name: "EAS Build vXX", maxScrollbackLines: 80 });
+// Look for "See logs: https://..." in s.output
+await removeWorkflow({ name: "EAS Build vXX" });
 ```
-cd artifacts/yoann2 && export EXPO_TOKEN=$EXPO_TOKEN && EAS_SKIP_AUTO_FINGERPRINT=1 GIT_OPTIONAL_LOCKS=0 eas build --platform android --profile apk --non-interactive --no-wait
-```
-`GIT_OPTIONAL_LOCKS=0` avoids `.git/index.lock` errors. `EAS_SKIP_AUTO_FINGERPRINT=1` avoids fingerprint timeouts.
-EXPO_TOKEN must be exported (inline `EXPO_TOKEN=... eas build` is killed by sandbox; `export EXPO_TOKEN=...` first works).
 
-## Account (actif — juillet 2026)
-- Owner : `stpyoann`
-- Slug : `yoann-20`
-- projectId : `5b936768-fba3-49ab-b3d6-ce5f820fb035`
-- app.json : `owner: "stpyoann"`, `slug: "yoann-20"`
-- EXPO_TOKEN : robot token pour `stpyoann` (dans Replit secret `EXPO_TOKEN`)
-- Vérifier avec `eas whoami` → doit montrer `stpyoann (Role: Owner)`
-- Archive de 424 MB — compression lente, timeout 120s nécessaire
+The global eas binary is at `/home/runner/workspace/.config/npm/node_global/bin/eas`.
 
-## Comptes précédents (référence)
-- `marie2.0`, slug `yoann20`, projectId `206ea9d5…` — quota Free épuisé juillet 2026
-- `yoann42s-team`, slug `application-yoann20`, projectId `875e84e9…` — migré
+## Account history (monthly quota)
+| Account | Slug | Project ID | Status |
+|---|---|---|---|
+| marie2.0 | yoann20 | 206ea9d5… | exhausted Jul 2026 |
+| yoann42s-team | application-yoann20 | 875e84e9… | exhausted Jul 2026 |
+| stpyoann | yoann-20 | 5b936768-fba3-49ab-b3d6-ce5f820fb035 | exhausted Jul 2026 |
+| yozvfkzucbzbc | yoann-20 | 6774b277-b066-4921-bcbb-b88f0959acb4 | exhausted Jul 2026 |
+
+**app.json currently points to: yozvfkzucbzbc / yoann-20 / 6774b277-b066-4921-bcbb-b88f0959acb4**
+
+All free accounts have used their monthly Android build quota. Resets Aug 1, 2026.
+
+When user provides new token: update `EXPO_TOKEN` secret AND `app.json` → `expo.owner` + `expo.extra.eas.projectId`.
 
 ## Free plan quota
-Quota reset le 1er de chaque mois. Si build échoue avec "This account has used its Android builds
-from the Free plan this month", quota épuisé. Upgrade payant ou attendre.
+~30 Android builds/month per account. Reset 1st of each month. Error message: "This account has used its Android builds from the Free plan this month".
 
 ## Reading EAS logs (brotli NDJSON)
-Get log URLs via GraphQL `builds.byId(buildId).logFiles`, fetch each, then decode with Node: `zlib.brotliDecompressSync(raw).toString('utf8')`, split on `\n`, JSON.parse each line, read `.msg`. Python has no brotli module here — use Node. Status via `eas build:view <ID>` or the GraphQL `status` field.
+Get log URLs via GraphQL `builds.byId(buildId).logFiles`, fetch each, decode with Node: `zlib.brotliDecompressSync(raw).toString('utf8')`, split on `\n`, JSON.parse each line, read `.msg`.
 
 ## React Compiler
 MUST stay disabled (`experiments.reactCompiler: false` in app.json babel config).
+
+## android/ dir in workspace (benign)
+There is an `android/` directory at `artifacts/yoann2/android/` (from a previous prebuild or local build). EAS warns "android directory detected" but still builds normally using managed workflow. The warning is cosmetic.
