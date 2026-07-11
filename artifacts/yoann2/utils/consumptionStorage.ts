@@ -9,10 +9,21 @@ export interface ConsumptionEntry {
   type: ConsumptionType;
 }
 
+const DEDUP_MS = 5_000;
+
 export async function addConsumption(type: ConsumptionType): Promise<void> {
   try {
     const raw = await AsyncStorage.getItem(KEY).catch(() => null);
     const entries: ConsumptionEntry[] = raw ? (JSON.parse(raw) as ConsumptionEntry[]) : [];
+
+    // Ignore si le même type a déjà été ajouté dans les 5 dernières secondes
+    // (protège contre les double-fires PendingIntent d'Android / Samsung One UI)
+    const now = Date.now();
+    const lastSame = entries.filter(e => e.type === type).at(-1);
+    if (lastSame && now - new Date(lastSame.timestamp).getTime() < DEDUP_MS) {
+      return;
+    }
+
     entries.push({ timestamp: new Date().toISOString(), type });
     await AsyncStorage.setItem(KEY, JSON.stringify(entries));
   } catch {}

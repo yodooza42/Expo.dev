@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 import { useFocusEffect } from 'expo-router';
 import React, { useCallback, useState } from 'react';
@@ -5,6 +6,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TouchableOpacity,
   View,
 } from 'react-native';
 
@@ -17,11 +19,20 @@ import {
   type DayStats,
 } from '@/utils/consumptionStorage';
 
+const WIDGET_LOG_KEY = '@yoann2_widget_debug_log';
+
+interface WidgetLogEntry {
+  t: string;
+  tag: string;
+  data: string;
+}
+
 function fmtTime(iso: string): string {
   const d = new Date(iso);
   const h = String(d.getHours()).padStart(2, '0');
   const m = String(d.getMinutes()).padStart(2, '0');
-  return `${h}:${m}`;
+  const s = String(d.getSeconds()).padStart(2, '0');
+  return `${h}:${m}:${s}`;
 }
 
 function fmtDayLabel(dateStr: string): string {
@@ -72,15 +83,32 @@ function DayBlock({ day, colors }: { day: DayStats; colors: ReturnType<typeof us
   );
 }
 
+function tagColor(tag: string): string {
+  if (tag.includes('error') || tag.includes('catch')) return '#EF5350';
+  if (tag.includes('ADD_COFFEE') || tag.includes('ADD_CIGARETTE') || tag.includes('COFFEE') || tag.includes('CIGARETTE')) return '#FFC107';
+  if (tag.includes('success')) return '#66BB6A';
+  return '#90A4AE';
+}
+
 export default function CountersScreen() {
   const colors = useColors();
   const [days, setDays] = useState<DayStats[]>([]);
+  const [widgetLog, setWidgetLog] = useState<WidgetLogEntry[]>([]);
+  const [showLog, setShowLog] = useState(false);
 
   useFocusEffect(useCallback(() => {
     let active = true;
-    getConsumptionLog().then(log => {
+    Promise.all([
+      getConsumptionLog(),
+      AsyncStorage.getItem(WIDGET_LOG_KEY).catch(() => null),
+    ]).then(([log, rawLog]) => {
       if (!active) return;
       setDays(groupByDay(log));
+      if (rawLog) {
+        try {
+          setWidgetLog((JSON.parse(rawLog) as WidgetLogEntry[]).slice().reverse());
+        } catch {}
+      }
     }).catch(() => {});
     return () => { active = false; };
   }, []));
@@ -134,40 +162,70 @@ export default function CountersScreen() {
             <DayBlock key={d.date} day={d} colors={colors} />
           ))
         )}
+
+        {/* ── Log widget (debug) ── */}
+        <TouchableOpacity
+          style={[styles.debugToggle, { borderColor: colors.border }]}
+          onPress={() => {
+            Haptics.selectionAsync().catch(() => {});
+            setShowLog(v => !v);
+          }}
+        >
+          <Text style={[styles.debugToggleText, { color: colors.mutedForeground }]}>
+            {showLog ? '▲ Masquer log widget' : '▼ Log widget (debug)'}
+            {widgetLog.length > 0 ? `  ·  ${widgetLog.length} entrées` : ''}
+          </Text>
+        </TouchableOpacity>
+
+        {showLog && (
+          <View style={[styles.logBox, { backgroundColor: '#0A0A0A', borderColor: colors.border }]}>
+            {widgetLog.length === 0 ? (
+              <Text style={styles.logEmpty}>Aucun log widget disponible.</Text>
+            ) : (
+              widgetLog.map((entry, i) => (
+                <View key={i} style={styles.logRow}>
+                  <Text style={[styles.logTime, { color: '#546E7A' }]}>{fmtTime(entry.t)}</Text>
+                  <Text style={[styles.logTag, { color: tagColor(entry.tag) }]}>{entry.tag}</Text>
+                  <Text style={styles.logData} numberOfLines={2}>{entry.data}</Text>
+                </View>
+              ))
+            )}
+          </View>
+        )}
       </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container:  { flex: 1 },
-  scroll:     { paddingHorizontal: 16, paddingBottom: 40, gap: 12 },
-  statsRow:   { flexDirection: 'row', gap: 12 },
-  statCard:   {
-    flex: 1, borderRadius: 16, padding: 18, alignItems: 'center', gap: 4,
-  },
-  statEmoji:  { fontSize: 28 },
-  statValue:  { fontSize: 32, fontFamily: 'Inter_700Bold', color: '#FFFFFF' },
-  statLabel:  { fontSize: 11, fontFamily: 'Inter_400Regular', color: 'rgba(255,255,255,0.7)', textAlign: 'center' },
-  weekRow:    {},
-  weekCard:   {
-    borderRadius: 14, borderWidth: 1, padding: 14,
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-  },
-  weekLabel:  { fontSize: 12, fontFamily: 'Inter_500Medium' },
-  weekValue:  { fontSize: 15, fontFamily: 'Inter_600SemiBold' },
-  dayBlock:   { borderRadius: 14, borderWidth: 1, padding: 14, gap: 10 },
-  dayHeader:  { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  dayLabel:   { fontSize: 14, fontFamily: 'Inter_600SemiBold' },
-  daySummary: { flexDirection: 'row', gap: 6 },
-  badge:      { borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3 },
-  badgeText:  { fontSize: 12, fontFamily: 'Inter_600SemiBold', color: '#FFFFFF' },
-  pillsRow:   { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  pill:       {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    borderRadius: 10, borderWidth: 1, paddingHorizontal: 8, paddingVertical: 4,
-  },
-  pillEmoji:  { fontSize: 13 },
-  pillTime:   { fontSize: 12, fontFamily: 'Inter_400Regular' },
-  empty:      { textAlign: 'center', marginTop: 60, fontSize: 14, fontFamily: 'Inter_400Regular', lineHeight: 22 },
+  container:        { flex: 1 },
+  scroll:           { paddingHorizontal: 16, paddingBottom: 40, gap: 12 },
+  statsRow:         { flexDirection: 'row', gap: 12 },
+  statCard:         { flex: 1, borderRadius: 16, padding: 18, alignItems: 'center', gap: 4 },
+  statEmoji:        { fontSize: 28 },
+  statValue:        { fontSize: 32, fontFamily: 'Inter_700Bold', color: '#FFFFFF' },
+  statLabel:        { fontSize: 11, fontFamily: 'Inter_400Regular', color: 'rgba(255,255,255,0.7)', textAlign: 'center' },
+  weekRow:          {},
+  weekCard:         { borderRadius: 14, borderWidth: 1, padding: 14, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  weekLabel:        { fontSize: 12, fontFamily: 'Inter_500Medium' },
+  weekValue:        { fontSize: 15, fontFamily: 'Inter_600SemiBold' },
+  dayBlock:         { borderRadius: 14, borderWidth: 1, padding: 14, gap: 10 },
+  dayHeader:        { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  dayLabel:         { fontSize: 14, fontFamily: 'Inter_600SemiBold' },
+  daySummary:       { flexDirection: 'row', gap: 6 },
+  badge:            { borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3 },
+  badgeText:        { fontSize: 12, fontFamily: 'Inter_600SemiBold', color: '#FFFFFF' },
+  pillsRow:         { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  pill:             { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 10, borderWidth: 1, paddingHorizontal: 8, paddingVertical: 4 },
+  pillEmoji:        { fontSize: 13 },
+  pillTime:         { fontSize: 12, fontFamily: 'Inter_400Regular' },
+  empty:            { textAlign: 'center', marginTop: 60, fontSize: 14, fontFamily: 'Inter_400Regular', lineHeight: 22 },
+  debugToggle:      { borderRadius: 10, borderWidth: 1, padding: 10, alignItems: 'center', marginTop: 4 },
+  debugToggleText:  { fontSize: 12, fontFamily: 'Inter_400Regular' },
+  logBox:           { borderRadius: 10, borderWidth: 1, padding: 10, gap: 8 },
+  logEmpty:         { fontSize: 12, fontFamily: 'Inter_400Regular', color: '#546E7A', textAlign: 'center', paddingVertical: 8 },
+  logRow:           { gap: 1 },
+  logTime:          { fontSize: 10, fontFamily: 'Inter_400Regular' },
+  logTag:           { fontSize: 11, fontFamily: 'Inter_600SemiBold' },
+  logData:          { fontSize: 10, fontFamily: 'Inter_400Regular', color: '#78909C' },
 });
