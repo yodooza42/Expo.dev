@@ -55,9 +55,9 @@ function ImgBtn({
     >
       <ImageWidget
         image={image as any}
-        imageWidth={22}
-        imageHeight={22}
-        style={{ width: 22, height: 22 }}
+        imageWidth={40}
+        imageHeight={40}
+        style={{ width: 40, height: 40 }}
       />
     </FlexWidget>
   );

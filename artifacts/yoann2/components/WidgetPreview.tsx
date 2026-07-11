@@ -132,8 +132,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   btnIcon: {
-    width: 22,
-    height: 22,
+    width: 40,
+    height: 40,
   },
   sep: {
     width: 4,
