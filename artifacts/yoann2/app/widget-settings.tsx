@@ -29,8 +29,10 @@ import {
   getWidgetSettings,
   saveWidgetSettings,
   type DaySchedule,
+  type TripAudioPreset,
   type WidgetSettings,
 } from '@/widgets/widgetSettings';
+import { TRIP_AUDIO_OPTIONS } from '@/utils/tripSession';
 
 // Ordre d'affichage Lun..Dim ; valeur = index dans workSchedule (0=Dim..6=Sam)
 const DAY_ROWS: { label: string; idx: number }[] = [
@@ -153,6 +155,42 @@ export default function WidgetSettingsScreen() {
         {/* Simule un fond d'écran pour rendre la transparence visible */}
         <View style={styles.wallpaperFrame}>
           <WidgetPreview data={widgetData} />
+        </View>
+
+        {/* ── Audio notification de trajet ── */}
+        <Text style={[styles.section, { color: colors.mutedForeground }]}>Audio trajet (notification)</Text>
+        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Text style={[styles.audioHint, { color: colors.mutedForeground }]}>
+            Un son inaudible maintient la MediaSession active pour que la notification
+            de trajet reste non-swipeable (comme Spotify). Essaie une autre option si ça ne fonctionne pas.
+          </Text>
+          <View style={[styles.audioGrid, { marginTop: 10 }]}>
+            {TRIP_AUDIO_OPTIONS.map(opt => {
+              const active = (settings.tripAudio ?? 'sine_220') === opt.id;
+              return (
+                <Pressable
+                  key={opt.id}
+                  onPress={() => {
+                    Haptics.selectionAsync();
+                    setSettings(s => ({ ...s, tripAudio: opt.id as TripAudioPreset }));
+                  }}
+                  style={[
+                    styles.audioChip,
+                    active
+                      ? { backgroundColor: colors.primary }
+                      : { backgroundColor: colors.background, borderColor: colors.border, borderWidth: 1 },
+                  ]}
+                >
+                  <Text style={[styles.audioChipLabel, { color: active ? colors.primaryForeground : colors.foreground }]}>
+                    {opt.label}
+                  </Text>
+                  <Text style={[styles.audioChipHint, { color: active ? colors.primaryForeground : colors.mutedForeground, opacity: active ? 0.85 : 1 }]}>
+                    {opt.hint}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
         </View>
 
         <Text style={[styles.section, { color: colors.mutedForeground }]}>Heures de travail</Text>
@@ -302,6 +340,11 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   resetTxt: { fontSize: 13, fontFamily: 'Inter_400Regular' },
+  audioHint: { fontSize: 12, fontFamily: 'Inter_400Regular', lineHeight: 17 },
+  audioGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  audioChip: { borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, minWidth: '45%' },
+  audioChipLabel: { fontSize: 13, fontFamily: 'Inter_600SemiBold' },
+  audioChipHint:  { fontSize: 11, fontFamily: 'Inter_400Regular', marginTop: 2 },
   shiftHeader: { gap: 6 },
   shiftDateLabel: { fontSize: 15, fontFamily: 'Inter_600SemiBold' },
   shiftHoursRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },

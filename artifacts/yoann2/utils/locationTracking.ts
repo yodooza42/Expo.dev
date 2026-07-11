@@ -5,7 +5,7 @@ import * as TaskManager from 'expo-task-manager';
 import { autoBackup } from '@/utils/locationBackup';
 import { haversineKm } from '@/utils/haversine';
 import { processPointForTrip, TRACKING_MODE_KEY } from '@/utils/tripDetection';
-import { updateActiveTripNotification } from '@/utils/tripNotification';
+import { updateTripMetadata } from '@/utils/tripSession';
 
 export { haversineKm };
 
@@ -433,8 +433,8 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
         activeMs += (s.end ?? timestamp) - s.start;
       }
 
-      // Met à jour la notification notifee (non-dismissable) avec dist + durée
-      await updateActiveTripNotification(_tripDistKm, activeMs);
+      // Met à jour la notification MediaSession (non-swipeable) avec dist + durée
+      await updateTripMetadata(_tripDistKm, activeMs);
       // Persiste la distance pour survivre à un redémarrage du process JS
       AsyncStorage.setItem(TRIP_DIST_KEY, String(_tripDistKm)).catch(() => {});
     }

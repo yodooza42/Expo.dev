@@ -8,11 +8,14 @@ export interface DaySchedule {
   end: string;   // "HH:MM"
 }
 
+export type TripAudioPreset = 'sine_220' | 'sine_440' | 'sine_110' | 'noise';
+
 export interface WidgetSettings {
   primaryColor: string;
   bgColor: string;
   workSchedule: DaySchedule[]; // index 0=Dimanche .. 6=Samedi (convention Date.getDay())
   shiftNotif: boolean;
+  tripAudio: TripAudioPreset;
 }
 
 // index 0=Dimanche .. 6=Samedi
@@ -31,6 +34,7 @@ export const DEFAULT_WIDGET_SETTINGS: WidgetSettings = {
   bgColor: '#121212',
   workSchedule: DEFAULT_WORK_SCHEDULE,
   shiftNotif: true,
+  tripAudio: 'sine_220',
 };
 
 export async function getWidgetSettings(): Promise<WidgetSettings> {

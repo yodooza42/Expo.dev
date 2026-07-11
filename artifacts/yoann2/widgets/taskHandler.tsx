@@ -38,10 +38,10 @@ import {
   stopTracking,
 } from '@/utils/locationTracking';
 import {
-  pauseTripNotification,
-  startTripNotification,
-  stopTripNotification,
-} from '@/utils/tripNotification';
+  pauseTripSession,
+  startTripSession,
+  stopTripSession,
+} from '@/utils/tripSession';
 import {
   clearManualTripState,
   getManualTripState,
@@ -293,7 +293,7 @@ async function handleTripStart(
   } catch (err) {
     await widgetLog('trip:start:fgs_error', String(err));
   }
-  startTripNotification(0).catch(() => {});
+  startTripSession(0).catch(() => {});
 
   await maybeSuggestBatteryOptimization();
   await renderWidget(doRender, 'active');
@@ -326,7 +326,7 @@ async function handleTripPause(
   // Passe le GPS en basse fréquence SANS arrêter le FGS expo-location.
   // Notifee passe en mode "en pause" (non-dismissable).
   await pauseManualTracking().catch(() => {});
-  pauseTripNotification(getTripDistKm()).catch(() => {});
+  pauseTripSession(getTripDistKm()).catch(() => {});
 
   const now = Date.now();
   const segments = state.segments.map((s, i) =>
@@ -359,7 +359,7 @@ async function handleTripResume(
   } catch (err) {
     await widgetLog('trip:resume:fgs_error', String(err));
   }
-  startTripNotification(getTripDistKm()).catch(() => {});
+  startTripSession(getTripDistKm()).catch(() => {});
   await renderWidget(doRender, 'active');
 }
 
@@ -367,7 +367,7 @@ async function handleTripEnd(
   doRender: WidgetTaskHandlerProps['renderWidget'],
 ): Promise<void> {
   stopTracking().catch(() => {});
-  stopTripNotification().catch(() => {});
+  stopTripSession().catch(() => {});
 
   const manualState = await getManualTripState();
 
