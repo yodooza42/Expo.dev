@@ -15,6 +15,7 @@ import { useColors } from '@/hooks/useColors';
 import {
   getConsumptionLog,
   groupByDay,
+  removeConsumption,
   type ConsumptionEntry,
   type DayStats,
 } from '@/utils/consumptionStorage';
@@ -46,17 +47,41 @@ function fmtDayLabel(dateStr: string): string {
   return `${DAYS[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]}`;
 }
 
-function EntryPill({ entry, colors }: { entry: ConsumptionEntry; colors: ReturnType<typeof useColors> }) {
+function EntryPill({
+  entry,
+  colors,
+  onDelete,
+}: {
+  entry: ConsumptionEntry;
+  colors: ReturnType<typeof useColors>;
+  onDelete: (ts: string) => void;
+}) {
   const isCoffee = entry.type === 'coffee';
   return (
-    <View style={[styles.pill, { backgroundColor: colors.card, borderColor: colors.border }]}>
+    <TouchableOpacity
+      style={[styles.pill, { backgroundColor: colors.card, borderColor: colors.border }]}
+      onPress={() => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+        onDelete(entry.timestamp);
+      }}
+      activeOpacity={0.6}
+    >
       <Text style={styles.pillEmoji}>{isCoffee ? '☕' : '🚬'}</Text>
       <Text style={[styles.pillTime, { color: colors.mutedForeground }]}>{fmtTime(entry.timestamp)}</Text>
-    </View>
+      <Text style={[styles.pillDel, { color: colors.mutedForeground }]}>✕</Text>
+    </TouchableOpacity>
   );
 }
 
-function DayBlock({ day, colors }: { day: DayStats; colors: ReturnType<typeof useColors> }) {
+function DayBlock({
+  day,
+  colors,
+  onDelete,
+}: {
+  day: DayStats;
+  colors: ReturnType<typeof useColors>;
+  onDelete: (ts: string) => void;
+}) {
   return (
     <View style={[styles.dayBlock, { backgroundColor: colors.card, borderColor: colors.border }]}>
       <View style={styles.dayHeader}>
@@ -76,7 +101,7 @@ function DayBlock({ day, colors }: { day: DayStats; colors: ReturnType<typeof us
       </View>
       <View style={styles.pillsRow}>
         {day.entries.slice().reverse().map((e, i) => (
-          <EntryPill key={`${e.timestamp}-${i}`} entry={e} colors={colors} />
+          <EntryPill key={`${e.timestamp}-${i}`} entry={e} colors={colors} onDelete={onDelete} />
         ))}
       </View>
     </View>
@@ -159,7 +184,16 @@ export default function CountersScreen() {
           </Text>
         ) : (
           days.map(d => (
-            <DayBlock key={d.date} day={d} colors={colors} />
+            <DayBlock
+              key={d.date}
+              day={d}
+              colors={colors}
+              onDelete={async (ts) => {
+                await removeConsumption(ts);
+                const log = await getConsumptionLog();
+                setDays(groupByDay(log));
+              }}
+            />
           ))
         )}
 
@@ -219,6 +253,7 @@ const styles = StyleSheet.create({
   pill:             { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 10, borderWidth: 1, paddingHorizontal: 8, paddingVertical: 4 },
   pillEmoji:        { fontSize: 13 },
   pillTime:         { fontSize: 12, fontFamily: 'Inter_400Regular' },
+  pillDel:          { fontSize: 10, fontFamily: 'Inter_400Regular', marginLeft: 2 },
   empty:            { textAlign: 'center', marginTop: 60, fontSize: 14, fontFamily: 'Inter_400Regular', lineHeight: 22 },
   debugToggle:      { borderRadius: 10, borderWidth: 1, padding: 10, alignItems: 'center', marginTop: 4 },
   debugToggleText:  { fontSize: 12, fontFamily: 'Inter_400Regular' },

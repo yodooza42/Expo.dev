@@ -29,6 +29,15 @@ export async function addConsumption(type: ConsumptionType): Promise<void> {
   } catch {}
 }
 
+export async function removeConsumption(timestamp: string): Promise<void> {
+  try {
+    const raw = await AsyncStorage.getItem(KEY).catch(() => null);
+    const entries: ConsumptionEntry[] = raw ? (JSON.parse(raw) as ConsumptionEntry[]) : [];
+    const filtered = entries.filter(e => e.timestamp !== timestamp);
+    await AsyncStorage.setItem(KEY, JSON.stringify(filtered));
+  } catch {}
+}
+
 export async function getConsumptionLog(): Promise<ConsumptionEntry[]> {
   try {
     const raw = await AsyncStorage.getItem(KEY);

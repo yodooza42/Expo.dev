@@ -45,8 +45,8 @@ function ImgBtn({
     <FlexWidget
       clickAction={clickAction}
       style={{
-        flex: 1,
-        height: 'match_parent',
+        width: 49,
+        height: 49,
         justifyContent: 'center',
         alignItems: 'center',
         backgroundColor: bg,
@@ -163,7 +163,7 @@ export function AllInOneWidget({
           width: 'match_parent',
           flex: 1,
           alignItems: 'center',
-          flexGap: 2,
+          flexGap: 4,
         }}
       >
         <ImgBtn image={IMG_HOME} clickAction="NAVIGATE_HOME" />
@@ -187,9 +187,9 @@ export function AllInOneWidget({
           <ImgBtn image={IMG_STOP}  clickAction="MANUAL_TRIP_END" />
         )}
 
-        {/* Séparateur fin entre Play et Café */}
+        {/* Séparateur entre Play et Café */}
         <FlexWidget
-          style={{ width: 4, height: 'match_parent', backgroundColor: NAVBAR }}
+          style={{ width: 8, height: 'match_parent', backgroundColor: NAVBAR }}
         />
 
         <ImgBtn image={IMG_COFFEE}    clickAction="ADD_COFFEE" />
