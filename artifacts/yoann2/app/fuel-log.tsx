@@ -1,7 +1,7 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Haptics from 'expo-haptics';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
@@ -93,6 +93,7 @@ export default function FuelLogScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { add } = useLocalSearchParams<{ add?: string }>();
 
   const [entries, setEntries] = useState<FuelEntry[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
@@ -118,6 +119,12 @@ export default function FuelLogScreen() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { load(); }, [load]);
+
+  // Ouvre le modal automatiquement si l'app a été ouverte avec ?add=1
+  // (ex : bouton ⛽ du widget)
+  useEffect(() => {
+    if (add === '1') setFuelOpen(true);
+  }, [add]);
 
   async function onRefresh() {
     setRefreshing(true);

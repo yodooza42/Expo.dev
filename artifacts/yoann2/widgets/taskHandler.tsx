@@ -152,7 +152,7 @@ async function handleNavigateTo(): Promise<void> {
 }
 
 async function handleOpenFuel(): Promise<void> {
-  await Linking.openURL('yoann2:///(tabs)/trips').catch(() => {
+  await Linking.openURL('yoann2:///fuel-log?add=1').catch(() => {
     Linking.openURL('yoann2://').catch(() => {});
   });
 }
