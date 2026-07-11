@@ -4,3 +4,4 @@
 - [FGS GPS depuis widget](android-fgs-widget.md) — démarrer le foreground service dans les ~10 s après l'appui widget (jamais après un await long) ; patcher les options in-place, jamais stop/start.
 - [react-native-android-widget color format](rn-android-widget-colors.md) — use 6-digit `#RRGGBB` hex only; 8-digit `#RRGGBBAA` = CSS format (alpha last), NOT Android `#AARRGGBB`; `#FF121212` is red at 7% opacity, not opaque black.
 - [react-native-android-widget style API constraints](rn-android-widget-styles.md) — FlexWidgetStyle: use `flexGap` not `gap`; no `flexWrap`, no percentage widths ("47%"); TextWidgetStyle has no `flex`. WidgetTaskHandlerProps: widget name is at `widgetInfo.widgetName`, not top-level `widgetName`.
+- [notifee Expo plugin absent](notifee-expo-plugin.md) — @notifee/react-native 9.x has no Expo config plugin; do NOT add to app.json plugins; AAR manifest merges via Gradle automatically.

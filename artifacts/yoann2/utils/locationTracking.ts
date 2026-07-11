@@ -5,6 +5,7 @@ import * as TaskManager from 'expo-task-manager';
 import { autoBackup } from '@/utils/locationBackup';
 import { haversineKm } from '@/utils/haversine';
 import { processPointForTrip, TRACKING_MODE_KEY } from '@/utils/tripDetection';
+import { updateActiveTripNotification } from '@/utils/tripNotification';
 
 export { haversineKm };
 
@@ -17,70 +18,26 @@ const MAX_DAYS = 7;
 let _lastAutoBackupTs = 0;
 const AUTO_BACKUP_THROTTLE_MS = 60_000;
 
-// ── Live trip notification ────────────────────────────────────────────────────
+// ── Distance de trajet (persistée pour survivre aux redémarrages JS) ─────────
 //
-// Architecture :
-//  • La notification de trajet EST la notification du foreground service GPS.
-//    C'est le seul mécanisme réellement non-suppressible sur Android 13+.
-//  • Pour mettre à jour le texte sans flicker : startLocationUpdatesAsync sur
-//    une tâche déjà enregistrée patche les options via startForeground(id, notif)
-//    Android côté natif — même ID, mise à jour en place, pas de re-création.
-//  • Throttle à 15 s : évite de ré-enregistrer les listeners GPS à chaque point
-//    (3 s) et élimine tout clignotement perceptible.
-//  • _tripDistKm est persisté dans AsyncStorage pour survivre aux redémarrages
-//    du process JS (le foreground service Android peut rester vivant mais le
-//    moteur JS redémarre → perte de l'in-memory sans persistance).
+// La notification de trajet est gérée par @notifee/react-native (FGS séparé).
+// locationTracking garde uniquement l'accumulation de la distance GPS et sa
+// persistance AsyncStorage pour la récupération après redémarrage du process JS.
 
-const TRIP_DIST_KEY    = '@yoann2_trip_dist_km';
-const NOTIF_THROTTLE_MS = 15_000; // mise à jour notification max 1×/15 s
+const TRIP_DIST_KEY = '@yoann2_trip_dist_km';
 
-let _tripDistKm        = 0;
-let _tripDistLoaded    = false;   // true dès la première lecture AsyncStorage
-let _lastNotifUpdateTs = 0;
-let _lastNotifBody     = '';      // évite un re-patch si le texte est identique
+let _tripDistKm     = 0;
+let _tripDistLoaded = false;
 
 export function resetTripTracking(): void {
-  _tripDistKm        = 0;
-  _tripDistLoaded    = true;  // pas besoin de recharger : on repart de 0
-  _lastNotifUpdateTs = 0;
-  _lastNotifBody     = '';
+  _tripDistKm     = 0;
+  _tripDistLoaded = true;
   AsyncStorage.removeItem(TRIP_DIST_KEY).catch(() => {});
 }
 
-/**
- * Met à jour la notification du foreground service GPS en place (sans flicker).
- *
- * Throttlé à 15 s max — ignoré si le texte n'a pas changé.
- * Le GPS continue de tourner sans interruption entre les mises à jour.
- */
-async function updateTripNotification(distKm: number, activeMs: number): Promise<void> {
-  const now = Date.now();
-  if (now - _lastNotifUpdateTs < NOTIF_THROTTLE_MS) return;
-
-  const hh = Math.floor(activeMs / 3_600_000);
-  const mm = Math.floor((activeMs % 3_600_000) / 60_000);
-  const ss = Math.floor((activeMs % 60_000) / 1_000);
-  const duration = hh > 0
-    ? `${hh}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`
-    : `${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
-
-  const body = `${distKm.toFixed(2)} km · ${duration}`;
-  if (body === _lastNotifBody) return; // pas de changement → pas de patch
-
-  try {
-    const isRegistered = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME).catch(() => false);
-    if (!isRegistered) return;
-
-    // Patch en place via startForeground(id, notification) Android → pas de clignotement
-    const opts = await buildLocationOptions('active');
-    opts.foregroundService!.notificationBody = body;
-    await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, opts);
-
-    _lastNotifUpdateTs = now;
-    _lastNotifBody     = body;
-    // Persiste la distance pour survivre à un redémarrage du process JS
-    AsyncStorage.setItem(TRIP_DIST_KEY, String(distKm)).catch(() => {});
-  } catch {}
+/** Distance accumulée depuis le début du trajet (in-memory, mis à jour par la tâche GPS). */
+export function getTripDistKm(): number {
+  return _tripDistKm;
 }
 
 export type ActivityType = 'walk' | 'car' | 'unknown';
@@ -284,8 +241,13 @@ export async function setTrackingPaused(paused: boolean): Promise<void> {
 // ── Adaptive interval helpers ─────────────────────────────────────────────────
 
 // Returns the Location options adapted to current trip phase.
-// - idle  → economy mode (user-selected interval, balanced accuracy)
+// - idle   → economy mode (user-selected interval, balanced accuracy)
 // - active → dense mode (3s / 2m, high accuracy) for precise trace + distance
+// - paused → low-power mode (30s / 50m) — FGS reste actif pour garder le process vivant
+//
+// Note : la notification de trajet est gérée par @notifee/react-native (FGS séparé).
+// Le foregroundService ici est une notification minimale obligatoire pour le FGS GPS
+// d'expo-location — elle ne sert pas à afficher la progression du trajet.
 async function buildLocationOptions(
   tripPhase: 'active' | 'paused' | 'idle',
 ): Promise<Location.LocationTaskOptions> {
@@ -296,25 +258,15 @@ async function buildLocationOptions(
     accuracy: isActive ? Location.Accuracy.High : Location.Accuracy.Balanced,
     timeInterval: isActive ? 3_000 : isPaused ? 30_000 : baseInterval.timeIntervalMs,
     distanceInterval: isActive ? 2 : isPaused ? 50 : baseInterval.distanceIntervalM,
-    // Automotive navigation hint: tells FLP this is a navigation use-case so it
-    // never throttles or pauses updates on its own (critical for widget trips).
     ...(isActive && {
       activityType: Location.ActivityType.AutomotiveNavigation,
       pausesUpdatesAutomatically: false,
     }),
     showsBackgroundLocationIndicator: isActive,
     foregroundService: {
-      notificationTitle: isActive
-        ? 'Yoann2.0 — Trajet en cours'
-        : isPaused
-          ? 'Yoann2.0 — Trajet en pause'
-          : 'Yoann2.0',
-      notificationBody: isActive
-        ? 'Suivi GPS actif — trajet en cours'
-        : isPaused
-          ? 'GPS en veille — appuie sur ▶ pour reprendre'
-          : 'Surveillance des déplacements en arrière-plan',
-      notificationColor: isPaused ? '#888888' : '#FFC107',
+      notificationTitle: 'Yoann2.0',
+      notificationBody: 'GPS actif en arrière-plan',
+      notificationColor: '#FFC107',
     },
   };
 }
@@ -470,7 +422,7 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
       await processPointForTrip(point).catch(() => {});
     }
 
-    // ── Suivi distance + notification foreground (throttlée à 15 s) ─────────
+    // ── Suivi distance + notification notifee (throttlée à 15 s) ──────────
     if (manualActive && !manualPaused && lastValid) {
       _tripDistKm += haversineKm(lastValid.lat, lastValid.lng, lat, lng);
 
@@ -481,7 +433,10 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
         activeMs += (s.end ?? timestamp) - s.start;
       }
 
-      await updateTripNotification(_tripDistKm, activeMs);
+      // Met à jour la notification notifee (non-dismissable) avec dist + durée
+      await updateActiveTripNotification(_tripDistKm, activeMs);
+      // Persiste la distance pour survivre à un redémarrage du process JS
+      AsyncStorage.setItem(TRIP_DIST_KEY, String(_tripDistKm)).catch(() => {});
     }
 
     lastValid = point;

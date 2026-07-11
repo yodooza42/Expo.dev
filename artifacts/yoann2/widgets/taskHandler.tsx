@@ -30,12 +30,18 @@ import { haversineKm } from '@/utils/haversine';
 import { genId } from '@/utils/ids';
 import {
   dateKey,
+  getTripDistKm,
   loadDayPoints,
   resetTripTracking,
   pauseManualTracking,
   startManualTracking,
   stopTracking,
 } from '@/utils/locationTracking';
+import {
+  pauseTripNotification,
+  startTripNotification,
+  stopTripNotification,
+} from '@/utils/tripNotification';
 import {
   clearManualTripState,
   getManualTripState,
@@ -280,16 +286,14 @@ async function handleTripStart(
     segments: [{ start: now }],
   });
 
-  // CRITIQUE : démarrer le foreground service GPS IMMÉDIATEMENT après l'appui.
-  // Android 12+ n'autorise le démarrage d'un FGS depuis l'arrière-plan que
-  // ~10 s après l'interaction widget. L'ancien code attendait getCurrentPosition
-  // (jusqu'à 10 s) AVANT de démarrer → fenêtre expirée → service jamais démarré
-  // (pas de notification, pas de GPS, 0.0 km).
+  // CRITIQUE : démarrer les deux FGS IMMÉDIATEMENT dans la fenêtre d'exemption
+  // Android 12+ (~10 s après l'appui widget). L'ordre : GPS d'abord, puis notifee.
   try {
     await startManualTracking();
   } catch (err) {
     await widgetLog('trip:start:fgs_error', String(err));
   }
+  startTripNotification(0).catch(() => {});
 
   await maybeSuggestBatteryOptimization();
   await renderWidget(doRender, 'active');
@@ -319,9 +323,10 @@ async function handleTripPause(
     return;
   }
 
-  // Passe le GPS en basse fréquence (30 s / 50 m) SANS arrêter le foreground
-  // service → la notification reste non-dismissable en mode pause.
+  // Passe le GPS en basse fréquence SANS arrêter le FGS expo-location.
+  // Notifee passe en mode "en pause" (non-dismissable).
   await pauseManualTracking().catch(() => {});
+  pauseTripNotification(getTripDistKm()).catch(() => {});
 
   const now = Date.now();
   const segments = state.segments.map((s, i) =>
@@ -354,6 +359,7 @@ async function handleTripResume(
   } catch (err) {
     await widgetLog('trip:resume:fgs_error', String(err));
   }
+  startTripNotification(getTripDistKm()).catch(() => {});
   await renderWidget(doRender, 'active');
 }
 
@@ -361,6 +367,7 @@ async function handleTripEnd(
   doRender: WidgetTaskHandlerProps['renderWidget'],
 ): Promise<void> {
   stopTracking().catch(() => {});
+  stopTripNotification().catch(() => {});
 
   const manualState = await getManualTripState();
 

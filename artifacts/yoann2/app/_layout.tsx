@@ -9,7 +9,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import * as IntentLauncher from 'expo-intent-launcher';
 import * as Notifications from 'expo-notifications';
 import { useRouter, Stack } from 'expo-router';
-import * as SplashScreen from 'expo-splash-screen';
+import notifee from '@notifee/react-native';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, AppState, Platform } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -19,7 +19,6 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { TripTagModal } from '@/components/TripTagModal';
 import { AppProvider, useApp } from '@/contexts/AppContext';
-import { SplashProvider } from '@/contexts/SplashContext';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 import type { Trip, VehicleType } from '@/types/trips';
 import { rebuildBackupListFromSAF, runDailyBackupIfNeeded } from '@/utils/backup';
@@ -35,7 +34,10 @@ import {
   updateTrip,
 } from '@/utils/tripStorage';
 
-SplashScreen.preventAutoHideAsync().catch(() => {});
+// Enregistrement du handler foreground service notifee — doit être appelé
+// au démarrage de l'app, avant tout appel à notifee.displayNotification
+// avec asForegroundService:true.
+notifee.registerForegroundService(() => new Promise(() => {}));
 
 // Canal Android pour les notifications de trajet (sticky, non-dismissable)
 if (Platform.OS === 'android') {
@@ -236,12 +238,6 @@ export default function RootLayout() {
     Inter_700Bold,
   });
 
-  useEffect(() => {
-    if (fontsLoaded || fontError) {
-      SplashScreen.hideAsync().catch(() => {});
-    }
-  }, [fontsLoaded, fontError]);
-
   if (!fontsLoaded && !fontError) return null;
 
   return (
@@ -251,11 +247,9 @@ export default function RootLayout() {
           <GestureHandlerRootView style={{ flex: 1 }}>
             <KeyboardProvider>
               <ThemeProvider>
-                <SplashProvider>
-                  <AppProvider>
-                    <RootLayoutNav />
-                  </AppProvider>
-                </SplashProvider>
+                <AppProvider>
+                  <RootLayoutNav />
+                </AppProvider>
               </ThemeProvider>
             </KeyboardProvider>
           </GestureHandlerRootView>
