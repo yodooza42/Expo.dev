@@ -1,27 +1,20 @@
 /**
- * Session de trajet — notification FGS via @notifee/react-native.
+ * Session de trajet — pilote la notification du Foreground Service GPS
+ * (expo-location) pour afficher km et durée.
  *
- * RNTP retiré (incompatible New Architecture / Bridgeless, RN 0.81+).
- * La notification ongoing avec asForegroundService:true est non-swipeable
- * sur Android tant que le Foreground Service tourne.
+ * Stratégie : plutôt qu'un FGS notifee séparé (instable sur Samsung One UI 7 /
+ * Android 15 à cause des restrictions shortService/dataSync), on réutilise la
+ * notification du FGS expo-location, déjà non-swipeable parce que liée au
+ * service de localisation actif. On la met à jour via startLocationUpdatesAsync
+ * avec les mêmes options GPS mais un titre/corps différent.
  *
  * TRIP_AUDIO_OPTIONS est conservé pour l'UI des paramètres widget
  * (la préférence est mémorisée, l'audio sera réintégré via un module
  * New-Arch compatible dans une prochaine version).
  */
 
-import notifee, {
-  AndroidForegroundServiceType,
-  AndroidImportance,
-  AndroidVisibility,
-} from '@notifee/react-native';
-
+import { patchLocationFgsNotification } from '@/utils/locationTracking';
 import type { TripAudioPreset } from '@/widgets/widgetSettings';
-
-// Enregistrement du handler FGS au niveau module :
-// - exécuté dans le contexte headless (widget task handler) ET dans l'app principale
-// - la promesse ne se résout jamais → le service tourne jusqu'à stopForegroundService()
-notifee.registerForegroundService(() => new Promise<void>(() => {}));
 
 // ─── Options audio (UI uniquement — pas d'audio actif dans cette version) ────
 
@@ -32,96 +25,58 @@ export const TRIP_AUDIO_OPTIONS: { id: TripAudioPreset; label: string; hint: str
   { id: 'noise',    label: 'Bruit blanc', hint: 'Spectre large' },
 ];
 
-// ─── Constantes notification ──────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const TRIP_NOTIF_ID  = 'trip-active';
-const TRIP_CHANNEL   = 'trip';          // canal créé dans _layout.tsx via expo-notifications
-
-const UPDATE_THROTTLE_MS = 15_000;
-let _lastUpdateTs = 0;
-
-function androidBase() {
-  return {
-    channelId:            TRIP_CHANNEL,
-    importance:           AndroidImportance.HIGH,
-    ongoing:              true,
-    asForegroundService:  true,
-    foregroundServiceTypes: [
-      AndroidForegroundServiceType.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
-    ],
-    visibility:           AndroidVisibility.PUBLIC,
-    pressAction:          { id: 'default', launchActivity: 'default' } as const,
-  };
+function formatDuration(activeMs: number): string {
+  const hh = Math.floor(activeMs / 3_600_000);
+  const mm = Math.floor((activeMs % 3_600_000) / 60_000);
+  const ss = Math.floor((activeMs % 60_000) / 1_000);
+  return hh > 0
+    ? `${hh}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`
+    : `${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
 }
 
 // ─── API publique ─────────────────────────────────────────────────────────────
 
 /**
  * Démarre (ou reprend) la session de trajet.
- * Affiche la notification FGS non-swipeable.
+ * Met à jour la notification FGS GPS pour afficher le trajet en cours.
  */
 export async function startTripSession(distKm = 0): Promise<void> {
-  try {
-    _lastUpdateTs = 0;
-    await notifee.displayNotification({
-      id:    TRIP_NOTIF_ID,
-      title: distKm > 0
-        ? `Trajet · ${distKm.toFixed(2)} km · Reprise`
-        : 'Trajet · Démarrage…',
-      body: '00:00',
-      android: androidBase(),
-    });
-  } catch {}
+  const title = distKm > 0
+    ? `Trajet · ${distKm.toFixed(2)} km · Reprise`
+    : 'Trajet en cours';
+  await patchLocationFgsNotification(title, '00:00', true);
 }
 
 /**
  * Met à jour les métadonnées (distance + durée active) dans la notification.
- * Throttlé à 15 s.
+ * Délègue à patchLocationFgsNotification (throttlé à 15 s).
  */
 export async function updateTripMetadata(
   distKm: number,
   activeMs: number,
 ): Promise<void> {
-  const now = Date.now();
-  if (now - _lastUpdateTs < UPDATE_THROTTLE_MS) return;
-
-  const hh = Math.floor(activeMs / 3_600_000);
-  const mm = Math.floor((activeMs % 3_600_000) / 60_000);
-  const ss = Math.floor((activeMs % 60_000) / 1_000);
-  const duration = hh > 0
-    ? `${hh}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`
-    : `${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
-
-  try {
-    await notifee.displayNotification({
-      id:    TRIP_NOTIF_ID,
-      title: `Trajet · ${distKm.toFixed(2)} km`,
-      body:  duration,
-      android: androidBase(),
-    });
-    _lastUpdateTs = now;
-  } catch {}
+  await patchLocationFgsNotification(
+    `Trajet · ${distKm.toFixed(2)} km`,
+    formatDuration(activeMs),
+  );
 }
 
 /**
- * Passe la notification en mode "en pause" (FGS reste actif).
+ * Passe la notification en mode "en pause".
  */
 export async function pauseTripSession(distKm: number): Promise<void> {
-  _lastUpdateTs = 0;
-  try {
-    await notifee.displayNotification({
-      id:    TRIP_NOTIF_ID,
-      title: `En pause · ${distKm.toFixed(2)} km`,
-      body:  'Appuie sur ▶ pour reprendre',
-      android: androidBase(),
-    });
-  } catch {}
+  await patchLocationFgsNotification(
+    `En pause · ${distKm.toFixed(2)} km`,
+    'Appuie sur ▶ pour reprendre',
+    true,
+  );
 }
 
 /**
- * Stoppe le Foreground Service et supprime la notification.
+ * Fin du trajet — restaure la notification FGS GPS par défaut.
  */
 export async function stopTripSession(): Promise<void> {
-  _lastUpdateTs = 0;
-  try { await notifee.stopForegroundService(); } catch {}
+  await patchLocationFgsNotification('Yoann2.0', 'GPS actif en arrière-plan', true);
 }

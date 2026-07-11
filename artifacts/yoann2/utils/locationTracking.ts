@@ -5,7 +5,6 @@ import * as TaskManager from 'expo-task-manager';
 import { autoBackup } from '@/utils/locationBackup';
 import { haversineKm } from '@/utils/haversine';
 import { processPointForTrip, TRACKING_MODE_KEY } from '@/utils/tripDetection';
-import { updateTripMetadata } from '@/utils/tripSession';
 
 export { haversineKm };
 
@@ -19,15 +18,47 @@ let _lastAutoBackupTs = 0;
 const AUTO_BACKUP_THROTTLE_MS = 60_000;
 
 // ── Distance de trajet (persistée pour survivre aux redémarrages JS) ─────────
-//
-// La notification de trajet est gérée par @notifee/react-native (FGS séparé).
-// locationTracking garde uniquement l'accumulation de la distance GPS et sa
-// persistance AsyncStorage pour la récupération après redémarrage du process JS.
 
 const TRIP_DIST_KEY = '@yoann2_trip_dist_km';
 
 let _tripDistKm     = 0;
 let _tripDistLoaded = false;
+
+// ── État FGS notification expo-location ──────────────────────────────────────
+// La notification du Foreground Service GPS (expo-location) sert aussi à
+// afficher la progression du trajet. C'est la seule notification garantie
+// non-swipeable sur Samsung One UI 7 (Android 15+).
+
+let _fgsTitle = 'Yoann2.0';
+let _fgsBody  = 'GPS actif en arrière-plan';
+let _fgsPatchTs = 0;
+let _currentTripPhase: 'active' | 'paused' | 'idle' = 'idle';
+const FGS_PATCH_THROTTLE_MS = 15_000;
+
+/**
+ * Met à jour le titre/corps de la notification du Foreground Service GPS.
+ * Appelé depuis tripSession.ts pour afficher la progression du trajet.
+ * Throttlé à 15 s (force=true pour les transitions start/pause/stop).
+ */
+export async function patchLocationFgsNotification(
+  title: string,
+  body: string,
+  force = false,
+): Promise<void> {
+  const now = Date.now();
+  if (!force && now - _fgsPatchTs < FGS_PATCH_THROTTLE_MS) return;
+
+  _fgsTitle   = title;
+  _fgsBody    = body;
+  _fgsPatchTs = now;
+
+  try {
+    const isRunning = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME).catch(() => false);
+    if (!isRunning) return;
+    const opts = await buildLocationOptions(_currentTripPhase);
+    await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, opts);
+  } catch {}
+}
 
 export function resetTripTracking(): void {
   _tripDistKm     = 0;
@@ -264,8 +295,8 @@ async function buildLocationOptions(
     }),
     showsBackgroundLocationIndicator: isActive,
     foregroundService: {
-      notificationTitle: 'Yoann2.0',
-      notificationBody: 'GPS actif en arrière-plan',
+      notificationTitle: _fgsTitle,
+      notificationBody:  _fgsBody,
       notificationColor: '#FFC107',
     },
   };
@@ -296,6 +327,7 @@ export async function startTracking(): Promise<void> {
   const tripPhase = mode === 'active' ? 'active' : 'idle';
 
   await AsyncStorage.setItem(TRACKING_STARTED_MODE_KEY, tripPhase).catch(() => {});
+  _currentTripPhase = tripPhase;
   const opts = await buildLocationOptions(tripPhase);
   await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, opts);
 }
@@ -325,6 +357,7 @@ export async function startManualTracking(): Promise<void> {
   // INTERDIT d'en recréer un depuis l'arrière-plan hors fenêtre d'exemption
   // (~10 s après l'appui widget) → ForegroundServiceStartNotAllowedException,
   // pas de notification, pas de GPS.
+  _currentTripPhase = 'active';
   const opts = await buildLocationOptions('active');
   await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, opts);
 }
@@ -346,6 +379,7 @@ export async function pauseManualTracking(): Promise<void> {
   // startLocationUpdatesAsync sur une tâche déjà enregistrée patche les options
   // (titre/corps/fréquence) sans recréer le foreground service — la notification
   // reste à l'écran et ne peut pas être swipée.
+  _currentTripPhase = 'paused';
   const opts = await buildLocationOptions('paused');
   await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, opts);
 }
@@ -422,7 +456,7 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
       await processPointForTrip(point).catch(() => {});
     }
 
-    // ── Suivi distance + notification notifee (throttlée à 15 s) ──────────
+    // ── Suivi distance + notification FGS expo-location (throttlée à 15 s) ──
     if (manualActive && !manualPaused && lastValid) {
       _tripDistKm += haversineKm(lastValid.lat, lastValid.lng, lat, lng);
 
@@ -433,8 +467,16 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
         activeMs += (s.end ?? timestamp) - s.start;
       }
 
-      // Met à jour la notification MediaSession (non-swipeable) avec dist + durée
-      await updateTripMetadata(_tripDistKm, activeMs);
+      // Formate la durée hh:mm:ss / mm:ss
+      const hh = Math.floor(activeMs / 3_600_000);
+      const mm = Math.floor((activeMs % 3_600_000) / 60_000);
+      const ss = Math.floor((activeMs % 60_000) / 1_000);
+      const dur = hh > 0
+        ? `${hh}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`
+        : `${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
+
+      // Met à jour la notification FGS GPS (non-swipeable) avec dist + durée
+      await patchLocationFgsNotification(`Trajet · ${_tripDistKm.toFixed(2)} km`, dur);
       // Persiste la distance pour survivre à un redémarrage du process JS
       AsyncStorage.setItem(TRIP_DIST_KEY, String(_tripDistKm)).catch(() => {});
     }
