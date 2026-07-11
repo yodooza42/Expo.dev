@@ -9,7 +9,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import * as IntentLauncher from 'expo-intent-launcher';
 import * as Notifications from 'expo-notifications';
 import { useRouter, Stack } from 'expo-router';
-import TrackPlayer from 'react-native-track-player';
+import notifee from '@notifee/react-native';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, AppState, Platform } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -33,6 +33,10 @@ import {
   purgeOldTrips,
   updateTrip,
 } from '@/utils/tripStorage';
+
+// Foreground service notifee — handler vide, le service tourne jusqu'à
+// notifee.stopForegroundService() dans stopTripSession().
+notifee.registerForegroundService(() => new Promise<void>(() => {}));
 
 // Canal Android pour les notifications de trajet (sticky, non-dismissable)
 if (Platform.OS === 'android') {
@@ -94,9 +98,6 @@ function RootLayoutNav() {
   }, []);
 
   useEffect(() => {
-    // Enregistrement RNTP — doit se faire après le premier mount React,
-    // jamais au niveau module (crash avec New Architecture / Bridgeless).
-    try { TrackPlayer.registerPlaybackService(() => async () => {}); } catch {}
     bootstrapLocationTracking();
     checkPendingTrips();
     runScheduler();
