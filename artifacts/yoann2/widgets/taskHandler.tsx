@@ -176,6 +176,31 @@ async function handleNavigateHome(): Promise<void> {
   }
 }
 
+// ─── Notification persistante trajet ─────────────────────────────────────────
+
+const TRIP_NOTIF_ID = 'yoann2-trip-active';
+
+async function postTripNotification(state: 'active' | 'paused'): Promise<void> {
+  // Annule la précédente avant de republier (même identifier = remplacement)
+  await Notifications.dismissNotificationAsync(TRIP_NOTIF_ID).catch(() => {});
+  await Notifications.scheduleNotificationAsync({
+    identifier: TRIP_NOTIF_ID,
+    content: {
+      title: state === 'active' ? '🚗 Trajet en cours — Yoann 2.0' : '⏸ Trajet en pause — Yoann 2.0',
+      body: state === 'active'
+        ? 'Enregistrement GPS actif. Appuie sur ⏸ pour mettre en pause.'
+        : 'Trajet suspendu. Appuie sur ▶ pour reprendre.',
+      sticky: true,
+      data: {},
+    },
+    trigger: null,
+  }).catch(() => {});
+}
+
+async function cancelTripNotification(): Promise<void> {
+  await Notifications.dismissNotificationAsync(TRIP_NOTIF_ID).catch(() => {});
+}
+
 // ─── Trajet manuel ───────────────────────────────────────────────────────────
 
 async function handleTripStart(
@@ -197,16 +222,7 @@ async function handleTripStart(
   });
 
   startManualTracking().catch(() => {});
-
-  await Notifications.scheduleNotificationAsync({
-    content: {
-      title: 'Trajet démarré — Yoann 2.0',
-      body: 'Enregistrement GPS en cours. Appuyez sur ⏸ pour mettre en pause.',
-      data: {},
-    },
-    trigger: null,
-  }).catch(() => {});
-
+  await postTripNotification('active');
   await renderWidget(doRender, 'active');
 }
 
@@ -228,6 +244,7 @@ async function handleTripPause(
   );
   await saveManualTripState({ ...state, paused: true, segments });
 
+  await postTripNotification('paused');
   await renderWidget(doRender, 'paused');
 }
 
@@ -249,7 +266,7 @@ async function handleTripResume(
   });
 
   startManualTracking().catch(() => {});
-
+  await postTripNotification('active');
   await renderWidget(doRender, 'active');
 }
 
@@ -277,6 +294,7 @@ async function handleTripEnd(
 
   await clearManualTripState();
   resetTripTracking();
+  await cancelTripNotification();
   await renderWidget(doRender, 'idle');
 
   const endLoc = await getCurrentPosition();

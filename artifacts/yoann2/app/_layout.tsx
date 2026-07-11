@@ -37,6 +37,18 @@ import {
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
+// Canal Android pour les notifications de trajet (sticky, non-dismissable)
+if (Platform.OS === 'android') {
+  Notifications.setNotificationChannelAsync('trip', {
+    name: 'Trajet en cours',
+    importance: Notifications.AndroidImportance.HIGH,
+    sound: null,
+    vibrationPattern: [],
+    enableVibrate: false,
+    showBadge: false,
+  }).catch(() => {});
+}
+
 const queryClient = new QueryClient();
 
 async function bootstrapLocationTracking() {
