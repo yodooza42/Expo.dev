@@ -10,9 +10,18 @@
  * New-Arch compatible dans une prochaine version).
  */
 
-import notifee, { AndroidImportance, AndroidVisibility } from '@notifee/react-native';
+import notifee, {
+  AndroidForegroundServiceType,
+  AndroidImportance,
+  AndroidVisibility,
+} from '@notifee/react-native';
 
 import type { TripAudioPreset } from '@/widgets/widgetSettings';
+
+// Enregistrement du handler FGS au niveau module :
+// - exécuté dans le contexte headless (widget task handler) ET dans l'app principale
+// - la promesse ne se résout jamais → le service tourne jusqu'à stopForegroundService()
+notifee.registerForegroundService(() => new Promise<void>(() => {}));
 
 // ─── Options audio (UI uniquement — pas d'audio actif dans cette version) ────
 
@@ -33,12 +42,15 @@ let _lastUpdateTs = 0;
 
 function androidBase() {
   return {
-    channelId:        TRIP_CHANNEL,
-    importance:       AndroidImportance.HIGH,
-    ongoing:          true,
-    asForegroundService: true,
-    visibility:       AndroidVisibility.PUBLIC,
-    pressAction:      { id: 'default', launchActivity: 'default' } as const,
+    channelId:            TRIP_CHANNEL,
+    importance:           AndroidImportance.HIGH,
+    ongoing:              true,
+    asForegroundService:  true,
+    foregroundServiceTypes: [
+      AndroidForegroundServiceType.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
+    ],
+    visibility:           AndroidVisibility.PUBLIC,
+    pressAction:          { id: 'default', launchActivity: 'default' } as const,
   };
 }
 
