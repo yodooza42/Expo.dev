@@ -367,13 +367,12 @@ export async function startManualTracking(): Promise<void> {
   const hasServices = await Location.hasServicesEnabledAsync();
   if (!hasServices) return;
 
-  const isRegistered = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME).catch(() => false);
-  if (isRegistered) {
-    await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME);
-  }
-
-  // Use the same high-accuracy active options as the auto-tracking mode:
-  // Accuracy.High (real GPS chip), 3s/2m intervals, automotive navigation hint.
+  // NE JAMAIS stop/start ici : startLocationUpdatesAsync sur une tâche déjà
+  // enregistrée patche les options en place (startForeground même ID côté
+  // Android). Un stop + start détruit le foreground service et Android 12+
+  // INTERDIT d'en recréer un depuis l'arrière-plan hors fenêtre d'exemption
+  // (~10 s après l'appui widget) → ForegroundServiceStartNotAllowedException,
+  // pas de notification, pas de GPS.
   const opts = await buildLocationOptions('active');
   await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, opts);
 }

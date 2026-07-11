@@ -1,5 +1,6 @@
 - [EAS build git lock workaround](eas-build-git-lock.md) — prefix `GIT_OPTIONAL_LOCKS=0` to run `eas-cli build` for the yoann2 Expo app; plain `eas build` fails on `.git/index.lock`.
 - [EAS Build fix — yoann2](eas-build-fix.md) — lockfile sync, minSdkVersion via plugin, account `yoann42s-team`/`application-yoann20` (switched July 2026, old quota exhausted); use `export EXPO_TOKEN` not inline.
 - [Expo Android crash diagnosis](expo-android-crash-diagnosis.md) — splash-then-close = uncaught JS error in index.js/root render before React (guard sync native calls); instant-close = native init crash; Reanimated 4 requires New Arch.
+- [FGS GPS depuis widget](android-fgs-widget.md) — démarrer le foreground service dans les ~10 s après l'appui widget (jamais après un await long) ; patcher les options in-place, jamais stop/start.
 - [react-native-android-widget color format](rn-android-widget-colors.md) — use 6-digit `#RRGGBB` hex only; 8-digit `#RRGGBBAA` = CSS format (alpha last), NOT Android `#AARRGGBB`; `#FF121212` is red at 7% opacity, not opaque black.
 - [react-native-android-widget style API constraints](rn-android-widget-styles.md) — FlexWidgetStyle: use `flexGap` not `gap`; no `flexWrap`, no percentage widths ("47%"); TextWidgetStyle has no `flex`. WidgetTaskHandlerProps: widget name is at `widgetInfo.widgetName`, not top-level `widgetName`.

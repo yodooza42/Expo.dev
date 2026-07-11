@@ -268,24 +268,45 @@ async function handleTripStart(
     return;
   }
 
-  await maybeSuggestBatteryOptimization();
   resetTripTracking();
-
-  const loc = await getCurrentPosition();
   const now = Date.now();
 
   await saveManualTripState({
     active: true,
     paused: false,
     startTime: now,
-    startLat: loc?.coords.latitude ?? 0,
-    startLon: loc?.coords.longitude ?? 0,
+    startLat: 0,
+    startLon: 0,
     segments: [{ start: now }],
   });
 
-  // Await pour que la notification foreground service GPS apparaisse avant de rendre
-  await startManualTracking().catch(() => {});
+  // CRITIQUE : démarrer le foreground service GPS IMMÉDIATEMENT après l'appui.
+  // Android 12+ n'autorise le démarrage d'un FGS depuis l'arrière-plan que
+  // ~10 s après l'interaction widget. L'ancien code attendait getCurrentPosition
+  // (jusqu'à 10 s) AVANT de démarrer → fenêtre expirée → service jamais démarré
+  // (pas de notification, pas de GPS, 0.0 km).
+  try {
+    await startManualTracking();
+  } catch (err) {
+    await widgetLog('trip:start:fgs_error', String(err));
+  }
+
+  await maybeSuggestBatteryOptimization();
   await renderWidget(doRender, 'active');
+
+  // Position de départ récupérée APRÈS coup — le service tourne déjà, le
+  // timing n'a plus d'importance. Patch de l'état si le trajet est toujours actif.
+  const loc = await getCurrentPosition();
+  if (loc) {
+    const st = await getManualTripState();
+    if (st?.active && st.startLat === 0 && st.startLon === 0) {
+      await saveManualTripState({
+        ...st,
+        startLat: loc.coords.latitude,
+        startLon: loc.coords.longitude,
+      });
+    }
+  }
 }
 
 async function handleTripPause(
@@ -328,7 +349,11 @@ async function handleTripResume(
     segments: [...state.segments, { start: now }],
   });
 
-  await startManualTracking().catch(() => {});
+  try {
+    await startManualTracking();
+  } catch (err) {
+    await widgetLog('trip:resume:fgs_error', String(err));
+  }
   await renderWidget(doRender, 'active');
 }
 
