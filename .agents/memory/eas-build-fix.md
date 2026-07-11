@@ -31,16 +31,18 @@ cd artifacts/yoann2 && export EXPO_TOKEN=$EXPO_TOKEN && EAS_SKIP_AUTO_FINGERPRIN
 `GIT_OPTIONAL_LOCKS=0` avoids `.git/index.lock` errors. `EAS_SKIP_AUTO_FINGERPRINT=1` avoids fingerprint timeouts.
 EXPO_TOKEN must be exported (inline `EXPO_TOKEN=... eas build` is killed by sandbox; `export EXPO_TOKEN=...` first works).
 
-## Account (statut juillet 2026 — quota épuisé)
-- Owner dans app.json : `yoann42s-team`
-- projectId dans app.json : `5b936768-fba3-49ab-b3d6-ce5f820fb035`
-- Le EXPO_TOKEN actuel est lié à `marie2.0` (confirmé par `eas whoami`) → pas d'accès au projet `5b936768`
-- Situation : l'utilisateur a créé un NOUVEAU projet EAS sur un compte différent mais le token fourni
-  est toujours celui de `marie2.0`. Il faut le token du compte qui POSSÈDE `5b936768`.
-- Pour débloquer : demander le token Access Token du compte propriétaire de `5b936768` sur expo.dev
+## Account (actif — juillet 2026)
+- Owner : `stpyoann`
+- Slug : `yoann-20`
+- projectId : `5b936768-fba3-49ab-b3d6-ce5f820fb035`
+- app.json : `owner: "stpyoann"`, `slug: "yoann-20"`
+- EXPO_TOKEN : robot token pour `stpyoann` (dans Replit secret `EXPO_TOKEN`)
+- Vérifier avec `eas whoami` → doit montrer `stpyoann (Role: Owner)`
+- Archive de 424 MB — compression lente, timeout 120s nécessaire
 
-## Ancien compte (référence)
-- `marie2.0`, slug `yoann20`, projectId `206ea9d5-49cb-43f9-9bfa-e632d0fd7297` — quota Free épuisé juillet 2026, reset 1er août
+## Comptes précédents (référence)
+- `marie2.0`, slug `yoann20`, projectId `206ea9d5…` — quota Free épuisé juillet 2026
+- `yoann42s-team`, slug `application-yoann20`, projectId `875e84e9…` — migré
 
 ## Free plan quota
 Quota reset le 1er de chaque mois. Si build échoue avec "This account has used its Android builds
