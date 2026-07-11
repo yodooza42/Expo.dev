@@ -59,15 +59,22 @@ const SPIN_INTERVAL_MS  = 250;
 const GPS_TIMEOUT_MS    = 10_000;
 const BATTERY_KEY       = '@yoann2_battery_opt_prompted';
 
-// ─── Anti PendingIntent storm ─────────────────────────────────────────────────
-// Samsung One UI re-livre les anciens PendingIntents en rafale lors d'un appui
-// widget. Ce verrou global rejette tout second appel trip dans les 5 secondes
-// qui suivent le premier pour absorber ces re-livraisons parasites.
-const TRIP_LOCK_KEY    = '@yoann2_trip_lock';
-const TRIP_LOCK_MS     = 5_000;
+// ─── Verrous anti-doublon ─────────────────────────────────────────────────────
 
-// Debounce séparé pour REFRESH — fenêtre plus courte (3 s) car l'animation
-// dure 2 s et Android peut re-livrer le PendingIntent pendant ce temps.
+// Trajet — 1 min entre PLAY/PAUSE/STOP (absorbe storms PendingIntent Samsung
+// ET empêche les appuis accidentels rapides).
+const TRIP_LOCK_KEY    = '@yoann2_trip_lock';
+const TRIP_LOCK_MS     = 60_000; // 1 min
+
+// Trajet — 5 min entre STOP et un nouveau PLAY (évite un redémarrage accidentel
+// juste après avoir terminé un trajet).
+const TRIP_END_KEY     = '@yoann2_trip_end_ts';
+const TRIP_END_MS      = 300_000; // 5 min
+
+// Consommation — 5 min par type (☕ et 🚬 indépendants).
+const CONSUMPTION_LOCK_MS = 300_000; // 5 min
+
+// REFRESH — 3 s (durée animation = 2 s, re-livraison PendingIntent pendant ce temps).
 const REFRESH_LOCK_KEY = '@yoann2_refresh_lock';
 const REFRESH_LOCK_MS  = 3_000;
 
@@ -77,14 +84,52 @@ async function acquireTripLock(): Promise<boolean> {
     if (raw) {
       const ts = parseInt(raw, 10);
       if (!isNaN(ts) && Date.now() - ts < TRIP_LOCK_MS) {
-        await widgetLog('trip:debounced', `${Date.now() - ts}ms since last`);
+        await widgetLog('trip:debounced', `${Date.now() - ts}ms since last action`);
         return false;
       }
     }
     await AsyncStorage.setItem(TRIP_LOCK_KEY, String(Date.now()));
     return true;
   } catch {
-    return true; // En cas d'erreur storage, on laisse passer
+    return true;
+  }
+}
+
+/** Appelé dans handleTripStart seulement : vérifie le délai post-fin de trajet. */
+async function isTripEndCooldown(): Promise<boolean> {
+  try {
+    const raw = await AsyncStorage.getItem(TRIP_END_KEY);
+    if (!raw) return false;
+    const ts = parseInt(raw, 10);
+    if (!isNaN(ts) && Date.now() - ts < TRIP_END_MS) {
+      await widgetLog('trip:end-cooldown', `${Math.round((Date.now() - ts) / 1000)}s since last stop`);
+      return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Tente d'acquérir le verrou pour un type de consommation (coffee | cigarette).
+ * Retourne false si une entrée a déjà été ajoutée dans les 5 dernières minutes.
+ */
+async function acquireConsumptionLock(type: 'coffee' | 'cigarette'): Promise<boolean> {
+  const key = `@yoann2_consumption_lock_${type}`;
+  try {
+    const raw = await AsyncStorage.getItem(key);
+    if (raw) {
+      const ts = parseInt(raw, 10);
+      if (!isNaN(ts) && Date.now() - ts < CONSUMPTION_LOCK_MS) {
+        await widgetLog(`${type}:debounced`, `${Math.round((Date.now() - ts) / 1000)}s since last`);
+        return false;
+      }
+    }
+    await AsyncStorage.setItem(key, String(Date.now()));
+    return true;
+  } catch {
+    return true;
   }
 }
 
@@ -238,7 +283,12 @@ async function handleTripStart(
     await renderWidget(doRender, existingState.paused ? 'paused' : 'active');
     return;
   }
-  // Guard 2 : verrou anti-storm PendingIntent Samsung
+  // Guard 2 : cooldown 5 min post-STOP (évite de relancer juste après un arrêt)
+  if (await isTripEndCooldown()) {
+    await renderWidget(doRender, 'idle');
+    return;
+  }
+  // Guard 3 : verrou 1 min entre actions (anti-storm PendingIntent Samsung)
   if (!await acquireTripLock()) {
     await renderWidget(doRender, 'idle');
     return;
@@ -347,6 +397,8 @@ async function handleTripEnd(
 
   await clearManualTripState();
   resetTripTracking();
+  // Enregistre l'heure de fin pour le cooldown 5 min avant un nouveau PLAY
+  await AsyncStorage.setItem(TRIP_END_KEY, String(Date.now())).catch(() => {});
   await renderWidget(doRender, 'idle');
 
   const endLoc = await getCurrentPosition();
@@ -547,14 +599,17 @@ export async function widgetTaskHandler(props: WidgetTaskHandlerProps): Promise<
             break;
 
           case 'ADD_COFFEE':
-            await addConsumption('coffee');
-            // Re-rendre le widget pour invalider les anciens PendingIntents
-            // (évite qu'Android re-livre l'intent lors du prochain réveil d'écran)
+            // Verrou 5 min — ignore les appuis accidentels rapides
+            if (await acquireConsumptionLock('coffee')) {
+              await addConsumption('coffee');
+            }
             await renderWidget(doRender);
             break;
 
           case 'ADD_CIGARETTE':
-            await addConsumption('cigarette');
+            if (await acquireConsumptionLock('cigarette')) {
+              await addConsumption('cigarette');
+            }
             await renderWidget(doRender);
             break;
 
