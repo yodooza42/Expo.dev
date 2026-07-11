@@ -31,19 +31,20 @@ cd artifacts/yoann2 && export EXPO_TOKEN=$EXPO_TOKEN && EAS_SKIP_AUTO_FINGERPRIN
 `GIT_OPTIONAL_LOCKS=0` avoids `.git/index.lock` errors. `EAS_SKIP_AUTO_FINGERPRINT=1` avoids fingerprint timeouts.
 EXPO_TOKEN must be exported (inline `EXPO_TOKEN=... eas build` is killed by sandbox; `export EXPO_TOKEN=...` first works).
 
-## Account (current — verified July 2026)
-- Owner: `marie2.0` (this is the CURRENT active account, confirmed by `eas whoami`)
-- Slug: `yoann20`
-- projectId: `206ea9d5-49cb-43f9-9bfa-e632d0fd7297`
-- Profile: `apk` (buildType apk, internal distribution)
-- EXPO_TOKEN: stored in Replit secret `EXPO_TOKEN` — it's a robot token for `marie2.0`
-- Verify with `eas whoami` — should show `marie2.0 (Role: Admin)`
-- Previous account (`yoann42s-team`, slug `application-yoann20`, projectId `875e84e9-...`) was migrated away
+## Account (statut juillet 2026 — quota épuisé)
+- Owner dans app.json : `yoann42s-team`
+- projectId dans app.json : `5b936768-fba3-49ab-b3d6-ce5f820fb035`
+- Le EXPO_TOKEN actuel est lié à `marie2.0` (confirmé par `eas whoami`) → pas d'accès au projet `5b936768`
+- Situation : l'utilisateur a créé un NOUVEAU projet EAS sur un compte différent mais le token fourni
+  est toujours celui de `marie2.0`. Il faut le token du compte qui POSSÈDE `5b936768`.
+- Pour débloquer : demander le token Access Token du compte propriétaire de `5b936768` sur expo.dev
+
+## Ancien compte (référence)
+- `marie2.0`, slug `yoann20`, projectId `206ea9d5-49cb-43f9-9bfa-e632d0fd7297` — quota Free épuisé juillet 2026, reset 1er août
 
 ## Free plan quota
-`marie2.0` is on the Free plan. Quota resets on the 1st of each month. If a build fails with
-"This account has used its Android builds from the Free plan this month", the quota is exhausted.
-**Workaround:** upgrade to a paid plan on expo.dev, or wait for the monthly reset.
+Quota reset le 1er de chaque mois. Si build échoue avec "This account has used its Android builds
+from the Free plan this month", quota épuisé. Upgrade payant ou attendre.
 
 ## Reading EAS logs (brotli NDJSON)
 Get log URLs via GraphQL `builds.byId(buildId).logFiles`, fetch each, then decode with Node: `zlib.brotliDecompressSync(raw).toString('utf8')`, split on `\n`, JSON.parse each line, read `.msg`. Python has no brotli module here — use Node. Status via `eas build:view <ID>` or the GraphQL `status` field.

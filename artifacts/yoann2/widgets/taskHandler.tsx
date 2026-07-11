@@ -59,115 +59,78 @@ const SPIN_INTERVAL_MS  = 250;
 const GPS_TIMEOUT_MS    = 10_000;
 const BATTERY_KEY       = '@yoann2_battery_opt_prompted';
 
-// ─── Verrous anti-doublon ─────────────────────────────────────────────────────
+// ─── Verrou universel anti-PendingIntent storm ───────────────────────────────
+//
+// Principe : chaque action widget a une clé AsyncStorage unique et stable
+// (@yoann2_lock_{ACTION}). Android identifie les PendingIntents par
+// requestCode + action — des clés stables garantissent que Android REMPLACE
+// l'ancien intent au lieu de l'accumuler dans sa queue de livraison.
+//
+// Une seule fonction gère tout : table de durées par action, 1 écriture AS
+// par appui autorisé.
 
-// Trajet — 1 min entre PLAY/PAUSE/STOP (absorbe storms PendingIntent Samsung
-// ET empêche les appuis accidentels rapides).
-const TRIP_LOCK_KEY    = '@yoann2_trip_lock';
-const TRIP_LOCK_MS     = 60_000; // 1 min
+const LOCK_PREFIX = '@yoann2_lock_';
 
-// Trajet — 5 min entre STOP et un nouveau PLAY (évite un redémarrage accidentel
-// juste après avoir terminé un trajet).
-const TRIP_END_KEY     = '@yoann2_trip_end_ts';
-const TRIP_END_MS      = 300_000; // 5 min
+/** Durée du verrou en ms par action. */
+const LOCK_MS: Record<string, number> = {
+  // Navigation / deep-links : 30 s
+  NAVIGATE_HOME:       30_000,
+  NAVIGATE_TO:         30_000,
+  OPEN_FUEL:           30_000,
+  ADD_TRANSACTION:     30_000,
+  // Rafraîchissement : 3 s (animation = 2 s)
+  REFRESH:              3_000,
+  // Trajet : 1 min entre chaque action PLAY / PAUSE / RESUME / STOP
+  MANUAL_TRIP_START:   60_000,
+  MANUAL_TRIP_PAUSE:   60_000,
+  MANUAL_TRIP_RESUME:  60_000,
+  MANUAL_TRIP_END:     60_000,
+  // Consommation : 5 min par type
+  ADD_COFFEE:         300_000,
+  ADD_CIGARETTE:      300_000,
+};
 
-// Consommation — 5 min par type (☕ et 🚬 indépendants).
-const CONSUMPTION_LOCK_MS = 300_000; // 5 min
-
-// REFRESH — 3 s (durée animation = 2 s, re-livraison PendingIntent pendant ce temps).
-const REFRESH_LOCK_KEY = '@yoann2_refresh_lock';
-const REFRESH_LOCK_MS  = 3_000;
-
-async function acquireTripLock(): Promise<boolean> {
+/**
+ * Tente d'acquérir le verrou pour l'action donnée.
+ * → false  si la même action a été exécutée il y a moins de LOCK_MS[action]
+ * → true   si autorisé (le verrou est posé)
+ */
+async function acquireLock(action: string): Promise<boolean> {
+  const ms  = LOCK_MS[action] ?? 5_000;
+  const key = LOCK_PREFIX + action;
   try {
-    const raw = await AsyncStorage.getItem(TRIP_LOCK_KEY);
+    const raw = await AsyncStorage.getItem(key);
     if (raw) {
       const ts = parseInt(raw, 10);
-      if (!isNaN(ts) && Date.now() - ts < TRIP_LOCK_MS) {
-        await widgetLog('trip:debounced', `${Date.now() - ts}ms since last action`);
+      if (!isNaN(ts) && Date.now() - ts < ms) {
+        await widgetLog('lock:debounced', `${action} il y a ${Date.now() - ts}ms`);
         return false;
       }
     }
-    await AsyncStorage.setItem(TRIP_LOCK_KEY, String(Date.now()));
+    await AsyncStorage.setItem(key, String(Date.now()));
     return true;
   } catch {
-    return true;
+    return true; // erreur storage → on laisse passer
   }
 }
 
-/** Appelé dans handleTripStart seulement : vérifie le délai post-fin de trajet. */
+// Cooldown asymétrique STOP → PLAY : 5 min après arrêt de trajet.
+// Distinct du verrou générique : STOP écrit la clé, START la lit.
+const TRIP_END_KEY = '@yoann2_trip_end_ts';
+const TRIP_END_MS  = 300_000;
+
 async function isTripEndCooldown(): Promise<boolean> {
   try {
     const raw = await AsyncStorage.getItem(TRIP_END_KEY);
     if (!raw) return false;
     const ts = parseInt(raw, 10);
     if (!isNaN(ts) && Date.now() - ts < TRIP_END_MS) {
-      await widgetLog('trip:end-cooldown', `${Math.round((Date.now() - ts) / 1000)}s since last stop`);
+      await widgetLog('lock:end-cooldown', `${Math.round((Date.now() - ts) / 1000)}s post-stop`);
       return true;
     }
     return false;
   } catch {
     return false;
-  }
-}
-
-/**
- * Tente d'acquérir le verrou pour un type de consommation (coffee | cigarette).
- * Retourne false si une entrée a déjà été ajoutée dans les 5 dernières minutes.
- */
-async function acquireConsumptionLock(type: 'coffee' | 'cigarette'): Promise<boolean> {
-  const key = `@yoann2_consumption_lock_${type}`;
-  try {
-    const raw = await AsyncStorage.getItem(key);
-    if (raw) {
-      const ts = parseInt(raw, 10);
-      if (!isNaN(ts) && Date.now() - ts < CONSUMPTION_LOCK_MS) {
-        await widgetLog(`${type}:debounced`, `${Math.round((Date.now() - ts) / 1000)}s since last`);
-        return false;
-      }
-    }
-    await AsyncStorage.setItem(key, String(Date.now()));
-    return true;
-  } catch {
-    return true;
-  }
-}
-
-// Navigation / fuel — 30 s par action indépendante (clé par action).
-const NAV_LOCK_MS = 30_000;
-
-async function acquireNavLock(action: string): Promise<boolean> {
-  const key = `@yoann2_nav_lock_${action}`;
-  try {
-    const raw = await AsyncStorage.getItem(key);
-    if (raw) {
-      const ts = parseInt(raw, 10);
-      if (!isNaN(ts) && Date.now() - ts < NAV_LOCK_MS) {
-        await widgetLog(`nav:debounced:${action}`, `${Date.now() - ts}ms since last`);
-        return false;
-      }
-    }
-    await AsyncStorage.setItem(key, String(Date.now()));
-    return true;
-  } catch {
-    return true;
-  }
-}
-
-async function acquireRefreshLock(): Promise<boolean> {
-  try {
-    const raw = await AsyncStorage.getItem(REFRESH_LOCK_KEY);
-    if (raw) {
-      const ts = parseInt(raw, 10);
-      if (!isNaN(ts) && Date.now() - ts < REFRESH_LOCK_MS) {
-        await widgetLog('refresh:debounced', `${Date.now() - ts}ms since last`);
-        return false;
-      }
-    }
-    await AsyncStorage.setItem(REFRESH_LOCK_KEY, String(Date.now()));
-    return true;
-  } catch {
-    return true;
   }
 }
 
@@ -298,20 +261,10 @@ async function handleNavigateHome(): Promise<void> {
 async function handleTripStart(
   doRender: WidgetTaskHandlerProps['renderWidget'],
 ): Promise<void> {
-  // Guard 1 : déjà actif → on re-rend simplement, on ne réinitialise pas
+  // Guard état : déjà actif → re-rendre sans réinitialiser
   const existingState = await getManualTripState();
   if (existingState?.active) {
     await renderWidget(doRender, existingState.paused ? 'paused' : 'active');
-    return;
-  }
-  // Guard 2 : cooldown 5 min post-STOP (évite de relancer juste après un arrêt)
-  if (await isTripEndCooldown()) {
-    await renderWidget(doRender, 'idle');
-    return;
-  }
-  // Guard 3 : verrou 1 min entre actions (anti-storm PendingIntent Samsung)
-  if (!await acquireTripLock()) {
-    await renderWidget(doRender, 'idle');
     return;
   }
 
@@ -338,11 +291,6 @@ async function handleTripStart(
 async function handleTripPause(
   doRender: WidgetTaskHandlerProps['renderWidget'],
 ): Promise<void> {
-  if (!await acquireTripLock()) {
-    await renderWidget(doRender);
-    return;
-  }
-
   const state = await getManualTripState();
 
   if (!state || !state.active || state.paused) {
@@ -366,11 +314,6 @@ async function handleTripPause(
 async function handleTripResume(
   doRender: WidgetTaskHandlerProps['renderWidget'],
 ): Promise<void> {
-  if (!await acquireTripLock()) {
-    await renderWidget(doRender);
-    return;
-  }
-
   const state = await getManualTripState();
 
   if (!state || !state.active || !state.paused) {
@@ -392,11 +335,6 @@ async function handleTripResume(
 async function handleTripEnd(
   doRender: WidgetTaskHandlerProps['renderWidget'],
 ): Promise<void> {
-  if (!await acquireTripLock()) {
-    await renderWidget(doRender);
-    return;
-  }
-
   stopTracking().catch(() => {});
 
   const manualState = await getManualTripState();
@@ -526,10 +464,8 @@ async function handleTripEnd(
 async function handleRefresh(
   doRender: WidgetTaskHandlerProps['renderWidget'],
 ): Promise<void> {
-  // Debounce : l'animation dure 2 s, Android peut re-livrer le PendingIntent
-  // plusieurs fois pendant ce temps — on ignore les doublons dans la fenêtre.
-  if (!await acquireRefreshLock()) return;
-
+  // Le verrou REFRESH (3 s) est acquis dans le switch avant d'appeler cette
+  // fonction — pas besoin de re-vérifier ici.
   const [data, shortcuts, tripStatus] = await Promise.all([
     getWidgetDataFromStorage(),
     getNavShortcuts(),
@@ -586,70 +522,88 @@ export async function widgetTaskHandler(props: WidgetTaskHandlerProps): Promise<
       }
 
       case 'WIDGET_CLICK': {
+        // ── Stratégie universelle ────────────────────────────────────────────
+        // 1. acquireLock(action) bloque les re-livraisons parasites Android.
+        // 2. renderWidget() en fin de chaque case régénère les PendingIntents
+        //    → Android remplace les anciens et ne peut plus les re-livrer
+        //    au retour au premier plan depuis le launcher.
+        // 3. Les handlers trip gardent leurs guards d'état (déjà actif, etc.)
+        //    pour la cohérence logique indépendamment du lock.
         switch (clickAction) {
-          case 'NAVIGATE_HOME':
-            if (await acquireNavLock('NAVIGATE_HOME')) {
-              await handleNavigateHome();
-            }
-            // Re-rendre pour invalider les anciens PendingIntents (anti-storm)
+          case 'NAVIGATE_HOME': {
+            if (await acquireLock('NAVIGATE_HOME')) await handleNavigateHome();
             await renderWidget(doRender);
             break;
-
-          case 'NAVIGATE_TO':
-            if (await acquireNavLock('NAVIGATE_TO')) {
-              await handleNavigateTo();
+          }
+          case 'NAVIGATE_TO': {
+            if (await acquireLock('NAVIGATE_TO')) await handleNavigateTo();
+            await renderWidget(doRender);
+            break;
+          }
+          case 'OPEN_FUEL': {
+            if (await acquireLock('OPEN_FUEL')) await handleOpenFuel();
+            await renderWidget(doRender);
+            break;
+          }
+          case 'ADD_TRANSACTION': {
+            if (await acquireLock('ADD_TRANSACTION')) {
+              await Linking.openURL('yoann2:///(tabs)/expenses?add=1').catch(() => {
+                Linking.openURL('yoann2://').catch(() => {});
+              });
             }
             await renderWidget(doRender);
             break;
-
-          case 'OPEN_FUEL':
-            if (await acquireNavLock('OPEN_FUEL')) {
-              await handleOpenFuel();
-            }
+          }
+          case 'ADD_COFFEE': {
+            if (await acquireLock('ADD_COFFEE')) await addConsumption('coffee');
             await renderWidget(doRender);
             break;
-
-          case 'REFRESH':
+          }
+          case 'ADD_CIGARETTE': {
+            if (await acquireLock('ADD_CIGARETTE')) await addConsumption('cigarette');
+            await renderWidget(doRender);
+            break;
+          }
+          case 'REFRESH': {
+            if (!await acquireLock('REFRESH')) {
+              await renderWidget(doRender);
+              break;
+            }
             await handleRefresh(doRender);
             break;
-
-          case 'MANUAL_TRIP_START':
+          }
+          case 'MANUAL_TRIP_START': {
+            if (!await acquireLock('MANUAL_TRIP_START') || await isTripEndCooldown()) {
+              await renderWidget(doRender);
+              break;
+            }
             await handleTripStart(doRender);
             break;
-
-          case 'MANUAL_TRIP_PAUSE':
+          }
+          case 'MANUAL_TRIP_PAUSE': {
+            if (!await acquireLock('MANUAL_TRIP_PAUSE')) {
+              await renderWidget(doRender);
+              break;
+            }
             await handleTripPause(doRender);
             break;
-
-          case 'MANUAL_TRIP_RESUME':
+          }
+          case 'MANUAL_TRIP_RESUME': {
+            if (!await acquireLock('MANUAL_TRIP_RESUME')) {
+              await renderWidget(doRender);
+              break;
+            }
             await handleTripResume(doRender);
             break;
-
-          case 'MANUAL_TRIP_END':
+          }
+          case 'MANUAL_TRIP_END': {
+            if (!await acquireLock('MANUAL_TRIP_END')) {
+              await renderWidget(doRender);
+              break;
+            }
             await handleTripEnd(doRender);
             break;
-
-          case 'ADD_COFFEE':
-            // Verrou 5 min — ignore les appuis accidentels rapides
-            if (await acquireConsumptionLock('coffee')) {
-              await addConsumption('coffee');
-            }
-            await renderWidget(doRender);
-            break;
-
-          case 'ADD_CIGARETTE':
-            if (await acquireConsumptionLock('cigarette')) {
-              await addConsumption('cigarette');
-            }
-            await renderWidget(doRender);
-            break;
-
-          case 'ADD_TRANSACTION':
-            await Linking.openURL('yoann2:///(tabs)/expenses?add=1').catch(() => {
-              Linking.openURL('yoann2://').catch(() => {});
-            });
-            break;
-
+          }
           default:
             await renderWidget(doRender);
             break;

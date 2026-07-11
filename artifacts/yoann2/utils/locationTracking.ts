@@ -18,34 +18,68 @@ let _lastAutoBackupTs = 0;
 const AUTO_BACKUP_THROTTLE_MS = 60_000;
 
 // ── Live trip notification ────────────────────────────────────────────────────
-// Distance accumulée en mémoire — réinitialisée sur resetTripTracking()
-// ou redémarrage du processus (foreground service reste vivant via Samsung One UI).
-let _tripDistKm = 0;
+//
+// Architecture :
+//  • La notification de trajet EST la notification du foreground service GPS.
+//    C'est le seul mécanisme réellement non-suppressible sur Android 13+.
+//  • Pour mettre à jour le texte sans flicker : startLocationUpdatesAsync sur
+//    une tâche déjà enregistrée patche les options via startForeground(id, notif)
+//    Android côté natif — même ID, mise à jour en place, pas de re-création.
+//  • Throttle à 15 s : évite de ré-enregistrer les listeners GPS à chaque point
+//    (3 s) et élimine tout clignotement perceptible.
+//  • _tripDistKm est persisté dans AsyncStorage pour survivre aux redémarrages
+//    du process JS (le foreground service Android peut rester vivant mais le
+//    moteur JS redémarre → perte de l'in-memory sans persistance).
+
+const TRIP_DIST_KEY    = '@yoann2_trip_dist_km';
+const NOTIF_THROTTLE_MS = 15_000; // mise à jour notification max 1×/15 s
+
+let _tripDistKm        = 0;
+let _tripDistLoaded    = false;   // true dès la première lecture AsyncStorage
+let _lastNotifUpdateTs = 0;
+let _lastNotifBody     = '';      // évite un re-patch si le texte est identique
 
 export function resetTripTracking(): void {
-  _tripDistKm = 0;
+  _tripDistKm        = 0;
+  _tripDistLoaded    = true;  // pas besoin de recharger : on repart de 0
+  _lastNotifUpdateTs = 0;
+  _lastNotifBody     = '';
+  AsyncStorage.removeItem(TRIP_DIST_KEY).catch(() => {});
 }
 
-// Met à jour le texte de la notification du foreground service sans recréer
-// de notification et sans arrêter le GPS : startLocationUpdatesAsync sur une
-// tâche déjà enregistrée ne fait que patcher les options (incl. le titre/corps).
-async function updateForegroundNotification(body: string): Promise<void> {
+/**
+ * Met à jour la notification du foreground service GPS en place (sans flicker).
+ *
+ * Throttlé à 15 s max — ignoré si le texte n'a pas changé.
+ * Le GPS continue de tourner sans interruption entre les mises à jour.
+ */
+async function updateTripNotification(distKm: number, activeMs: number): Promise<void> {
+  const now = Date.now();
+  if (now - _lastNotifUpdateTs < NOTIF_THROTTLE_MS) return;
+
+  const hh = Math.floor(activeMs / 3_600_000);
+  const mm = Math.floor((activeMs % 3_600_000) / 60_000);
+  const ss = Math.floor((activeMs % 60_000) / 1_000);
+  const duration = hh > 0
+    ? `${hh}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`
+    : `${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
+
+  const body = `${distKm.toFixed(2)} km · ${duration}`;
+  if (body === _lastNotifBody) return; // pas de changement → pas de patch
+
   try {
     const isRegistered = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME).catch(() => false);
     if (!isRegistered) return;
-    await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
-      accuracy: Location.Accuracy.High,
-      timeInterval: 3_000,
-      distanceInterval: 2,
-      activityType: Location.ActivityType.AutomotiveNavigation,
-      pausesUpdatesAutomatically: false,
-      showsBackgroundLocationIndicator: true,
-      foregroundService: {
-        notificationTitle: 'Yoann2.0 — Trajet en cours',
-        notificationBody: body,
-        notificationColor: '#FFC107',
-      },
-    });
+
+    // Patch en place via startForeground(id, notification) Android → pas de clignotement
+    const opts = await buildLocationOptions('active');
+    opts.foregroundService!.notificationBody = body;
+    await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, opts);
+
+    _lastNotifUpdateTs = now;
+    _lastNotifBody     = body;
+    // Persiste la distance pour survivre à un redémarrage du process JS
+    AsyncStorage.setItem(TRIP_DIST_KEY, String(distKm)).catch(() => {});
   } catch {}
 }
 
@@ -393,6 +427,15 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
   const manualActive = manualParsed?.active === true;
   const manualPaused = manualParsed?.paused === true;
 
+  // ── Récupération distance si process JS redémarré (foreground service vivant) ─
+  if (manualActive && !_tripDistLoaded) {
+    try {
+      const saved = await AsyncStorage.getItem(TRIP_DIST_KEY);
+      if (saved) _tripDistKm = parseFloat(saved) || 0;
+    } catch {}
+    _tripDistLoaded = true;
+  }
+
   // ── Process each location ───────────────────────────────────────────────────
   for (const loc of locations) {
     const lat = loc.coords.latitude;
@@ -428,7 +471,7 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
       await processPointForTrip(point).catch(() => {});
     }
 
-    // ── Suivi distance + notification foreground live ────────────────────────
+    // ── Suivi distance + notification foreground (throttlée à 15 s) ─────────
     if (manualActive && !manualPaused && lastValid) {
       _tripDistKm += haversineKm(lastValid.lat, lastValid.lng, lat, lng);
 
@@ -438,15 +481,8 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
       for (const s of segs) {
         activeMs += (s.end ?? timestamp) - s.start;
       }
-      const hh = Math.floor(activeMs / 3_600_000);
-      const mm = Math.floor((activeMs % 3_600_000) / 60_000);
-      const ss = Math.floor((activeMs % 60_000) / 1_000);
-      const durationStr = hh > 0
-        ? `${hh}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`
-        : `${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
 
-      // Patch le texte du foreground service sans recréer de notification ni arrêter le GPS
-      await updateForegroundNotification(`${_tripDistKm.toFixed(2)} km · ${durationStr}`);
+      await updateTripNotification(_tripDistKm, activeMs);
     }
 
     lastValid = point;
