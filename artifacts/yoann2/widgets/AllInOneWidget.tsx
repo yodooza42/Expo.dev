@@ -9,12 +9,12 @@ import type { ColorProp } from 'react-native-android-widget';
 
 import type { WidgetData } from './data';
 
-const NAVBAR: ColorProp   = '#121212';
-const CARD: ColorProp     = '#202020';
-const TEXT: ColorProp     = '#FFFFFF';
-const MUTED: ColorProp    = '#9E9E9E';
-const PRIMARY: ColorProp  = '#FFC107';
-const ACCENT_BG           = '#1A2A00' as ColorProp;
+const NAVBAR: ColorProp  = '#121212';
+const CARD: ColorProp    = '#202020';
+const TEXT: ColorProp    = '#FFFFFF';
+const MUTED: ColorProp   = '#9E9E9E';
+const PRIMARY: ColorProp = '#FFC107';
+const ACCENT_BG          = '#1A2A00' as ColorProp;
 
 const IMG_HOME      = 'data:image/png;base64,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';
 const IMG_GAS       = 'data:image/png;base64,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';
@@ -32,7 +32,6 @@ export interface AllInOneWidgetProps extends WidgetData {
   spinAngle?: number;
 }
 
-/** Bouton icône — tous identiques en flex:1 et hauteur match_parent */
 function ImgBtn({
   image,
   clickAction,
@@ -51,14 +50,14 @@ function ImgBtn({
         justifyContent: 'center',
         alignItems: 'center',
         backgroundColor: bg,
-        borderRadius: 8,
+        borderRadius: 7,
       }}
     >
       <ImageWidget
         image={image as any}
-        imageWidth={24}
-        imageHeight={24}
-        style={{ width: 24, height: 24 }}
+        imageWidth={22}
+        imageHeight={22}
+        style={{ width: 22, height: 22 }}
       />
     </FlexWidget>
   );
@@ -83,11 +82,11 @@ export function AllInOneWidget({
         width: 'match_parent',
         backgroundColor: NAVBAR,
         borderRadius: 14,
-        paddingHorizontal: 8,
-        paddingTop: 4,
-        paddingBottom: 4,
+        paddingHorizontal: 5,
+        paddingTop: 3,
+        paddingBottom: 3,
         flexDirection: 'column',
-        flexGap: 3,
+        flexGap: 2,
       }}
     >
       {/* ─── Ligne 1 : infos ─── */}
@@ -96,28 +95,27 @@ export function AllInOneWidget({
           width: 'match_parent',
           flexDirection: 'row',
           alignItems: 'center',
-          height: 22,
-          flexGap: 7,
+          height: 24,
+          flexGap: 6,
         }}
       >
-        {/* Anneau refresh coloré = couleur shift Marie */}
+        {/* Anneau coloré shift Marie — taille contenue dans la row */}
         <FlexWidget
           clickAction="REFRESH"
           style={{
-            width: 32,
-            height: 32,
-            borderRadius: 16,
+            width: 24,
+            height: 24,
+            borderRadius: 12,
             backgroundColor: marieCircleColor as ColorProp,
             alignItems: 'center',
             justifyContent: 'center',
           }}
         >
-          {/* Cercle intérieur sombre = effet anneau */}
           <FlexWidget
             style={{
-              width: 25,
-              height: 25,
-              borderRadius: 13,
+              width: 18,
+              height: 18,
+              borderRadius: 9,
               backgroundColor: NAVBAR,
               alignItems: 'center',
               justifyContent: 'center',
@@ -125,7 +123,7 @@ export function AllInOneWidget({
           >
             <TextWidget
               text={String(todayDayNum)}
-              style={{ fontSize: 11, fontWeight: 'bold', color: '#FFFFFF' }}
+              style={{ fontSize: 10, fontWeight: 'bold', color: '#FFFFFF' }}
             />
           </FlexWidget>
         </FlexWidget>
@@ -158,17 +156,16 @@ export function AllInOneWidget({
         ) : null}
       </FlexWidget>
 
-      {/* ─── Ligne 2 : 7 boutons + gap ─── */}
+      {/* ─── Ligne 2 : boutons — flex:1 remplit la hauteur restante ─── */}
       <FlexWidget
         style={{
           flexDirection: 'row',
           width: 'match_parent',
-          height: 38,
+          flex: 1,
           alignItems: 'center',
-          flexGap: 4,
+          flexGap: 2,
         }}
       >
-        {/* Groupe gauche : Maison · Essence · Nav · Transaction · Play */}
         <ImgBtn image={IMG_HOME} clickAction="NAVIGATE_HOME" />
         <ImgBtn image={IMG_GAS}  clickAction="OPEN_FUEL" />
         <ImgBtn image={IMG_NAV}  clickAction="NAVIGATE_TO" />
@@ -190,16 +187,11 @@ export function AllInOneWidget({
           <ImgBtn image={IMG_STOP}  clickAction="MANUAL_TRIP_END" />
         )}
 
-        {/* Séparateur visuel entre Play et Café */}
+        {/* Séparateur fin entre Play et Café */}
         <FlexWidget
-          style={{
-            width: 10,
-            height: 'match_parent',
-            backgroundColor: NAVBAR,
-          }}
+          style={{ width: 4, height: 'match_parent', backgroundColor: NAVBAR }}
         />
 
-        {/* Groupe droit : Café · Clope */}
         <ImgBtn image={IMG_COFFEE}    clickAction="ADD_COFFEE" />
         <ImgBtn image={IMG_CIGARETTE} clickAction="ADD_CIGARETTE" />
       </FlexWidget>
