@@ -58,6 +58,30 @@ const SPIN_INTERVAL_MS  = 250;
 const GPS_TIMEOUT_MS    = 10_000;
 const BATTERY_KEY       = '@yoann2_battery_opt_prompted';
 
+// ─── Anti PendingIntent storm ─────────────────────────────────────────────────
+// Samsung One UI re-livre les anciens PendingIntents en rafale lors d'un appui
+// widget. Ce verrou global rejette tout second appel trip dans les 5 secondes
+// qui suivent le premier pour absorber ces re-livraisons parasites.
+const TRIP_LOCK_KEY    = '@yoann2_trip_lock';
+const TRIP_LOCK_MS     = 5_000;
+
+async function acquireTripLock(): Promise<boolean> {
+  try {
+    const raw = await AsyncStorage.getItem(TRIP_LOCK_KEY);
+    if (raw) {
+      const ts = parseInt(raw, 10);
+      if (!isNaN(ts) && Date.now() - ts < TRIP_LOCK_MS) {
+        await widgetLog('trip:debounced', `${Date.now() - ts}ms since last`);
+        return false;
+      }
+    }
+    await AsyncStorage.setItem(TRIP_LOCK_KEY, String(Date.now()));
+    return true;
+  } catch {
+    return true; // En cas d'erreur storage, on laisse passer
+  }
+}
+
 // ─── Debug logging ────────────────────────────────────────────────────────────
 
 const WIDGET_LOG_KEY = '@yoann2_widget_debug_log';
@@ -176,36 +200,27 @@ async function handleNavigateHome(): Promise<void> {
   }
 }
 
-// ─── Notification persistante trajet ─────────────────────────────────────────
-
-const TRIP_NOTIF_ID = 'yoann2-trip-active';
-
-async function postTripNotification(state: 'active' | 'paused'): Promise<void> {
-  // Annule la précédente avant de republier (même identifier = remplacement)
-  await Notifications.dismissNotificationAsync(TRIP_NOTIF_ID).catch(() => {});
-  await Notifications.scheduleNotificationAsync({
-    identifier: TRIP_NOTIF_ID,
-    content: {
-      title: state === 'active' ? '🚗 Trajet en cours — Yoann 2.0' : '⏸ Trajet en pause — Yoann 2.0',
-      body: state === 'active'
-        ? 'Enregistrement GPS actif. Appuie sur ⏸ pour mettre en pause.'
-        : 'Trajet suspendu. Appuie sur ▶ pour reprendre.',
-      sticky: true,
-      data: {},
-    },
-    trigger: null,
-  }).catch(() => {});
-}
-
-async function cancelTripNotification(): Promise<void> {
-  await Notifications.dismissNotificationAsync(TRIP_NOTIF_ID).catch(() => {});
-}
-
 // ─── Trajet manuel ───────────────────────────────────────────────────────────
+// La notification persistante est la notification du foreground service GPS
+// produite par startLocationUpdatesAsync (non-dismissable sur Android).
+// sticky:true via expo-notifications EST dismissable sur Android 13+ → on n'utilise
+// plus postTripNotification, on s'appuie uniquement sur le foreground service.
 
 async function handleTripStart(
   doRender: WidgetTaskHandlerProps['renderWidget'],
 ): Promise<void> {
+  // Guard 1 : déjà actif → on re-rend simplement, on ne réinitialise pas
+  const existingState = await getManualTripState();
+  if (existingState?.active) {
+    await renderWidget(doRender, existingState.paused ? 'paused' : 'active');
+    return;
+  }
+  // Guard 2 : verrou anti-storm PendingIntent Samsung
+  if (!await acquireTripLock()) {
+    await renderWidget(doRender, 'idle');
+    return;
+  }
+
   await maybeSuggestBatteryOptimization();
   resetTripTracking();
 
@@ -221,14 +236,19 @@ async function handleTripStart(
     segments: [{ start: now }],
   });
 
-  startManualTracking().catch(() => {});
-  await postTripNotification('active');
+  // Await pour que la notification foreground service GPS apparaisse avant de rendre
+  await startManualTracking().catch(() => {});
   await renderWidget(doRender, 'active');
 }
 
 async function handleTripPause(
   doRender: WidgetTaskHandlerProps['renderWidget'],
 ): Promise<void> {
+  if (!await acquireTripLock()) {
+    await renderWidget(doRender);
+    return;
+  }
+
   const state = await getManualTripState();
 
   if (!state || !state.active || state.paused) {
@@ -244,13 +264,17 @@ async function handleTripPause(
   );
   await saveManualTripState({ ...state, paused: true, segments });
 
-  await postTripNotification('paused');
   await renderWidget(doRender, 'paused');
 }
 
 async function handleTripResume(
   doRender: WidgetTaskHandlerProps['renderWidget'],
 ): Promise<void> {
+  if (!await acquireTripLock()) {
+    await renderWidget(doRender);
+    return;
+  }
+
   const state = await getManualTripState();
 
   if (!state || !state.active || !state.paused) {
@@ -265,14 +289,18 @@ async function handleTripResume(
     segments: [...state.segments, { start: now }],
   });
 
-  startManualTracking().catch(() => {});
-  await postTripNotification('active');
+  await startManualTracking().catch(() => {});
   await renderWidget(doRender, 'active');
 }
 
 async function handleTripEnd(
   doRender: WidgetTaskHandlerProps['renderWidget'],
 ): Promise<void> {
+  if (!await acquireTripLock()) {
+    await renderWidget(doRender);
+    return;
+  }
+
   stopTracking().catch(() => {});
 
   const manualState = await getManualTripState();
@@ -294,7 +322,6 @@ async function handleTripEnd(
 
   await clearManualTripState();
   resetTripTracking();
-  await cancelTripNotification();
   await renderWidget(doRender, 'idle');
 
   const endLoc = await getCurrentPosition();

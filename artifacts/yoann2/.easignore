@@ -9,9 +9,24 @@ artifacts/mockup-sandbox
 node_modules
 **/node_modules
 
-# Exclude local/editor files
+# Exclude lib packages — yoann2 has no @workspace/* deps
+lib/
+
+# Exclude scripts package — not needed for mobile build
+scripts/
+
+# Exclude local/editor/CI files
 .local
 .agents
 **/.expo
 **/dist
 **/*.tsbuildinfo
+
+# Exclude conversation assets, screenshots, patches
+attached_assets
+screenshots
+patches
+skills-lock.json
+
+# Exclude root cache
+.cache

@@ -26,21 +26,24 @@ The NORMAL git flow (`eas build` with no EAS_NO_VCS) **does include uncommitted 
 
 ## Build command (works)
 ```
-cd artifacts/yoann2 && export EXPO_TOKEN=<secret> && EAS_SKIP_AUTO_FINGERPRINT=1 GIT_OPTIONAL_LOCKS=0 /home/runner/workspace/.config/npm/node_global/bin/eas build --platform android --profile apk --non-interactive --no-wait
+cd artifacts/yoann2 && export EXPO_TOKEN=$EXPO_TOKEN && EAS_SKIP_AUTO_FINGERPRINT=1 GIT_OPTIONAL_LOCKS=0 eas build --platform android --profile apk --non-interactive --no-wait
 ```
 `GIT_OPTIONAL_LOCKS=0` avoids `.git/index.lock` errors. `EAS_SKIP_AUTO_FINGERPRINT=1` avoids fingerprint timeouts.
-Use full path to `eas` binary: `/home/runner/workspace/.config/npm/node_global/bin/eas`.
 EXPO_TOKEN must be exported (inline `EXPO_TOKEN=... eas build` is killed by sandbox; `export EXPO_TOKEN=...` first works).
 
-## Account (current — as of July 2026)
-- Owner: `yoann42s-team`
-- Slug: `application-yoann20`
-- projectId: `875e84e9-1621-4df5-bc36-3ca7c757f39a`
+## Account (current — verified July 2026)
+- Owner: `marie2.0` (this is the CURRENT active account, confirmed by `eas whoami`)
+- Slug: `yoann20`
+- projectId: `206ea9d5-49cb-43f9-9bfa-e632d0fd7297`
 - Profile: `apk` (buildType apk, internal distribution)
-- EXPO_TOKEN: stored in Replit secret `EXPO_TOKEN` — must be a **robot token created from yoann42s-team org settings**, NOT a personal account token
-- To create: expo.dev → avatar → switch to yoann42s-team → Settings → Robot users → Create robot user → generate token
-- Verify with `eas whoami` — must show `yoann42s-team (Role: Admin)`, not `yozvfkzucbzbc`
-- Previous account (`yozvfkzucbzbc`, slug `yoann-20`) exhausted free plan July 2026
+- EXPO_TOKEN: stored in Replit secret `EXPO_TOKEN` — it's a robot token for `marie2.0`
+- Verify with `eas whoami` — should show `marie2.0 (Role: Admin)`
+- Previous account (`yoann42s-team`, slug `application-yoann20`, projectId `875e84e9-...`) was migrated away
+
+## Free plan quota
+`marie2.0` is on the Free plan. Quota resets on the 1st of each month. If a build fails with
+"This account has used its Android builds from the Free plan this month", the quota is exhausted.
+**Workaround:** upgrade to a paid plan on expo.dev, or wait for the monthly reset.
 
 ## Reading EAS logs (brotli NDJSON)
 Get log URLs via GraphQL `builds.byId(buildId).logFiles`, fetch each, then decode with Node: `zlib.brotliDecompressSync(raw).toString('utf8')`, split on `\n`, JSON.parse each line, read `.msg`. Python has no brotli module here — use Node. Status via `eas build:view <ID>` or the GraphQL `status` field.
