@@ -27,6 +27,7 @@ const TAB_ICONS: Record<string, string> = {
   expenses:   'bank-outline',
   calendar:   'calendar-month-outline',
   trips:      'road-variant',
+  player:     'music-circle-outline',
   navigation: 'navigation-variant-outline',
   map:        'map-outline',
 };
@@ -39,6 +40,7 @@ const TAB_LABELS: Record<string, string> = {
   expenses:   'Finance',
   calendar:   'Calendrier',
   trips:      'Trajets',
+  player:     'Musique',
   navigation: 'Y aller',
   map:        'Carte',
 };

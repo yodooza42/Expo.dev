@@ -38,10 +38,12 @@ import {
   stopTracking,
 } from '@/utils/locationTracking';
 import {
-  pauseTripSession,
-  startTripSession,
-  stopTripSession,
-} from '@/utils/tripSession';
+  pauseCarPlayer,
+  resumeCarPlayer,
+  startCarPlaylist,
+  stopCarPlayer,
+} from '@/utils/carPlayer';
+import { loadPlaylist } from '@/utils/playlistStorage';
 import {
   clearManualTripState,
   getManualTripState,
@@ -293,7 +295,10 @@ async function handleTripStart(
   } catch (err) {
     await widgetLog('trip:start:fgs_error', String(err));
   }
-  startTripSession(0).catch(() => {});
+  loadPlaylist().then(tracks => {
+    if (tracks.length) startCarPlaylist(tracks, 0);
+  }).catch(() => {});
+  Linking.openURL('yoann2:///(tabs)/player').catch(() => {});
 
   await maybeSuggestBatteryOptimization();
   await renderWidget(doRender, 'active');
@@ -326,7 +331,7 @@ async function handleTripPause(
   // Passe le GPS en basse fréquence SANS arrêter le FGS expo-location.
   // Notifee passe en mode "en pause" (non-dismissable).
   await pauseManualTracking().catch(() => {});
-  pauseTripSession(getTripDistKm()).catch(() => {});
+  pauseCarPlayer();
 
   const now = Date.now();
   const segments = state.segments.map((s, i) =>
@@ -359,7 +364,7 @@ async function handleTripResume(
   } catch (err) {
     await widgetLog('trip:resume:fgs_error', String(err));
   }
-  startTripSession(getTripDistKm()).catch(() => {});
+  resumeCarPlayer();
   await renderWidget(doRender, 'active');
 }
 
@@ -367,7 +372,7 @@ async function handleTripEnd(
   doRender: WidgetTaskHandlerProps['renderWidget'],
 ): Promise<void> {
   stopTracking().catch(() => {});
-  stopTripSession().catch(() => {});
+  stopCarPlayer();
 
   const manualState = await getManualTripState();
 

@@ -1,20 +1,19 @@
 /**
- * Session de trajet — pilote la notification MediaSession via expo-video.
+ * tripSession.ts — Façade de compatibilité.
  *
- * Stratégie : on joue un fichier silence.mp3 en boucle via expo-video
- * (audioSession.ts). La notification MediaSession Android est non-swipeable
- * tant que la lecture est active, et affiche title="Trajet · X.XX km" +
- * artist="MM:SS". Cela remplace les approches FGS notifee (shortService/
- * dataSync tué par Samsung One UI 7) et expo-location FGS notification
- * (délai d'apparition, swipeable selon les versions).
- *
- * Dépendances : audioSession.ts (expo-video) — pas de dépendance circulaire.
+ * La gestion audio du trajet est maintenant entièrement dans carPlayer.ts.
+ * Le widget (taskHandler.tsx) appelle carPlayer directement.
+ * Ce module reste présent pour compatibilité avec d'éventuels autres imports.
  */
 
-import { startAudioSession, updateAudioSession, stopAudioSession } from '@/utils/audioSession';
+import {
+  pauseCarPlayer,
+  resumeCarPlayer,
+  startCarPlaylist,
+  stopCarPlayer,
+} from '@/utils/carPlayer';
+import { loadPlaylist } from '@/utils/playlistStorage';
 import type { TripAudioPreset } from '@/widgets/widgetSettings';
-
-// ─── Options audio (UI uniquement — conservé pour les préférences widget) ────
 
 export const TRIP_AUDIO_OPTIONS: { id: TripAudioPreset; label: string; hint: string }[] = [
   { id: 'sine_220', label: '220 Hz',      hint: 'Sinusoïde grave (défaut)' },
@@ -23,51 +22,26 @@ export const TRIP_AUDIO_OPTIONS: { id: TripAudioPreset; label: string; hint: str
   { id: 'noise',    label: 'Bruit blanc', hint: 'Spectre large' },
 ];
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function formatDuration(activeMs: number): string {
-  const hh = Math.floor(activeMs / 3_600_000);
-  const mm = Math.floor((activeMs % 3_600_000) / 60_000);
-  const ss = Math.floor((activeMs % 60_000) / 1_000);
-  return hh > 0
-    ? `${hh}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`
-    : `${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
+export async function startTripSession(_distKm = 0): Promise<void> {
+  const tracks = await loadPlaylist().catch(() => []);
+  if (tracks.length) startCarPlaylist(tracks, 0);
 }
 
-// ─── API publique ─────────────────────────────────────────────────────────────
-
-/**
- * Démarre (ou reprend) la session de trajet.
- * Lance la lecture du silence → notification MediaSession immédiate et non-swipeable.
- */
-export async function startTripSession(distKm = 0): Promise<void> {
-  const title = distKm > 0
-    ? `Trajet · ${distKm.toFixed(2)} km · Reprise`
-    : 'Trajet en cours';
-  startAudioSession(title, '00:00');
-}
-
-/**
- * Met à jour les métadonnées (distance + durée active) dans la notification.
- * Throttlé à 15 s par audioSession.
- */
 export async function updateTripMetadata(
-  distKm: number,
-  activeMs: number,
+  _distKm: number,
+  _activeMs: number,
 ): Promise<void> {
-  updateAudioSession(`Trajet · ${distKm.toFixed(2)} km`, formatDuration(activeMs));
+  // No-op : la notification MediaSession affiche le nom de la piste.
 }
 
-/**
- * Passe la notification en mode "en pause".
- */
-export async function pauseTripSession(distKm: number): Promise<void> {
-  updateAudioSession(`En pause · ${distKm.toFixed(2)} km`, '▶ Reprendre', true);
+export async function pauseTripSession(_distKm: number): Promise<void> {
+  pauseCarPlayer();
 }
 
-/**
- * Fin du trajet — arrête la session audio et libère le player.
- */
+export async function resumeTripSession(_distKm: number): Promise<void> {
+  resumeCarPlayer();
+}
+
 export async function stopTripSession(): Promise<void> {
-  stopAudioSession();
+  stopCarPlayer();
 }

@@ -2,7 +2,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 
-import { updateAudioSession } from '@/utils/audioSession';
 import { autoBackup } from '@/utils/locationBackup';
 import { haversineKm } from '@/utils/haversine';
 import { processPointForTrip, TRACKING_MODE_KEY } from '@/utils/tripDetection';
@@ -243,9 +242,6 @@ export async function setTrackingPaused(paused: boolean): Promise<void> {
 // - active → dense mode (3s / 2m, high accuracy) for precise trace + distance
 // - paused → low-power mode (30s / 50m) — FGS reste actif pour garder le process vivant
 //
-// Note : la notification de trajet (km + durée) est gérée par audioSession.ts
-// via expo-video (MediaSession Android). La notification foregroundService ici
-// est une notification GPS minimale obligatoire pour le FGS expo-location.
 async function buildLocationOptions(
   tripPhase: 'active' | 'paused' | 'idle',
 ): Promise<Location.LocationTaskOptions> {
@@ -442,8 +438,6 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
         ? `${hh}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`
         : `${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
 
-      // Met à jour la notification MediaSession audio (titre + durée)
-      updateAudioSession(`Trajet · ${_tripDistKm.toFixed(2)} km`, dur);
       // Persiste la distance pour survivre à un redémarrage du process JS
       AsyncStorage.setItem(TRIP_DIST_KEY, String(_tripDistKm)).catch(() => {});
     }
