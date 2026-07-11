@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 
+import { updateAudioSession } from '@/utils/audioSession';
 import { autoBackup } from '@/utils/locationBackup';
 import { haversineKm } from '@/utils/haversine';
 import { processPointForTrip, TRACKING_MODE_KEY } from '@/utils/tripDetection';
@@ -24,41 +25,7 @@ const TRIP_DIST_KEY = '@yoann2_trip_dist_km';
 let _tripDistKm     = 0;
 let _tripDistLoaded = false;
 
-// ── État FGS notification expo-location ──────────────────────────────────────
-// La notification du Foreground Service GPS (expo-location) sert aussi à
-// afficher la progression du trajet. C'est la seule notification garantie
-// non-swipeable sur Samsung One UI 7 (Android 15+).
-
-let _fgsTitle = 'Yoann2.0';
-let _fgsBody  = 'GPS actif en arrière-plan';
-let _fgsPatchTs = 0;
 let _currentTripPhase: 'active' | 'paused' | 'idle' = 'idle';
-const FGS_PATCH_THROTTLE_MS = 15_000;
-
-/**
- * Met à jour le titre/corps de la notification du Foreground Service GPS.
- * Appelé depuis tripSession.ts pour afficher la progression du trajet.
- * Throttlé à 15 s (force=true pour les transitions start/pause/stop).
- */
-export async function patchLocationFgsNotification(
-  title: string,
-  body: string,
-  force = false,
-): Promise<void> {
-  const now = Date.now();
-  if (!force && now - _fgsPatchTs < FGS_PATCH_THROTTLE_MS) return;
-
-  _fgsTitle   = title;
-  _fgsBody    = body;
-  _fgsPatchTs = now;
-
-  try {
-    const isRunning = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME).catch(() => false);
-    if (!isRunning) return;
-    const opts = await buildLocationOptions(_currentTripPhase);
-    await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, opts);
-  } catch {}
-}
 
 export function resetTripTracking(): void {
   _tripDistKm     = 0;
@@ -276,9 +243,9 @@ export async function setTrackingPaused(paused: boolean): Promise<void> {
 // - active → dense mode (3s / 2m, high accuracy) for precise trace + distance
 // - paused → low-power mode (30s / 50m) — FGS reste actif pour garder le process vivant
 //
-// Note : la notification de trajet est gérée par @notifee/react-native (FGS séparé).
-// Le foregroundService ici est une notification minimale obligatoire pour le FGS GPS
-// d'expo-location — elle ne sert pas à afficher la progression du trajet.
+// Note : la notification de trajet (km + durée) est gérée par audioSession.ts
+// via expo-video (MediaSession Android). La notification foregroundService ici
+// est une notification GPS minimale obligatoire pour le FGS expo-location.
 async function buildLocationOptions(
   tripPhase: 'active' | 'paused' | 'idle',
 ): Promise<Location.LocationTaskOptions> {
@@ -295,8 +262,8 @@ async function buildLocationOptions(
     }),
     showsBackgroundLocationIndicator: isActive,
     foregroundService: {
-      notificationTitle: _fgsTitle,
-      notificationBody:  _fgsBody,
+      notificationTitle: 'Yoann2.0',
+      notificationBody:  'GPS actif en arrière-plan',
       notificationColor: '#FFC107',
     },
   };
@@ -475,8 +442,8 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
         ? `${hh}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`
         : `${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
 
-      // Met à jour la notification FGS GPS (non-swipeable) avec dist + durée
-      await patchLocationFgsNotification(`Trajet · ${_tripDistKm.toFixed(2)} km`, dur);
+      // Met à jour la notification MediaSession audio (titre + durée)
+      updateAudioSession(`Trajet · ${_tripDistKm.toFixed(2)} km`, dur);
       // Persiste la distance pour survivre à un redémarrage du process JS
       AsyncStorage.setItem(TRIP_DIST_KEY, String(_tripDistKm)).catch(() => {});
     }
