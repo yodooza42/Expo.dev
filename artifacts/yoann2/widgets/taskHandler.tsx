@@ -40,6 +40,7 @@ import {
 import {
   pauseCarPlayer,
   resumeCarPlayer,
+  setTripStatus,
   startCarPlaylist,
   stopCarPlayer,
 } from '@/utils/carPlayer';
@@ -295,6 +296,7 @@ async function handleTripStart(
   } catch (err) {
     await widgetLog('trip:start:fgs_error', String(err));
   }
+  setTripStatus(true);
   loadPlaylist().then(tracks => {
     if (tracks.length) startCarPlaylist(tracks, 0);
   }).catch(() => {});
@@ -329,8 +331,8 @@ async function handleTripPause(
   }
 
   // Passe le GPS en basse fréquence SANS arrêter le FGS expo-location.
-  // Notifee passe en mode "en pause" (non-dismissable).
   await pauseManualTracking().catch(() => {});
+  setTripStatus(false);
   pauseCarPlayer();
 
   const now = Date.now();
@@ -364,6 +366,7 @@ async function handleTripResume(
   } catch (err) {
     await widgetLog('trip:resume:fgs_error', String(err));
   }
+  setTripStatus(true);
   resumeCarPlayer();
   await renderWidget(doRender, 'active');
 }
@@ -372,6 +375,7 @@ async function handleTripEnd(
   doRender: WidgetTaskHandlerProps['renderWidget'],
 ): Promise<void> {
   stopTracking().catch(() => {});
+  setTripStatus(false);
   stopCarPlayer();
 
   const manualState = await getManualTripState();

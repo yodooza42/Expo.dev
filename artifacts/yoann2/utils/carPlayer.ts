@@ -34,6 +34,9 @@ let _state: CarPlayerState = {
 };
 const _listeners = new Set<() => void>();
 
+// Statut GPS courant : modifie l'artiste affiché dans la notification MediaSession.
+let _tripActive = false;
+
 function notify(): void {
   _listeners.forEach(fn => fn());
 }
@@ -43,9 +46,23 @@ function buildSource(track: Track) {
     uri: track.uri,
     metadata: {
       title: track.name,
-      artist: 'Yoann2.0',
+      artist: _tripActive ? '🚗 GPS actif — Yoann2.0' : 'Yoann2.0',
     },
   };
+}
+
+/** Met à jour l'artiste affiché dans la notification MediaSession selon l'état du trajet GPS. */
+function patchPlayerMetadata(): void {
+  if (!_player) return;
+  const track = _state.tracks[_state.currentIndex];
+  if (!track) return;
+  try {
+    // expo-video expose `metadata` en tant que setter direct sur le player.
+    (_player as any).metadata = {
+      title: track.name,
+      artist: _tripActive ? '🚗 GPS actif — Yoann2.0' : 'Yoann2.0',
+    };
+  } catch {}
 }
 
 function releasePlayer(): void {
@@ -169,6 +186,17 @@ export function stopCarPlayer(): void {
   releasePlayer();
   _state = { ..._state, isPlaying: false, positionMs: 0 };
   notify();
+}
+
+/**
+ * Signale l'état du trajet GPS au player.
+ * Met à jour l'artiste affiché dans la notification MediaSession (non-swipeable).
+ * active=true  → "🚗 GPS actif — Yoann2.0"
+ * active=false → "Yoann2.0"
+ */
+export function setTripStatus(active: boolean): void {
+  _tripActive = active;
+  patchPlayerMetadata();
 }
 
 export function jumpToTrack(index: number): void {
