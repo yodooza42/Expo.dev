@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { type AppColors } from '@/contexts/ThemeContext';
 import { useColors } from '@/hooks/useColors';
 import { useCarPlayer } from '@/hooks/useCarPlayer';
 import { startCarPlaylist, setCarPlaylist } from '@/utils/carPlayer';
@@ -286,7 +287,7 @@ function TrackRow({
   playing: boolean;
   onPress: () => void;
   onDelete: () => void;
-  colors: Record<string, string>;
+  colors: AppColors;
 }) {
   return (
     <Pressable

@@ -41,3 +41,5 @@ externalPort = 3001
 [userenv]
 
 [userenv.shared]
+
+[nix]

@@ -1,5 +1,7 @@
 - [EAS build git lock workaround](eas-build-git-lock.md) — prefix `GIT_OPTIONAL_LOCKS=0` to run `eas-cli build`; use global binary `/home/runner/workspace/.config/npm/node_global/bin/eas` + grep -m1 "See logs" to exit quickly.
-- [EAS Build fix — yoann2](eas-build-fix.md) — lockfile sync, minSdkVersion via plugin, account `stpyoann`/`yoann-20`; use `export EXPO_TOKEN` not inline.
+- [EAS Build fix — yoann2](eas-build-fix.md) — lockfile sync, minSdkVersion via plugin, account `stpyoann`/`yoann-20` projectId `5b936768-fba3-49ab-b3d6-ce5f820fb035`; use `export EXPO_TOKEN` not inline.
+- [expo-file-system legacy import](expo-file-system-legacy.md) — dans SDK 54, expo-file-system@19 supprime `documentDirectory` du default export. Utiliser `expo-file-system/legacy` pour accéder à l'ancienne API (documentDirectory, copyAsync, etc.).
+- [expo-video timeUpdate payload](expo-video-timeupdate.md) — `TimeUpdateEventPayload` n'a PAS de champ `duration`. Utiliser `player.duration` directement (propriété de l'instance VideoPlayer).
 - [Expo Android crash diagnosis](expo-android-crash-diagnosis.md) — splash-then-close = uncaught JS error in index.js/root render before React; Reanimated 4 requires New Arch.
 - [react-native-android-widget color format](rn-android-widget-colors.md) — use 6-digit `#RRGGBB` hex only; 8-digit `#AARRGGBB` is Android format (alpha first), not CSS.
 - [react-native-android-widget style API constraints](rn-android-widget-styles.md) — FlexWidgetStyle: use `flexGap` not `gap`; no `flexWrap`, no percentage widths.

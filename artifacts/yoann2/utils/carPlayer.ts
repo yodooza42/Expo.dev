@@ -57,11 +57,11 @@ function releasePlayer(): void {
 }
 
 function attachListeners(p: VideoPlayerInstance): void {
-  p.addListener('timeUpdate', ({ currentTime, duration }) => {
+  p.addListener('timeUpdate', ({ currentTime }) => {
     _state = {
       ..._state,
       positionMs: Math.round(currentTime * 1000),
-      durationMs: Math.round((duration ?? 0) * 1000),
+      durationMs: Math.round(((_player?.duration) ?? 0) * 1000),
     };
     notify();
   });
