@@ -347,6 +347,13 @@ export default function TripsScreen() {
           >
             <MaterialCommunityIcons name="wrench" size={18} color={alerts.length > 0 ? '#FF9800' : colors.mutedForeground} />
           </Pressable>
+          <Pressable
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/(tabs)/player'); }}
+            hitSlop={8}
+            style={[pH.btn, { backgroundColor: colors.card, borderColor: colors.border }]}
+          >
+            <MaterialCommunityIcons name="music-note" size={18} color={colors.mutedForeground} />
+          </Pressable>
         </View>
       </View>
 
@@ -451,21 +458,6 @@ export default function TripsScreen() {
               {pending.length > 0 ? `  ·  ${pending.length} à taguer` : ''}
               {uncategorized.length > 0 && pending.length === 0 ? `  ·  ${uncategorized.length} non groupé${uncategorized.length > 1 ? 's' : ''}` : ''}
             </Text>
-          </View>
-          <MaterialCommunityIcons name="chevron-right" size={18} color={colors.mutedForeground} />
-        </Pressable>
-
-        {/* ── Lecteur musique voiture ── */}
-        <Pressable
-          onPress={() => { Haptics.selectionAsync(); router.push('/(tabs)/player'); }}
-          style={[styles.dashCard, { backgroundColor: colors.card, borderColor: colors.border }]}
-        >
-          <View style={[styles.dashCardIcon, { backgroundColor: '#FF980018' }]}>
-            <MaterialCommunityIcons name="music-circle-outline" size={22} color="#FF9800" />
-          </View>
-          <View style={{ flex: 1, gap: 3 }}>
-            <Text style={[styles.dashCardTitle, { color: colors.foreground }]}>Musique voiture</Text>
-            <Text style={[styles.dashCardSub, { color: colors.mutedForeground }]}>Lecteur audio en trajet</Text>
           </View>
           <MaterialCommunityIcons name="chevron-right" size={18} color={colors.mutedForeground} />
         </Pressable>

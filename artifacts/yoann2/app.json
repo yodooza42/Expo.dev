@@ -100,7 +100,6 @@
       "./plugins/with-large-heap",
       "./plugins/with-navigation-app",
       "./plugins/withNotifeeManifest",
-      "./plugins/with-location-nondismissable",
       "@react-native-community/datetimepicker"
     ],
     "experiments": {
