@@ -455,6 +455,21 @@ export default function TripsScreen() {
           <MaterialCommunityIcons name="chevron-right" size={18} color={colors.mutedForeground} />
         </Pressable>
 
+        {/* ── Lecteur musique voiture ── */}
+        <Pressable
+          onPress={() => { Haptics.selectionAsync(); router.push('/(tabs)/player'); }}
+          style={[styles.dashCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+        >
+          <View style={[styles.dashCardIcon, { backgroundColor: '#FF980018' }]}>
+            <MaterialCommunityIcons name="music-circle-outline" size={22} color="#FF9800" />
+          </View>
+          <View style={{ flex: 1, gap: 3 }}>
+            <Text style={[styles.dashCardTitle, { color: colors.foreground }]}>Musique voiture</Text>
+            <Text style={[styles.dashCardSub, { color: colors.mutedForeground }]}>Lecteur audio en trajet</Text>
+          </View>
+          <MaterialCommunityIcons name="chevron-right" size={18} color={colors.mutedForeground} />
+        </Pressable>
+
         {/* ── Rappels assurance ── */}
         {insuranceAlerts.length > 0 && (
           <View style={styles.section}>
