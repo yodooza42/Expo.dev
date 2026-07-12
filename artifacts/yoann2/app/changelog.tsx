@@ -136,6 +136,18 @@ const HISTORY: VersionEntry[] = [
     ],
   },
   {
+    version: 'v2.8.0',
+    date: 'Juillet 2026 — Musique & GPS',
+    items: [
+      'Lecteur audio voiture : playlist locale, lecture en arrière-plan, notification MediaSession',
+      'Contrôles widget : ▶ démarre la musique + GPS, ⏸ pause, ⏹ arrête tout',
+      'Notification GPS intégrée dans la notification musicale : "🚗 GPS actif — Yoann2.0" pendant un trajet',
+      'Notification non-swipeable pendant la lecture (comportement identique à Spotify)',
+      'Plugin natif : foregroundServiceType location|mediaPlayback sur le service GPS',
+      'Musique déplacée de la barre principale → sous-page de Trajets',
+    ],
+  },
+  {
     version: 'v2.7.0',
     date: 'Juillet 2026 — Trajets manuels & Travail',
     items: [
@@ -174,7 +186,7 @@ export default function ChangelogScreen() {
             Bienvenue dans mon cerveau numérique
           </Text>
           <Text style={[styles.heroVersion, { color: colors.primary }]}>
-            Yoann2.0  ·  v2.7.0
+            Yoann2.0  ·  v2.8.0
           </Text>
         </View>
 
