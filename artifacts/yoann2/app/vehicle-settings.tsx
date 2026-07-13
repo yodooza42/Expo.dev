@@ -126,16 +126,22 @@ export default function VehicleSettingsScreen() {
     }
   }, [vehicles, selectedId]);
 
-  // Reset tab when switching vehicles if the current tab doesn't apply
+  // Reset tab and expanded participants when switching vehicles
   useEffect(() => {
     const sel = vehicles.find(v => v.id === selectedId);
     if (!sel) return;
+    setExpandedParticipants(new Set());
     if (sel.type === 'walk' && (activeVehicleTab === 'maintenance' || activeVehicleTab === 'insurance')) {
       setActiveVehicleTab('general');
     } else if (sel.type !== 'walk' && (activeVehicleTab === 'participants' || activeVehicleTab === 'stats')) {
       setActiveVehicleTab('general');
     }
   }, [selectedId, vehicles]);
+
+  // Reset expanded participants when switching tabs
+  useEffect(() => {
+    setExpandedParticipants(new Set());
+  }, [activeVehicleTab]);
 
   const selected = vehicles.find(v => v.id === selectedId) ?? vehicles[0];
   const odo = selected ? computeOdometer(trips as any, selected.id, selected.odometerBaseKm, selected.odometerAdjustments) : 0;
