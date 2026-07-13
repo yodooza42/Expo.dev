@@ -236,7 +236,7 @@ function RenameModal({
 
 // ── CategoryCard ──────────────────────────────────────────────────────────────
 function CategoryCard({
-  category, allTrips, colors, onUpdate, onDelete, onRename,
+  category, allTrips, colors, onUpdate, onDelete, onRename, vehicles,
 }: {
   category: TripCategory;
   allTrips: Trip[];
@@ -244,6 +244,7 @@ function CategoryCard({
   onUpdate: () => void;
   onDelete: () => void;
   onRename: () => void;
+  vehicles?: Vehicle[];
 }) {
   const [expanded, setExpanded] = useState(false);
   const stats = computeCategoryStats(category.id, allTrips);
@@ -319,7 +320,7 @@ function CategoryCard({
       {expanded && (
         <View style={styles.catTrips}>
           {stats.trips.map(t => (
-            <TripRow key={t.id} trip={t} colors={colors} onUpdate={onUpdate} compact />
+            <TripRow key={t.id} trip={t} colors={colors} onUpdate={onUpdate} compact vehicles={vehicles} />
           ))}
           <Pressable onPress={onDelete} style={[styles.deleteCatBtn, { borderColor: colors.border }]}>
             <MaterialCommunityIcons name="trash-can-outline" size={14} color={colors.mutedForeground} />
@@ -333,7 +334,7 @@ function CategoryCard({
 
 // ── TripRow ───────────────────────────────────────────────────────────────────
 function TripRow({
-  trip, colors, onUpdate, compact, onGroup, onDelete,
+  trip, colors, onUpdate, compact, onGroup, onDelete, vehicles,
 }: {
   trip: Trip;
   colors: ReturnType<typeof useColors>;
@@ -341,21 +342,34 @@ function TripRow({
   compact?: boolean;
   onGroup?: (t: Trip) => void;
   onDelete?: () => void;
+  vehicles?: Vehicle[];
 }) {
   const router = useRouter();
   const carColor = '#2196F3';
   const motoColor = '#FF9800';
+  const walkColor = '#4CAF50';
   const isPending = trip.vehicle === null;
+
+  const vehicleObj = vehicles?.find(v => v.id === trip.vehicle);
+  const isWalk = vehicleObj?.type === 'walk';
 
   const vehicleIcon =
     trip.vehicle === 'car' ? 'car' :
     trip.vehicle === 'moto' ? 'motorbike' :
-    trip.vehicle === 'ignored' ? 'close-circle-outline' : 'tag-outline';
+    trip.vehicle === 'ignored' ? 'close-circle-outline' :
+    isWalk ? 'walk' : 'tag-outline';
 
   const vehicleColor =
     trip.vehicle === 'car' ? carColor :
     trip.vehicle === 'moto' ? motoColor :
+    isWalk ? walkColor :
     isPending ? colors.primary : colors.mutedForeground;
+
+  const walkParticipantDetails = isWalk && trip.walkParticipants?.length
+    ? trip.walkParticipants
+        .map(id => vehicleObj?.walkParticipants?.find(p => p.id === id))
+        .filter((p): p is NonNullable<typeof p> => !!p)
+    : [];
 
   async function retag(vehicle: VehicleType) {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -406,6 +420,24 @@ function TripRow({
           <MaterialCommunityIcons name="map-marker-outline" size={11} color={colors.mutedForeground} />
           <Text style={[styles.tripAddr, { color: colors.mutedForeground }]} numberOfLines={1}>
             {trip.startAddress ?? '…'} → {trip.endAddress ?? '…'}
+          </Text>
+        </View>
+      )}
+      {isWalk && walkParticipantDetails.length > 0 && !compact && (
+        <View style={styles.tripAddrRow}>
+          {walkParticipantDetails.slice(0, 6).map((p, i) => (
+            <View key={i} style={{
+              width: 20, height: 20, borderRadius: 10,
+              backgroundColor: p.type === 'dog' ? '#FF980030' : '#2196F330',
+              alignItems: 'center', justifyContent: 'center',
+            }}>
+              <Text style={{ color: p.type === 'dog' ? '#FF9800' : '#2196F3', fontSize: 8, fontFamily: 'Inter_700Bold' }}>
+                {p.name.charAt(0).toUpperCase()}
+              </Text>
+            </View>
+          ))}
+          <Text style={[styles.tripAddr, { color: colors.mutedForeground, marginLeft: 2 }]}>
+            {walkParticipantDetails.map(p => p.name).join(', ')}
           </Text>
         </View>
       )}
@@ -562,7 +594,7 @@ export default function TripListScreen() {
           <View style={styles.section}>
             <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Catégories</Text>
             {activeCats.map(cat => (
-              <CategoryCard key={cat.id} category={cat} allTrips={trips} colors={colors}
+              <CategoryCard key={cat.id} category={cat} allTrips={trips} colors={colors} vehicles={settings}
                 onUpdate={load} onDelete={() => handleDeleteCategory(cat.id)} onRename={() => setRenameTarget(cat)} />
             ))}
           </View>
@@ -616,7 +648,7 @@ export default function TripListScreen() {
             </View>
           ) : (
             uncategorized.map(trip => (
-              <TripRow key={trip.id} trip={trip} colors={colors} onUpdate={load}
+              <TripRow key={trip.id} trip={trip} colors={colors} onUpdate={load} vehicles={settings}
                 onGroup={setGroupingTrip} onDelete={() => handleDeleteTrip(trip.id)} />
             ))
           )}
