@@ -109,6 +109,7 @@ export default function VehicleSettingsScreen() {
   const [insDatePickerVisible, setInsDatePickerVisible] = useState(false);
   const [recalModalVisible, setRecalModalVisible] = useState(false);
   const [recalValue, setRecalValue] = useState('');
+  const [expandedParticipants, setExpandedParticipants] = useState<Set<string>>(new Set());
 
   const load = useCallback(async () => {
     const [v, t] = await Promise.all([getVehicleSettings(), getTrips()]);
@@ -864,10 +865,14 @@ export default function VehicleSettingsScreen() {
                   {(() => {
                     const pTrips = getParticipantTrips(trips, p.id, selected.id);
                     if (pTrips.length === 0) return null;
+                    const LIMIT = 10;
+                    const isExpanded = expandedParticipants.has(p.id);
+                    const visible = isExpanded ? pTrips : pTrips.slice(0, LIMIT);
+                    const hidden = pTrips.length - LIMIT;
                     return (
                       <View style={styles.pastTripsSection}>
                         <Text style={[styles.pastTripsLabel, { color: colors.mutedForeground }]}>BALADES PASSÉES</Text>
-                        {pTrips.slice(0, 20).map(t => {
+                        {visible.map(t => {
                           const allParticipantDetails = (t.walkParticipants ?? [])
                             .map(pid => (selected.walkParticipants ?? []).find(wp => wp.id === pid))
                             .filter((wp): wp is NonNullable<typeof wp> => !!wp);
@@ -904,6 +909,26 @@ export default function VehicleSettingsScreen() {
                             </Pressable>
                           );
                         })}
+                        {!isExpanded && hidden > 0 && (
+                          <Pressable
+                            onPress={() => { Haptics.selectionAsync(); setExpandedParticipants(prev => new Set([...prev, p.id])); }}
+                            style={[styles.seeMoreBtn, { borderColor: colors.border }]}
+                          >
+                            <MaterialCommunityIcons name="chevron-down" size={14} color={colors.mutedForeground} />
+                            <Text style={[styles.seeMoreText, { color: colors.mutedForeground }]}>
+                              Voir {hidden} autre{hidden > 1 ? 's' : ''} balade{hidden > 1 ? 's' : ''}
+                            </Text>
+                          </Pressable>
+                        )}
+                        {isExpanded && pTrips.length > LIMIT && (
+                          <Pressable
+                            onPress={() => { Haptics.selectionAsync(); setExpandedParticipants(prev => { const s = new Set(prev); s.delete(p.id); return s; }); }}
+                            style={[styles.seeMoreBtn, { borderColor: colors.border }]}
+                          >
+                            <MaterialCommunityIcons name="chevron-up" size={14} color={colors.mutedForeground} />
+                            <Text style={[styles.seeMoreText, { color: colors.mutedForeground }]}>Réduire</Text>
+                          </Pressable>
+                        )}
                       </View>
                     );
                   })()}
@@ -1261,4 +1286,9 @@ const styles = StyleSheet.create({
   pastTripDur: { fontSize: 11, fontFamily: 'Inter_400Regular' },
   pastTripAvatars: { flexDirection: 'row', gap: 3 },
   pastTripAvatar: { width: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
+  seeMoreBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 6, paddingVertical: 10, borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  seeMoreText: { fontSize: 13, fontFamily: 'Inter_500Medium' },
 });
