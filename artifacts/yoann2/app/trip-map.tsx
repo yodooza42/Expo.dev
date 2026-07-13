@@ -210,7 +210,7 @@ export default function TripMapScreen() {
   const colors = useColors();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, backLabel } = useLocalSearchParams<{ id: string; backLabel?: string }>();
 
   const [trip, setTrip] = useState<Trip | null>(null);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
@@ -373,9 +373,12 @@ export default function TripMapScreen() {
       {/* Back button */}
       <Pressable
         onPress={() => router.back()}
-        style={[styles.backBtn, { top: insets.top + 10 }]}
+        style={[styles.backBtn, backLabel ? styles.backBtnLabelled : undefined, { top: insets.top + 10 }]}
       >
         <MaterialCommunityIcons name="chevron-left" size={26} color="#fff" />
+        {backLabel ? (
+          <Text style={styles.backBtnLabel}>{backLabel}</Text>
+        ) : null}
       </Pressable>
 
       {/* Map area */}
@@ -620,6 +623,17 @@ const styles = StyleSheet.create({
     backgroundColor: '#00000088',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  backBtnLabelled: {
+    width: 'auto',
+    borderRadius: 20,
+    flexDirection: 'row',
+    paddingRight: 14,
+  },
+  backBtnLabel: {
+    color: '#fff',
+    fontSize: 14,
+    fontFamily: 'Inter_600SemiBold',
   },
   noRoute: { color: '#555', fontSize: 14, fontFamily: 'Inter_400Regular', textAlign: 'center' },
   card: {

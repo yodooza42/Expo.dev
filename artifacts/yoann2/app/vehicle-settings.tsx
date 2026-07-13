@@ -879,7 +879,7 @@ export default function VehicleSettingsScreen() {
                           return (
                             <Pressable
                               key={t.id}
-                              onPress={() => { router.push({ pathname: '/trip-map', params: { id: t.id } } as any); }}
+                              onPress={() => { router.push({ pathname: '/trip-map', params: { id: t.id, backLabel: 'Véhicules' } } as any); }}
                               style={[styles.pastTripRow, { borderColor: colors.border }]}
                             >
                               <View style={[styles.pastTripIcon, { backgroundColor: '#4CAF5022' }]}>
