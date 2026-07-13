@@ -4,7 +4,7 @@ export interface FuelEntry {
   date: string;
   vehicleId: string | null;
   vehicleName: string;
-  vehicleType: 'car' | 'moto' | 'other' | null;
+  vehicleType: 'car' | 'moto' | 'other' | 'walk' | null;
   fuelType: 'gazole' | 'sp95' | 'sp98';
   liters: number;
   totalCost: number;

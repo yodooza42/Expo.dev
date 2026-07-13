@@ -19,7 +19,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { genId } from '@/utils/ids';
 import type { KnownPlace } from '@/types/places';
-import type { RoutePoint, Vehicle } from '@/types/trips';
+import type { RoutePoint, Vehicle, WalkParticipant } from '@/types/trips';
 import { findNearestPlace, getKnownPlaces } from '@/utils/placesStorage';
 import { simplifyRoute } from '@/utils/routeSimplification';
 import { getVehicleSettings, saveTrip, updateTrip } from '@/utils/tripStorage';
@@ -103,6 +103,7 @@ export default function NewTripScreen() {
 
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [selectedVehicleId, setSelectedVehicleId] = useState<string>('');
+  const [walkParticipantIds, setWalkParticipantIds] = useState<string[]>([]);
   const [knownPlaces, setKnownPlaces] = useState<KnownPlace[]>([]);
 
   const [startAddress, setStartAddress] = useState('');
@@ -132,6 +133,10 @@ export default function NewTripScreen() {
       setKnownPlaces(p);
     });
   }, []);
+
+  useEffect(() => {
+    setWalkParticipantIds([]);
+  }, [selectedVehicleId]);
 
   const searchStart = useCallback(async () => {
     if (startAddress.length < 3) return;
@@ -244,7 +249,8 @@ export default function NewTripScreen() {
         startTime: dateMs,
         endTime: dateMs + durationMs,
         distanceKm,
-        vehicle: vehicle?.type === 'moto' ? 'moto' : vehicle?.type === 'car' ? 'car' : 'car',
+        vehicle: selectedVehicleId || null,
+        walkParticipants: walkParticipantIds.length > 0 ? walkParticipantIds : undefined,
         pointCount: 2,
         startLat,
         startLon,
@@ -323,7 +329,8 @@ export default function NewTripScreen() {
           <View style={styles.vehicleRow}>
             {vehicles.map(v => {
               const active = v.id === selectedVehicleId;
-              const c = v.type === 'moto' ? '#FF9800' : '#2196F3';
+              const c = v.type === 'moto' ? '#FF9800' : v.type === 'walk' ? '#4CAF50' : '#2196F3';
+              const icon = v.type === 'moto' ? 'motorbike' : v.type === 'walk' ? 'walk' : 'car';
               return (
                 <Pressable
                   key={v.id}
@@ -334,7 +341,7 @@ export default function NewTripScreen() {
                   }]}
                 >
                   <MaterialCommunityIcons
-                    name={v.type === 'moto' ? 'motorbike' : 'car'}
+                    name={icon as any}
                     size={16}
                     color={active ? c : colors.mutedForeground}
                   />
@@ -344,6 +351,53 @@ export default function NewTripScreen() {
             })}
           </View>
         </View>
+
+        {/* Walk participants */}
+        {selectedVehicle?.type === 'walk' && (selectedVehicle.walkParticipants ?? []).length > 0 && (
+          <View style={styles.section}>
+            <Text style={[styles.label, { color: colors.mutedForeground }]}>PARTICIPANTS</Text>
+            {(selectedVehicle.walkParticipants ?? []).filter(p => p.type === 'human').length > 0 && (
+              <View style={{ gap: 6 }}>
+                <Text style={[styles.partGroupLabel, { color: colors.mutedForeground }]}>👤 HUMAINS</Text>
+                <View style={styles.vehicleRow}>
+                  {(selectedVehicle.walkParticipants ?? []).filter(p => p.type === 'human').map(p => {
+                    const active = walkParticipantIds.includes(p.id);
+                    return (
+                      <Pressable
+                        key={p.id}
+                        onPress={() => { Haptics.selectionAsync(); setWalkParticipantIds(prev => active ? prev.filter(id => id !== p.id) : [...prev, p.id]); }}
+                        style={[styles.vehicleChip, { backgroundColor: active ? '#2196F322' : colors.muted, borderColor: active ? '#2196F3' : colors.border }]}
+                      >
+                        <MaterialCommunityIcons name="account-outline" size={14} color={active ? '#2196F3' : colors.mutedForeground} />
+                        <Text style={[styles.vehicleChipText, { color: active ? '#2196F3' : colors.mutedForeground }]}>{p.name}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
+            )}
+            {(selectedVehicle.walkParticipants ?? []).filter(p => p.type === 'dog').length > 0 && (
+              <View style={{ gap: 6 }}>
+                <Text style={[styles.partGroupLabel, { color: colors.mutedForeground }]}>🐕 CHIENS</Text>
+                <View style={styles.vehicleRow}>
+                  {(selectedVehicle.walkParticipants ?? []).filter(p => p.type === 'dog').map(p => {
+                    const active = walkParticipantIds.includes(p.id);
+                    return (
+                      <Pressable
+                        key={p.id}
+                        onPress={() => { Haptics.selectionAsync(); setWalkParticipantIds(prev => active ? prev.filter(id => id !== p.id) : [...prev, p.id]); }}
+                        style={[styles.vehicleChip, { backgroundColor: active ? '#FF980022' : colors.muted, borderColor: active ? '#FF9800' : colors.border }]}
+                      >
+                        <Text style={{ fontSize: 12 }}>🐕</Text>
+                        <Text style={[styles.vehicleChipText, { color: active ? '#FF9800' : colors.mutedForeground }]}>{p.name}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
+            )}
+          </View>
+        )}
 
         {/* Start address */}
         <View style={styles.section}>
@@ -502,7 +556,7 @@ export default function NewTripScreen() {
                   <Text style={[styles.routeDetail, { color: colors.mutedForeground }]}>
                     {fmtDist(r.distance)} · {fmtDur(r.duration)}
                   </Text>
-                  {selectedVehicle && (
+                  {selectedVehicle && selectedVehicle.type !== 'walk' && (
                     <Text style={[styles.routeCost, { color: colors.mutedForeground }]}>
                       Coût estimé : {((r.distance / 1000) * selectedVehicle.costPerKm).toFixed(2)} €
                     </Text>
@@ -530,9 +584,13 @@ export default function NewTripScreen() {
             </View>
             {selectedVehicle && (
               <View style={styles.summaryRow}>
-                <MaterialCommunityIcons name={selectedVehicle.type === 'moto' ? 'motorbike' : 'car'} size={16} color={colors.primary} />
+                <MaterialCommunityIcons
+                  name={selectedVehicle.type === 'moto' ? 'motorbike' : selectedVehicle.type === 'walk' ? 'walk' : 'car'}
+                  size={16}
+                  color={colors.primary}
+                />
                 <Text style={[styles.summaryVal, { color: colors.foreground }]}>
-                  {selectedVehicle.name} · {((selectedRoute.distance / 1000) * selectedVehicle.costPerKm).toFixed(2)} €
+                  {selectedVehicle.name}{selectedVehicle.type !== 'walk' ? ` · ${((selectedRoute.distance / 1000) * selectedVehicle.costPerKm).toFixed(2)} €` : ''}
                 </Text>
               </View>
             )}
@@ -592,4 +650,5 @@ const styles = StyleSheet.create({
   summaryTitle: { fontSize: 15, fontFamily: 'Inter_600SemiBold', marginBottom: 4 },
   summaryRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   summaryVal: { fontSize: 14, fontFamily: 'Inter_500Medium' },
+  partGroupLabel: { fontSize: 10, fontFamily: 'Inter_600SemiBold', letterSpacing: 0.8, textTransform: 'uppercase' },
 });

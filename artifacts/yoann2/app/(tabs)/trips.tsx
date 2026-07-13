@@ -60,6 +60,44 @@ function TurnaroundCard({ vehicle, odo, fillPct, remaining, isReserve, gaugeColo
   );
 }
 
+interface WalkCardProps {
+  vehicle: Vehicle;
+  km: number;
+  count: number;
+  lastTripParticipants: string[];
+  colors: ReturnType<typeof import('@/hooks/useColors').useColors>;
+}
+function WalkCard({ vehicle, km, count, lastTripParticipants, colors }: WalkCardProps) {
+  const walkColor = '#4CAF50';
+  const participants = vehicle.walkParticipants ?? [];
+  const lastNames = lastTripParticipants
+    .map(id => participants.find(p => p.id === id))
+    .filter((p): p is NonNullable<typeof p> => !!p);
+  return (
+    <View style={[trStyles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+      <MaterialCommunityIcons name="walk" size={48} color={walkColor} />
+      <Text style={[trStyles.odoVal, { color: colors.foreground }]}>{km.toFixed(1)}</Text>
+      <Text style={[trStyles.odoLabel, { color: colors.mutedForeground }]}>KM CE MOIS</Text>
+      <Text style={[trStyles.odoLabel, { color: colors.mutedForeground }]}>{count} SORTIE{count !== 1 ? 'S' : ''}</Text>
+      {lastNames.length > 0 && (
+        <View style={{ flexDirection: 'row', gap: 4, marginTop: 4, flexWrap: 'wrap', justifyContent: 'center' }}>
+          {lastNames.slice(0, 5).map((p, i) => (
+            <View key={i} style={{
+              width: 22, height: 22, borderRadius: 11,
+              backgroundColor: p.type === 'dog' ? '#FF980040' : '#2196F340',
+              alignItems: 'center', justifyContent: 'center',
+            }}>
+              <Text style={{ color: p.type === 'dog' ? '#FF9800' : '#2196F3', fontSize: 9, fontFamily: 'Inter_700Bold' }}>
+                {p.name.charAt(0).toUpperCase()}
+              </Text>
+            </View>
+          ))}
+        </View>
+      )}
+    </View>
+  );
+}
+
 const trStyles = StyleSheet.create({
   card: {
     flex: 1,
@@ -131,6 +169,7 @@ export default function TripsScreen() {
       if (key !== mk) return acc;
       const veh = vehicleMap.get(t.vehicle);
       if (!veh) return acc;
+      if (veh.type === 'walk') return acc;
       const b = veh.type === 'moto' ? 'moto' : 'car';
       acc[b].km += t.distanceKm;
       acc[b].cost += t.distanceKm * veh.costPerKm;
@@ -141,6 +180,28 @@ export default function TripsScreen() {
       moto: { km: 0, cost: 0, count: 0 },
     });
   }, [trips, settings, mk]);
+
+  const walkMonthData = useMemo(() => {
+    return settings
+      .filter(v => v.type === 'walk')
+      .map(v => {
+        const vehicleTrips = trips.filter(
+          t => t.vehicle === v.id && (() => {
+            const d = new Date(t.startTime);
+            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` === mk;
+          })(),
+        );
+        const lastTrip = trips
+          .filter(t => t.vehicle === v.id)
+          .sort((a, b) => b.endTime - a.endTime)[0];
+        return {
+          vehicle: v,
+          km: vehicleTrips.reduce((s, t) => s + t.distanceKm, 0),
+          count: vehicleTrips.length,
+          lastTripParticipants: lastTrip?.walkParticipants ?? [],
+        };
+      });
+  }, [settings, trips, mk]);
 
   const alerts = useMemo(() => {
     const list: { vehicleName: string; itemName: string; type: 'km' | 'date'; over: number }[] = [];
@@ -366,8 +427,20 @@ export default function TripsScreen() {
         {settings.filter(v => v.type !== 'other').length > 0 && (
           <View style={styles.odoRow}>
             {settings.filter(v => v.type !== 'other').map(v => {
+              if (v.type === 'walk') {
+                const wData = walkMonthData.find(w => w.vehicle.id === v.id);
+                return (
+                  <WalkCard
+                    key={v.id}
+                    vehicle={v}
+                    km={wData?.km ?? 0}
+                    count={wData?.count ?? 0}
+                    lastTripParticipants={wData?.lastTripParticipants ?? []}
+                    colors={colors}
+                  />
+                );
+              }
               const odo = computeOdometer(trips, v.id, v.odometerBaseKm, v.odometerAdjustments);
-              const color = v.type === 'moto' ? motoColor : carColor;
               const auto = autonomieData[v.id];
               const hasRange = auto?.hasData && auto.fillPct !== null;
               const fillPct = auto?.fillPct ?? null;

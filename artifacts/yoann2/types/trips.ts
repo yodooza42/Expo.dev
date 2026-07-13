@@ -16,7 +16,8 @@ export interface Trip {
   startTime: number;
   endTime: number;
   distanceKm: number;
-  vehicle: VehicleType | null;
+  /** Vehicle ID (e.g. 'car', 'moto', or a custom uuid for walk / other vehicles). 'ignored' skips stats. */
+  vehicle: string | null;
   pointCount: number;
   startLat: number;
   startLon: number;
@@ -42,6 +43,8 @@ export interface Trip {
   source?: 'auto' | 'manual';
   /** Number of OSRM-matched segments (debug info for long trips). */
   osrmSegments?: number;
+  /** IDs of walk participants present on this trip (only for walk-type vehicles). */
+  walkParticipants?: string[];
 }
 
 /** A named group of trips with a similar start/end geography. */
@@ -90,10 +93,19 @@ export interface OdometerAdjustment {
   deltaKm: number;
 }
 
+/** A participant on a walk trip (human or dog). */
+export interface WalkParticipant {
+  id: string;
+  name: string;
+  type: 'human' | 'dog';
+  /** For dogs: alert if not walked for this many days. */
+  reminderDays?: number;
+}
+
 export interface Vehicle {
   id: string;
   name: string;
-  type: 'car' | 'moto' | 'other';
+  type: 'car' | 'moto' | 'other' | 'walk';
   costPerKm: number;
   odometerBaseKm: number;
   maintenanceItems: MaintenanceItem[];
@@ -105,6 +117,8 @@ export interface Vehicle {
   insurance?: VehicleInsurance;
   /** History of manual odometer recalibrations. */
   odometerAdjustments?: OdometerAdjustment[];
+  /** Walk-type only: list of configurable participants. */
+  walkParticipants?: WalkParticipant[];
 }
 
 /** Array of vehicles — replaces the old {car, moto} fixed object */

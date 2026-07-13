@@ -15,7 +15,7 @@ import { useColors } from '@/hooks/useColors';
 import { computeCurrentBalance, getTransactions } from '@/utils/bankStorage';
 import { getTodayEntries } from '@/utils/consumptionStorage';
 import { fmtEuro } from '@/utils/money';
-import { getTrips } from '@/utils/tripStorage';
+import { getTrips, getVehicleSettings } from '@/utils/tripStorage';
 import type { WidgetData } from '@/widgets/data';
 import { getWidgetDataFromStorage } from '@/widgets/data';
 
@@ -34,15 +34,17 @@ export default function AccueilScreen() {
   const [monthKm,      setMonthKm]      = useState<number | null>(null);
   const [todayCoffee,  setTodayCoffee]  = useState(0);
   const [todayCigs,    setTodayCigs]    = useState(0);
+  const [walkAlerts,   setWalkAlerts]   = useState<Array<{ name: string; vehicleName: string; daysSince: number | null }>>([]);
 
   useFocusEffect(useCallback(() => {
     let active = true;
     (async () => {
-      const [wd, txs, trips, todayEntries] = await Promise.all([
+      const [wd, txs, trips, todayEntries, vehicles] = await Promise.all([
         getWidgetDataFromStorage(),
         getTransactions(),
         getTrips(),
         getTodayEntries(),
+        getVehicleSettings(),
       ]);
       if (!active) return;
 
@@ -66,6 +68,25 @@ export default function AccueilScreen() {
         t => t.endTime >= startOfMonth && t.vehicle && t.vehicle !== 'ignored',
       );
       setMonthKm(monthTrips.reduce((s, t) => s + t.distanceKm, 0));
+
+      // Walk alerts for dogs
+      const alerts: Array<{ name: string; vehicleName: string; daysSince: number | null }> = [];
+      const nowMs = Date.now();
+      for (const v of vehicles) {
+        if (v.type !== 'walk') continue;
+        for (const p of v.walkParticipants ?? []) {
+          if (p.type !== 'dog' || !p.reminderDays) continue;
+          const lastTrip = trips
+            .filter(t => t.vehicle === v.id && (t.walkParticipants ?? []).includes(p.id))
+            .sort((a, b) => b.endTime - a.endTime)[0];
+          const lastTs = lastTrip?.endTime ?? null;
+          if (!lastTs || (nowMs - lastTs) > p.reminderDays * 24 * 3_600_000) {
+            const daysSince = lastTs ? Math.round((nowMs - lastTs) / (24 * 3_600_000)) : null;
+            alerts.push({ name: p.name, vehicleName: v.name, daysSince });
+          }
+        }
+      }
+      setWalkAlerts(alerts);
     })();
     return () => { active = false; };
   }, []));
@@ -209,6 +230,33 @@ export default function AccueilScreen() {
               {t.deadline ? (
                 <Text style={[styles.cardSub, { color: colors.mutedForeground }]}>{t.deadline}</Text>
               ) : null}
+            </View>
+          ))}
+        </View>
+      )}
+
+      {/* ── Rappels balades ── */}
+      {walkAlerts.length > 0 && (
+        <View style={[styles.card, styles.cardFull, { backgroundColor: colors.card, borderColor: '#FF9800' }]}>
+          <Pressable style={styles.between} onPress={() => { Haptics.selectionAsync(); router.push('/(tabs)/trips'); }}>
+            <View style={styles.rowCenter}>
+              <MaterialCommunityIcons name="walk" size={15} color="#FF9800" />
+              <Text style={[styles.cardLabel, { color: '#FF9800', marginLeft: 6 }]}>Balades</Text>
+            </View>
+            <MaterialCommunityIcons name="chevron-right" size={16} color="#FF9800" />
+          </Pressable>
+          {walkAlerts.map((a, i) => (
+            <View
+              key={i}
+              style={[styles.taskRow, i > 0 && { borderTopWidth: 1, borderTopColor: colors.border }]}
+            >
+              <View style={[styles.taskDot, { backgroundColor: '#FF9800' }]} />
+              <Text style={[styles.taskTitle, { color: colors.foreground }]} numberOfLines={1}>
+                {a.name}
+              </Text>
+              <Text style={[styles.cardSub, { color: '#FF9800' }]}>
+                {a.daysSince !== null ? `${a.daysSince}j sans sortie` : 'Jamais sorti'}
+              </Text>
             </View>
           ))}
         </View>

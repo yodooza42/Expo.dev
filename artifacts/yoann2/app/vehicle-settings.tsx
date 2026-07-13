@@ -21,12 +21,61 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 
 import { useApp } from '@/contexts/AppContext';
 import { useColors } from '@/hooks/useColors';
-import type { MaintenanceItem, Vehicle, VehicleInsurance } from '@/types/trips';
+import type { MaintenanceItem, Vehicle, VehicleInsurance, WalkParticipant } from '@/types/trips';
 import { computeAutoCostPerKm } from '@/utils/costPerKm';
 import { addTransaction } from '@/utils/bankStorage';
 import { computeOdometer, getTrips, getVehicleSettings, saveVehicleSettings, recalibrateOdometer, lastOdometerRecalStatus } from '@/utils/tripStorage';
 import { genId } from '@/utils/ids';
 
+// ── Local types ───────────────────────────────────────────────────────────────
+type VehicleTab = 'general' | 'maintenance' | 'insurance' | 'participants' | 'stats';
+
+type TripStat = {
+  vehicle: string | null;
+  distanceKm: number;
+  startTime: number;
+  endTime: number;
+  walkParticipants?: string[];
+};
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function fmtDuration(ms: number): string {
+  const totalMin = Math.round(ms / 60000);
+  if (totalMin === 0) return '—';
+  if (totalMin < 60) return `${totalMin} min`;
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  return m === 0 ? `${h}h` : `${h}h${String(m).padStart(2, '0')}`;
+}
+
+function fmtLastWalk(ts: number | null): string {
+  if (!ts) return 'Jamais sorti';
+  const diffMs = Date.now() - ts;
+  const hours = Math.floor(diffMs / 3_600_000);
+  if (hours < 24) return hours <= 0 ? "Aujourd'hui" : `il y a ${hours}h`;
+  const d = Math.round(diffMs / (24 * 3_600_000));
+  return `il y a ${d} jour${d > 1 ? 's' : ''}`;
+}
+
+function getWalkStats(trips: TripStat[], participantId: string, vehicleId: string, days: number) {
+  const cutoff = Date.now() - days * 24 * 3_600_000;
+  const relevant = trips.filter(
+    t => t.vehicle === vehicleId && t.endTime >= cutoff && (t.walkParticipants ?? []).includes(participantId),
+  );
+  return {
+    count: relevant.length,
+    km: relevant.reduce((s, t) => s + t.distanceKm, 0),
+    durationMs: relevant.reduce((s, t) => s + (t.endTime - t.startTime), 0),
+  };
+}
+
+function getLastWalk(trips: TripStat[], participantId: string, vehicleId: string): number | null {
+  return trips
+    .filter(t => t.vehicle === vehicleId && (t.walkParticipants ?? []).includes(participantId))
+    .sort((a, b) => b.endTime - a.endTime)[0]?.endTime ?? null;
+}
+
+// ── Component ─────────────────────────────────────────────────────────────────
 export default function VehicleSettingsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -35,8 +84,9 @@ export default function VehicleSettingsScreen() {
 
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [selectedId, setSelectedId] = useState<string>('car');
-  const [trips, setTrips] = useState<{ vehicle: string | null; distanceKm: number }[]>([]);
+  const [trips, setTrips] = useState<TripStat[]>([]);
 
+  // Maintenance modal
   const [addModalVisible, setAddModalVisible] = useState(false);
   const [newItemName, setNewItemName] = useState('');
   const [newItemInterval, setNewItemInterval] = useState('');
@@ -44,22 +94,33 @@ export default function VehicleSettingsScreen() {
   const [newItemDays, setNewItemDays] = useState('');
   const [newItemCost, setNewItemCost] = useState('');
 
+  // Add vehicle modal
   const [addVehicleVisible, setAddVehicleVisible] = useState(false);
   const [newVehicleName, setNewVehicleName] = useState('');
-  const [newVehicleType, setNewVehicleType] = useState<'car' | 'moto' | 'other'>('car');
+  const [newVehicleType, setNewVehicleType] = useState<'car' | 'moto' | 'other' | 'walk'>('car');
+
+  // Participant modal
+  const [addParticipantVisible, setAddParticipantVisible] = useState(false);
+  const [newParticipantName, setNewParticipantName] = useState('');
+  const [newParticipantType, setNewParticipantType] = useState<'human' | 'dog'>('human');
+  const [newParticipantReminder, setNewParticipantReminder] = useState('');
 
   const [projectPickerVisible, setProjectPickerVisible] = useState(false);
-
-  const [activeVehicleTab, setActiveVehicleTab] = useState<'general' | 'maintenance' | 'insurance'>('general');
+  const [activeVehicleTab, setActiveVehicleTab] = useState<VehicleTab>('general');
   const [insDatePickerVisible, setInsDatePickerVisible] = useState(false);
-
   const [recalModalVisible, setRecalModalVisible] = useState(false);
   const [recalValue, setRecalValue] = useState('');
 
   const load = useCallback(async () => {
     const [v, t] = await Promise.all([getVehicleSettings(), getTrips()]);
     setVehicles(v);
-    setTrips(t.map(tr => ({ vehicle: tr.vehicle, distanceKm: tr.distanceKm })));
+    setTrips(t.map(tr => ({
+      vehicle: tr.vehicle,
+      distanceKm: tr.distanceKm,
+      startTime: tr.startTime,
+      endTime: tr.endTime,
+      walkParticipants: tr.walkParticipants,
+    })));
   }, []);
 
   useEffect(() => { load(); }, [load]);
@@ -71,9 +132,21 @@ export default function VehicleSettingsScreen() {
     }
   }, [vehicles, selectedId]);
 
+  // Reset tab when switching vehicles if the current tab doesn't apply
+  useEffect(() => {
+    const sel = vehicles.find(v => v.id === selectedId);
+    if (!sel) return;
+    if (sel.type === 'walk' && (activeVehicleTab === 'maintenance' || activeVehicleTab === 'insurance')) {
+      setActiveVehicleTab('general');
+    } else if (sel.type !== 'walk' && (activeVehicleTab === 'participants' || activeVehicleTab === 'stats')) {
+      setActiveVehicleTab('general');
+    }
+  }, [selectedId, vehicles]);
+
   const selected = vehicles.find(v => v.id === selectedId) ?? vehicles[0];
   const odo = selected ? computeOdometer(trips as any, selected.id, selected.odometerBaseKm, selected.odometerAdjustments) : 0;
-  const tabColor = selected?.type === 'moto' ? '#FF9800' : '#2196F3';
+  const isWalk = selected?.type === 'walk';
+  const tabColor = selected?.type === 'moto' ? '#FF9800' : isWalk ? '#4CAF50' : '#2196F3';
 
   function updateSelected(partial: Partial<Vehicle>) {
     setVehicles(prev => prev.map(v => v.id === selectedId ? { ...v, ...partial } : v));
@@ -133,9 +206,9 @@ export default function VehicleSettingsScreen() {
     const target = selected.maintenanceItems.find(i => i.id === id);
     const isDateBased = !!target?.intervalDays;
     const msg = isDateBased
-      ? 'La date de référence sera mise à aujourd\'hui.'
+      ? "La date de référence sera mise à aujourd'hui."
       : `Le kilométrage de référence sera mis à ${odo.toFixed(0)} km.`;
-    Alert.alert('Marquer l\'entretien effectué ?', msg, [
+    Alert.alert("Marquer l'entretien effectué ?", msg, [
       { text: 'Annuler', style: 'cancel' },
       {
         text: 'Confirmer', onPress: () => {
@@ -185,9 +258,10 @@ export default function VehicleSettingsScreen() {
     const id = genId();
     const newV: Vehicle = {
       id, name, type: newVehicleType,
-      costPerKm: newVehicleType === 'moto' ? 0.10 : 0.15,
+      costPerKm: newVehicleType === 'moto' ? 0.10 : newVehicleType === 'walk' ? 0 : 0.15,
       odometerBaseKm: 0,
       maintenanceItems: [],
+      ...(newVehicleType === 'walk' ? { walkParticipants: [] } : {}),
     };
     setVehicles(prev => [...prev, newV]);
     setSelectedId(id);
@@ -217,6 +291,43 @@ export default function VehicleSettingsScreen() {
     );
   }
 
+  function confirmAddParticipant() {
+    if (!selected || selected.type !== 'walk') return;
+    const name = newParticipantName.trim();
+    if (!name) return;
+    const reminder = parseInt(newParticipantReminder, 10);
+    const p: WalkParticipant = {
+      id: genId(),
+      name,
+      type: newParticipantType,
+      ...(newParticipantType === 'dog' && !isNaN(reminder) && reminder > 0 ? { reminderDays: reminder } : {}),
+    };
+    updateSelected({ walkParticipants: [...(selected.walkParticipants ?? []), p] });
+    setAddParticipantVisible(false);
+    setNewParticipantName('');
+    setNewParticipantReminder('');
+    setNewParticipantType('human');
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  }
+
+  function deleteParticipant(id: string) {
+    if (!selected) return;
+    const p = (selected.walkParticipants ?? []).find(x => x.id === id);
+    Alert.alert(`Supprimer ${p?.name ?? 'ce participant'} ?`, undefined, [
+      { text: 'Annuler', style: 'cancel' },
+      {
+        text: 'Supprimer', style: 'destructive', onPress: () => {
+          updateSelected({ walkParticipants: (selected.walkParticipants ?? []).filter(x => x.id !== id) });
+        },
+      },
+    ]);
+  }
+
+  // ── Tabs definition (conditional on vehicle type) ─────────────────────────
+  const tabDefs: Array<[VehicleTab, string]> = isWalk
+    ? [['general', 'Général'], ['participants', 'Participants'], ['stats', 'Stats']]
+    : [['general', 'Général'], ['maintenance', 'Entretien'], ['insurance', 'Assurance']];
+
   return (
     <KeyboardAvoidingView
       style={{ flex: 1, backgroundColor: colors.background }}
@@ -238,7 +349,8 @@ export default function VehicleSettingsScreen() {
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipScroll}>
           {vehicles.map(v => {
             const active = v.id === selectedId;
-            const chipColor = v.type === 'moto' ? '#FF9800' : '#2196F3';
+            const chipColor = v.type === 'moto' ? '#FF9800' : v.type === 'walk' ? '#4CAF50' : '#2196F3';
+            const chipIcon = v.type === 'moto' ? 'motorbike' : v.type === 'walk' ? 'walk' : v.type === 'car' ? 'car' : 'car-outline';
             return (
               <Pressable
                 key={v.id}
@@ -248,11 +360,7 @@ export default function VehicleSettingsScreen() {
                   borderColor: active ? chipColor : colors.border,
                 }]}
               >
-                <MaterialCommunityIcons
-                  name={v.type === 'moto' ? 'motorbike' : v.type === 'car' ? 'car' : 'car-outline'}
-                  size={14}
-                  color={active ? chipColor : colors.mutedForeground}
-                />
+                <MaterialCommunityIcons name={chipIcon as any} size={14} color={active ? chipColor : colors.mutedForeground} />
                 <Text style={[styles.chipText, { color: active ? chipColor : colors.mutedForeground }]}>
                   {v.name}
                 </Text>
@@ -272,7 +380,7 @@ export default function VehicleSettingsScreen() {
       {/* ── Inner tab bar ── */}
       {selected && (
         <View style={[styles.innerTabBar, { borderBottomColor: colors.border }]}>
-          {([['general', 'Général'], ['maintenance', 'Entretien'], ['insurance', 'Assurance']] as const).map(([tab, label]) => {
+          {tabDefs.map(([tab, label]) => {
             const isActive = activeVehicleTab === tab;
             return (
               <Pressable
@@ -293,53 +401,51 @@ export default function VehicleSettingsScreen() {
           contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 24 }]}
           keyboardShouldPersistTaps="handled"
         >
+          {/* ── GÉNÉRAL ── */}
           {activeVehicleTab === 'general' && (<>
-          {/* Vehicle name */}
           <View style={styles.section}>
-            <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>NOM DU VÉHICULE</Text>
+            <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>NOM</Text>
             <TextInput
               style={[styles.input, { backgroundColor: colors.input, borderColor: colors.border, color: colors.foreground }]}
               value={selected.name}
               onChangeText={name => updateSelected({ name })}
               placeholderTextColor={colors.mutedForeground}
-              placeholder="Ex: Doblo, Msx, Tesla…"
+              placeholder="Ex: Doblo, Msx, Balade…"
             />
           </View>
 
-          {/* Vehicle type */}
           <View style={styles.section}>
             <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>TYPE</Text>
             <View style={styles.typeRow}>
-              {([['car', 'car', 'Voiture'], ['moto', 'motorbike', 'Moto'], ['other', 'car-outline', 'Autre']] as const).map(([t, icon, label]) => (
-                <Pressable
-                  key={t}
-                  onPress={() => updateSelected({ type: t })}
-                  style={[styles.typeBtn, {
-                    backgroundColor: selected.type === t ? tabColor + '22' : colors.muted,
-                    borderColor: selected.type === t ? tabColor : colors.border,
-                  }]}
-                >
-                  <MaterialCommunityIcons name={icon} size={16} color={selected.type === t ? tabColor : colors.mutedForeground} />
-                  <Text style={[styles.typeBtnLabel, { color: selected.type === t ? tabColor : colors.mutedForeground }]}>{label}</Text>
-                </Pressable>
-              ))}
+              {([['car', 'car', 'Voiture'], ['moto', 'motorbike', 'Moto'], ['other', 'car-outline', 'Autre'], ['walk', 'walk', 'Balade']] as const).map(([t, icon, label]) => {
+                const tc = t === 'moto' ? '#FF9800' : t === 'walk' ? '#4CAF50' : '#2196F3';
+                return (
+                  <Pressable
+                    key={t}
+                    onPress={() => updateSelected({ type: t })}
+                    style={[styles.typeBtn, {
+                      backgroundColor: selected.type === t ? tc + '22' : colors.muted,
+                      borderColor: selected.type === t ? tc : colors.border,
+                    }]}
+                  >
+                    <MaterialCommunityIcons name={icon as any} size={16} color={selected.type === t ? tc : colors.mutedForeground} />
+                    <Text style={[styles.typeBtnLabel, { color: selected.type === t ? tc : colors.mutedForeground }]}>{label}</Text>
+                  </Pressable>
+                );
+              })}
             </View>
           </View>
 
-          {/* Odometer display */}
+          {/* Motor-only sections */}
+          {!isWalk && (<>
           <View style={[styles.odoCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <MaterialCommunityIcons
-              name={selected.type === 'moto' ? 'motorbike' : 'car'}
-              size={22}
-              color={tabColor}
-            />
+            <MaterialCommunityIcons name={selected.type === 'moto' ? 'motorbike' : 'car'} size={22} color={tabColor} />
             <View style={{ flex: 1 }}>
               <Text style={[styles.odoVal, { color: colors.foreground }]}>{odo.toFixed(0)} km</Text>
               <Text style={[styles.odoSub, { color: colors.mutedForeground }]}>Odomètre estimé</Text>
             </View>
           </View>
 
-          {/* Cost per km */}
           <View style={styles.section}>
             <View style={styles.sectionRow}>
               <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>COÛT AU KM (€)</Text>
@@ -359,7 +465,6 @@ export default function VehicleSettingsScreen() {
                 </Pressable>
               </View>
             </View>
-
             {selected.costMode === 'auto' ? (
               <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 13, marginTop: 4 }}>
                 Calcul auto depuis les pleins et entretiens enregistrés.
@@ -368,10 +473,7 @@ export default function VehicleSettingsScreen() {
               <TextInput
                 style={[styles.input, { backgroundColor: colors.input, borderColor: colors.border, color: colors.foreground }]}
                 value={selected.costPerKm.toString()}
-                onChangeText={t => {
-                  const v = parseFloat(t);
-                  if (!isNaN(v)) updateSelected({ costPerKm: v });
-                }}
+                onChangeText={t => { const v = parseFloat(t); if (!isNaN(v)) updateSelected({ costPerKm: v }); }}
                 keyboardType="decimal-pad"
                 placeholderTextColor={colors.mutedForeground}
                 placeholder="0.15"
@@ -379,23 +481,18 @@ export default function VehicleSettingsScreen() {
             )}
           </View>
 
-          {/* Odometer base */}
           <View style={styles.section}>
             <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>ODOMÈTRE DE DÉPART (km)</Text>
             <TextInput
               style={[styles.input, { backgroundColor: colors.input, borderColor: colors.border, color: colors.foreground }]}
               value={selected.odometerBaseKm.toString()}
-              onChangeText={t => {
-                const v = parseFloat(t);
-                if (!isNaN(v)) updateSelected({ odometerBaseKm: v });
-              }}
+              onChangeText={t => { const v = parseFloat(t); if (!isNaN(v)) updateSelected({ odometerBaseKm: v }); }}
               keyboardType="numeric"
               placeholderTextColor={colors.mutedForeground}
               placeholder="0"
             />
           </View>
 
-          {/* Recalage odomètre */}
           <View style={styles.section}>
             <View style={styles.sectionRow}>
               <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>RECALAGE ODOMÈTRE</Text>
@@ -413,8 +510,7 @@ export default function VehicleSettingsScreen() {
                 const isOld = status.daysAgo > 90;
                 return (
                   <Text style={{ color: isOld ? '#E65100' : colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 13 }}>
-                    {status.text}
-                    {isOld ? ' · Pensez à recaler' : ''}
+                    {status.text}{isOld ? ' · Pensez à recaler' : ''}
                   </Text>
                 );
               }
@@ -426,7 +522,6 @@ export default function VehicleSettingsScreen() {
             })()}
           </View>
 
-          {/* Maintenance project */}
           <View style={styles.section}>
             <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>PROJET ENTRETIEN</Text>
             <Pressable
@@ -441,8 +536,32 @@ export default function VehicleSettingsScreen() {
           </View>
           </>)}
 
+          {/* Walk general info */}
+          {isWalk && (
+            <View style={[styles.odoCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <MaterialCommunityIcons name="walk" size={22} color={tabColor} />
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.odoVal, { color: colors.foreground }]}>
+                  {odo.toFixed(1)} km
+                </Text>
+                <Text style={[styles.odoSub, { color: colors.mutedForeground }]}>
+                  Distance totale · {trips.filter(t => t.vehicle === selected.id).length} balades
+                </Text>
+              </View>
+            </View>
+          )}
+
+          <Pressable
+            onPress={handleDeleteVehicle}
+            style={[styles.deleteVehicleBtn, { borderColor: '#EF4444' }]}
+          >
+            <MaterialCommunityIcons name="trash-can-outline" size={16} color="#EF4444" />
+            <Text style={[styles.deleteVehicleText, { color: '#EF4444' }]}>Supprimer {selected.name}</Text>
+          </Pressable>
+          </>)}
+
+          {/* ── ENTRETIEN ── */}
           {activeVehicleTab === 'maintenance' && (<>
-          {/* Rappels d'entretien */}
           <View style={styles.section}>
             <View style={styles.sectionRow}>
               <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>RAPPELS D'ENTRETIEN</Text>
@@ -516,7 +635,6 @@ export default function VehicleSettingsScreen() {
                         </Pressable>
                       </View>
                     </View>
-
                     <View style={[styles.progressBar, { backgroundColor: colors.border }]}>
                       <View
                         style={[styles.progressFill, {
@@ -525,9 +643,7 @@ export default function VehicleSettingsScreen() {
                         }]}
                       />
                     </View>
-                    <Text style={[styles.itemStatus, { color: isOverdue ? '#FF9800' : colors.mutedForeground }]}>
-                      {statusText}
-                    </Text>
+                    <Text style={[styles.itemStatus, { color: isOverdue ? '#FF9800' : colors.mutedForeground }]}>{statusText}</Text>
                     <Text style={[styles.itemSub, { color: colors.mutedForeground }]}>{subText}</Text>
                   </View>
                 );
@@ -536,17 +652,7 @@ export default function VehicleSettingsScreen() {
           </View>
           </>)}
 
-          {activeVehicleTab === 'general' && (
-            <Pressable
-              onPress={handleDeleteVehicle}
-              style={[styles.deleteVehicleBtn, { borderColor: '#EF4444' }]}
-            >
-              <MaterialCommunityIcons name="trash-can-outline" size={16} color="#EF4444" />
-              <Text style={[styles.deleteVehicleText, { color: '#EF4444' }]}>Supprimer {selected.name}</Text>
-            </Pressable>
-          )}
-
-          {/* ── Assurance ── */}
+          {/* ── ASSURANCE ── */}
           {activeVehicleTab === 'insurance' && (<>
             <View style={styles.section}>
               <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>PRIME ANNUELLE (€)</Text>
@@ -623,6 +729,148 @@ export default function VehicleSettingsScreen() {
               <Text style={[styles.insPayBtnText, { color: tabColor }]}>Enregistrer le paiement dans les finances</Text>
             </Pressable>
           </>)}
+
+          {/* ── PARTICIPANTS (walk only) ── */}
+          {activeVehicleTab === 'participants' && (<>
+          <View style={styles.section}>
+            <View style={styles.sectionRow}>
+              <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>PARTICIPANTS</Text>
+              <Pressable
+                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setNewParticipantName(''); setNewParticipantType('human'); setNewParticipantReminder(''); setAddParticipantVisible(true); }}
+                style={[styles.addBtn, { backgroundColor: tabColor + '22', borderColor: tabColor }]}
+              >
+                <MaterialCommunityIcons name="plus" size={13} color={tabColor} />
+                <Text style={[styles.addBtnText, { color: tabColor }]}>Ajouter</Text>
+              </Pressable>
+            </View>
+
+            {/* Humains */}
+            {(() => {
+              const humans = (selected.walkParticipants ?? []).filter(p => p.type === 'human');
+              return humans.length > 0 ? (
+                <View style={styles.participantGroup}>
+                  <Text style={[styles.participantGroupLabel, { color: colors.mutedForeground }]}>
+                    <MaterialCommunityIcons name="account-outline" size={12} color={colors.mutedForeground} /> HUMAINS
+                  </Text>
+                  {humans.map(p => (
+                    <View key={p.id} style={[styles.participantRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                      <View style={[styles.participantAvatar, { backgroundColor: '#2196F322' }]}>
+                        <Text style={{ color: '#2196F3', fontSize: 13, fontFamily: 'Inter_700Bold' }}>{p.name.charAt(0).toUpperCase()}</Text>
+                      </View>
+                      <Text style={[styles.participantName, { color: colors.foreground }]}>{p.name}</Text>
+                      <Pressable onPress={() => deleteParticipant(p.id)} style={[styles.iconBtn, { backgroundColor: '#EF444418' }]}>
+                        <MaterialCommunityIcons name="trash-can-outline" size={14} color="#EF4444" />
+                      </Pressable>
+                    </View>
+                  ))}
+                </View>
+              ) : null;
+            })()}
+
+            {/* Chiens */}
+            {(() => {
+              const dogs = (selected.walkParticipants ?? []).filter(p => p.type === 'dog');
+              return dogs.length > 0 ? (
+                <View style={styles.participantGroup}>
+                  <Text style={[styles.participantGroupLabel, { color: colors.mutedForeground }]}>
+                    🐕 CHIENS
+                  </Text>
+                  {dogs.map(p => (
+                    <View key={p.id} style={[styles.participantRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                      <View style={[styles.participantAvatar, { backgroundColor: '#FF980022' }]}>
+                        <Text style={{ color: '#FF9800', fontSize: 13, fontFamily: 'Inter_700Bold' }}>{p.name.charAt(0).toUpperCase()}</Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.participantName, { color: colors.foreground }]}>{p.name}</Text>
+                        {p.reminderDays ? (
+                          <Text style={{ fontSize: 11, fontFamily: 'Inter_400Regular', color: colors.mutedForeground }}>
+                            Rappel si pas sorti depuis {p.reminderDays}j
+                          </Text>
+                        ) : null}
+                      </View>
+                      <Pressable onPress={() => deleteParticipant(p.id)} style={[styles.iconBtn, { backgroundColor: '#EF444418' }]}>
+                        <MaterialCommunityIcons name="trash-can-outline" size={14} color="#EF4444" />
+                      </Pressable>
+                    </View>
+                  ))}
+                </View>
+              ) : null;
+            })()}
+
+            {(selected.walkParticipants ?? []).length === 0 && (
+              <View style={[styles.emptyCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <MaterialCommunityIcons name="account-multiple-outline" size={28} color={colors.mutedForeground} />
+                <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
+                  Aucun participant configuré.{'\n'}Ajoute les humains et chiens qui accompagnent les balades.
+                </Text>
+              </View>
+            )}
+          </View>
+          </>)}
+
+          {/* ── STATS (walk only) ── */}
+          {activeVehicleTab === 'stats' && (<>
+          {(selected.walkParticipants ?? []).length === 0 ? (
+            <View style={[styles.emptyCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <MaterialCommunityIcons name="chart-bar" size={28} color={colors.mutedForeground} />
+              <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
+                Ajoutez des participants dans l'onglet Participants pour voir les statistiques.
+              </Text>
+            </View>
+          ) : (
+            (selected.walkParticipants ?? []).map(p => {
+              const lastTs = getLastWalk(trips, p.id, selected.id);
+              const s7  = getWalkStats(trips, p.id, selected.id, 7);
+              const s30 = getWalkStats(trips, p.id, selected.id, 30);
+              const s90 = getWalkStats(trips, p.id, selected.id, 90);
+              const avatarColor = p.type === 'dog' ? '#FF9800' : '#2196F3';
+              return (
+                <View key={p.id} style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                  {/* Header */}
+                  <View style={styles.statCardHeader}>
+                    <View style={[styles.participantAvatar, { backgroundColor: avatarColor + '22' }]}>
+                      <Text style={{ color: avatarColor, fontSize: 15, fontFamily: 'Inter_700Bold' }}>{p.name.charAt(0).toUpperCase()}</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.statName, { color: colors.foreground }]}>{p.name}</Text>
+                      <Text style={[styles.statLastWalk, { color: lastTs ? (Date.now() - lastTs > (p.reminderDays ?? 999) * 86400000 ? '#EF4444' : colors.mutedForeground) : '#EF4444' }]}>
+                        {fmtLastWalk(lastTs)}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* Stats grid */}
+                  <View style={styles.statGrid}>
+                    <View style={styles.statGridHeader}>
+                      <Text style={[styles.statColLabel, { color: colors.mutedForeground }]} />
+                      <Text style={[styles.statColLabel, { color: tabColor }]}>7 j</Text>
+                      <Text style={[styles.statColLabel, { color: tabColor }]}>30 j</Text>
+                      <Text style={[styles.statColLabel, { color: tabColor }]}>90 j</Text>
+                    </View>
+                    <View style={[styles.statGridRow, { borderTopColor: colors.border }]}>
+                      <Text style={[styles.statRowLabel, { color: colors.mutedForeground }]}>Balades</Text>
+                      <Text style={[styles.statVal, { color: colors.foreground }]}>{s7.count}</Text>
+                      <Text style={[styles.statVal, { color: colors.foreground }]}>{s30.count}</Text>
+                      <Text style={[styles.statVal, { color: colors.foreground }]}>{s90.count}</Text>
+                    </View>
+                    <View style={[styles.statGridRow, { borderTopColor: colors.border }]}>
+                      <Text style={[styles.statRowLabel, { color: colors.mutedForeground }]}>Km</Text>
+                      <Text style={[styles.statVal, { color: colors.foreground }]}>{s7.km.toFixed(1)}</Text>
+                      <Text style={[styles.statVal, { color: colors.foreground }]}>{s30.km.toFixed(1)}</Text>
+                      <Text style={[styles.statVal, { color: colors.foreground }]}>{s90.km.toFixed(1)}</Text>
+                    </View>
+                    <View style={[styles.statGridRow, { borderTopColor: colors.border }]}>
+                      <Text style={[styles.statRowLabel, { color: colors.mutedForeground }]}>Durée</Text>
+                      <Text style={[styles.statVal, { color: colors.foreground }]}>{fmtDuration(s7.durationMs)}</Text>
+                      <Text style={[styles.statVal, { color: colors.foreground }]}>{fmtDuration(s30.durationMs)}</Text>
+                      <Text style={[styles.statVal, { color: colors.foreground }]}>{fmtDuration(s90.durationMs)}</Text>
+                    </View>
+                  </View>
+                </View>
+              );
+            })
+          )}
+          </>)}
         </ScrollView>
       ) : null}
 
@@ -631,24 +879,16 @@ export default function VehicleSettingsScreen() {
         <Pressable style={styles.modalBackdrop} onPress={() => setAddModalVisible(false)}>
           <Pressable style={[styles.modalCard, { backgroundColor: colors.card, borderColor: colors.border, paddingBottom: insets.bottom + 20 }]}>
             <Text style={[styles.modalTitle, { color: colors.foreground }]}>Nouveau rappel</Text>
-
             <View style={styles.typeRow}>
-              <Pressable
-                onPress={() => setNewItemType('km')}
-                style={[styles.typeBtn, { backgroundColor: newItemType === 'km' ? tabColor + '30' : colors.muted, borderColor: newItemType === 'km' ? tabColor : colors.border }]}
-              >
+              <Pressable onPress={() => setNewItemType('km')} style={[styles.typeBtn, { backgroundColor: newItemType === 'km' ? tabColor + '30' : colors.muted, borderColor: newItemType === 'km' ? tabColor : colors.border }]}>
                 <MaterialCommunityIcons name="speedometer" size={14} color={newItemType === 'km' ? tabColor : colors.mutedForeground} />
                 <Text style={[styles.typeBtnLabel, { color: newItemType === 'km' ? tabColor : colors.mutedForeground }]}>Kilométrage</Text>
               </Pressable>
-              <Pressable
-                onPress={() => setNewItemType('date')}
-                style={[styles.typeBtn, { backgroundColor: newItemType === 'date' ? '#7C3AED30' : colors.muted, borderColor: newItemType === 'date' ? '#7C3AED' : colors.border }]}
-              >
+              <Pressable onPress={() => setNewItemType('date')} style={[styles.typeBtn, { backgroundColor: newItemType === 'date' ? '#7C3AED30' : colors.muted, borderColor: newItemType === 'date' ? '#7C3AED' : colors.border }]}>
                 <MaterialCommunityIcons name={'calendar-clock-outline' as any} size={14} color={newItemType === 'date' ? '#7C3AED' : colors.mutedForeground} />
                 <Text style={[styles.typeBtnLabel, { color: newItemType === 'date' ? '#7C3AED' : colors.mutedForeground }]}>Date</Text>
               </Pressable>
             </View>
-
             <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Nom</Text>
             <TextInput
               style={[styles.input, { backgroundColor: colors.input, borderColor: colors.border, color: colors.foreground }]}
@@ -658,7 +898,6 @@ export default function VehicleSettingsScreen() {
               onChangeText={setNewItemName}
               autoFocus
             />
-
             {newItemType === 'km' ? (
               <>
                 <Text style={[styles.fieldLabel, { color: colors.mutedForeground, marginTop: 8 }]}>Intervalle (km)</Text>
@@ -684,7 +923,6 @@ export default function VehicleSettingsScreen() {
                 />
               </>
             )}
-
             <View style={styles.modalActions}>
               <Pressable onPress={() => setAddModalVisible(false)} style={[styles.modalBtn, { backgroundColor: colors.muted, borderColor: colors.border }]}>
                 <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_500Medium', fontSize: 14 }}>Annuler</Text>
@@ -697,39 +935,99 @@ export default function VehicleSettingsScreen() {
         </Pressable>
       </Modal>
 
-      {/* Add vehicle modal */}
-      <Modal visible={addVehicleVisible} transparent animationType="fade">
-        <Pressable style={styles.modalBackdrop} onPress={() => setAddVehicleVisible(false)}>
+      {/* Add participant modal */}
+      <Modal visible={addParticipantVisible} transparent animationType="fade">
+        <Pressable style={styles.modalBackdrop} onPress={() => setAddParticipantVisible(false)}>
           <Pressable style={[styles.modalCard, { backgroundColor: colors.card, borderColor: colors.border, paddingBottom: insets.bottom + 20 }]}>
-            <Text style={[styles.modalTitle, { color: colors.foreground }]}>Ajouter un véhicule</Text>
+            <Text style={[styles.modalTitle, { color: colors.foreground }]}>Ajouter un participant</Text>
 
             <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Nom</Text>
             <TextInput
               style={[styles.input, { backgroundColor: colors.input, borderColor: colors.border, color: colors.foreground }]}
-              placeholder="Ex: Twingo, Vespa…"
+              placeholder="Ex: Marie, Akela…"
               placeholderTextColor={colors.mutedForeground}
-              value={newVehicleName}
-              onChangeText={setNewVehicleName}
+              value={newParticipantName}
+              onChangeText={setNewParticipantName}
               autoFocus
             />
 
             <Text style={[styles.fieldLabel, { color: colors.mutedForeground, marginTop: 8 }]}>Type</Text>
             <View style={styles.typeRow}>
-              {([['car', 'car', 'Voiture'], ['moto', 'motorbike', 'Moto'], ['other', 'car-outline', 'Autre']] as const).map(([t, icon, label]) => (
+              <Pressable
+                onPress={() => setNewParticipantType('human')}
+                style={[styles.typeBtn, { backgroundColor: newParticipantType === 'human' ? '#2196F322' : colors.muted, borderColor: newParticipantType === 'human' ? '#2196F3' : colors.border }]}
+              >
+                <MaterialCommunityIcons name="account-outline" size={16} color={newParticipantType === 'human' ? '#2196F3' : colors.mutedForeground} />
+                <Text style={[styles.typeBtnLabel, { color: newParticipantType === 'human' ? '#2196F3' : colors.mutedForeground }]}>Humain</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => setNewParticipantType('dog')}
+                style={[styles.typeBtn, { backgroundColor: newParticipantType === 'dog' ? '#FF980022' : colors.muted, borderColor: newParticipantType === 'dog' ? '#FF9800' : colors.border }]}
+              >
+                <Text style={{ fontSize: 14 }}>🐕</Text>
+                <Text style={[styles.typeBtnLabel, { color: newParticipantType === 'dog' ? '#FF9800' : colors.mutedForeground }]}>Chien</Text>
+              </Pressable>
+            </View>
+
+            {newParticipantType === 'dog' && (
+              <>
+                <Text style={[styles.fieldLabel, { color: colors.mutedForeground, marginTop: 8 }]}>
+                  Rappel si pas sorti depuis X jours (optionnel)
+                </Text>
+                <TextInput
+                  style={[styles.input, { backgroundColor: colors.input, borderColor: colors.border, color: colors.foreground }]}
+                  placeholder="ex: 2"
+                  placeholderTextColor={colors.mutedForeground}
+                  keyboardType="numeric"
+                  value={newParticipantReminder}
+                  onChangeText={setNewParticipantReminder}
+                />
+              </>
+            )}
+
+            <View style={styles.modalActions}>
+              <Pressable onPress={() => setAddParticipantVisible(false)} style={[styles.modalBtn, { backgroundColor: colors.muted, borderColor: colors.border }]}>
+                <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_500Medium', fontSize: 14 }}>Annuler</Text>
+              </Pressable>
+              <Pressable onPress={confirmAddParticipant} style={[styles.modalBtn, { backgroundColor: tabColor, borderColor: tabColor }]}>
+                <Text style={{ color: '#fff', fontFamily: 'Inter_600SemiBold', fontSize: 14 }}>Ajouter</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Add vehicle modal */}
+      <Modal visible={addVehicleVisible} transparent animationType="fade">
+        <Pressable style={styles.modalBackdrop} onPress={() => setAddVehicleVisible(false)}>
+          <Pressable style={[styles.modalCard, { backgroundColor: colors.card, borderColor: colors.border, paddingBottom: insets.bottom + 20 }]}>
+            <Text style={[styles.modalTitle, { color: colors.foreground }]}>Ajouter un véhicule</Text>
+            <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Nom</Text>
+            <TextInput
+              style={[styles.input, { backgroundColor: colors.input, borderColor: colors.border, color: colors.foreground }]}
+              placeholder="Ex: Twingo, Vespa, Balade…"
+              placeholderTextColor={colors.mutedForeground}
+              value={newVehicleName}
+              onChangeText={setNewVehicleName}
+              autoFocus
+            />
+            <Text style={[styles.fieldLabel, { color: colors.mutedForeground, marginTop: 8 }]}>Type</Text>
+            <View style={[styles.typeRow, { flexWrap: 'wrap' }]}>
+              {([['car', 'car', 'Voiture', '#2196F3'], ['moto', 'motorbike', 'Moto', '#FF9800'], ['other', 'car-outline', 'Autre', '#9E9E9E'], ['walk', 'walk', 'Balade', '#4CAF50']] as const).map(([t, icon, label, tc]) => (
                 <Pressable
                   key={t}
                   onPress={() => setNewVehicleType(t)}
                   style={[styles.typeBtn, {
-                    backgroundColor: newVehicleType === t ? '#FFC10722' : colors.muted,
-                    borderColor: newVehicleType === t ? '#FFC107' : colors.border,
+                    backgroundColor: newVehicleType === t ? tc + '22' : colors.muted,
+                    borderColor: newVehicleType === t ? tc : colors.border,
+                    minWidth: '45%',
                   }]}
                 >
-                  <MaterialCommunityIcons name={icon} size={16} color={newVehicleType === t ? '#FFC107' : colors.mutedForeground} />
-                  <Text style={[styles.typeBtnLabel, { color: newVehicleType === t ? '#FFC107' : colors.mutedForeground }]}>{label}</Text>
+                  <MaterialCommunityIcons name={icon as any} size={16} color={newVehicleType === t ? tc : colors.mutedForeground} />
+                  <Text style={[styles.typeBtnLabel, { color: newVehicleType === t ? tc : colors.mutedForeground }]}>{label}</Text>
                 </Pressable>
               ))}
             </View>
-
             <View style={styles.modalActions}>
               <Pressable onPress={() => setAddVehicleVisible(false)} style={[styles.modalBtn, { backgroundColor: colors.muted, borderColor: colors.border }]}>
                 <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_500Medium', fontSize: 14 }}>Annuler</Text>
@@ -865,25 +1163,14 @@ const styles = StyleSheet.create({
   },
   deleteVehicleText: { fontSize: 14, fontFamily: 'Inter_500Medium' },
 
-  innerTabBar: {
-    flexDirection: 'row', borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  innerTab: {
-    flex: 1, alignItems: 'center', paddingVertical: 10, borderBottomWidth: 2, borderBottomColor: 'transparent',
-  },
+  innerTabBar: { flexDirection: 'row', borderBottomWidth: StyleSheet.hairlineWidth },
+  innerTab: { flex: 1, alignItems: 'center', paddingVertical: 10, borderBottomWidth: 2, borderBottomColor: 'transparent' },
   innerTabText: { fontSize: 13, fontFamily: 'Inter_600SemiBold' },
 
-  insStatusCard: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    borderRadius: 12, borderWidth: 1, padding: 14,
-  },
+  insStatusCard: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 12, borderWidth: 1, padding: 14 },
   insStatusTitle: { fontSize: 14, fontFamily: 'Inter_600SemiBold' },
   insStatusSub: { fontSize: 12, fontFamily: 'Inter_400Regular' },
-
-  insPayBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-    padding: 14, borderRadius: 12, borderWidth: 1,
-  },
+  insPayBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 14, borderRadius: 12, borderWidth: 1 },
   insPayBtnText: { fontSize: 14, fontFamily: 'Inter_500Medium' },
 
   modalBackdrop: { flex: 1, backgroundColor: '#00000066', justifyContent: 'center', alignItems: 'center', padding: 24 },
@@ -898,4 +1185,23 @@ const styles = StyleSheet.create({
   pickerSheet: { width: '100%', position: 'absolute', bottom: 0, borderTopLeftRadius: 20, borderTopRightRadius: 20, borderTopWidth: 1, padding: 20, maxHeight: '70%' },
   projectRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 14, borderBottomWidth: StyleSheet.hairlineWidth },
   projectRowText: { fontSize: 15, fontFamily: 'Inter_400Regular' },
+
+  // Participant styles
+  participantGroup: { gap: 6 },
+  participantGroupLabel: { fontSize: 10, fontFamily: 'Inter_600SemiBold', letterSpacing: 0.8, textTransform: 'uppercase', marginTop: 4 },
+  participantRow: { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 12, borderWidth: 1, padding: 12 },
+  participantAvatar: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  participantName: { flex: 1, fontSize: 14, fontFamily: 'Inter_600SemiBold' },
+
+  // Stats styles
+  statCard: { borderRadius: 14, borderWidth: 1, padding: 14, gap: 10 },
+  statCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  statName: { fontSize: 15, fontFamily: 'Inter_700Bold' },
+  statLastWalk: { fontSize: 12, fontFamily: 'Inter_400Regular', marginTop: 2 },
+  statGrid: { gap: 0 },
+  statGridHeader: { flexDirection: 'row', paddingBottom: 6 },
+  statGridRow: { flexDirection: 'row', paddingVertical: 8, borderTopWidth: StyleSheet.hairlineWidth },
+  statColLabel: { flex: 1, textAlign: 'center', fontSize: 12, fontFamily: 'Inter_700Bold', letterSpacing: 0.5 },
+  statRowLabel: { flex: 1, fontSize: 12, fontFamily: 'Inter_500Medium' },
+  statVal: { flex: 1, textAlign: 'center', fontSize: 13, fontFamily: 'Inter_600SemiBold' },
 });
