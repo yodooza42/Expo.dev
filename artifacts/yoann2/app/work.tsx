@@ -453,7 +453,8 @@ export default function WorkScreen() {
                           placeholderTextColor={colors.mutedForeground}
                           keyboardType="numbers-and-punctuation"
                           maxLength={5}
-                          style={[styles.timeInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]}
+                          underlineColorAndroid="transparent"
+                          style={[styles.timeInput, { color: colors.foreground, borderColor: colors.primary + '80', backgroundColor: colors.background }]}
                         />
                         <Text style={[styles.timeSep, { color: colors.mutedForeground }]}>→</Text>
                         <TextInput
@@ -464,7 +465,8 @@ export default function WorkScreen() {
                           placeholderTextColor={colors.mutedForeground}
                           keyboardType="numbers-and-punctuation"
                           maxLength={5}
-                          style={[styles.timeInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]}
+                          underlineColorAndroid="transparent"
+                          style={[styles.timeInput, { color: colors.foreground, borderColor: colors.primary + '80', backgroundColor: colors.background }]}
                         />
                       </View>
                     )}
@@ -619,6 +621,7 @@ export default function WorkScreen() {
                   keyboardType="numbers-and-punctuation"
                   maxLength={5}
                   editable={!isTomorrow}
+                  underlineColorAndroid="transparent"
                   style={[
                     styles.sessionInput,
                     {
@@ -638,6 +641,7 @@ export default function WorkScreen() {
                   keyboardType="numbers-and-punctuation"
                   maxLength={5}
                   editable={!isTomorrow}
+                  underlineColorAndroid="transparent"
                   style={[
                     styles.sessionInput,
                     {
@@ -914,7 +918,7 @@ const styles = StyleSheet.create({
   dayRow:    { flexDirection: 'row', alignItems: 'center', gap: 8 },
   dayLabel:  { width: 74, fontSize: 13, fontFamily: 'Inter_500Medium' },
   timeGroup: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 },
-  timeInput: { width: 58, height: 34, borderWidth: 1, borderRadius: 10, textAlign: 'center', fontSize: 13, fontFamily: 'Inter_500Medium' },
+  timeInput: { width: 58, height: 34, borderWidth: 1, borderRadius: 10, textAlign: 'center', fontSize: 13, fontFamily: 'Inter_500Medium', paddingVertical: 0 },
   timeSep:   { fontSize: 13, fontFamily: 'Inter_400Regular' },
   reposTxt:  { flex: 1, fontSize: 13, fontFamily: 'Inter_400Regular', fontStyle: 'italic' },
   reposToggle:    { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10 },
