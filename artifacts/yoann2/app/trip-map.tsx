@@ -210,7 +210,7 @@ export default function TripMapScreen() {
   const colors = useColors();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { id, backLabel } = useLocalSearchParams<{ id: string; backLabel?: string }>();
+  const { id, backLabel, participantName } = useLocalSearchParams<{ id: string; backLabel?: string; participantName?: string }>();
 
   const [trip, setTrip] = useState<Trip | null>(null);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
@@ -494,6 +494,13 @@ export default function TripMapScreen() {
             })()}
           </View>
 
+          {!!participantName && (
+            <View style={styles.participantChip}>
+              <MaterialCommunityIcons name="account-outline" size={13} color="#4CAF50" />
+              <Text style={[styles.participantChipText, { color: colors.mutedForeground }]}>Avec {participantName}</Text>
+            </View>
+          )}
+
           {(trip.route || osrmRoute) && (
             <View style={styles.legendRow}>
               <View style={styles.legendItem}>
@@ -647,6 +654,8 @@ const styles = StyleSheet.create({
   dateText: { fontSize: 17, fontFamily: 'Inter_600SemiBold', textTransform: 'capitalize' },
   timeText: { fontSize: 13, fontFamily: 'Inter_400Regular' },
   statsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 14, marginTop: 8 },
+  participantChip: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 4 },
+  participantChipText: { fontSize: 12, fontFamily: 'Inter_400Regular' },
   statItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   statValue: { fontSize: 14, fontFamily: 'Inter_500Medium' },
   legendRow: { flexDirection: 'row', alignItems: 'center', gap: 14, marginTop: 4 },
