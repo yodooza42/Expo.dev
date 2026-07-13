@@ -345,6 +345,7 @@ function TripRow({
   vehicles?: Vehicle[];
 }) {
   const router = useRouter();
+  const [showParticipants, setShowParticipants] = useState(false);
   const carColor = '#2196F3';
   const motoColor = '#FF9800';
   const walkColor = '#4CAF50';
@@ -424,22 +425,34 @@ function TripRow({
         </View>
       )}
       {isWalk && walkParticipantDetails.length > 0 && (
-        <View style={styles.tripAddrRow}>
-          {walkParticipantDetails.slice(0, 6).map((p, i) => (
-            <View key={i} style={{
-              width: 20, height: 20, borderRadius: 10,
-              backgroundColor: p.type === 'dog' ? '#FF980030' : '#2196F330',
-              alignItems: 'center', justifyContent: 'center',
-            }}>
-              <Text style={{ color: p.type === 'dog' ? '#FF9800' : '#2196F3', fontSize: 8, fontFamily: 'Inter_700Bold' }}>
-                {p.name.charAt(0).toUpperCase()}
+        <View>
+          <Pressable
+            onPress={compact ? () => { Haptics.selectionAsync(); setShowParticipants(v => !v); } : undefined}
+            style={styles.tripAddrRow}
+          >
+            {walkParticipantDetails.slice(0, 6).map((p, i) => (
+              <View key={i} style={{
+                width: 20, height: 20, borderRadius: 10,
+                backgroundColor: p.type === 'dog' ? '#FF980030' : '#2196F330',
+                alignItems: 'center', justifyContent: 'center',
+              }}>
+                <Text style={{ color: p.type === 'dog' ? '#FF9800' : '#2196F3', fontSize: 8, fontFamily: 'Inter_700Bold' }}>
+                  {p.name.charAt(0).toUpperCase()}
+                </Text>
+              </View>
+            ))}
+            {!compact && (
+              <Text style={[styles.tripAddr, { color: colors.mutedForeground, marginLeft: 2 }]}>
+                {walkParticipantDetails.map(p => p.name).join(', ')}
+              </Text>
+            )}
+          </Pressable>
+          {compact && showParticipants && (
+            <View style={[styles.participantTooltip, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <Text style={[styles.participantTooltipText, { color: colors.foreground }]}>
+                {walkParticipantDetails.map(p => p.name).join(', ')}
               </Text>
             </View>
-          ))}
-          {!compact && (
-            <Text style={[styles.tripAddr, { color: colors.mutedForeground, marginLeft: 2 }]}>
-              {walkParticipantDetails.map(p => p.name).join(', ')}
-            </Text>
           )}
         </View>
       )}
@@ -731,6 +744,8 @@ const styles = StyleSheet.create({
   tripDur: { fontSize: 11, fontFamily: 'Inter_400Regular' },
   tripAddrRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   tripAddr: { flex: 1, fontSize: 11, fontFamily: 'Inter_400Regular' },
+  participantTooltip: { marginTop: 2, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, borderWidth: StyleSheet.hairlineWidth, alignSelf: 'flex-start' },
+  participantTooltipText: { fontSize: 11, fontFamily: 'Inter_400Regular' },
   tripDeleteBtn: { padding: 4, marginLeft: 2 },
   retagRow: { flexDirection: 'row', gap: 8 },
   retagBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, borderRadius: 8, borderWidth: 1, paddingVertical: 7 },
