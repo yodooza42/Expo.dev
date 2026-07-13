@@ -148,6 +148,25 @@ const HISTORY: VersionEntry[] = [
     ],
   },
   {
+    version: 'v2.9.0',
+    date: 'Juillet 2026 — Véhicule Balade',
+    items: [
+      'Nouveau type de véhicule "Balade" (icône verte) dans les réglages',
+      'Onglet Participants : groupes Humains et Chiens, ajout/suppression',
+      'Onglet Stats : km et durée sur 7 / 30 / 90 jours par participant',
+      'Rappel de balade sur l\'Accueil quand un chien n\'est pas sorti depuis N jours',
+      'Saisie manuelle de balade : heure début, durée (H + min), km — sans GPS ni adresses',
+      'Heure de fin calculée automatiquement depuis la durée',
+      'Sélection des participants (humains + chiens) à chaque saisie',
+      'WalkCard dans l\'onglet Trajets : km du mois, sorties, avatars participants',
+      'Historique des balades par participant dans la fiche véhicule (10 par défaut)',
+      'Bouton "Voir plus" pour afficher toutes les balades d\'un participant',
+      'Icône walk verte + avatars participants dans la liste des trajets',
+      'Tap sur les avatars en mode compact → noms complets en tooltip',
+      'Navigation vers le détail d\'une balade depuis la fiche participant',
+    ],
+  },
+  {
     version: 'v2.7.0',
     date: 'Juillet 2026 — Trajets manuels & Travail',
     items: [
@@ -186,7 +205,7 @@ export default function ChangelogScreen() {
             Bienvenue dans mon cerveau numérique
           </Text>
           <Text style={[styles.heroVersion, { color: colors.primary }]}>
-            Yoann2.0  ·  v2.8.0
+            Yoann2.0  ·  v2.9.0
           </Text>
         </View>
 
