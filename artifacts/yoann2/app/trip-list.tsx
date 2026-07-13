@@ -423,7 +423,7 @@ function TripRow({
           </Text>
         </View>
       )}
-      {isWalk && walkParticipantDetails.length > 0 && !compact && (
+      {isWalk && walkParticipantDetails.length > 0 && (
         <View style={styles.tripAddrRow}>
           {walkParticipantDetails.slice(0, 6).map((p, i) => (
             <View key={i} style={{
@@ -436,9 +436,11 @@ function TripRow({
               </Text>
             </View>
           ))}
-          <Text style={[styles.tripAddr, { color: colors.mutedForeground, marginLeft: 2 }]}>
-            {walkParticipantDetails.map(p => p.name).join(', ')}
-          </Text>
+          {!compact && (
+            <Text style={[styles.tripAddr, { color: colors.mutedForeground, marginLeft: 2 }]}>
+              {walkParticipantDetails.map(p => p.name).join(', ')}
+            </Text>
+          )}
         </View>
       )}
       {isPending && !compact && (
