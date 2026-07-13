@@ -24,6 +24,10 @@ args = "EAS Build v72 prod"
 task = "workflow.run"
 args = "EAS Build v73 prod"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "EAS Build v77 prod"
+
 [[workflows.workflow]]
 name = "EAS Build v72 prod"
 author = "agent"
@@ -39,6 +43,17 @@ author = "agent"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "cd /home/runner/workspace/artifacts/yoann2 && export EXPO_TOKEN=IoFAF-TezmfedsNBuYegjJM_ogPj4FPmIZD41LfM && GIT_OPTIONAL_LOCKS=0 /home/runner/workspace/.config/npm/node_global/bin/eas build --platform android --profile production --non-interactive 2>&1"
+
+[[workflows.workflow]]
+name = "EAS Build v77 prod"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd /home/runner/workspace/artifacts/yoann2 && export EXPO_TOKEN=9cA6o2u-4SxCFuiNr-8rzSve8KsHuEQAk_93--lT && GIT_OPTIONAL_LOCKS=0 /home/runner/workspace/.config/npm/node_global/bin/eas build --platform android --profile production --non-interactive 2>&1"
+
+[workflows.workflow.metadata]
+outputType = "console"
 
 [agent]
 stack = "PNPM_WORKSPACE"
