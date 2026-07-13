@@ -19,7 +19,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { genId } from '@/utils/ids';
 import type { KnownPlace } from '@/types/places';
-import type { RoutePoint, Vehicle, WalkParticipant } from '@/types/trips';
+import type { RoutePoint, Vehicle } from '@/types/trips';
 import { findNearestPlace, getKnownPlaces } from '@/utils/placesStorage';
 import { simplifyRoute } from '@/utils/routeSimplification';
 import { getVehicleSettings, saveTrip, updateTrip } from '@/utils/tripStorage';
@@ -105,6 +105,15 @@ export default function NewTripScreen() {
   const [selectedVehicleId, setSelectedVehicleId] = useState<string>('');
   const [walkParticipantIds, setWalkParticipantIds] = useState<string[]>([]);
   const [knownPlaces, setKnownPlaces] = useState<KnownPlace[]>([]);
+
+  // Walk-specific manual fields
+  const [walkStartTime, setWalkStartTime] = useState(() => {
+    const now = new Date();
+    return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  });
+  const [walkDurationH, setWalkDurationH] = useState('1');
+  const [walkDurationM, setWalkDurationM] = useState('00');
+  const [walkDistanceKm, setWalkDistanceKm] = useState('');
 
   const [startAddress, setStartAddress] = useState('');
   const [endAddress, setEndAddress] = useState('');
@@ -208,7 +217,52 @@ export default function NewTripScreen() {
     selectEnd(geo);
   }
 
+  async function handleSaveWalk() {
+    const distKm = parseFloat(walkDistanceKm);
+    const hours  = parseInt(walkDurationH  || '0', 10);
+    const mins   = parseInt(walkDurationM  || '0', 10);
+    if (isNaN(distKm) || distKm <= 0) {
+      Alert.alert('Distance manquante', 'Indique la distance en km.');
+      return;
+    }
+    if (hours === 0 && mins === 0) {
+      Alert.alert('Durée manquante', 'Indique la durée de la balade.');
+      return;
+    }
+
+    const timeParts = walkStartTime.match(/^(\d{1,2}):(\d{2})$/);
+    const startH = timeParts ? parseInt(timeParts[1]!, 10) : 0;
+    const startMn = timeParts ? parseInt(timeParts[2]!, 10) : 0;
+
+    const startMs = new Date(tripDate).getTime() + (startH * 60 + startMn) * 60_000;
+    const durationMs = (hours * 60 + mins) * 60_000;
+
+    setSaving(true);
+    try {
+      await saveTrip({
+        id: genId(),
+        startTime: startMs,
+        endTime: startMs + durationMs,
+        distanceKm: distKm,
+        vehicle: selectedVehicleId || null,
+        walkParticipants: walkParticipantIds.length > 0 ? walkParticipantIds : undefined,
+        pointCount: 0,
+        source: 'manual',
+      });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      router.back();
+    } catch {
+      Alert.alert('Erreur', 'Impossible de sauvegarder la balade.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function handleSave() {
+    if (selectedVehicle?.type === 'walk') {
+      return handleSaveWalk();
+    }
+
     if (!startResult || !endResult) {
       Alert.alert('Adresses manquantes', 'Veuillez sélectionner un départ et une arrivée.');
       return;
@@ -228,7 +282,6 @@ export default function NewTripScreen() {
     const distanceKm = route.distance / 1000;
     const durationMs = route.duration * 1000;
     const dateMs = new Date(tripDate).getTime();
-    const vehicle = vehicles.find(v => v.id === selectedVehicleId);
 
     const startLat = parseFloat(startResult.lat);
     const startLon = parseFloat(startResult.lon);
@@ -237,7 +290,6 @@ export default function NewTripScreen() {
 
     setSaving(true);
     try {
-      // Match start/end against known places
       const [startPlace, endPlace] = await Promise.all([
         findNearestPlace(startLat, startLon).catch(() => null),
         findNearestPlace(endLat, endLon).catch(() => null),
@@ -279,7 +331,19 @@ export default function NewTripScreen() {
 
   const selectedVehicle = vehicles.find(v => v.id === selectedVehicleId);
   const selectedRoute = routes[selectedRouteIdx];
-  const canSave = !!startResult && !!endResult && routes.length > 0 && !!selectedVehicleId;
+  const isWalk = selectedVehicle?.type === 'walk';
+  const walkDistNum = parseFloat(walkDistanceKm);
+  const walkDurMin = (parseInt(walkDurationH || '0', 10) * 60) + parseInt(walkDurationM || '0', 10);
+  const walkEndTime = isWalk ? (() => {
+    const timeParts = walkStartTime.match(/^(\d{1,2}):(\d{2})$/);
+    const h = timeParts ? parseInt(timeParts[1]!, 10) : 0;
+    const m = timeParts ? parseInt(timeParts[2]!, 10) : 0;
+    const endMins = h * 60 + m + walkDurMin;
+    return `${String(Math.floor(endMins / 60) % 24).padStart(2, '0')}:${String(endMins % 60).padStart(2, '0')}`;
+  })() : null;
+  const canSave = isWalk
+    ? (!!selectedVehicleId && walkDistNum > 0 && walkDurMin > 0)
+    : (!!startResult && !!endResult && routes.length > 0 && !!selectedVehicleId);
 
   return (
     <KeyboardAvoidingView
@@ -291,7 +355,7 @@ export default function NewTripScreen() {
         <Pressable onPress={() => router.back()} style={styles.headerBack}>
           <MaterialCommunityIcons name="close" size={20} color={colors.foreground} />
         </Pressable>
-        <Text style={[styles.headerTitle, { color: colors.foreground }]}>Trajet manuel</Text>
+        <Text style={[styles.headerTitle, { color: colors.foreground }]}>{isWalk ? 'Balade' : 'Trajet manuel'}</Text>
         <Pressable
           onPress={handleSave}
           disabled={!canSave || saving}
@@ -399,8 +463,77 @@ export default function NewTripScreen() {
           </View>
         )}
 
+        {/* Walk — heure / durée / distance */}
+        {isWalk && (
+          <View style={styles.section}>
+            <Text style={[styles.label, { color: colors.mutedForeground }]}>HEURE DE DÉBUT</Text>
+            <TextInput
+              style={[styles.input, { backgroundColor: colors.input, borderColor: colors.border, color: colors.foreground }]}
+              value={walkStartTime}
+              onChangeText={setWalkStartTime}
+              placeholder="HH:MM"
+              placeholderTextColor={colors.mutedForeground}
+              keyboardType="numeric"
+              maxLength={5}
+            />
+          </View>
+        )}
+        {isWalk && (
+          <View style={styles.section}>
+            <Text style={[styles.label, { color: colors.mutedForeground }]}>DURÉE DE LA BALADE</Text>
+            <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
+              <View style={{ flex: 1 }}>
+                <TextInput
+                  style={[styles.input, { backgroundColor: colors.input, borderColor: colors.border, color: colors.foreground, textAlign: 'center' }]}
+                  value={walkDurationH}
+                  onChangeText={v => setWalkDurationH(v.replace(/\D/g, ''))}
+                  placeholder="0"
+                  placeholderTextColor={colors.mutedForeground}
+                  keyboardType="number-pad"
+                  maxLength={2}
+                />
+                <Text style={[styles.walkUnit, { color: colors.mutedForeground }]}>heures</Text>
+              </View>
+              <Text style={[{ fontSize: 22, color: colors.mutedForeground, marginBottom: 20 }]}>:</Text>
+              <View style={{ flex: 1 }}>
+                <TextInput
+                  style={[styles.input, { backgroundColor: colors.input, borderColor: colors.border, color: colors.foreground, textAlign: 'center' }]}
+                  value={walkDurationM}
+                  onChangeText={v => { const n = parseInt(v.replace(/\D/g, '') || '0', 10); setWalkDurationM(String(Math.min(59, n)).padStart(2, '0')); }}
+                  placeholder="00"
+                  placeholderTextColor={colors.mutedForeground}
+                  keyboardType="number-pad"
+                  maxLength={2}
+                />
+                <Text style={[styles.walkUnit, { color: colors.mutedForeground }]}>minutes</Text>
+              </View>
+            </View>
+            {walkDurMin > 0 && walkStartTime.match(/^\d{1,2}:\d{2}$/) && (
+              <View style={styles.confirmedRow}>
+                <MaterialCommunityIcons name="clock-check-outline" size={14} color="#4CAF50" />
+                <Text style={[styles.confirmedText, { color: '#4CAF50' }]}>
+                  Fin estimée : {walkEndTime}
+                </Text>
+              </View>
+            )}
+          </View>
+        )}
+        {isWalk && (
+          <View style={styles.section}>
+            <Text style={[styles.label, { color: colors.mutedForeground }]}>DISTANCE (KM)</Text>
+            <TextInput
+              style={[styles.input, { backgroundColor: colors.input, borderColor: walkDistNum > 0 ? '#4CAF50' : colors.border, color: colors.foreground }]}
+              value={walkDistanceKm}
+              onChangeText={setWalkDistanceKm}
+              placeholder="ex: 3.5"
+              placeholderTextColor={colors.mutedForeground}
+              keyboardType="decimal-pad"
+            />
+          </View>
+        )}
+
         {/* Start address */}
-        <View style={styles.section}>
+        {!isWalk && <View style={styles.section}>
           <Text style={[styles.label, { color: colors.mutedForeground }]}>DÉPART</Text>
 
           {/* Known place shortcuts */}
@@ -463,10 +596,10 @@ export default function NewTripScreen() {
               </Text>
             </View>
           )}
-        </View>
+        </View>}
 
         {/* End address */}
-        <View style={styles.section}>
+        {!isWalk && <View style={styles.section}>
           <Text style={[styles.label, { color: colors.mutedForeground }]}>ARRIVÉE</Text>
 
           {/* Known place shortcuts */}
@@ -529,72 +662,75 @@ export default function NewTripScreen() {
               </Text>
             </View>
           )}
-        </View>
+        </View>}
 
-        {/* Routes */}
-        {loadingRoutes ? (
-          <View style={styles.routeLoading}>
-            <ActivityIndicator color={colors.primary} />
-            <Text style={[styles.routeLoadingText, { color: colors.mutedForeground }]}>Calcul de l'itinéraire…</Text>
-          </View>
-        ) : routes.length > 0 ? (
-          <View style={styles.section}>
-            <Text style={[styles.label, { color: colors.mutedForeground }]}>ITINÉRAIRE</Text>
-            {routes.map((r, i) => (
-              <Pressable
-                key={i}
-                onPress={() => { Haptics.selectionAsync(); setSelectedRouteIdx(i); }}
-                style={[styles.routeCard, {
-                  backgroundColor: i === selectedRouteIdx ? colors.primary + '18' : colors.card,
-                  borderColor: i === selectedRouteIdx ? colors.primary : colors.border,
-                }]}
-              >
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.routeLabel, { color: colors.foreground }]}>
-                    {i === 0 ? '🚀 Itinéraire recommandé' : `Itinéraire ${i + 1}`}
-                  </Text>
-                  <Text style={[styles.routeDetail, { color: colors.mutedForeground }]}>
-                    {fmtDist(r.distance)} · {fmtDur(r.duration)}
-                  </Text>
-                  {selectedVehicle && selectedVehicle.type !== 'walk' && (
-                    <Text style={[styles.routeCost, { color: colors.mutedForeground }]}>
-                      Coût estimé : {((r.distance / 1000) * selectedVehicle.costPerKm).toFixed(2)} €
-                    </Text>
-                  )}
+        {/* Routes + summary — car/moto only */}
+        {!isWalk && (
+          <>
+            {loadingRoutes ? (
+              <View style={styles.routeLoading}>
+                <ActivityIndicator color={colors.primary} />
+                <Text style={[styles.routeLoadingText, { color: colors.mutedForeground }]}>Calcul de l'itinéraire…</Text>
+              </View>
+            ) : routes.length > 0 ? (
+              <View style={styles.section}>
+                <Text style={[styles.label, { color: colors.mutedForeground }]}>ITINÉRAIRE</Text>
+                {routes.map((r, i) => (
+                  <Pressable
+                    key={i}
+                    onPress={() => { Haptics.selectionAsync(); setSelectedRouteIdx(i); }}
+                    style={[styles.routeCard, {
+                      backgroundColor: i === selectedRouteIdx ? colors.primary + '18' : colors.card,
+                      borderColor: i === selectedRouteIdx ? colors.primary : colors.border,
+                    }]}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.routeLabel, { color: colors.foreground }]}>
+                        {i === 0 ? '🚀 Itinéraire recommandé' : `Itinéraire ${i + 1}`}
+                      </Text>
+                      <Text style={[styles.routeDetail, { color: colors.mutedForeground }]}>
+                        {fmtDist(r.distance)} · {fmtDur(r.duration)}
+                      </Text>
+                      {selectedVehicle && (
+                        <Text style={[styles.routeCost, { color: colors.mutedForeground }]}>
+                          Coût estimé : {((r.distance / 1000) * selectedVehicle.costPerKm).toFixed(2)} €
+                        </Text>
+                      )}
+                    </View>
+                    {i === selectedRouteIdx && (
+                      <MaterialCommunityIcons name="check-circle" size={20} color={colors.primary} />
+                    )}
+                  </Pressable>
+                ))}
+              </View>
+            ) : null}
+
+            {selectedRoute && (
+              <View style={[styles.summaryCard, { backgroundColor: colors.card, borderColor: colors.primary }]}>
+                <Text style={[styles.summaryTitle, { color: colors.foreground }]}>Résumé du trajet</Text>
+                <View style={styles.summaryRow}>
+                  <MaterialCommunityIcons name="road-variant" size={16} color={colors.primary} />
+                  <Text style={[styles.summaryVal, { color: colors.foreground }]}>{fmtDist(selectedRoute.distance)}</Text>
                 </View>
-                {i === selectedRouteIdx && (
-                  <MaterialCommunityIcons name="check-circle" size={20} color={colors.primary} />
+                <View style={styles.summaryRow}>
+                  <MaterialCommunityIcons name="clock-outline" size={16} color={colors.primary} />
+                  <Text style={[styles.summaryVal, { color: colors.foreground }]}>{fmtDur(selectedRoute.duration)}</Text>
+                </View>
+                {selectedVehicle && (
+                  <View style={styles.summaryRow}>
+                    <MaterialCommunityIcons
+                      name={selectedVehicle.type === 'moto' ? 'motorbike' : 'car'}
+                      size={16}
+                      color={colors.primary}
+                    />
+                    <Text style={[styles.summaryVal, { color: colors.foreground }]}>
+                      {selectedVehicle.name} · {((selectedRoute.distance / 1000) * selectedVehicle.costPerKm).toFixed(2)} €
+                    </Text>
+                  </View>
                 )}
-              </Pressable>
-            ))}
-          </View>
-        ) : null}
-
-        {/* Summary card */}
-        {selectedRoute && (
-          <View style={[styles.summaryCard, { backgroundColor: colors.card, borderColor: colors.primary }]}>
-            <Text style={[styles.summaryTitle, { color: colors.foreground }]}>Résumé du trajet</Text>
-            <View style={styles.summaryRow}>
-              <MaterialCommunityIcons name="road-variant" size={16} color={colors.primary} />
-              <Text style={[styles.summaryVal, { color: colors.foreground }]}>{fmtDist(selectedRoute.distance)}</Text>
-            </View>
-            <View style={styles.summaryRow}>
-              <MaterialCommunityIcons name="clock-outline" size={16} color={colors.primary} />
-              <Text style={[styles.summaryVal, { color: colors.foreground }]}>{fmtDur(selectedRoute.duration)}</Text>
-            </View>
-            {selectedVehicle && (
-              <View style={styles.summaryRow}>
-                <MaterialCommunityIcons
-                  name={selectedVehicle.type === 'moto' ? 'motorbike' : selectedVehicle.type === 'walk' ? 'walk' : 'car'}
-                  size={16}
-                  color={colors.primary}
-                />
-                <Text style={[styles.summaryVal, { color: colors.foreground }]}>
-                  {selectedVehicle.name}{selectedVehicle.type !== 'walk' ? ` · ${((selectedRoute.distance / 1000) * selectedVehicle.costPerKm).toFixed(2)} €` : ''}
-                </Text>
               </View>
             )}
-          </View>
+          </>
         )}
       </ScrollView>
     </KeyboardAvoidingView>
@@ -651,4 +787,5 @@ const styles = StyleSheet.create({
   summaryRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   summaryVal: { fontSize: 14, fontFamily: 'Inter_500Medium' },
   partGroupLabel: { fontSize: 10, fontFamily: 'Inter_600SemiBold', letterSpacing: 0.8, textTransform: 'uppercase' },
+  walkUnit: { fontSize: 11, fontFamily: 'Inter_400Regular', textAlign: 'center', marginTop: 4 },
 });

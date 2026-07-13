@@ -287,11 +287,11 @@ export default function TripMapScreen() {
           setOsrmRoute(pts);
           updateTrip(t.id, { route: pts }).catch(() => {});
         } else {
-          setOsrmRoute([{ lat: t.startLat, lng: t.startLon }, { lat: t.endLat, lng: t.endLon }]);
+          setOsrmRoute([{ lat: t.startLat!, lng: t.startLon! }, { lat: t.endLat!, lng: t.endLon! }]);
         }
       })
       .catch(() => {
-        setOsrmRoute([{ lat: t.startLat, lng: t.startLon }, { lat: t.endLat, lng: t.endLon }]);
+        setOsrmRoute([{ lat: t.startLat!, lng: t.startLon! }, { lat: t.endLat!, lng: t.endLon! }]);
       })
       .finally(() => setLoadingRoute(false));
   }

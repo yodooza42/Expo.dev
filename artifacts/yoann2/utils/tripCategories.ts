@@ -24,6 +24,7 @@ function haversineM(lat1: number, lon1: number, lat2: number, lon2: number): num
 
 export function tripMatchesCategory(trip: Trip, cat: TripCategory): boolean {
   return (
+    trip.startLat != null && trip.startLon != null && trip.endLat != null && trip.endLon != null &&
     haversineM(trip.startLat, trip.startLon, cat.startLat, cat.startLon) <= MATCH_RADIUS_M &&
     haversineM(trip.endLat, trip.endLon, cat.endLat, cat.endLon) <= MATCH_RADIUS_M
   );
@@ -32,6 +33,7 @@ export function tripMatchesCategory(trip: Trip, cat: TripCategory): boolean {
 /** True when trip start≈cat.end AND trip end≈cat.start (reverse route). */
 export function tripIsReturnOf(trip: Trip, cat: TripCategory): boolean {
   return (
+    trip.startLat != null && trip.startLon != null && trip.endLat != null && trip.endLon != null &&
     haversineM(trip.startLat, trip.startLon, cat.endLat, cat.endLon) <= MATCH_RADIUS_M &&
     haversineM(trip.endLat, trip.endLon, cat.startLat, cat.startLon) <= MATCH_RADIUS_M
   );
@@ -66,10 +68,10 @@ export async function createCategory(name: string, anchorTrip: Trip): Promise<Tr
   const cat: TripCategory = {
     id: genId(),
     name: name.trim() || 'Catégorie',
-    startLat: anchorTrip.startLat,
-    startLon: anchorTrip.startLon,
-    endLat: anchorTrip.endLat,
-    endLon: anchorTrip.endLon,
+    startLat: anchorTrip.startLat!,
+    startLon: anchorTrip.startLon!,
+    endLat: anchorTrip.endLat!,
+    endLon: anchorTrip.endLon!,
     createdAt: Date.now(),
   };
   const cats = await getCategories();

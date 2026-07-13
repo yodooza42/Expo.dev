@@ -19,10 +19,10 @@ export interface Trip {
   /** Vehicle ID (e.g. 'car', 'moto', or a custom uuid for walk / other vehicles). 'ignored' skips stats. */
   vehicle: string | null;
   pointCount: number;
-  startLat: number;
-  startLon: number;
-  endLat: number;
-  endLon: number;
+  startLat?: number;
+  startLon?: number;
+  endLat?: number;
+  endLon?: number;
   /** Simplified GPS trace stored for map display. */
   route?: RoutePoint[];
   /** Whether the route was road-matched by OSRM or kept as raw GPS trace. */

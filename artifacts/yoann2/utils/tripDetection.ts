@@ -253,8 +253,8 @@ export async function processPointForTrip(point: LocationPoint): Promise<Trip | 
   if (completedTrip) {
     // Resolve start/end addresses — known places first, Nominatim fallback
     const [startPlace, endPlace] = await Promise.all([
-      findNearestPlace(completedTrip.startLat, completedTrip.startLon).catch(() => null),
-      findNearestPlace(completedTrip.endLat, completedTrip.endLon).catch(() => null),
+      findNearestPlace(completedTrip.startLat!, completedTrip.startLon!).catch(() => null),
+      findNearestPlace(completedTrip.endLat!, completedTrip.endLon!).catch(() => null),
     ]);
 
     if (startPlace) {
@@ -262,7 +262,7 @@ export async function processPointForTrip(point: LocationPoint): Promise<Trip | 
       completedTrip.startPlaceId = startPlace.id;
     } else {
       completedTrip.startAddress =
-        await reverseGeocode(completedTrip.startLat, completedTrip.startLon).catch(() => null) ?? undefined;
+        await reverseGeocode(completedTrip.startLat!, completedTrip.startLon!).catch(() => null) ?? undefined;
     }
 
     if (endPlace) {
@@ -271,7 +271,7 @@ export async function processPointForTrip(point: LocationPoint): Promise<Trip | 
     } else {
       // reverseGeocode enforces ≥1.1 s gap internally when Nominatim is called
       completedTrip.endAddress =
-        await reverseGeocode(completedTrip.endLat, completedTrip.endLon).catch(() => null) ?? undefined;
+        await reverseGeocode(completedTrip.endLat!, completedTrip.endLon!).catch(() => null) ?? undefined;
     }
 
     await saveTrip(completedTrip);

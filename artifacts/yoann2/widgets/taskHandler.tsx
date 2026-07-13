@@ -469,8 +469,8 @@ async function handleTripEnd(
   };
 
   const [startPlace, endPlace] = await Promise.all([
-    findNearestPlace(trip.startLat, trip.startLon).catch(() => null),
-    findNearestPlace(trip.endLat, trip.endLon).catch(() => null),
+    findNearestPlace(trip.startLat!, trip.startLon!).catch(() => null),
+    findNearestPlace(trip.endLat!, trip.endLon!).catch(() => null),
   ]);
 
   if (startPlace) {
@@ -478,14 +478,14 @@ async function handleTripEnd(
     trip.startPlaceId = startPlace.id;
   } else {
     trip.startAddress =
-      (await reverseGeocode(trip.startLat, trip.startLon).catch(() => null)) ?? undefined;
+      (await reverseGeocode(trip.startLat!, trip.startLon!).catch(() => null)) ?? undefined;
   }
   if (endPlace) {
     trip.endAddress = endPlace.name;
     trip.endPlaceId = endPlace.id;
   } else {
     trip.endAddress =
-      (await reverseGeocode(trip.endLat, trip.endLon).catch(() => null)) ?? undefined;
+      (await reverseGeocode(trip.endLat!, trip.endLon!).catch(() => null)) ?? undefined;
   }
 
   await saveTrip(trip);
