@@ -21,7 +21,8 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 
 import { useApp } from '@/contexts/AppContext';
 import { useColors } from '@/hooks/useColors';
-import type { MaintenanceItem, Vehicle, VehicleInsurance, WalkParticipant } from '@/types/trips';
+import type { MaintenanceItem, Trip, Vehicle, VehicleInsurance, WalkParticipant } from '@/types/trips';
+import { fmtHHMM, fmtWeekdayShort } from '@/utils/date';
 import { computeAutoCostPerKm } from '@/utils/costPerKm';
 import { addTransaction } from '@/utils/bankStorage';
 import { computeOdometer, getTrips, getVehicleSettings, saveVehicleSettings, recalibrateOdometer, lastOdometerRecalStatus } from '@/utils/tripStorage';
@@ -29,14 +30,6 @@ import { genId } from '@/utils/ids';
 
 // ── Local types ───────────────────────────────────────────────────────────────
 type VehicleTab = 'general' | 'maintenance' | 'insurance' | 'participants' | 'stats';
-
-type TripStat = {
-  vehicle: string | null;
-  distanceKm: number;
-  startTime: number;
-  endTime: number;
-  walkParticipants?: string[];
-};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function fmtDuration(ms: number): string {
@@ -57,7 +50,7 @@ function fmtLastWalk(ts: number | null): string {
   return `il y a ${d} jour${d > 1 ? 's' : ''}`;
 }
 
-function getWalkStats(trips: TripStat[], participantId: string, vehicleId: string, days: number) {
+function getWalkStats(trips: Trip[], participantId: string, vehicleId: string, days: number) {
   const cutoff = Date.now() - days * 24 * 3_600_000;
   const relevant = trips.filter(
     t => t.vehicle === vehicleId && t.endTime >= cutoff && (t.walkParticipants ?? []).includes(participantId),
@@ -69,10 +62,16 @@ function getWalkStats(trips: TripStat[], participantId: string, vehicleId: strin
   };
 }
 
-function getLastWalk(trips: TripStat[], participantId: string, vehicleId: string): number | null {
+function getLastWalk(trips: Trip[], participantId: string, vehicleId: string): number | null {
   return trips
     .filter(t => t.vehicle === vehicleId && (t.walkParticipants ?? []).includes(participantId))
     .sort((a, b) => b.endTime - a.endTime)[0]?.endTime ?? null;
+}
+
+function getParticipantTrips(trips: Trip[], participantId: string, vehicleId: string): Trip[] {
+  return trips
+    .filter(t => t.vehicle === vehicleId && (t.walkParticipants ?? []).includes(participantId))
+    .sort((a, b) => b.startTime - a.startTime);
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -84,7 +83,7 @@ export default function VehicleSettingsScreen() {
 
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [selectedId, setSelectedId] = useState<string>('car');
-  const [trips, setTrips] = useState<TripStat[]>([]);
+  const [trips, setTrips] = useState<Trip[]>([]);
 
   // Maintenance modal
   const [addModalVisible, setAddModalVisible] = useState(false);
@@ -114,13 +113,7 @@ export default function VehicleSettingsScreen() {
   const load = useCallback(async () => {
     const [v, t] = await Promise.all([getVehicleSettings(), getTrips()]);
     setVehicles(v);
-    setTrips(t.map(tr => ({
-      vehicle: tr.vehicle,
-      distanceKm: tr.distanceKm,
-      startTime: tr.startTime,
-      endTime: tr.endTime,
-      walkParticipants: tr.walkParticipants,
-    })));
+    setTrips(t);
   }, []);
 
   useEffect(() => { load(); }, [load]);
@@ -866,6 +859,54 @@ export default function VehicleSettingsScreen() {
                       <Text style={[styles.statVal, { color: colors.foreground }]}>{fmtDuration(s90.durationMs)}</Text>
                     </View>
                   </View>
+
+                  {/* Past trips list */}
+                  {(() => {
+                    const pTrips = getParticipantTrips(trips, p.id, selected.id);
+                    if (pTrips.length === 0) return null;
+                    return (
+                      <View style={styles.pastTripsSection}>
+                        <Text style={[styles.pastTripsLabel, { color: colors.mutedForeground }]}>BALADES PASSÉES</Text>
+                        {pTrips.slice(0, 20).map(t => {
+                          const allParticipantDetails = (t.walkParticipants ?? [])
+                            .map(pid => (selected.walkParticipants ?? []).find(wp => wp.id === pid))
+                            .filter((wp): wp is NonNullable<typeof wp> => !!wp);
+                          return (
+                            <Pressable
+                              key={t.id}
+                              onPress={() => { router.push({ pathname: '/trip-map', params: { id: t.id } } as any); }}
+                              style={[styles.pastTripRow, { borderColor: colors.border }]}
+                            >
+                              <View style={[styles.pastTripIcon, { backgroundColor: '#4CAF5022' }]}>
+                                <MaterialCommunityIcons name="walk" size={14} color="#4CAF50" />
+                              </View>
+                              <View style={{ flex: 1 }}>
+                                <Text style={[styles.pastTripDate, { color: colors.foreground }]}>{fmtWeekdayShort(t.startTime)}</Text>
+                                <Text style={[styles.pastTripTime, { color: colors.mutedForeground }]}>{fmtHHMM(t.startTime)} → {fmtHHMM(t.endTime)}</Text>
+                              </View>
+                              <View style={styles.pastTripRight}>
+                                <Text style={[styles.pastTripDist, { color: colors.foreground }]}>{t.distanceKm.toFixed(1)} km</Text>
+                                <Text style={[styles.pastTripDur, { color: colors.mutedForeground }]}>{fmtDuration(t.endTime - t.startTime)}</Text>
+                              </View>
+                              {allParticipantDetails.length > 0 && (
+                                <View style={styles.pastTripAvatars}>
+                                  {allParticipantDetails.slice(0, 5).map((wp, i) => (
+                                    <View key={i} style={[styles.pastTripAvatar, {
+                                      backgroundColor: wp.type === 'dog' ? '#FF980030' : '#2196F330',
+                                    }]}>
+                                      <Text style={{ color: wp.type === 'dog' ? '#FF9800' : '#2196F3', fontSize: 7, fontFamily: 'Inter_700Bold' }}>
+                                        {wp.name.charAt(0).toUpperCase()}
+                                      </Text>
+                                    </View>
+                                  ))}
+                                </View>
+                              )}
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+                    );
+                  })()}
                 </View>
               );
             })
@@ -1204,4 +1245,20 @@ const styles = StyleSheet.create({
   statColLabel: { flex: 1, textAlign: 'center', fontSize: 12, fontFamily: 'Inter_700Bold', letterSpacing: 0.5 },
   statRowLabel: { flex: 1, fontSize: 12, fontFamily: 'Inter_500Medium' },
   statVal: { flex: 1, textAlign: 'center', fontSize: 13, fontFamily: 'Inter_600SemiBold' },
+
+  // Past trips list styles
+  pastTripsSection: { gap: 4, marginTop: 2 },
+  pastTripsLabel: { fontSize: 11, fontFamily: 'Inter_600SemiBold', letterSpacing: 0.5, marginBottom: 2 },
+  pastTripRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingVertical: 7, borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  pastTripIcon: { width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  pastTripDate: { fontSize: 12, fontFamily: 'Inter_600SemiBold' },
+  pastTripTime: { fontSize: 11, fontFamily: 'Inter_400Regular', marginTop: 1 },
+  pastTripRight: { alignItems: 'flex-end', gap: 1 },
+  pastTripDist: { fontSize: 12, fontFamily: 'Inter_700Bold' },
+  pastTripDur: { fontSize: 11, fontFamily: 'Inter_400Regular' },
+  pastTripAvatars: { flexDirection: 'row', gap: 3 },
+  pastTripAvatar: { width: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
 });
