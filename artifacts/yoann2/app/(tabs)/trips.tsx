@@ -22,6 +22,8 @@ import { pH } from '@/styles/header';
 import { getFuelEntries } from '@/utils/fuelStorage';
 import type { FuelEntry } from '@/types/fuel';
 import { computeOdometer, getTrips, getVehicleSettings } from '@/utils/tripStorage';
+import { getKnownPlaces, getPlaceCategories } from '@/utils/placesStorage';
+import type { KnownPlace, PlaceCategory } from '@/types/places';
 
 // ── Vehicle images ────────────────────────────────────────────────────────────
 const DOBLO_IMG = require('@/assets/images/doblo-main.png');
@@ -158,13 +160,17 @@ export default function TripsScreen() {
   const [categories, setCategories] = useState<TripCategory[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [fuelEntries, setFuelEntries] = useState<FuelEntry[]>([]);
+  const [knownPlaces, setKnownPlaces] = useState<KnownPlace[]>([]);
+  const [placeCategories, setPlaceCategories] = useState<PlaceCategory[]>([]);
 
   const load = useCallback(async () => {
-    const [t, s, c, f] = await Promise.all([getTrips(), getVehicleSettings(), getCategories(), getFuelEntries()]);
+    const [t, s, c, f, kp, pc] = await Promise.all([getTrips(), getVehicleSettings(), getCategories(), getFuelEntries(), getKnownPlaces(), getPlaceCategories()]);
     setTrips(t.sort((a, b) => b.startTime - a.startTime));
     setSettings(s);
     setCategories(c);
     setFuelEntries(f);
+    setKnownPlaces(kp);
+    setPlaceCategories(pc);
   }, []);
 
   useEffect(() => { load(); }, [load]);
@@ -375,10 +381,36 @@ export default function TripsScreen() {
     return list;
   }, [trips, settings]);
 
+  const spotsBalades = useMemo(() => {
+    const vehicleMap = new Map(settings.map(v => [v.id, v]));
+    const spotsCat = placeCategories.find(c =>
+      c.name.toLowerCase().replace(/\s+/g, '') === 'spotsbalades',
+    );
+    if (!spotsCat) return { km: 0, cost: 0, count: 0 };
+    const spotsIds = new Set(knownPlaces.filter(p => p.categoryId === spotsCat.id).map(p => p.id));
+    if (spotsIds.size === 0) return { km: 0, cost: 0, count: 0 };
+    return trips.reduce((acc, t) => {
+      if (!t.vehicle || t.vehicle === 'ignored') return acc;
+      const d = new Date(t.startTime);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      if (key !== mk) return acc;
+      const veh = vehicleMap.get(t.vehicle);
+      if (!veh || veh.type !== 'walk') return acc;
+      const matchStart = t.startPlaceId && spotsIds.has(t.startPlaceId);
+      const matchEnd   = t.endPlaceId   && spotsIds.has(t.endPlaceId);
+      if (!matchStart && !matchEnd) return acc;
+      acc.km    += t.distanceKm;
+      acc.cost  += t.distanceKm * veh.costPerKm;
+      acc.count += 1;
+      return acc;
+    }, { km: 0, cost: 0, count: 0 });
+  }, [trips, settings, knownPlaces, placeCategories, mk]);
+
   const carColor = '#2196F3';
   const motoColor = '#FF9800';
+  const walkColor = '#4CAF50';
   const monthLabel = currentMonthLabel();
-  const hasMonthData = thisMonth.car.count > 0 || thisMonth.moto.count > 0;
+  const hasMonthData = thisMonth.car.count > 0 || thisMonth.moto.count > 0 || spotsBalades.count > 0;
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
@@ -547,6 +579,16 @@ export default function TripsScreen() {
                     <Text style={[styles.monthVehicle, { color: colors.foreground }]}>{thisMonth.moto.km.toFixed(1)} km</Text>
                     <Text style={[styles.monthCost, { color: colors.mutedForeground }]}>{thisMonth.moto.cost.toFixed(2)} €</Text>
                     <Text style={[styles.monthCount, { color: colors.mutedForeground }]}>{thisMonth.moto.count} trajet{thisMonth.moto.count > 1 ? 's' : ''}</Text>
+                  </View>
+                )}
+                {spotsBalades.count > 0 && (
+                  <View style={styles.monthRow}>
+                    <MaterialCommunityIcons name="walk" size={14} color={walkColor} />
+                    <Text style={[styles.monthVehicle, { color: colors.foreground }]}>{spotsBalades.km.toFixed(1)} km</Text>
+                    <Text style={[styles.monthCost, { color: colors.mutedForeground }]}>
+                      {spotsBalades.cost > 0 ? `${spotsBalades.cost.toFixed(2)} €` : '—'}
+                    </Text>
+                    <Text style={[styles.monthCount, { color: colors.mutedForeground }]}>{spotsBalades.count} trajet{spotsBalades.count > 1 ? 's' : ''}</Text>
                   </View>
                 )}
               </View>
