@@ -21,7 +21,7 @@ interface TabBarProps {
 
 const TAB_ICONS: Record<string, string> = {
   index:      'clipboard-list-outline',
-  accueil:    'home-outline',
+  accueil:    'home',
   projects:   'folder-multiple-outline',
   kanban:     'view-column-outline',
   expenses:   'bank-outline',
@@ -59,14 +59,48 @@ export function CustomTabBar({ state, navigation }: TabBarProps) {
   return (
     <View style={[styles.wrapper, { backgroundColor: colors.card, borderTopColor: colors.border }]}>
       {/* ── Main tab row ── */}
-      <View style={[styles.tabRow, { paddingBottom: bottomPad, height: 50 + bottomPad }]}>
+      <View style={[styles.tabRow, { paddingBottom: bottomPad, height: 56 + bottomPad }]}>
         {state.routes
           .filter((route: any) => !HIDDEN_TABS.includes(route.name))
           .map((route: any) => {
-            const isFocused = currentRouteName === route.name;
-            const iconColor = isFocused ? colors.primary : colors.mutedForeground;
-            const iconName  = TAB_ICONS[route.name] ?? 'circle';
-            const label     = TAB_LABELS[route.name] ?? route.name;
+            const isFocused  = currentRouteName === route.name;
+            const isHomeTab  = route.name === 'accueil';
+            const iconColor  = isHomeTab
+              ? '#FFFFFF'
+              : isFocused ? colors.primary : colors.mutedForeground;
+            const iconName   = TAB_ICONS[route.name] ?? 'circle';
+            const label      = TAB_LABELS[route.name] ?? route.name;
+
+            if (isHomeTab) {
+              return (
+                <Pressable
+                  key={route.key}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                    const event = navigation.emit({
+                      type: 'tabPress',
+                      target: route.key,
+                      canPreventDefault: true,
+                    });
+                    if (!isFocused && !event.defaultPrevented) {
+                      navigation.navigate(route.name);
+                    }
+                  }}
+                  style={styles.homeTabItem}
+                >
+                  {/* Raised home button */}
+                  <View style={[
+                    styles.homeBtn,
+                    { backgroundColor: isFocused ? colors.primary : colors.mutedForeground + 'CC' },
+                  ]}>
+                    <MaterialCommunityIcons name={iconName as any} size={26} color="#FFFFFF" />
+                  </View>
+                  <Text style={[styles.tabLabel, { color: isFocused ? colors.primary : colors.mutedForeground, marginTop: 3 }]}>
+                    {label}
+                  </Text>
+                </Pressable>
+              );
+            }
 
             return (
               <Pressable
@@ -85,7 +119,9 @@ export function CustomTabBar({ state, navigation }: TabBarProps) {
                 style={styles.tabItem}
               >
                 <MaterialCommunityIcons name={iconName as any} size={22} color={iconColor} />
-                <Text style={[styles.tabLabel, { color: iconColor }]}>{label}</Text>
+                <Text style={[styles.tabLabel, { color: isFocused ? colors.primary : colors.mutedForeground }]}>
+                  {label}
+                </Text>
               </Pressable>
             );
           })}
@@ -108,6 +144,25 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 3,
     paddingVertical: 6,
+  },
+  homeTabItem: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    paddingBottom: 4,
+  },
+  homeBtn: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: -18,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 8,
   },
   tabLabel: {
     fontSize: 9,

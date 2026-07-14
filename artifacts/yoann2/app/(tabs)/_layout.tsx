@@ -6,7 +6,7 @@ import { CustomTabBar } from '@/components/CustomTabBar';
 import { useColors } from '@/hooks/useColors';
 
 export const unstable_settings = {
-  initialRouteName: 'index',
+  initialRouteName: 'accueil',
 };
 
 function BackGuard() {
@@ -15,11 +15,11 @@ function BackGuard() {
 
   useEffect(() => {
     const currentTab = (segments[segments.length - 1] ?? '') as string;
-    const isHome = currentTab === 'index' || currentTab === 'accueil' || currentTab === '(tabs)';
+    const isHome = currentTab === 'accueil' || currentTab === '(tabs)';
 
     const handler = BackHandler.addEventListener('hardwareBackPress', () => {
       if (!isHome) {
-        router.replace('/(tabs)/' as any);
+        router.replace('/(tabs)/accueil' as any);
         return true;
       }
       return false;
@@ -36,7 +36,7 @@ export default function TabLayout() {
   return (
     <Tabs
       tabBar={props => <CustomTabBar {...props} />}
-      initialRouteName="index"
+      initialRouteName="accueil"
       backBehavior="initialRoute"
       screenOptions={{
         headerShown: false,
@@ -44,9 +44,9 @@ export default function TabLayout() {
     >
       <Tabs.Screen name="expenses" />
       <Tabs.Screen name="trips" />
-      <Tabs.Screen name="index" />
-      <Tabs.Screen name="calendar" />
       <Tabs.Screen name="accueil" />
+      <Tabs.Screen name="calendar" />
+      <Tabs.Screen name="index" />
       <Tabs.Screen name="player" options={{ href: null }} />
       <Tabs.Screen name="map" options={{ href: null }} />
       <Tabs.Screen name="projects" options={{ href: null }} />
