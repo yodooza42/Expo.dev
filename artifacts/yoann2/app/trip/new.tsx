@@ -83,6 +83,36 @@ async function fetchOsrmGeometry(
   }
 }
 
+function normalizeWalkTime(raw: string): string | null {
+  const digits = raw.replace(/\D/g, '');
+  if (!digits) return null;
+  let h: number, m: number;
+  if (digits.length <= 2) { h = parseInt(digits, 10); m = 0; }
+  else { m = parseInt(digits.slice(-2), 10); h = parseInt(digits.slice(0, -2), 10); }
+  if (h > 23 || m > 59) return null;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+function normalizeDurationInput(raw: string): { h: number; m: number } | null {
+  const digits = raw.replace(/\D/g, '');
+  if (!digits) return null;
+  let h: number, m: number;
+  if (digits.length <= 2) { h = parseInt(digits, 10); m = 0; }
+  else { m = parseInt(digits.slice(-2), 10); h = parseInt(digits.slice(0, -2), 10); }
+  if (m > 59) return null;
+  return { h, m };
+}
+
+function getParisTime(): string {
+  const now = new Date();
+  const parts = new Intl.DateTimeFormat('fr-FR', {
+    timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit', hour12: false,
+  }).formatToParts(now);
+  const h = parts.find(p => p.type === 'hour')?.value ?? '00';
+  const mn = parts.find(p => p.type === 'minute')?.value ?? '00';
+  return `${h.padStart(2, '0')}:${mn.padStart(2, '0')}`;
+}
+
 function fmtDist(m: number): string {
   if (m >= 1000) return `${(m / 1000).toFixed(1)} km`;
   return `${Math.round(m)} m`;
@@ -107,13 +137,10 @@ export default function NewTripScreen() {
   const [knownPlaces, setKnownPlaces] = useState<KnownPlace[]>([]);
 
   // Walk-specific manual fields
-  const [walkStartTime, setWalkStartTime] = useState(() => {
-    const now = new Date();
-    return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-  });
-  const [walkDurationH, setWalkDurationH] = useState('1');
-  const [walkDurationM, setWalkDurationM] = useState('00');
+  const [walkStartTime, setWalkStartTime] = useState(getParisTime);
+  const [walkDuration, setWalkDuration] = useState('');
   const [walkDistanceKm, setWalkDistanceKm] = useState('');
+  const [walkRoute, setWalkRoute] = useState('');
 
   const [startAddress, setStartAddress] = useState('');
   const [endAddress, setEndAddress] = useState('');
@@ -219,23 +246,25 @@ export default function NewTripScreen() {
 
   async function handleSaveWalk() {
     const distKm = parseFloat(walkDistanceKm);
-    const hours  = parseInt(walkDurationH  || '0', 10);
-    const mins   = parseInt(walkDurationM  || '0', 10);
     if (isNaN(distKm) || distKm <= 0) {
       Alert.alert('Distance manquante', 'Indique la distance en km.');
       return;
     }
-    if (hours === 0 && mins === 0) {
-      Alert.alert('Durée manquante', 'Indique la durée de la balade.');
+
+    const dur = normalizeDurationInput(walkDuration);
+    if (!dur || (dur.h === 0 && dur.m === 0)) {
+      Alert.alert('Durée manquante', 'Ex : 125 = 1h25, 45 = 45 min.');
       return;
     }
 
-    const timeParts = walkStartTime.match(/^(\d{1,2}):(\d{2})$/);
-    const startH = timeParts ? parseInt(timeParts[1]!, 10) : 0;
+    const timeStr = normalizeWalkTime(walkStartTime) ?? walkStartTime;
+    const timeParts = timeStr.match(/^(\d{1,2}):(\d{2})$/);
+    const startH  = timeParts ? parseInt(timeParts[1]!, 10) : 0;
     const startMn = timeParts ? parseInt(timeParts[2]!, 10) : 0;
 
-    const startMs = new Date(tripDate).getTime() + (startH * 60 + startMn) * 60_000;
-    const durationMs = (hours * 60 + mins) * 60_000;
+    const [y, mo, d] = tripDate.split('-').map(Number);
+    const startMs = new Date(y!, mo! - 1, d!, startH, startMn, 0, 0).getTime();
+    const durationMs = (dur.h * 60 + dur.m) * 60_000;
 
     setSaving(true);
     try {
@@ -248,6 +277,7 @@ export default function NewTripScreen() {
         walkParticipants: walkParticipantIds.length > 0 ? walkParticipantIds : undefined,
         pointCount: 0,
         source: 'manual',
+        ...(walkRoute.trim() ? { startAddress: walkRoute.trim() } : {}),
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       router.back();
@@ -333,12 +363,13 @@ export default function NewTripScreen() {
   const selectedRoute = routes[selectedRouteIdx];
   const isWalk = selectedVehicle?.type === 'walk';
   const walkDistNum = parseFloat(walkDistanceKm);
-  const walkDurMin = (parseInt(walkDurationH || '0', 10) * 60) + parseInt(walkDurationM || '0', 10);
-  const walkEndTime = isWalk ? (() => {
-    const timeParts = walkStartTime.match(/^(\d{1,2}):(\d{2})$/);
-    const h = timeParts ? parseInt(timeParts[1]!, 10) : 0;
-    const m = timeParts ? parseInt(timeParts[2]!, 10) : 0;
-    const endMins = h * 60 + m + walkDurMin;
+  const parsedDur = normalizeDurationInput(walkDuration);
+  const walkDurMin = parsedDur ? parsedDur.h * 60 + parsedDur.m : 0;
+  const parsedStart = normalizeWalkTime(walkStartTime);
+  const walkEndTime = isWalk && parsedStart && walkDurMin > 0 ? (() => {
+    const [hStr, mStr] = parsedStart.split(':');
+    const startTotalMins = parseInt(hStr!, 10) * 60 + parseInt(mStr!, 10);
+    const endMins = startTotalMins + walkDurMin;
     return `${String(Math.floor(endMins / 60) % 24).padStart(2, '0')}:${String(endMins % 60).padStart(2, '0')}`;
   })() : null;
   const canSave = isWalk
@@ -463,52 +494,37 @@ export default function NewTripScreen() {
           </View>
         )}
 
-        {/* Walk — heure / durée / distance */}
+        {/* Walk — heure / durée / distance / parcours */}
         {isWalk && (
           <View style={styles.section}>
             <Text style={[styles.label, { color: colors.mutedForeground }]}>HEURE DE DÉBUT</Text>
             <TextInput
-              style={[styles.input, { backgroundColor: colors.input, borderColor: colors.border, color: colors.foreground }]}
+              style={[styles.input, { backgroundColor: colors.input, borderColor: parsedStart ? '#4CAF50' : colors.border, color: colors.foreground }]}
               value={walkStartTime}
               onChangeText={setWalkStartTime}
-              placeholder="HH:MM"
+              onBlur={() => { const n = normalizeWalkTime(walkStartTime); if (n) setWalkStartTime(n); }}
+              placeholder="ex : 930 = 09:30"
               placeholderTextColor={colors.mutedForeground}
-              keyboardType="numeric"
-              maxLength={5}
+              keyboardType="number-pad"
             />
           </View>
         )}
         {isWalk && (
           <View style={styles.section}>
-            <Text style={[styles.label, { color: colors.mutedForeground }]}>DURÉE DE LA BALADE</Text>
-            <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
-              <View style={{ flex: 1 }}>
-                <TextInput
-                  style={[styles.input, { backgroundColor: colors.input, borderColor: colors.border, color: colors.foreground, textAlign: 'center' }]}
-                  value={walkDurationH}
-                  onChangeText={v => setWalkDurationH(v.replace(/\D/g, ''))}
-                  placeholder="0"
-                  placeholderTextColor={colors.mutedForeground}
-                  keyboardType="number-pad"
-                  maxLength={2}
-                />
-                <Text style={[styles.walkUnit, { color: colors.mutedForeground }]}>heures</Text>
-              </View>
-              <Text style={[{ fontSize: 22, color: colors.mutedForeground, marginBottom: 20 }]}>:</Text>
-              <View style={{ flex: 1 }}>
-                <TextInput
-                  style={[styles.input, { backgroundColor: colors.input, borderColor: colors.border, color: colors.foreground, textAlign: 'center' }]}
-                  value={walkDurationM}
-                  onChangeText={v => { const n = parseInt(v.replace(/\D/g, '') || '0', 10); setWalkDurationM(String(Math.min(59, n)).padStart(2, '0')); }}
-                  placeholder="00"
-                  placeholderTextColor={colors.mutedForeground}
-                  keyboardType="number-pad"
-                  maxLength={2}
-                />
-                <Text style={[styles.walkUnit, { color: colors.mutedForeground }]}>minutes</Text>
-              </View>
-            </View>
-            {walkDurMin > 0 && walkStartTime.match(/^\d{1,2}:\d{2}$/) && (
+            <Text style={[styles.label, { color: colors.mutedForeground }]}>DURÉE</Text>
+            <TextInput
+              style={[styles.input, { backgroundColor: colors.input, borderColor: walkDurMin > 0 ? '#4CAF50' : colors.border, color: colors.foreground }]}
+              value={walkDuration}
+              onChangeText={setWalkDuration}
+              onBlur={() => {
+                const dur = normalizeDurationInput(walkDuration);
+                if (dur) setWalkDuration(`${dur.h}h${String(dur.m).padStart(2, '0')}`);
+              }}
+              placeholder="ex : 125 = 1h25, 45 = 45 min"
+              placeholderTextColor={colors.mutedForeground}
+              keyboardType="number-pad"
+            />
+            {walkEndTime && (
               <View style={styles.confirmedRow}>
                 <MaterialCommunityIcons name="clock-check-outline" size={14} color="#4CAF50" />
                 <Text style={[styles.confirmedText, { color: '#4CAF50' }]}>
@@ -528,6 +544,19 @@ export default function NewTripScreen() {
               placeholder="ex: 3.5"
               placeholderTextColor={colors.mutedForeground}
               keyboardType="decimal-pad"
+            />
+          </View>
+        )}
+        {isWalk && (
+          <View style={styles.section}>
+            <Text style={[styles.label, { color: colors.mutedForeground }]}>PARCOURS (FACULTATIF)</Text>
+            <TextInput
+              style={[styles.input, { backgroundColor: colors.input, borderColor: colors.border, color: colors.foreground }]}
+              value={walkRoute}
+              onChangeText={setWalkRoute}
+              placeholder="ex: Parc de la Tête d'Or"
+              placeholderTextColor={colors.mutedForeground}
+              returnKeyType="done"
             />
           </View>
         )}

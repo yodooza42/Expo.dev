@@ -1,6 +1,6 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
@@ -80,9 +80,10 @@ export default function VehicleSettingsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { projects } = useApp();
+  const { vehicleId: paramVehicleId, tab: paramTab } = useLocalSearchParams<{ vehicleId?: string; tab?: string }>();
 
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
-  const [selectedId, setSelectedId] = useState<string>('car');
+  const [selectedId, setSelectedId] = useState<string>(paramVehicleId ?? 'car');
   const [trips, setTrips] = useState<Trip[]>([]);
 
   // Maintenance modal
@@ -105,7 +106,11 @@ export default function VehicleSettingsScreen() {
   const [newParticipantReminder, setNewParticipantReminder] = useState('');
 
   const [projectPickerVisible, setProjectPickerVisible] = useState(false);
-  const [activeVehicleTab, setActiveVehicleTab] = useState<VehicleTab>('general');
+  const [activeVehicleTab, setActiveVehicleTab] = useState<VehicleTab>(
+    (['general', 'maintenance', 'insurance', 'participants', 'stats'] as const).includes(paramTab as VehicleTab)
+      ? (paramTab as VehicleTab)
+      : 'general',
+  );
   const [insDatePickerVisible, setInsDatePickerVisible] = useState(false);
   const [recalModalVisible, setRecalModalVisible] = useState(false);
   const [recalValue, setRecalValue] = useState('');

@@ -74,26 +74,32 @@ function WalkCard({ vehicle, km, count, lastTripParticipants, colors }: WalkCard
     .map(id => participants.find(p => p.id === id))
     .filter((p): p is NonNullable<typeof p> => !!p);
   return (
-    <View style={[trStyles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-      <MaterialCommunityIcons name="walk" size={48} color={walkColor} />
-      <Text style={[trStyles.odoVal, { color: colors.foreground }]}>{km.toFixed(1)}</Text>
-      <Text style={[trStyles.odoLabel, { color: colors.mutedForeground }]}>KM CE MOIS</Text>
-      <Text style={[trStyles.odoLabel, { color: colors.mutedForeground }]}>{count} SORTIE{count !== 1 ? 'S' : ''}</Text>
-      {lastNames.length > 0 && (
-        <View style={{ flexDirection: 'row', gap: 4, marginTop: 4, flexWrap: 'wrap', justifyContent: 'center' }}>
-          {lastNames.slice(0, 5).map((p, i) => (
-            <View key={i} style={{
-              width: 22, height: 22, borderRadius: 11,
-              backgroundColor: p.type === 'dog' ? '#FF980040' : '#2196F340',
-              alignItems: 'center', justifyContent: 'center',
-            }}>
-              <Text style={{ color: p.type === 'dog' ? '#FF9800' : '#2196F3', fontSize: 9, fontFamily: 'Inter_700Bold' }}>
-                {p.name.charAt(0).toUpperCase()}
-              </Text>
-            </View>
-          ))}
-        </View>
-      )}
+    <View style={[trStyles.walkFullCard, { backgroundColor: colors.card, borderColor: '#4CAF5040' }]}>
+      <View style={[trStyles.walkIconBox, { backgroundColor: '#4CAF5018' }]}>
+        <MaterialCommunityIcons name="walk" size={26} color={walkColor} />
+      </View>
+      <View style={{ flex: 1, gap: 2 }}>
+        <Text style={[trStyles.walkTitle, { color: colors.foreground }]}>{vehicle.name}</Text>
+        <Text style={[trStyles.walkSub, { color: colors.mutedForeground }]}>
+          {km.toFixed(1)} km ce mois · {count} sortie{count !== 1 ? 's' : ''}
+        </Text>
+        {lastNames.length > 0 && (
+          <View style={{ flexDirection: 'row', gap: 4, marginTop: 4, flexWrap: 'wrap' }}>
+            {lastNames.slice(0, 6).map((p, i) => (
+              <View key={i} style={{
+                width: 20, height: 20, borderRadius: 10,
+                backgroundColor: p.type === 'dog' ? '#FF980040' : '#2196F340',
+                alignItems: 'center', justifyContent: 'center',
+              }}>
+                <Text style={{ color: p.type === 'dog' ? '#FF9800' : '#2196F3', fontSize: 8, fontFamily: 'Inter_700Bold' }}>
+                  {p.name.charAt(0).toUpperCase()}
+                </Text>
+              </View>
+            ))}
+          </View>
+        )}
+      </View>
+      <MaterialCommunityIcons name="chevron-right" size={20} color={walkColor} />
     </View>
   );
 }
@@ -115,6 +121,13 @@ const trStyles = StyleSheet.create({
   gaugeTrack: { width: '100%', height: 5, borderRadius: 3, overflow: 'hidden' },
   gaugeFill: { height: 5, borderRadius: 3 },
   gaugeLabel: { fontSize: 10, fontFamily: 'Inter_500Medium' },
+  walkFullCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 14,
+    borderRadius: 14, borderWidth: 1, padding: 14,
+  },
+  walkIconBox: { width: 46, height: 46, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
+  walkTitle: { fontSize: 15, fontFamily: 'Inter_600SemiBold' },
+  walkSub: { fontSize: 12, fontFamily: 'Inter_400Regular' },
 });
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -423,23 +436,10 @@ export default function TripsScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
         showsVerticalScrollIndicator={false}
       >
-        {/* ── Odometers ── */}
-        {settings.filter(v => v.type !== 'other').length > 0 && (
+        {/* ── Odometers — véhicules motorisés ── */}
+        {settings.filter(v => v.type !== 'other' && v.type !== 'walk').length > 0 && (
           <View style={styles.odoRow}>
-            {settings.filter(v => v.type !== 'other').map(v => {
-              if (v.type === 'walk') {
-                const wData = walkMonthData.find(w => w.vehicle.id === v.id);
-                return (
-                  <WalkCard
-                    key={v.id}
-                    vehicle={v}
-                    km={wData?.km ?? 0}
-                    count={wData?.count ?? 0}
-                    lastTripParticipants={wData?.lastTripParticipants ?? []}
-                    colors={colors}
-                  />
-                );
-              }
+            {settings.filter(v => v.type !== 'other' && v.type !== 'walk').map(v => {
               const odo = computeOdometer(trips, v.id, v.odometerBaseKm, v.odometerAdjustments);
               const auto = autonomieData[v.id];
               const hasRange = auto?.hasData && auto.fillPct !== null;
@@ -450,43 +450,63 @@ export default function TripsScreen() {
                 : fillPct > 0.25 ? '#FF9800'
                 : '#F44336';
               const isReserve = hasRange && (auto!.remainingKm ?? 1) <= 0;
+              const goToMaintenance = () => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push(`/vehicle-settings?vehicleId=${v.id}&tab=maintenance` as any); };
               if (v.type === 'car') {
                 return (
-                  <TurnaroundCard
-                    key={v.id}
-                    vehicle={v}
-                    odo={odo}
-                    fillPct={fillPct}
-                    remaining={remaining}
-                    isReserve={isReserve}
-                    gaugeColor={gaugeColor}
-                    hasData={auto?.hasData ?? false}
-                    colors={colors}
-                  />
+                  <Pressable key={v.id} style={{ flex: 1 }} onPress={goToMaintenance}>
+                    <TurnaroundCard
+                      vehicle={v}
+                      odo={odo}
+                      fillPct={fillPct}
+                      remaining={remaining}
+                      isReserve={isReserve}
+                      gaugeColor={gaugeColor}
+                      hasData={auto?.hasData ?? false}
+                      colors={colors}
+                    />
+                  </Pressable>
                 );
               }
               return (
-                <View key={v.id} style={[trStyles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                  <Image source={MSX_IMG} style={trStyles.carImg} resizeMode="contain" />
-                  <Text style={[trStyles.odoVal, { color: colors.foreground }]}>{odo.toFixed(0)}</Text>
-                  <Text style={[trStyles.odoLabel, { color: colors.mutedForeground }]}>KM {v.name.toUpperCase()}</Text>
-                  {auto?.hasData && (
-                    <View style={trStyles.gaugeWrapper}>
-                      <View style={[trStyles.gaugeTrack, { backgroundColor: colors.muted }]}>
-                        {fillPct !== null && (
-                          <View style={[trStyles.gaugeFill, { width: `${fillPct * 100}%` as any, backgroundColor: gaugeColor }]} />
-                        )}
+                <Pressable key={v.id} style={{ flex: 1 }} onPress={goToMaintenance}>
+                  <View style={[trStyles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                    <Image source={MSX_IMG} style={trStyles.carImg} resizeMode="contain" />
+                    <Text style={[trStyles.odoVal, { color: colors.foreground }]}>{odo.toFixed(0)}</Text>
+                    <Text style={[trStyles.odoLabel, { color: colors.mutedForeground }]}>KM {v.name.toUpperCase()}</Text>
+                    {auto?.hasData && (
+                      <View style={trStyles.gaugeWrapper}>
+                        <View style={[trStyles.gaugeTrack, { backgroundColor: colors.muted }]}>
+                          {fillPct !== null && (
+                            <View style={[trStyles.gaugeFill, { width: `${fillPct * 100}%` as any, backgroundColor: gaugeColor }]} />
+                          )}
+                        </View>
+                        <Text style={[trStyles.gaugeLabel, { color: isReserve ? '#F44336' : colors.mutedForeground }]}>
+                          {isReserve ? '⚠ Réserve' : remaining !== null ? `~${remaining.toFixed(0)} km` : '—'}
+                        </Text>
                       </View>
-                      <Text style={[trStyles.gaugeLabel, { color: isReserve ? '#F44336' : colors.mutedForeground }]}>
-                        {isReserve ? '⚠ Réserve' : remaining !== null ? `~${remaining.toFixed(0)} km` : '—'}
-                      </Text>
-                    </View>
-                  )}
-                </View>
+                    )}
+                  </View>
+                </Pressable>
               );
             })}
           </View>
         )}
+
+        {/* ── Véhicule Balade — pleine largeur, en bas ── */}
+        {walkMonthData.map(wData => (
+          <Pressable
+            key={wData.vehicle.id}
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push(`/vehicle-settings?vehicleId=${wData.vehicle.id}&tab=stats` as any); }}
+          >
+            <WalkCard
+              vehicle={wData.vehicle}
+              km={wData.km}
+              count={wData.count}
+              lastTripParticipants={wData.lastTripParticipants}
+              colors={colors}
+            />
+          </Pressable>
+        ))}
 
         {/* ── Ce mois ── */}
         {hasMonthData && (
