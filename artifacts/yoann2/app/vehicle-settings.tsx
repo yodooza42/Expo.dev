@@ -115,6 +115,7 @@ export default function VehicleSettingsScreen() {
   const [recalModalVisible, setRecalModalVisible] = useState(false);
   const [recalValue, setRecalValue] = useState('');
   const [expandedParticipants, setExpandedParticipants] = useState<Set<string>>(new Set());
+  const [openPastTrips, setOpenPastTrips] = useState<Set<string>>(new Set());
 
   const load = useCallback(async () => {
     const [v, t] = await Promise.all([getVehicleSettings(), getTrips()]);
@@ -878,67 +879,91 @@ export default function VehicleSettingsScreen() {
                     if (pTrips.length === 0) return null;
                     const LIMIT = 10;
                     const isExpanded = expandedParticipants.has(p.id);
+                    const isOpen = openPastTrips.has(p.id);
                     const visible = isExpanded ? pTrips : pTrips.slice(0, LIMIT);
                     const hidden = pTrips.length - LIMIT;
                     return (
                       <View style={styles.pastTripsSection}>
-                        <Text style={[styles.pastTripsLabel, { color: colors.mutedForeground }]}>BALADES PASSÉES</Text>
-                        {visible.map(t => {
-                          const allParticipantDetails = (t.walkParticipants ?? [])
-                            .map(pid => (selected.walkParticipants ?? []).find(wp => wp.id === pid))
-                            .filter((wp): wp is NonNullable<typeof wp> => !!wp);
-                          return (
-                            <Pressable
-                              key={t.id}
-                              onPress={() => { router.push({ pathname: '/trip-map', params: { id: t.id, backLabel: 'Véhicules', participantName: p.name } } as any); }}
-                              style={[styles.pastTripRow, { borderColor: colors.border }]}
-                            >
-                              <View style={[styles.pastTripIcon, { backgroundColor: '#4CAF5022' }]}>
-                                <MaterialCommunityIcons name="walk" size={14} color="#4CAF50" />
-                              </View>
-                              <View style={{ flex: 1 }}>
-                                <Text style={[styles.pastTripDate, { color: colors.foreground }]}>{fmtWeekdayShort(t.startTime)}</Text>
-                                <Text style={[styles.pastTripTime, { color: colors.mutedForeground }]}>{fmtHHMM(t.startTime)} → {fmtHHMM(t.endTime)}</Text>
-                              </View>
-                              <View style={styles.pastTripRight}>
-                                <Text style={[styles.pastTripDist, { color: colors.foreground }]}>{t.distanceKm.toFixed(1)} km</Text>
-                                <Text style={[styles.pastTripDur, { color: colors.mutedForeground }]}>{fmtDuration(t.endTime - t.startTime)}</Text>
-                              </View>
-                              {allParticipantDetails.length > 0 && (
-                                <View style={styles.pastTripAvatars}>
-                                  {allParticipantDetails.slice(0, 5).map((wp, i) => (
-                                    <View key={i} style={[styles.pastTripAvatar, {
-                                      backgroundColor: wp.type === 'dog' ? '#FF980030' : '#2196F330',
-                                    }]}>
-                                      <Text style={{ color: wp.type === 'dog' ? '#FF9800' : '#2196F3', fontSize: 7, fontFamily: 'Inter_700Bold' }}>
-                                        {wp.name.charAt(0).toUpperCase()}
-                                      </Text>
+                        <Pressable
+                          onPress={() => {
+                            Haptics.selectionAsync();
+                            setOpenPastTrips(prev => {
+                              const s = new Set(prev);
+                              if (s.has(p.id)) s.delete(p.id); else s.add(p.id);
+                              return s;
+                            });
+                          }}
+                          style={[styles.pastTripsToggleRow]}
+                        >
+                          <Text style={[styles.pastTripsLabel, { color: colors.mutedForeground }]}>
+                            BALADES PASSÉES ({pTrips.length})
+                          </Text>
+                          <MaterialCommunityIcons
+                            name={isOpen ? 'chevron-up' : 'chevron-down'}
+                            size={16}
+                            color={colors.mutedForeground}
+                          />
+                        </Pressable>
+                        {isOpen && (
+                          <>
+                            {visible.map(t => {
+                              const allParticipantDetails = (t.walkParticipants ?? [])
+                                .map(pid => (selected.walkParticipants ?? []).find(wp => wp.id === pid))
+                                .filter((wp): wp is NonNullable<typeof wp> => !!wp);
+                              return (
+                                <Pressable
+                                  key={t.id}
+                                  onPress={() => { router.push({ pathname: '/trip-map', params: { id: t.id, backLabel: 'Véhicules', participantName: p.name } } as any); }}
+                                  style={[styles.pastTripRow, { borderColor: colors.border }]}
+                                >
+                                  <View style={[styles.pastTripIcon, { backgroundColor: '#4CAF5022' }]}>
+                                    <MaterialCommunityIcons name="walk" size={14} color="#4CAF50" />
+                                  </View>
+                                  <View style={{ flex: 1 }}>
+                                    <Text style={[styles.pastTripDate, { color: colors.foreground }]}>{fmtWeekdayShort(t.startTime)}</Text>
+                                    <Text style={[styles.pastTripTime, { color: colors.mutedForeground }]}>{fmtHHMM(t.startTime)} → {fmtHHMM(t.endTime)}</Text>
+                                  </View>
+                                  <View style={styles.pastTripRight}>
+                                    <Text style={[styles.pastTripDist, { color: colors.foreground }]}>{t.distanceKm.toFixed(1)} km</Text>
+                                    <Text style={[styles.pastTripDur, { color: colors.mutedForeground }]}>{fmtDuration(t.endTime - t.startTime)}</Text>
+                                  </View>
+                                  {allParticipantDetails.length > 0 && (
+                                    <View style={styles.pastTripAvatars}>
+                                      {allParticipantDetails.slice(0, 5).map((wp, i) => (
+                                        <View key={i} style={[styles.pastTripAvatar, {
+                                          backgroundColor: wp.type === 'dog' ? '#FF980030' : '#2196F330',
+                                        }]}>
+                                          <Text style={{ color: wp.type === 'dog' ? '#FF9800' : '#2196F3', fontSize: 7, fontFamily: 'Inter_700Bold' }}>
+                                            {wp.name.charAt(0).toUpperCase()}
+                                          </Text>
+                                        </View>
+                                      ))}
                                     </View>
-                                  ))}
-                                </View>
-                              )}
-                            </Pressable>
-                          );
-                        })}
-                        {!isExpanded && hidden > 0 && (
-                          <Pressable
-                            onPress={() => { Haptics.selectionAsync(); setExpandedParticipants(prev => new Set([...prev, p.id])); }}
-                            style={[styles.seeMoreBtn, { borderColor: colors.border }]}
-                          >
-                            <MaterialCommunityIcons name="chevron-down" size={14} color={colors.mutedForeground} />
-                            <Text style={[styles.seeMoreText, { color: colors.mutedForeground }]}>
-                              Voir {hidden} autre{hidden > 1 ? 's' : ''} balade{hidden > 1 ? 's' : ''}
-                            </Text>
-                          </Pressable>
-                        )}
-                        {isExpanded && pTrips.length > LIMIT && (
-                          <Pressable
-                            onPress={() => { Haptics.selectionAsync(); setExpandedParticipants(prev => { const s = new Set(prev); s.delete(p.id); return s; }); }}
-                            style={[styles.seeMoreBtn, { borderColor: colors.border }]}
-                          >
-                            <MaterialCommunityIcons name="chevron-up" size={14} color={colors.mutedForeground} />
-                            <Text style={[styles.seeMoreText, { color: colors.mutedForeground }]}>Réduire</Text>
-                          </Pressable>
+                                  )}
+                                </Pressable>
+                              );
+                            })}
+                            {!isExpanded && hidden > 0 && (
+                              <Pressable
+                                onPress={() => { Haptics.selectionAsync(); setExpandedParticipants(prev => new Set([...prev, p.id])); }}
+                                style={[styles.seeMoreBtn, { borderColor: colors.border }]}
+                              >
+                                <MaterialCommunityIcons name="chevron-down" size={14} color={colors.mutedForeground} />
+                                <Text style={[styles.seeMoreText, { color: colors.mutedForeground }]}>
+                                  Voir {hidden} autre{hidden > 1 ? 's' : ''} balade{hidden > 1 ? 's' : ''}
+                                </Text>
+                              </Pressable>
+                            )}
+                            {isExpanded && pTrips.length > LIMIT && (
+                              <Pressable
+                                onPress={() => { Haptics.selectionAsync(); setExpandedParticipants(prev => { const s = new Set(prev); s.delete(p.id); return s; }); }}
+                                style={[styles.seeMoreBtn, { borderColor: colors.border }]}
+                              >
+                                <MaterialCommunityIcons name="chevron-up" size={14} color={colors.mutedForeground} />
+                                <Text style={[styles.seeMoreText, { color: colors.mutedForeground }]}>Réduire</Text>
+                              </Pressable>
+                            )}
+                          </>
                         )}
                       </View>
                     );
@@ -1284,7 +1309,8 @@ const styles = StyleSheet.create({
 
   // Past trips list styles
   pastTripsSection: { gap: 4, marginTop: 2 },
-  pastTripsLabel: { fontSize: 11, fontFamily: 'Inter_600SemiBold', letterSpacing: 0.5, marginBottom: 2 },
+  pastTripsToggleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 4 },
+  pastTripsLabel: { fontSize: 11, fontFamily: 'Inter_600SemiBold', letterSpacing: 0.5 },
   pastTripRow: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
     paddingVertical: 7, borderTopWidth: StyleSheet.hairlineWidth,
