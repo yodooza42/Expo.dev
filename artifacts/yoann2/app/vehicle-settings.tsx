@@ -115,6 +115,7 @@ export default function VehicleSettingsScreen() {
   const [recalModalVisible, setRecalModalVisible] = useState(false);
   const [recalValue, setRecalValue] = useState('');
   const [expandedParticipants, setExpandedParticipants] = useState<Set<string>>(new Set());
+  const [visiblePastTrips, setVisiblePastTrips] = useState<Set<string>>(new Set());
 
   const load = useCallback(async () => {
     const [v, t] = await Promise.all([getVehicleSettings(), getTrips()]);
@@ -882,12 +883,27 @@ export default function VehicleSettingsScreen() {
                     const hidden = pTrips.length - LIMIT;
                     return (
                       <View style={styles.pastTripsSection}>
-                        <View style={styles.pastTripsToggleRow}>
+                        <Pressable
+                          style={styles.pastTripsToggleRow}
+                          onPress={() => {
+                            Haptics.selectionAsync();
+                            setVisiblePastTrips(prev => {
+                              const s = new Set(prev);
+                              if (s.has(p.id)) s.delete(p.id); else s.add(p.id);
+                              return s;
+                            });
+                          }}
+                        >
                           <Text style={[styles.pastTripsLabel, { color: colors.mutedForeground }]}>
                             BALADES PASSÉES ({pTrips.length})
                           </Text>
-                        </View>
-                        {(
+                          <MaterialCommunityIcons
+                            name={visiblePastTrips.has(p.id) ? 'chevron-up' : 'chevron-down'}
+                            size={16}
+                            color={colors.mutedForeground}
+                          />
+                        </Pressable>
+                        {visiblePastTrips.has(p.id) && (
                           <>
                             {visible.map(t => {
                               const allParticipantDetails = (t.walkParticipants ?? [])
