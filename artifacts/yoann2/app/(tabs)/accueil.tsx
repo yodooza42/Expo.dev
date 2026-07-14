@@ -171,6 +171,36 @@ export default function AccueilScreen() {
         </Pressable>
       </View>
 
+      {/* ── Travail + Nanny ── */}
+      {wData && (
+        <View style={[styles.card, styles.cardFull, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <View style={styles.between}>
+            <View style={styles.rowCenter}>
+              <MaterialCommunityIcons name="briefcase-outline" size={15} color={colors.mutedForeground} />
+              <Text style={[styles.cardLabel, { color: colors.mutedForeground, marginLeft: 6 }]}>Aujourd'hui</Text>
+            </View>
+            <Text style={[styles.workLabel, {
+              color: wData.todayWork === 'Repos' ? colors.mutedForeground : colors.primary,
+            }]}>
+              {wData.todayWork}
+            </Text>
+          </View>
+          {wData.nounouName ? (
+            <View style={[styles.between, styles.nounouRow, { borderTopColor: colors.border }]}>
+              <View style={styles.rowCenter}>
+                <MaterialCommunityIcons name="account-heart-outline" size={15} color={wData.nounouColor as any} />
+                <Text style={[styles.cardLabel, { color: colors.mutedForeground, marginLeft: 6 }]}>
+                  {wData.nounouName}
+                </Text>
+              </View>
+              <Text style={[styles.cardSub, { color: wData.nounouColor as any }]}>
+                {wData.nounouPeriod} · {wData.nounouDuration}
+              </Text>
+            </View>
+          ) : null}
+        </View>
+      )}
+
       {/* ── Prochaines balades possibles ── */}
       <WalkSlotsCard />
 
@@ -227,36 +257,6 @@ export default function AccueilScreen() {
               ) : null}
             </View>
           ))}
-        </View>
-      )}
-
-      {/* ── Travail + Nanny ── */}
-      {wData && (
-        <View style={[styles.card, styles.cardFull, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <View style={styles.between}>
-            <View style={styles.rowCenter}>
-              <MaterialCommunityIcons name="briefcase-outline" size={15} color={colors.mutedForeground} />
-              <Text style={[styles.cardLabel, { color: colors.mutedForeground, marginLeft: 6 }]}>Aujourd'hui</Text>
-            </View>
-            <Text style={[styles.workLabel, {
-              color: wData.todayWork === 'Repos' ? colors.mutedForeground : colors.primary,
-            }]}>
-              {wData.todayWork}
-            </Text>
-          </View>
-          {wData.nounouName ? (
-            <View style={[styles.between, styles.nounouRow, { borderTopColor: colors.border }]}>
-              <View style={styles.rowCenter}>
-                <MaterialCommunityIcons name="account-heart-outline" size={15} color={wData.nounouColor as any} />
-                <Text style={[styles.cardLabel, { color: colors.mutedForeground, marginLeft: 6 }]}>
-                  {wData.nounouName}
-                </Text>
-              </View>
-              <Text style={[styles.cardSub, { color: wData.nounouColor as any }]}>
-                {wData.nounouPeriod} · {wData.nounouDuration}
-              </Text>
-            </View>
-          ) : null}
         </View>
       )}
 
