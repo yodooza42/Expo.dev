@@ -9,3 +9,4 @@
 - [trip notification non-swipeable — expo-location FGS](trip-notification-fgs.md) — piloter la notification du FGS expo-location (startLocationUpdatesAsync patch les options in-place) plutôt qu'un FGS notifee séparé. notifee shortService/dataSync tué par Samsung One UI 7. Export patchLocationFgsNotification depuis locationTracking.ts.
 - [Expo config plugin — expo/config-plugins](expo-config-plugin-import.md) — utiliser require('expo/config-plugins') pas require('@expo/config-plugins') dans les plugins du projet yoann2.
 - [EAS build command — global eas binary](eas-build-global-binary.md) — npx eas-cli timeout (424MB archive). Utiliser le binaire global directement : `/home/runner/workspace/.config/npm/node_global/bin/eas build ... 2>&1 | grep -m1 "See logs"`.
+- [EAS build — NE JAMAIS lancer sans autorisation explicite](eas-build-no-auto.md) — ne JAMAIS déclencher un build EAS sans que l'utilisateur le demande explicitement. Les quotas sont limités et précieux.
