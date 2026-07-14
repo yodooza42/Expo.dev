@@ -284,6 +284,29 @@ export default function AccueilScreen() {
           <MaterialCommunityIcons name="calendar-plus" size={26} color="#2196F3" />
         </Pressable>
       </View>
+      <View style={styles.rowPad}>
+        <Pressable
+          style={[styles.actionBtn, { backgroundColor: '#4CAF5012', borderColor: '#4CAF5040' }]}
+          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/trip/new' as any); }}
+        >
+          <MaterialCommunityIcons name="walk" size={26} color="#4CAF50" />
+          <Text style={[styles.actionLabel, { color: '#4CAF50' }]}>Balade</Text>
+        </Pressable>
+        <Pressable
+          style={[styles.actionBtn, { backgroundColor: '#2196F312', borderColor: '#2196F340' }]}
+          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/fuel-log?add=1' as any); }}
+        >
+          <MaterialCommunityIcons name="gas-station" size={26} color="#2196F3" />
+          <Text style={[styles.actionLabel, { color: '#2196F3' }]}>Plein</Text>
+        </Pressable>
+        <Pressable
+          style={[styles.actionBtn, { backgroundColor: '#FF980012', borderColor: '#FF980040' }]}
+          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/shopping-list' as any); }}
+        >
+          <MaterialCommunityIcons name="cart-outline" size={26} color="#FF9800" />
+          <Text style={[styles.actionLabel, { color: '#FF9800' }]}>Courses</Text>
+        </Pressable>
+      </View>
     </ScrollView>
   );
 }

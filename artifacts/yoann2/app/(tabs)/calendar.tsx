@@ -164,14 +164,23 @@ export default function CalendarScreen() {
       {/* ── Header ── */}
       <View style={[styles.header, { paddingTop: insets.top + 8, borderBottomColor: colors.border }]}>
         <View style={styles.titleRow}>
-          {/* Liste button */}
-          <Pressable
-            onPress={() => router.push('/appointment-list' as any)}
-            hitSlop={8}
-            style={[pH.btn, { backgroundColor: colors.card, borderColor: colors.border }]}
-          >
-            <MaterialCommunityIcons name="format-list-bulleted" size={18} color={colors.foreground} />
-          </Pressable>
+          {/* Boutons gauche */}
+          <View style={pH.btnGroup}>
+            <Pressable
+              onPress={() => router.push('/appointment-list' as any)}
+              hitSlop={8}
+              style={[pH.btn, { backgroundColor: colors.card, borderColor: colors.border }]}
+            >
+              <MaterialCommunityIcons name="format-list-bulleted" size={18} color={colors.foreground} />
+            </Pressable>
+            <Pressable
+              onPress={() => router.push('/shopping-list' as any)}
+              hitSlop={8}
+              style={[pH.btn, { backgroundColor: '#FF980018', borderColor: '#FF980055' }]}
+            >
+              <MaterialCommunityIcons name="cart-outline" size={18} color="#FF9800" />
+            </Pressable>
+          </View>
 
           {/* Icon buttons */}
           <View style={pH.btnGroup}>
