@@ -336,7 +336,7 @@ function CategoryCard({
 
 // ── TripRow ───────────────────────────────────────────────────────────────────
 function TripRow({
-  trip, colors, onUpdate, compact, onGroup, onDelete, vehicles,
+  trip, colors, onUpdate, compact, onGroup, onDelete, vehicles, walkRouteMap,
 }: {
   trip: Trip;
   colors: ReturnType<typeof useColors>;
@@ -345,6 +345,7 @@ function TripRow({
   onGroup?: (t: Trip) => void;
   onDelete?: () => void;
   vehicles?: Vehicle[];
+  walkRouteMap?: Map<string, string>;
 }) {
   const router = useRouter();
   const [showParticipants, setShowParticipants] = useState(false);
@@ -418,14 +419,23 @@ function TripRow({
           </Pressable>
         )}
       </View>
-      {(trip.startAddress || trip.endAddress) && !compact && (
+      {isWalk && !compact && trip.walkRouteId && walkRouteMap?.get(trip.walkRouteId) ? (
+        <View style={styles.tripAddrRow}>
+          <View style={[styles.walkRouteChip, { backgroundColor: '#4CAF5018' }]}>
+            <MaterialCommunityIcons name="walk" size={11} color="#4CAF50" />
+            <Text style={[styles.walkRouteChipText, { color: '#4CAF50' }]}>
+              {walkRouteMap.get(trip.walkRouteId)}
+            </Text>
+          </View>
+        </View>
+      ) : !isWalk && (trip.startAddress || trip.endAddress) && !compact ? (
         <View style={styles.tripAddrRow}>
           <MaterialCommunityIcons name="map-marker-outline" size={11} color={colors.mutedForeground} />
           <Text style={[styles.tripAddr, { color: colors.mutedForeground }]} numberOfLines={1}>
             {trip.startAddress ?? '…'} → {trip.endAddress ?? '…'}
           </Text>
         </View>
-      )}
+      ) : null}
       {isWalk && walkParticipantDetails.length > 0 && (
         <View>
           <Pressable
@@ -632,6 +642,7 @@ export default function TripListScreen() {
 
   async function handleDeleteTrip(id: string) { await deleteTrip(id); await load(); }
 
+  const walkRouteMap = useMemo(() => new Map(walkRoutes.map(r => [r.id, r.name])), [walkRoutes]);
   const catIds = useMemo(() => new Set(categories.map(c => c.id)), [categories]);
   const activeCats = useMemo(() => categories.filter(c => trips.some(t => t.categoryId === c.id)), [categories, trips]);
 
@@ -777,7 +788,7 @@ export default function TripListScreen() {
           ) : (
             uncategorized.map(trip => (
               <TripRow key={trip.id} trip={trip} colors={colors} onUpdate={load} vehicles={settings}
-                onGroup={setGroupingTrip} onDelete={() => handleDeleteTrip(trip.id)} />
+                walkRouteMap={walkRouteMap} onGroup={setGroupingTrip} onDelete={() => handleDeleteTrip(trip.id)} />
             ))
           )}
         </View>
@@ -857,6 +868,8 @@ const styles = StyleSheet.create({
   tripDur: { fontSize: 11, fontFamily: 'Inter_400Regular' },
   tripAddrRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   tripAddr: { flex: 1, fontSize: 11, fontFamily: 'Inter_400Regular' },
+  walkRouteChip: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 20, paddingHorizontal: 8, paddingVertical: 3 },
+  walkRouteChipText: { fontSize: 11, fontFamily: 'Inter_500Medium' },
   participantTooltip: { marginTop: 2, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, borderWidth: StyleSheet.hairlineWidth, alignSelf: 'flex-start' },
   participantTooltipText: { fontSize: 11, fontFamily: 'Inter_400Regular' },
   tripDeleteBtn: { padding: 4, marginLeft: 2 },

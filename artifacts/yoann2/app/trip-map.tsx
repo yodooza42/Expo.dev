@@ -19,13 +19,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { TripMapView } from '@/components/TripMapView';
 import { useColors } from '@/hooks/useColors';
-import type { KnownPlace, PlaceCategory } from '@/types/places';
+import type { KnownPlace, PlaceCategory, WalkRoute } from '@/types/places';
 import type { RoutePoint, Trip, Vehicle } from '@/types/trips';
 import { simplifyRoute } from '@/utils/routeSimplification';
 import {
   getAddressUsage,
   getKnownPlaces,
   getPlaceCategories,
+  getWalkRoutes,
   incrementAddressUsage,
   sortSuggestionsByUsage,
 } from '@/utils/placesStorage';
@@ -219,6 +220,7 @@ export default function TripMapScreen() {
   const [loadingRoute, setLoadingRoute] = useState(false);
   const [placeCategories, setPlaceCategories] = useState<PlaceCategory[]>([]);
   const [knownPlaces, setKnownPlaces] = useState<KnownPlace[]>([]);
+  const [walkRoutes, setWalkRoutes] = useState<WalkRoute[]>([]);
 
   const [editingField, setEditingField] = useState<'start' | 'end' | null>(null);
   const [addressUsage, setAddressUsage] = useState<Record<string, number>>({});
@@ -271,6 +273,7 @@ export default function TripMapScreen() {
     getPlaceCategories().then(setPlaceCategories).catch(() => {});
     getKnownPlaces().then(setKnownPlaces).catch(() => {});
     getAddressUsage().then(setAddressUsage).catch(() => {});
+    getWalkRoutes().then(setWalkRoutes).catch(() => {});
   }, []);
 
   function fetchOsrmRoute(t: Trip) {
@@ -368,6 +371,11 @@ export default function TripMapScreen() {
 
   const hasAnyAddress = !!(trip?.startAddress || trip?.endAddress);
 
+  const isWalkTrip = !!trip && vehicles.some(v => v.id === trip.vehicle && v.type === 'walk');
+  const walkRouteName = isWalkTrip && trip?.walkRouteId
+    ? walkRoutes.find(r => r.id === trip.walkRouteId)?.name
+    : undefined;
+
   return (
     <View style={[styles.root, { backgroundColor: '#121212' }]}>
       {/* Back button */}
@@ -416,28 +424,39 @@ export default function TripMapScreen() {
       {/* Info card */}
       {trip && (
         <View style={[styles.card, { backgroundColor: colors.card, borderTopColor: colors.border }]}>
-          {/* Address banner — always shown so the user can always edit */}
-          <View style={[styles.addrBanner, { borderBottomColor: colors.border }]}>
-            <AddressBadge
-              address={trip.startAddress}
-              placeId={trip.startPlaceId}
-              dotColor="#4CAF50"
-              categories={placeCategories}
-              places={knownPlaces}
-              colors={colors}
-              onPress={() => setEditingField('start')}
-            />
-            <MaterialCommunityIcons name="arrow-right" size={13} color={colors.mutedForeground} />
-            <AddressBadge
-              address={trip.endAddress}
-              placeId={trip.endPlaceId}
-              dotColor="#FFC107"
-              categories={placeCategories}
-              places={knownPlaces}
-              colors={colors}
-              onPress={() => setEditingField('end')}
-            />
-          </View>
+          {/* Address banner / walk route chip */}
+          {isWalkTrip ? (
+            walkRouteName ? (
+              <View style={[styles.addrBanner, { borderBottomColor: colors.border }]}>
+                <View style={styles.walkRouteChip}>
+                  <MaterialCommunityIcons name="walk" size={14} color="#4CAF50" />
+                  <Text style={[styles.walkRouteChipText, { color: '#4CAF50' }]}>{walkRouteName}</Text>
+                </View>
+              </View>
+            ) : null
+          ) : (
+            <View style={[styles.addrBanner, { borderBottomColor: colors.border }]}>
+              <AddressBadge
+                address={trip.startAddress}
+                placeId={trip.startPlaceId}
+                dotColor="#4CAF50"
+                categories={placeCategories}
+                places={knownPlaces}
+                colors={colors}
+                onPress={() => setEditingField('start')}
+              />
+              <MaterialCommunityIcons name="arrow-right" size={13} color={colors.mutedForeground} />
+              <AddressBadge
+                address={trip.endAddress}
+                placeId={trip.endPlaceId}
+                dotColor="#FFC107"
+                categories={placeCategories}
+                places={knownPlaces}
+                colors={colors}
+                onPress={() => setEditingField('end')}
+              />
+            </View>
+          )}
 
           <Pressable
             onPress={handleOpenDtPicker}
@@ -672,4 +691,6 @@ const styles = StyleSheet.create({
   },
   addrBadge: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 5 },
   addrBadgeText: { flex: 1, fontSize: 12, fontFamily: 'Inter_500Medium' },
+  walkRouteChip: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#4CAF5018', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 5 },
+  walkRouteChipText: { fontSize: 13, fontFamily: 'Inter_500Medium' },
 });
