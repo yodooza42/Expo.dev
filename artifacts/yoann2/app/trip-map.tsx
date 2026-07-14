@@ -205,6 +205,69 @@ const editStyles = StyleSheet.create({
   btnText: { fontSize: 14, fontFamily: 'Inter_600SemiBold' },
 });
 
+// ── WalkRoutePickerModal ──────────────────────────────────────────────────────
+function WalkRoutePickerModal({
+  visible, routes, currentId, colors, onClose, onPick,
+}: {
+  visible: boolean;
+  routes: WalkRoute[];
+  currentId?: string;
+  colors: ReturnType<typeof useColors>;
+  onClose: () => void;
+  onPick: (id: string | undefined) => void;
+}) {
+  const insets = useSafeAreaInsets();
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable style={editStyles.overlay} onPress={onClose}>
+        <Pressable
+          style={[routePickerStyles.sheet, { backgroundColor: colors.card, paddingBottom: insets.bottom + 20 }]}
+        >
+          <Text style={[routePickerStyles.title, { color: colors.foreground }]}>Parcours</Text>
+          {routes.length === 0 ? (
+            <Text style={[routePickerStyles.empty, { color: colors.mutedForeground }]}>
+              Aucun parcours — ajoute-en dans Lieux connus.
+            </Text>
+          ) : (
+            <View style={routePickerStyles.chips}>
+              {routes.map(r => {
+                const selected = r.id === currentId;
+                return (
+                  <Pressable
+                    key={r.id}
+                    onPress={() => { Haptics.selectionAsync(); onPick(selected ? undefined : r.id); }}
+                    style={[
+                      routePickerStyles.chip,
+                      { backgroundColor: selected ? '#4CAF5022' : colors.muted, borderColor: selected ? '#4CAF50' : colors.border },
+                    ]}
+                  >
+                    <MaterialCommunityIcons name="walk" size={13} color={selected ? '#4CAF50' : colors.mutedForeground} />
+                    <Text style={[routePickerStyles.chipText, { color: selected ? '#4CAF50' : colors.foreground }]}>{r.name}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          )}
+          <Pressable onPress={onClose} style={[routePickerStyles.cancelBtn, { backgroundColor: colors.muted }]}>
+            <Text style={[routePickerStyles.cancelText, { color: colors.mutedForeground }]}>Fermer</Text>
+          </Pressable>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+const routePickerStyles = StyleSheet.create({
+  sheet: { borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, gap: 16 },
+  title: { fontSize: 17, fontFamily: 'Inter_700Bold' },
+  empty: { fontSize: 13, fontFamily: 'Inter_400Regular', fontStyle: 'italic' },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  chip: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 20, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 7 },
+  chipText: { fontSize: 13, fontFamily: 'Inter_500Medium' },
+  cancelBtn: { borderRadius: 10, paddingVertical: 13, alignItems: 'center' },
+  cancelText: { fontSize: 15, fontFamily: 'Inter_600SemiBold' },
+});
+
 // ── Main screen ───────────────────────────────────────────────────────────────
 
 export default function TripMapScreen() {
@@ -224,6 +287,7 @@ export default function TripMapScreen() {
 
   const [editingField, setEditingField] = useState<'start' | 'end' | null>(null);
   const [addressUsage, setAddressUsage] = useState<Record<string, number>>({});
+  const [pickingRoute, setPickingRoute] = useState(false);
 
   const [dtPickerStep, setDtPickerStep] = useState<'date' | 'startTime' | 'endTime' | null>(null);
   const [draftStart, setDraftStart] = useState<Date>(new Date());
@@ -361,6 +425,15 @@ export default function TripMapScreen() {
     setAddressUsage(prev => ({ ...prev, [name]: (prev[name] ?? 0) + 1 }));
   }
 
+  async function handlePickWalkRoute(routeId: string | undefined) {
+    if (!trip) return;
+    setPickingRoute(false);
+    const patch: Partial<Trip> = { walkRouteId: routeId };
+    setTrip({ ...trip, ...patch });
+    await updateTrip(trip.id, patch);
+    tripEvents.emitTripUpdated();
+  }
+
   const MAP_H = SCREEN_H * 0.62;
   const MAP_W = SCREEN_W;
 
@@ -426,14 +499,23 @@ export default function TripMapScreen() {
         <View style={[styles.card, { backgroundColor: colors.card, borderTopColor: colors.border }]}>
           {/* Address banner / walk route chip */}
           {isWalkTrip ? (
-            walkRouteName ? (
-              <View style={[styles.addrBanner, { borderBottomColor: colors.border }]}>
+            <Pressable
+              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setPickingRoute(true); }}
+              style={({ pressed }) => [styles.addrBanner, { borderBottomColor: colors.border, opacity: pressed ? 0.65 : 1 }]}
+            >
+              {walkRouteName ? (
                 <View style={styles.walkRouteChip}>
                   <MaterialCommunityIcons name="walk" size={14} color="#4CAF50" />
                   <Text style={[styles.walkRouteChipText, { color: '#4CAF50' }]}>{walkRouteName}</Text>
                 </View>
-              </View>
-            ) : null
+              ) : (
+                <View style={[styles.walkRouteChip, { backgroundColor: colors.muted }]}>
+                  <MaterialCommunityIcons name="walk" size={14} color={colors.mutedForeground} />
+                  <Text style={[styles.walkRouteChipText, { color: colors.mutedForeground }]}>Aucun parcours</Text>
+                </View>
+              )}
+              <MaterialCommunityIcons name="pencil-outline" size={13} color={colors.mutedForeground} style={{ marginLeft: 'auto' as any }} />
+            </Pressable>
           ) : (
             <View style={[styles.addrBanner, { borderBottomColor: colors.border }]}>
               <AddressBadge
@@ -570,6 +652,16 @@ export default function TripMapScreen() {
           onChange={handleEndTimeChange}
         />
       )}
+
+      {/* Walk route picker */}
+      <WalkRoutePickerModal
+        visible={pickingRoute}
+        routes={walkRoutes}
+        currentId={trip?.walkRouteId}
+        colors={colors}
+        onClose={() => setPickingRoute(false)}
+        onPick={handlePickWalkRoute}
+      />
 
       {/* Edit-address modal */}
       <EditAddressModal
