@@ -56,7 +56,8 @@ export default function TabLayout() {
       <Tabs.Screen name="trips" />
       <Tabs.Screen name="accueil" />
       <Tabs.Screen name="calendar" />
-      <Tabs.Screen name="index" />
+      <Tabs.Screen name="bureau" />
+      <Tabs.Screen name="index" options={{ href: null }} />
       <Tabs.Screen name="player" options={{ href: null }} />
       <Tabs.Screen name="map" options={{ href: null }} />
       <Tabs.Screen name="projects" options={{ href: null }} />

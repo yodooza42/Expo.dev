@@ -20,7 +20,7 @@ interface TabBarProps {
 }
 
 const TAB_ICONS: Record<string, string> = {
-  index:      'clipboard-list-outline',
+  bureau:     'clipboard-list-outline',
   accueil:    'home',
   projects:   'folder-multiple-outline',
   kanban:     'view-column-outline',
@@ -33,7 +33,7 @@ const TAB_ICONS: Record<string, string> = {
 };
 
 const TAB_LABELS: Record<string, string> = {
-  index:      'Bureau',
+  bureau:     'Bureau',
   accueil:    'Accueil',
   projects:   'Projets',
   kanban:     'Kanban',
