@@ -1,7 +1,7 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -40,6 +40,7 @@ import {
   saveWalkRoute,
 } from '@/utils/placesStorage';
 import { genId } from '@/utils/ids';
+import { getTrips } from '@/utils/tripStorage';
 
 const COLOR_PALETTE = [
   '#FFC107', '#FF9800', '#FF5722', '#F44336', '#E91E63',
@@ -532,7 +533,9 @@ export default function KnownPlacesScreen() {
   const [editCat, setEditCat]         = useState<Partial<PlaceCategory> | null>(null);
 
   const [walkRoutes, setWalkRoutes]       = useState<WalkRoute[]>([]);
+  const [routeTripsCount, setRouteTripsCount] = useState<Record<string, number>>({});
   const [routesOpen, setRoutesOpen]       = useState(true);
+  const [routesSortDesc, setRoutesSortDesc] = useState(true);
   const [routeModal, setRouteModal]       = useState(false);
   const [editRouteId, setEditRouteId]     = useState<string | null>(null);
   const [editRouteName, setEditRouteName] = useState('');
@@ -543,14 +546,26 @@ export default function KnownPlacesScreen() {
   const [coordsFromPicker, setCoordsFromPicker]   = useState<{ lat: number; lng: number } | null>(null);
 
   const load = useCallback(async () => {
-    const [cats, pls, wr] = await Promise.all([getPlaceCategories(), getKnownPlaces(), getWalkRoutes()]);
+    const [cats, pls, wr, trips] = await Promise.all([getPlaceCategories(), getKnownPlaces(), getWalkRoutes(), getTrips()]);
     setCategories(cats);
     setPlaces(pls);
     setWalkRoutes(wr);
     setExpanded(new Set(cats.map(c => c.id)));
+    const counts: Record<string, number> = {};
+    for (const t of trips) {
+      if (t.walkRouteId) counts[t.walkRouteId] = (counts[t.walkRouteId] ?? 0) + 1;
+    }
+    setRouteTripsCount(counts);
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  const sortedWalkRoutes = useMemo(() => {
+    return [...walkRoutes].sort((a, b) => {
+      const diff = (routeTripsCount[a.id] ?? 0) - (routeTripsCount[b.id] ?? 0);
+      return routesSortDesc ? -diff : diff;
+    });
+  }, [walkRoutes, routeTripsCount, routesSortDesc]);
 
   async function handleSavePlace(p: KnownPlace) {
     await saveKnownPlace(p);
@@ -661,6 +676,17 @@ export default function KnownPlacesScreen() {
             <MaterialCommunityIcons name={routesOpen ? 'chevron-up' : 'chevron-down'} size={20} color={colors.mutedForeground} />
             <Pressable
               hitSlop={10}
+              onPress={(e) => { e.stopPropagation(); setRoutesSortDesc(d => !d); }}
+              style={{ padding: 2 }}
+            >
+              <MaterialCommunityIcons
+                name={routesSortDesc ? 'sort-descending' : 'sort-ascending'}
+                size={18}
+                color={colors.mutedForeground}
+              />
+            </Pressable>
+            <Pressable
+              hitSlop={10}
               onPress={() => { setEditRouteId(null); setEditRouteName(''); setRouteModal(true); }}
             >
               <MaterialCommunityIcons name="plus-circle-outline" size={22} color="#4CAF50" />
@@ -671,10 +697,13 @@ export default function KnownPlacesScreen() {
               Aucun parcours. Appuie sur + pour en ajouter.
             </Text>
           )}
-          {routesOpen && walkRoutes.map(r => (
+          {routesOpen && sortedWalkRoutes.map(r => (
             <View key={r.id} style={[styles.routeRow, { borderTopColor: colors.border }]}>
               <MaterialCommunityIcons name="map-marker-path" size={15} color="#4CAF5088" />
               <Text style={[styles.routeName, { color: colors.foreground, flex: 1 }]}>{r.name}</Text>
+              <Text style={{ fontSize: 11, fontFamily: 'Inter_400Regular', color: colors.mutedForeground, marginRight: 2 }}>
+                {routeTripsCount[r.id] ?? 0}×
+              </Text>
               <Pressable
                 hitSlop={8}
                 onPress={() => { setEditRouteId(r.id); setEditRouteName(r.name); setRouteModal(true); }}
