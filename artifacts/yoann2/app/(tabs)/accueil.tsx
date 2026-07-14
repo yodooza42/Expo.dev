@@ -127,7 +127,29 @@ export default function AccueilScreen() {
 
       {/* ── Actions rapides ── */}
       <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>Actions rapides</Text>
+      {/* Rangée 1 : Courses / Balade / RDV */}
       <View style={styles.rowPad}>
+        <Pressable
+          style={[styles.actionBtn, { backgroundColor: '#FF980012', borderColor: '#FF980040' }]}
+          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/shopping-list' as any); }}
+        >
+          <MaterialCommunityIcons name="cart-outline" size={26} color="#FF9800" />
+        </Pressable>
+        <Pressable
+          style={[styles.actionBtn, { backgroundColor: '#4CAF5012', borderColor: '#4CAF5040' }]}
+          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/trip/new?vehicleType=walk' as any); }}
+        >
+          <MaterialCommunityIcons name="walk" size={26} color="#4CAF50" />
+        </Pressable>
+        <Pressable
+          style={[styles.actionBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/appointment/new' as any); }}
+        >
+          <MaterialCommunityIcons name="calendar-plus" size={26} color="#2196F3" />
+        </Pressable>
+      </View>
+      {/* Rangée 2 : Dépense / Tâche / Plein */}
+      <View style={[styles.rowPad, { marginBottom: 16 }]}>
         <Pressable
           style={[styles.actionBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
           onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/(tabs)/expenses?add=1' as any); }}
@@ -141,64 +163,68 @@ export default function AccueilScreen() {
           <MaterialCommunityIcons name="playlist-plus" size={26} color={colors.primary} />
         </Pressable>
         <Pressable
-          style={[styles.actionBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
-          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/appointment/new' as any); }}
-        >
-          <MaterialCommunityIcons name="calendar-plus" size={26} color="#2196F3" />
-        </Pressable>
-      </View>
-      <View style={[styles.rowPad, { marginBottom: 16 }]}>
-        <Pressable
-          style={[styles.actionBtn, { backgroundColor: '#4CAF5012', borderColor: '#4CAF5040' }]}
-          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/trip/new?vehicleType=walk' as any); }}
-        >
-          <MaterialCommunityIcons name="walk" size={26} color="#4CAF50" />
-        </Pressable>
-        <Pressable
           style={[styles.actionBtn, { backgroundColor: '#2196F312', borderColor: '#2196F340' }]}
           onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/fuel-log?add=1' as any); }}
         >
           <MaterialCommunityIcons name="gas-station" size={26} color="#2196F3" />
         </Pressable>
-        <Pressable
-          style={[styles.actionBtn, { backgroundColor: '#FF980012', borderColor: '#FF980040' }]}
-          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/shopping-list' as any); }}
-        >
-          <MaterialCommunityIcons name="cart-outline" size={26} color="#FF9800" />
-        </Pressable>
       </View>
 
-      {/* ── Finance + Trajets ── */}
-      <View style={styles.rowPad}>
-        <Pressable
-          style={[styles.card, styles.cardHalf, { backgroundColor: colors.card, borderColor: colors.border }]}
-          onPress={() => { Haptics.selectionAsync(); router.push('/(tabs)/expenses'); }}
-        >
-          <MaterialCommunityIcons name="bank-outline" size={18} color={colors.mutedForeground} />
-          <Text style={[styles.cardLabel, { color: colors.mutedForeground }]}>Ce mois</Text>
-          <Text style={[styles.cardValue, {
-            color: (monthBalance ?? 0) >= 0 ? '#4CAF50' : '#EF4444',
-          }]}>
-            {monthBalance !== null ? fmtEuro(monthBalance) : '—'}
-          </Text>
-          {allBalance !== null && (
+      {/* ── Rappels balades ── */}
+      {walkAlerts.length > 0 && (
+        <View style={[styles.card, styles.cardFull, { backgroundColor: colors.card, borderColor: '#FF9800' }]}>
+          <Pressable style={styles.between} onPress={() => { Haptics.selectionAsync(); router.push('/(tabs)/trips'); }}>
+            <View style={styles.rowCenter}>
+              <MaterialCommunityIcons name="walk" size={15} color="#FF9800" />
+              <Text style={[styles.cardLabel, { color: '#FF9800', marginLeft: 6 }]}>Balades</Text>
+            </View>
+            <MaterialCommunityIcons name="chevron-right" size={16} color="#FF9800" />
+          </Pressable>
+          {walkAlerts.map((a, i) => (
+            <View
+              key={i}
+              style={[styles.taskRow, i > 0 && { borderTopWidth: 1, borderTopColor: colors.border }]}
+            >
+              <View style={[styles.taskDot, { backgroundColor: '#FF9800' }]} />
+              <Text style={[styles.taskTitle, { color: colors.foreground }]} numberOfLines={1}>
+                {a.name}
+              </Text>
+              <Text style={[styles.cardSub, { color: '#FF9800' }]}>
+                {a.daysSince !== null ? `${a.daysSince}j sans sortie` : 'Jamais sorti'}
+              </Text>
+            </View>
+          ))}
+        </View>
+      )}
+
+      {/* ── Tâches prioritaires ── */}
+      {wData && wData.tasks.length > 0 && (
+        <View style={[styles.card, styles.cardFull, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Pressable style={styles.between} onPress={() => { Haptics.selectionAsync(); router.push('/(tabs)/kanban'); }}>
+            <View style={styles.rowCenter}>
+              <MaterialCommunityIcons name="checkbox-marked-outline" size={15} color={colors.mutedForeground} />
+              <Text style={[styles.cardLabel, { color: colors.mutedForeground, marginLeft: 6 }]}>Tâches</Text>
+            </View>
             <Text style={[styles.cardSub, { color: colors.mutedForeground }]}>
-              Solde : {fmtEuro(allBalance)}
+              {wData.tasks.length} en cours
             </Text>
-          )}
-        </Pressable>
-
-        <Pressable
-          style={[styles.card, styles.cardHalf, { backgroundColor: colors.card, borderColor: colors.border }]}
-          onPress={() => { Haptics.selectionAsync(); router.push('/(tabs)/trips'); }}
-        >
-          <MaterialCommunityIcons name="road" size={18} color={colors.mutedForeground} />
-          <Text style={[styles.cardLabel, { color: colors.mutedForeground }]}>Km ce mois</Text>
-          <Text style={[styles.cardValue, { color: '#2196F3' }]}>
-            {monthKm !== null ? `${monthKm.toFixed(0)} km` : '—'}
-          </Text>
-        </Pressable>
-      </View>
+          </Pressable>
+          {wData.tasks.slice(0, 3).map((t, i) => (
+            <View
+              key={t.id}
+              style={[styles.taskRow, i > 0 && { borderTopWidth: 1, borderTopColor: colors.border }]}
+            >
+              <View style={[styles.taskDot, { backgroundColor: t.color as any }]} />
+              <Text style={[styles.taskTitle, { color: colors.foreground }]} numberOfLines={1}>
+                {t.title}
+              </Text>
+              {t.deadline ? (
+                <Text style={[styles.cardSub, { color: colors.mutedForeground }]}>{t.deadline}</Text>
+              ) : null}
+            </View>
+          ))}
+        </View>
+      )}
 
       {/* ── Travail + Nanny ── */}
       {wData && (
@@ -249,61 +275,36 @@ export default function AccueilScreen() {
         </Pressable>
       )}
 
-      {/* ── Tâches prioritaires ── */}
-      {wData && wData.tasks.length > 0 && (
-        <View style={[styles.card, styles.cardFull, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <Pressable style={styles.between} onPress={() => { Haptics.selectionAsync(); router.push('/(tabs)/kanban'); }}>
-            <View style={styles.rowCenter}>
-              <MaterialCommunityIcons name="checkbox-marked-outline" size={15} color={colors.mutedForeground} />
-              <Text style={[styles.cardLabel, { color: colors.mutedForeground, marginLeft: 6 }]}>Tâches</Text>
-            </View>
+      {/* ── Finance + Trajets ── */}
+      <View style={styles.rowPad}>
+        <Pressable
+          style={[styles.card, styles.cardHalf, { backgroundColor: colors.card, borderColor: colors.border }]}
+          onPress={() => { Haptics.selectionAsync(); router.push('/(tabs)/expenses'); }}
+        >
+          <MaterialCommunityIcons name="bank-outline" size={18} color={colors.mutedForeground} />
+          <Text style={[styles.cardLabel, { color: colors.mutedForeground }]}>Ce mois</Text>
+          <Text style={[styles.cardValue, {
+            color: (monthBalance ?? 0) >= 0 ? '#4CAF50' : '#EF4444',
+          }]}>
+            {monthBalance !== null ? fmtEuro(monthBalance) : '—'}
+          </Text>
+          {allBalance !== null && (
             <Text style={[styles.cardSub, { color: colors.mutedForeground }]}>
-              {wData.tasks.length} en cours
+              Solde : {fmtEuro(allBalance)}
             </Text>
-          </Pressable>
-          {wData.tasks.slice(0, 3).map((t, i) => (
-            <View
-              key={t.id}
-              style={[styles.taskRow, i > 0 && { borderTopWidth: 1, borderTopColor: colors.border }]}
-            >
-              <View style={[styles.taskDot, { backgroundColor: t.color as any }]} />
-              <Text style={[styles.taskTitle, { color: colors.foreground }]} numberOfLines={1}>
-                {t.title}
-              </Text>
-              {t.deadline ? (
-                <Text style={[styles.cardSub, { color: colors.mutedForeground }]}>{t.deadline}</Text>
-              ) : null}
-            </View>
-          ))}
-        </View>
-      )}
-
-      {/* ── Rappels balades ── */}
-      {walkAlerts.length > 0 && (
-        <View style={[styles.card, styles.cardFull, { backgroundColor: colors.card, borderColor: '#FF9800' }]}>
-          <Pressable style={styles.between} onPress={() => { Haptics.selectionAsync(); router.push('/(tabs)/trips'); }}>
-            <View style={styles.rowCenter}>
-              <MaterialCommunityIcons name="walk" size={15} color="#FF9800" />
-              <Text style={[styles.cardLabel, { color: '#FF9800', marginLeft: 6 }]}>Balades</Text>
-            </View>
-            <MaterialCommunityIcons name="chevron-right" size={16} color="#FF9800" />
-          </Pressable>
-          {walkAlerts.map((a, i) => (
-            <View
-              key={i}
-              style={[styles.taskRow, i > 0 && { borderTopWidth: 1, borderTopColor: colors.border }]}
-            >
-              <View style={[styles.taskDot, { backgroundColor: '#FF9800' }]} />
-              <Text style={[styles.taskTitle, { color: colors.foreground }]} numberOfLines={1}>
-                {a.name}
-              </Text>
-              <Text style={[styles.cardSub, { color: '#FF9800' }]}>
-                {a.daysSince !== null ? `${a.daysSince}j sans sortie` : 'Jamais sorti'}
-              </Text>
-            </View>
-          ))}
-        </View>
-      )}
+          )}
+        </Pressable>
+        <Pressable
+          style={[styles.card, styles.cardHalf, { backgroundColor: colors.card, borderColor: colors.border }]}
+          onPress={() => { Haptics.selectionAsync(); router.push('/(tabs)/trips'); }}
+        >
+          <MaterialCommunityIcons name="road" size={18} color={colors.mutedForeground} />
+          <Text style={[styles.cardLabel, { color: colors.mutedForeground }]}>Km ce mois</Text>
+          <Text style={[styles.cardValue, { color: '#2196F3' }]}>
+            {monthKm !== null ? `${monthKm.toFixed(0)} km` : '—'}
+          </Text>
+        </Pressable>
+      </View>
 
     </ScrollView>
   );
