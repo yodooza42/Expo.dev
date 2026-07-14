@@ -18,6 +18,7 @@ import { fmtEuro } from '@/utils/money';
 import { getTrips, getVehicleSettings } from '@/utils/tripStorage';
 import type { WidgetData } from '@/widgets/data';
 import { getWidgetDataFromStorage } from '@/widgets/data';
+import { WalkSlotsCard } from '@/components/WalkSlotsCard';
 
 const DAYS_FR   = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
 const MONTHS_FR = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin',
@@ -169,6 +170,9 @@ export default function AccueilScreen() {
           <MaterialCommunityIcons name="gas-station" size={26} color="#2196F3" />
         </Pressable>
       </View>
+
+      {/* ── Prochaines balades possibles ── */}
+      <WalkSlotsCard />
 
       {/* ── Rappels balades ── */}
       {walkAlerts.length > 0 && (
