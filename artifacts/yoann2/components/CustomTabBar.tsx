@@ -95,9 +95,6 @@ export function CustomTabBar({ state, navigation }: TabBarProps) {
                   ]}>
                     <MaterialCommunityIcons name={iconName as any} size={26} color="#FFFFFF" />
                   </View>
-                  <Text style={[styles.tabLabel, { color: isFocused ? colors.primary : colors.mutedForeground, marginTop: 3 }]}>
-                    {label}
-                  </Text>
                 </Pressable>
               );
             }
@@ -119,9 +116,6 @@ export function CustomTabBar({ state, navigation }: TabBarProps) {
                 style={styles.tabItem}
               >
                 <MaterialCommunityIcons name={iconName as any} size={22} color={iconColor} />
-                <Text style={[styles.tabLabel, { color: isFocused ? colors.primary : colors.mutedForeground }]}>
-                  {label}
-                </Text>
               </Pressable>
             );
           })}
