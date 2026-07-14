@@ -115,7 +115,6 @@ export default function VehicleSettingsScreen() {
   const [recalModalVisible, setRecalModalVisible] = useState(false);
   const [recalValue, setRecalValue] = useState('');
   const [expandedParticipants, setExpandedParticipants] = useState<Set<string>>(new Set());
-  const [openPastTrips, setOpenPastTrips] = useState<Set<string>>(new Set());
 
   const load = useCallback(async () => {
     const [v, t] = await Promise.all([getVehicleSettings(), getTrips()]);
@@ -879,32 +878,16 @@ export default function VehicleSettingsScreen() {
                     if (pTrips.length === 0) return null;
                     const LIMIT = 10;
                     const isExpanded = expandedParticipants.has(p.id);
-                    const isOpen = openPastTrips.has(p.id);
                     const visible = isExpanded ? pTrips : pTrips.slice(0, LIMIT);
                     const hidden = pTrips.length - LIMIT;
                     return (
                       <View style={styles.pastTripsSection}>
-                        <Pressable
-                          onPress={() => {
-                            Haptics.selectionAsync();
-                            setOpenPastTrips(prev => {
-                              const s = new Set(prev);
-                              if (s.has(p.id)) s.delete(p.id); else s.add(p.id);
-                              return s;
-                            });
-                          }}
-                          style={[styles.pastTripsToggleRow]}
-                        >
+                        <View style={styles.pastTripsToggleRow}>
                           <Text style={[styles.pastTripsLabel, { color: colors.mutedForeground }]}>
                             BALADES PASSÉES ({pTrips.length})
                           </Text>
-                          <MaterialCommunityIcons
-                            name={isOpen ? 'chevron-up' : 'chevron-down'}
-                            size={16}
-                            color={colors.mutedForeground}
-                          />
-                        </Pressable>
-                        {isOpen && (
+                        </View>
+                        {(
                           <>
                             {visible.map(t => {
                               const allParticipantDetails = (t.walkParticipants ?? [])
