@@ -708,10 +708,10 @@ export default function TripListScreen() {
         <View style={styles.odoRow}>
           {settings.filter(v => v.type !== 'other').map(v => {
             const odo = computeOdometer(trips, v.id, v.odometerBaseKm, v.odometerAdjustments);
-            const color = v.type === 'moto' ? motoColor : carColor;
+            const color = v.type === 'moto' ? motoColor : v.type === 'walk' ? '#4CAF50' : carColor;
             return (
               <View key={v.id} style={[styles.odoCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                <MaterialCommunityIcons name={v.type === 'moto' ? 'motorbike' : 'car'} size={20} color={color} />
+                <MaterialCommunityIcons name={v.type === 'moto' ? 'motorbike' : v.type === 'walk' ? 'walk' : 'car'} size={20} color={color} />
                 <Text style={[styles.odoVal, { color: colors.foreground }]}>{odo.toFixed(0)}</Text>
                 <Text style={[styles.odoLabel, { color: colors.mutedForeground }]}>km {v.name}</Text>
               </View>
