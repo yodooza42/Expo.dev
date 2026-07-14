@@ -1,6 +1,6 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -130,6 +130,7 @@ export default function NewTripScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const params = useLocalSearchParams<{ vehicleType?: string }>();
 
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [selectedVehicleId, setSelectedVehicleId] = useState<string>('');
@@ -165,7 +166,10 @@ export default function NewTripScreen() {
   useEffect(() => {
     Promise.all([getVehicleSettings(), getKnownPlaces()]).then(([v, p]) => {
       setVehicles(v);
-      if (v.length > 0) setSelectedVehicleId(v[0]!.id);
+      if (v.length > 0) {
+        const walkVehicle = params.vehicleType === 'walk' ? v.find(v => v.type === 'walk') : undefined;
+        setSelectedVehicleId((walkVehicle ?? v[0]!).id);
+      }
       setKnownPlaces(p);
     });
   }, []);
