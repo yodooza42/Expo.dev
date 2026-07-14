@@ -65,14 +65,18 @@ interface WalkCardProps {
   km: number;
   count: number;
   lastTripParticipants: string[];
+  dogLastWalk: { name: string; days: number | null }[];
   colors: ReturnType<typeof import('@/hooks/useColors').useColors>;
 }
-function WalkCard({ vehicle, km, count, lastTripParticipants, colors }: WalkCardProps) {
+function WalkCard({ vehicle, km, count, lastTripParticipants, dogLastWalk, colors }: WalkCardProps) {
   const walkColor = '#4CAF50';
   const participants = vehicle.walkParticipants ?? [];
   const lastNames = lastTripParticipants
     .map(id => participants.find(p => p.id === id))
     .filter((p): p is NonNullable<typeof p> => !!p);
+
+  const dogsWithData = dogLastWalk.filter(d => d.days !== null);
+
   return (
     <View style={[trStyles.walkFullCard, { backgroundColor: colors.card, borderColor: '#4CAF5040' }]}>
       <View style={[trStyles.walkIconBox, { backgroundColor: '#4CAF5018' }]}>
@@ -83,8 +87,25 @@ function WalkCard({ vehicle, km, count, lastTripParticipants, colors }: WalkCard
         <Text style={[trStyles.walkSub, { color: colors.mutedForeground }]}>
           {km.toFixed(1)} km ce mois · {count} sortie{count !== 1 ? 's' : ''}
         </Text>
+
+        {/* Dernière balade par chien */}
+        {dogsWithData.length > 0 && (
+          <Text style={[trStyles.walkDogRow, { color: colors.mutedForeground }]} numberOfLines={1}>
+            🐾{' '}
+            {dogsWithData.map((d, i) => {
+              const label = d.days === 0 ? 'auj.' : `${d.days}j`;
+              const color = d.days! > 14 ? '#F44336' : d.days! > 7 ? '#FF9800' : walkColor;
+              return (
+                <Text key={i} style={{ color }}>
+                  {i > 0 ? '  ·  ' : ''}{d.name} {label}
+                </Text>
+              );
+            })}
+          </Text>
+        )}
+
         {lastNames.length > 0 && (
-          <View style={{ flexDirection: 'row', gap: 4, marginTop: 4, flexWrap: 'wrap' }}>
+          <View style={{ flexDirection: 'row', gap: 4, marginTop: 2, flexWrap: 'wrap' }}>
             {lastNames.slice(0, 6).map((p, i) => (
               <View key={i} style={{
                 width: 20, height: 20, borderRadius: 10,
@@ -128,6 +149,7 @@ const trStyles = StyleSheet.create({
   walkIconBox: { width: 46, height: 46, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
   walkTitle: { fontSize: 15, fontFamily: 'Inter_600SemiBold' },
   walkSub: { fontSize: 12, fontFamily: 'Inter_400Regular' },
+  walkDogRow: { fontSize: 12, fontFamily: 'Inter_500Medium', marginTop: 3 },
 });
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -195,6 +217,7 @@ export default function TripsScreen() {
   }, [trips, settings, mk]);
 
   const walkMonthData = useMemo(() => {
+    const now = Date.now();
     return settings
       .filter(v => v.type === 'walk')
       .map(v => {
@@ -207,11 +230,20 @@ export default function TripsScreen() {
         const lastTrip = trips
           .filter(t => t.vehicle === v.id)
           .sort((a, b) => b.endTime - a.endTime)[0];
+        const dogs = (v.walkParticipants ?? []).filter(p => p.type === 'dog');
+        const dogLastWalk = dogs.map(dog => {
+          const lastDogTrip = trips
+            .filter(t => t.vehicle === v.id && (t.walkParticipants ?? []).includes(dog.id))
+            .sort((a, b) => b.endTime - a.endTime)[0];
+          const days = lastDogTrip ? Math.round((now - lastDogTrip.endTime) / 86_400_000) : null;
+          return { name: dog.name, days };
+        });
         return {
           vehicle: v,
           km: vehicleTrips.reduce((s, t) => s + t.distanceKm, 0),
           count: vehicleTrips.length,
           lastTripParticipants: lastTrip?.walkParticipants ?? [],
+          dogLastWalk,
         };
       });
   }, [settings, trips, mk]);
@@ -503,6 +535,7 @@ export default function TripsScreen() {
               km={wData.km}
               count={wData.count}
               lastTripParticipants={wData.lastTripParticipants}
+              dogLastWalk={wData.dogLastWalk}
               colors={colors}
             />
           </Pressable>
