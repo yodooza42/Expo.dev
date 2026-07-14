@@ -712,7 +712,9 @@ export default function TripListScreen() {
             return (
               <View key={v.id} style={[styles.odoCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
                 <MaterialCommunityIcons name={v.type === 'moto' ? 'motorbike' : v.type === 'walk' ? 'walk' : 'car'} size={20} color={color} />
-                <Text style={[styles.odoVal, { color: colors.foreground }]}>{odo.toFixed(0)}</Text>
+                <Text style={[styles.odoVal, { color: colors.foreground }]} numberOfLines={1} adjustsFontSizeToFit>
+                  {Math.round(odo).toLocaleString('fr-FR')}
+                </Text>
                 <Text style={[styles.odoLabel, { color: colors.mutedForeground }]}>km {v.name}</Text>
               </View>
             );
@@ -821,8 +823,8 @@ const styles = StyleSheet.create({
   pendingText: { fontSize: 14, fontFamily: 'Inter_600SemiBold' },
 
   odoRow: { flexDirection: 'row', gap: 12 },
-  odoCard: { flex: 1, borderRadius: 14, borderWidth: 1, padding: 16, alignItems: 'center', gap: 4 },
-  odoVal: { fontSize: 24, fontFamily: 'Inter_700Bold' },
+  odoCard: { flex: 1, borderRadius: 14, borderWidth: 1, padding: 10, alignItems: 'center', gap: 4 },
+  odoVal: { fontSize: 18, fontFamily: 'Inter_700Bold' },
   odoLabel: { fontSize: 11, fontFamily: 'Inter_400Regular', textTransform: 'uppercase', letterSpacing: 0.5 },
 
   monthCard: { borderRadius: 14, borderWidth: 1, padding: 16, gap: 8 },
