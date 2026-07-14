@@ -17,6 +17,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useColors } from '@/hooks/useColors';
+import type { WalkRoute } from '@/types/places';
 import type { Trip, TripCategory, Vehicle, VehicleType } from '@/types/trips';
 import { fmtHHMM, fmtWeekdayShort } from '@/utils/date';
 import {
@@ -28,6 +29,7 @@ import {
   tripMatchesCategory,
 } from '@/utils/tripCategories';
 import { tripEvents } from '@/utils/tripEvents';
+import { getWalkRoutes } from '@/utils/placesStorage';
 import { pH } from '@/styles/header';
 import {
   computeOdometer,
@@ -483,6 +485,92 @@ function TripRow({
   );
 }
 
+// ── WalkRouteCard ─────────────────────────────────────────────────────────────
+function WalkRouteCard({
+  route, allTrips, walkVehicleIds, colors, onUpdate, vehicles,
+}: {
+  route: WalkRoute;
+  allTrips: Trip[];
+  walkVehicleIds: Set<string>;
+  colors: ReturnType<typeof useColors>;
+  onUpdate: () => void;
+  vehicles?: Vehicle[];
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const walkColor = '#4CAF50';
+
+  const routeTrips = useMemo(() =>
+    allTrips
+      .filter(t => t.walkRouteId === route.id && walkVehicleIds.has(t.vehicle ?? ''))
+      .sort((a, b) => b.startTime - a.startTime),
+    [allTrips, route.id, walkVehicleIds],
+  );
+
+  const now = Date.now();
+  const weekAgo = now - 7 * 24 * 3_600_000;
+  const d = new Date();
+  const monthStart = new Date(d.getFullYear(), d.getMonth(), 1).getTime();
+  const yearStart = new Date(d.getFullYear(), 0, 1).getTime();
+
+  const total = routeTrips.length;
+  const thisWeek = routeTrips.filter(t => t.endTime >= weekAgo).length;
+  const thisMonth = routeTrips.filter(t => t.endTime >= monthStart).length;
+  const thisYear = routeTrips.filter(t => t.endTime >= yearStart).length;
+  const avgKm = total ? routeTrips.reduce((s, t) => s + t.distanceKm, 0) / total : 0;
+  const avgDurationMs = total ? routeTrips.reduce((s, t) => s + (t.endTime - t.startTime), 0) / total : 0;
+
+  const lastDurDiffMin = total >= 2
+    ? Math.round(((routeTrips[0].endTime - routeTrips[0].startTime) - avgDurationMs) / 60_000)
+    : 0;
+  const showSpeedChip = total >= 2 && Math.abs(lastDurDiffMin) >= 1;
+
+  return (
+    <View style={[styles.catCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+      <Pressable onPress={() => setExpanded(e => !e)} style={styles.catHeader}>
+        <View style={[styles.catBadge, { backgroundColor: walkColor + '22' }]}>
+          <Text style={[styles.catBadgeText, { color: walkColor }]}>{total}</Text>
+        </View>
+        <Text style={[styles.catName, { color: colors.foreground }]} numberOfLines={1}>{route.name}</Text>
+        <MaterialCommunityIcons name={expanded ? 'chevron-up' : 'chevron-down'} size={18} color={colors.mutedForeground} />
+      </Pressable>
+      <View style={styles.catStats}>
+        {thisWeek > 0 && (
+          <View style={[styles.chip, { backgroundColor: walkColor + '18' }]}>
+            <Text style={[styles.chipText, { color: walkColor }]}>{thisWeek}× sem.</Text>
+          </View>
+        )}
+        {thisMonth > 0 && (
+          <View style={[styles.chip, { backgroundColor: colors.muted }]}>
+            <Text style={[styles.chipText, { color: colors.foreground }]}>{thisMonth}× mois</Text>
+          </View>
+        )}
+        {thisYear > 0 && (
+          <View style={[styles.chip, { backgroundColor: colors.muted }]}>
+            <Text style={[styles.chipText, { color: colors.foreground }]}>{thisYear}× an</Text>
+          </View>
+        )}
+        <Text style={[styles.catMeta, { color: colors.mutedForeground }]}>
+          ~{avgKm.toFixed(1)} km · {fmtDuration(avgDurationMs)} moy.
+        </Text>
+        {showSpeedChip && (
+          <View style={[styles.chip, { backgroundColor: lastDurDiffMin < 0 ? '#4CAF5018' : '#FF980018' }]}>
+            <Text style={[styles.chipText, { color: lastDurDiffMin < 0 ? '#4CAF50' : '#FF9800' }]}>
+              {lastDurDiffMin > 0 ? '+' : ''}{lastDurDiffMin} min vs moy{lastDurDiffMin <= -5 ? ' 🔥' : ''}
+            </Text>
+          </View>
+        )}
+      </View>
+      {expanded && (
+        <View style={styles.catTrips}>
+          {routeTrips.map(t => (
+            <TripRow key={t.id} trip={t} colors={colors} onUpdate={onUpdate} compact vehicles={vehicles} />
+          ))}
+        </View>
+      )}
+    </View>
+  );
+}
+
 // ── Screen ────────────────────────────────────────────────────────────────────
 export default function TripListScreen() {
   const colors = useColors();
@@ -492,15 +580,17 @@ export default function TripListScreen() {
   const [trips, setTrips] = useState<Trip[]>([]);
   const [categories, setCategories] = useState<TripCategory[]>([]);
   const [settings, setSettings] = useState<Vehicle[]>([]);
+  const [walkRoutes, setWalkRoutes] = useState<WalkRoute[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [groupingTrip, setGroupingTrip] = useState<Trip | null>(null);
   const [renameTarget, setRenameTarget] = useState<TripCategory | null>(null);
 
   const load = useCallback(async () => {
-    const [t, s, c] = await Promise.all([getTrips(), getVehicleSettings(), getCategories()]);
+    const [t, s, c, wr] = await Promise.all([getTrips(), getVehicleSettings(), getCategories(), getWalkRoutes()]);
     setTrips(t.sort((a, b) => b.startTime - a.startTime));
     setSettings(s);
     setCategories(c);
+    setWalkRoutes(wr);
   }, []);
 
   useEffect(() => { load(); }, [load]);
@@ -544,7 +634,20 @@ export default function TripListScreen() {
 
   const catIds = useMemo(() => new Set(categories.map(c => c.id)), [categories]);
   const activeCats = useMemo(() => categories.filter(c => trips.some(t => t.categoryId === c.id)), [categories, trips]);
-  const uncategorized = useMemo(() => trips.filter(t => !t.categoryId || !catIds.has(t.categoryId)), [trips, catIds]);
+
+  const walkVehicleIds = useMemo(() => new Set(settings.filter(v => v.type === 'walk').map(v => v.id)), [settings]);
+  const activeWalkRoutes = useMemo(() =>
+    walkRoutes.filter(wr => trips.some(t => t.walkRouteId === wr.id && walkVehicleIds.has(t.vehicle ?? ''))),
+    [walkRoutes, trips, walkVehicleIds],
+  );
+
+  const uncategorized = useMemo(() =>
+    trips.filter(t =>
+      (!t.categoryId || !catIds.has(t.categoryId)) &&
+      !(t.walkRouteId && walkVehicleIds.has(t.vehicle ?? '')),
+    ),
+    [trips, catIds, walkVehicleIds],
+  );
   const pending = uncategorized.filter(t => t.vehicle === null);
   const monthStats = useMemo(() => computeMonthStats(trips, settings), [trips, settings]);
   const carColor = '#2196F3';
@@ -607,10 +710,20 @@ export default function TripListScreen() {
 
         {activeCats.length > 0 && (
           <View style={styles.section}>
-            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Catégories</Text>
+            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Trajets</Text>
             {activeCats.map(cat => (
               <CategoryCard key={cat.id} category={cat} allTrips={trips} colors={colors} vehicles={settings}
                 onUpdate={load} onDelete={() => handleDeleteCategory(cat.id)} onRename={() => setRenameTarget(cat)} />
+            ))}
+          </View>
+        )}
+
+        {activeWalkRoutes.length > 0 && (
+          <View style={styles.section}>
+            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Balades</Text>
+            {activeWalkRoutes.map(wr => (
+              <WalkRouteCard key={wr.id} route={wr} allTrips={trips} walkVehicleIds={walkVehicleIds}
+                colors={colors} onUpdate={load} vehicles={settings} />
             ))}
           </View>
         )}
