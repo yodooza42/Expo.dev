@@ -123,25 +123,6 @@ async function acquireLock(action: string): Promise<boolean> {
   }
 }
 
-// Cooldown asymétrique STOP → PLAY : 5 min après arrêt de trajet.
-// Distinct du verrou générique : STOP écrit la clé, START la lit.
-const TRIP_END_KEY = '@yoann2_trip_end_ts';
-const TRIP_END_MS  = 300_000;
-
-async function isTripEndCooldown(): Promise<boolean> {
-  try {
-    const raw = await AsyncStorage.getItem(TRIP_END_KEY);
-    if (!raw) return false;
-    const ts = parseInt(raw, 10);
-    if (!isNaN(ts) && Date.now() - ts < TRIP_END_MS) {
-      await widgetLog('lock:end-cooldown', `${Math.round((Date.now() - ts) / 1000)}s post-stop`);
-      return true;
-    }
-    return false;
-  } catch {
-    return false;
-  }
-}
 
 // ─── Debug logging ────────────────────────────────────────────────────────────
 
@@ -397,8 +378,6 @@ async function handleTripEnd(
 
   await clearManualTripState();
   resetTripTracking();
-  // Enregistre l'heure de fin pour le cooldown 5 min avant un nouveau PLAY
-  await AsyncStorage.setItem(TRIP_END_KEY, String(Date.now())).catch(() => {});
   await renderWidget(doRender, 'idle');
 
   const endLoc = await getCurrentPosition();
@@ -614,7 +593,7 @@ export async function widgetTaskHandler(props: WidgetTaskHandlerProps): Promise<
             break;
           }
           case 'MANUAL_TRIP_START': {
-            if (!await acquireLock('MANUAL_TRIP_START') || await isTripEndCooldown()) {
+            if (!await acquireLock('MANUAL_TRIP_START')) {
               await renderWidget(doRender);
               break;
             }
@@ -622,18 +601,10 @@ export async function widgetTaskHandler(props: WidgetTaskHandlerProps): Promise<
             break;
           }
           case 'MANUAL_TRIP_PAUSE': {
-            if (!await acquireLock('MANUAL_TRIP_PAUSE')) {
-              await renderWidget(doRender);
-              break;
-            }
             await handleTripPause(doRender);
             break;
           }
           case 'MANUAL_TRIP_RESUME': {
-            if (!await acquireLock('MANUAL_TRIP_RESUME')) {
-              await renderWidget(doRender);
-              break;
-            }
             await handleTripResume(doRender);
             break;
           }
