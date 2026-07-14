@@ -11,6 +11,16 @@ export interface ConsumptionEntry {
 
 const DEDUP_MS = 5_000;
 
+export async function addConsumptionAt(type: ConsumptionType, isoTimestamp: string): Promise<void> {
+  try {
+    const raw = await AsyncStorage.getItem(KEY).catch(() => null);
+    const entries: ConsumptionEntry[] = raw ? (JSON.parse(raw) as ConsumptionEntry[]) : [];
+    entries.push({ timestamp: isoTimestamp, type });
+    entries.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+    await AsyncStorage.setItem(KEY, JSON.stringify(entries));
+  } catch {}
+}
+
 export async function addConsumption(type: ConsumptionType): Promise<void> {
   try {
     const raw = await AsyncStorage.getItem(KEY).catch(() => null);
