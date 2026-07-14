@@ -395,7 +395,7 @@ export default function TripsScreen() {
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       if (key !== mk) return acc;
       const veh = vehicleMap.get(t.vehicle);
-      if (!veh || veh.type !== 'walk') return acc;
+      if (!veh || veh.type === 'walk' || veh.type === 'other') return acc;
       const matchStart = t.startPlaceId && spotsIds.has(t.startPlaceId);
       const matchEnd   = t.endPlaceId   && spotsIds.has(t.endPlaceId);
       if (!matchStart && !matchEnd) return acc;
