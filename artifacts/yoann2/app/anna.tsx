@@ -53,10 +53,10 @@ function fromMins(mins: number): string {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
 
-// Marie's "not home" windows
+// Marie's "not home" windows — 45min buffer before/after shift
 const MARIE_WINDOWS: Record<Shift, [number, number]> = {
-  PB: [toMins('06:30'), toMins('15:00')],
-  PD: [toMins('12:00'), toMins('20:00')],
+  PB: [toMins('06:15'), toMins('15:15')],
+  PD: [toMins('11:45'), toMins('20:15')],
 };
 
 function intersect(a: [number, number], b: [number, number]): [number, number] | null {
@@ -73,8 +73,8 @@ function nobodyHome(weekdayIdx: number, shift: Shift | undefined): [number, numb
   const yoann = YOANN_SCHEDULE[weekdayIdx];
   if (!yoann || !shift) return null;
 
-  // Yoann: 30min before start → end (extended hours if crosses midnight)
-  let yStart = toMins(yoann.start) - 30;
+  // Yoann: 45min before start → end (extended hours if crosses midnight)
+  let yStart = toMins(yoann.start) - 45;
   let yEnd   = toMins(yoann.end);
   if (yEnd <= toMins(yoann.start)) yEnd += 24 * 60;
   if (yStart < 0) yStart = 0;
