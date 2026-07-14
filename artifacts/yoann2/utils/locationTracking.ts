@@ -421,10 +421,19 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
 
     // ── Suivi distance + notification FGS expo-location (throttlée à 15 s) ──
     if (manualActive && !manualPaused && lastValid) {
-      _tripDistKm += haversineKm(lastValid.lat, lastValid.lng, lat, lng);
+      // Début du segment actif (celui sans `end`) = moment où "play" a été pressé.
+      // On n'additionne la distance que si lastValid date d'APRÈS ce début de segment,
+      // pour éviter le saut fictif depuis la dernière position connue avant le trajet.
+      const segs = manualParsed?.segments ?? [];
+      const activeSegStart = segs.find(
+        (s: { start: number; end?: number }) => s.end === undefined,
+      )?.start ?? manualParsed?.startTime ?? 0;
+
+      if (lastValid.timestamp >= activeSegStart) {
+        _tripDistKm += haversineKm(lastValid.lat, lastValid.lng, lat, lng);
+      }
 
       // Durée active = somme des segments (pauses exclues)
-      const segs = manualParsed?.segments ?? [];
       let activeMs = 0;
       for (const s of segs) {
         activeMs += (s.end ?? timestamp) - s.start;
