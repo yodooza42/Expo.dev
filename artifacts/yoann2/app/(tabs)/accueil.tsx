@@ -125,6 +125,52 @@ export default function AccueilScreen() {
         </View>
       </View>
 
+      {/* ── Actions rapides ── */}
+      <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>Actions rapides</Text>
+      <View style={styles.rowPad}>
+        <Pressable
+          style={[styles.actionBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/(tabs)/expenses?add=1' as any); }}
+        >
+          <MaterialCommunityIcons name="plus-circle-outline" size={26} color="#4CAF50" />
+        </Pressable>
+        <Pressable
+          style={[styles.actionBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/task/new' as any); }}
+        >
+          <MaterialCommunityIcons name="playlist-plus" size={26} color={colors.primary} />
+        </Pressable>
+        <Pressable
+          style={[styles.actionBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/appointment/new' as any); }}
+        >
+          <MaterialCommunityIcons name="calendar-plus" size={26} color="#2196F3" />
+        </Pressable>
+      </View>
+      <View style={[styles.rowPad, { marginBottom: 16 }]}>
+        <Pressable
+          style={[styles.actionBtn, { backgroundColor: '#4CAF5012', borderColor: '#4CAF5040' }]}
+          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/trip/new' as any); }}
+        >
+          <MaterialCommunityIcons name="walk" size={26} color="#4CAF50" />
+          <Text style={[styles.actionLabel, { color: '#4CAF50' }]}>Balade</Text>
+        </Pressable>
+        <Pressable
+          style={[styles.actionBtn, { backgroundColor: '#2196F312', borderColor: '#2196F340' }]}
+          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/fuel-log?add=1' as any); }}
+        >
+          <MaterialCommunityIcons name="gas-station" size={26} color="#2196F3" />
+          <Text style={[styles.actionLabel, { color: '#2196F3' }]}>Plein</Text>
+        </Pressable>
+        <Pressable
+          style={[styles.actionBtn, { backgroundColor: '#FF980012', borderColor: '#FF980040' }]}
+          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/shopping-list' as any); }}
+        >
+          <MaterialCommunityIcons name="cart-outline" size={26} color="#FF9800" />
+          <Text style={[styles.actionLabel, { color: '#FF9800' }]}>Courses</Text>
+        </Pressable>
+      </View>
+
       {/* ── Finance + Trajets ── */}
       <View style={styles.rowPad}>
         <Pressable
@@ -262,51 +308,6 @@ export default function AccueilScreen() {
         </View>
       )}
 
-      {/* ── Actions rapides ── */}
-      <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>Actions rapides</Text>
-      <View style={styles.rowPad}>
-        <Pressable
-          style={[styles.actionBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
-          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/(tabs)/expenses?add=1' as any); }}
-        >
-          <MaterialCommunityIcons name="plus-circle-outline" size={26} color="#4CAF50" />
-        </Pressable>
-        <Pressable
-          style={[styles.actionBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
-          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/task/new' as any); }}
-        >
-          <MaterialCommunityIcons name="playlist-plus" size={26} color={colors.primary} />
-        </Pressable>
-        <Pressable
-          style={[styles.actionBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
-          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/appointment/new' as any); }}
-        >
-          <MaterialCommunityIcons name="calendar-plus" size={26} color="#2196F3" />
-        </Pressable>
-      </View>
-      <View style={styles.rowPad}>
-        <Pressable
-          style={[styles.actionBtn, { backgroundColor: '#4CAF5012', borderColor: '#4CAF5040' }]}
-          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/trip/new' as any); }}
-        >
-          <MaterialCommunityIcons name="walk" size={26} color="#4CAF50" />
-          <Text style={[styles.actionLabel, { color: '#4CAF50' }]}>Balade</Text>
-        </Pressable>
-        <Pressable
-          style={[styles.actionBtn, { backgroundColor: '#2196F312', borderColor: '#2196F340' }]}
-          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/fuel-log?add=1' as any); }}
-        >
-          <MaterialCommunityIcons name="gas-station" size={26} color="#2196F3" />
-          <Text style={[styles.actionLabel, { color: '#2196F3' }]}>Plein</Text>
-        </Pressable>
-        <Pressable
-          style={[styles.actionBtn, { backgroundColor: '#FF980012', borderColor: '#FF980040' }]}
-          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/shopping-list' as any); }}
-        >
-          <MaterialCommunityIcons name="cart-outline" size={26} color="#FF9800" />
-          <Text style={[styles.actionLabel, { color: '#FF9800' }]}>Courses</Text>
-        </Pressable>
-      </View>
     </ScrollView>
   );
 }
