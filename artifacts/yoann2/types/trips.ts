@@ -47,6 +47,15 @@ export interface Trip {
   walkParticipants?: string[];
   /** ID of the WalkRoute chosen for this trip. */
   walkRouteId?: string;
+  /** ID of a user-defined TripLabel (free grouping, any itinerary). */
+  labelId?: string;
+}
+
+/** A user-defined free group that can contain trips with any itinerary. */
+export interface TripLabel {
+  id: string;
+  name: string;
+  createdAt: number;
 }
 
 /** A named group of trips with a similar start/end geography. */

@@ -18,7 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useColors } from '@/hooks/useColors';
 import type { WalkRoute } from '@/types/places';
-import type { Trip, TripCategory, Vehicle, VehicleType } from '@/types/trips';
+import type { Trip, TripCategory, TripLabel, Vehicle, VehicleType } from '@/types/trips';
 import { fmtHHMM, fmtWeekdayShort } from '@/utils/date';
 import {
   createCategoryAndGroupSimilar,
@@ -28,6 +28,7 @@ import {
   tripIsReturnOf,
   tripMatchesCategory,
 } from '@/utils/tripCategories';
+import { createLabel, deleteLabelAndUnlink, getLabels, renameLabel } from '@/utils/tripLabels';
 import { tripEvents } from '@/utils/tripEvents';
 import { getWalkRoutes } from '@/utils/placesStorage';
 import { pH } from '@/styles/header';
@@ -112,17 +113,22 @@ function computeCategoryStats(catId: string, trips: Trip[]): CategoryStats {
 
 // ── GroupModal ────────────────────────────────────────────────────────────────
 function GroupModal({
-  visible, trip, categories, colors, onClose, onCreate, onAssign,
+  visible, trip, categories, labels, colors, onClose, onCreate, onAssign, onAssignLabel, onCreateLabel,
 }: {
   visible: boolean;
   trip: Trip | null;
   categories: TripCategory[];
+  labels: TripLabel[];
   colors: ReturnType<typeof useColors>;
   onClose: () => void;
   onCreate: (name: string) => void;
   onAssign: (catId: string, isReturn: boolean) => void;
+  onAssignLabel: (labelId: string | undefined) => void;
+  onCreateLabel: (name: string) => void;
 }) {
   const [name, setName] = useState('');
+  const [labelName, setLabelName] = useState('');
+  const [showLabelInput, setShowLabelInput] = useState(false);
   const insets = useSafeAreaInsets();
 
   const forwardMatches = useMemo(() => {
@@ -135,7 +141,8 @@ function GroupModal({
     return categories.filter(c => !tripMatchesCategory(trip, c) && tripIsReturnOf(trip, c));
   }, [trip, categories]);
 
-  const hasMatches = forwardMatches.length > 0 || returnMatches.length > 0;
+  const hasGeoMatches = forwardMatches.length > 0 || returnMatches.length > 0;
+  const currentLabelId = trip?.labelId;
 
   function handleCreate() {
     if (!name.trim()) return;
@@ -143,14 +150,78 @@ function GroupModal({
     setName('');
   }
 
+  function handleCreateLabel() {
+    if (!labelName.trim()) return;
+    onCreateLabel(labelName.trim());
+    setLabelName('');
+    setShowLabelInput(false);
+  }
+
+  function handleClose() {
+    onClose();
+    setName('');
+    setLabelName('');
+    setShowLabelInput(false);
+  }
+
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={styles.overlay} onPress={onClose}>
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={handleClose}>
+      <Pressable style={styles.overlay} onPress={handleClose}>
         <Pressable style={[styles.sheet, { backgroundColor: colors.card, paddingBottom: insets.bottom + 20 }]}>
           <Text style={[styles.sheetTitle, { color: colors.foreground }]}>Grouper ce trajet</Text>
-          {hasMatches && (
+
+          {/* ── Groupes personnalisés ── */}
+          <Text style={[styles.sheetSub, { color: colors.mutedForeground }]}>Groupes personnalisés :</Text>
+          <View style={styles.labelChipRow}>
+            {labels.map(l => {
+              const active = l.id === currentLabelId;
+              return (
+                <Pressable
+                  key={l.id}
+                  onPress={() => { onAssignLabel(active ? undefined : l.id); }}
+                  style={[styles.labelChip, {
+                    backgroundColor: active ? colors.primary + '22' : colors.muted,
+                    borderColor: active ? colors.primary : colors.border,
+                  }]}
+                >
+                  <MaterialCommunityIcons name={active ? 'tag' : 'tag-outline'} size={12} color={active ? colors.primary : colors.mutedForeground} />
+                  <Text style={[styles.labelChipText, { color: active ? colors.primary : colors.foreground }]}>{l.name}</Text>
+                </Pressable>
+              );
+            })}
+            <Pressable
+              onPress={() => setShowLabelInput(v => !v)}
+              style={[styles.labelChip, { backgroundColor: colors.muted, borderColor: colors.border }]}
+            >
+              <MaterialCommunityIcons name="plus" size={12} color={colors.mutedForeground} />
+              <Text style={[styles.labelChipText, { color: colors.mutedForeground }]}>Nouveau</Text>
+            </Pressable>
+          </View>
+          {showLabelInput && (
+            <View style={styles.labelCreateRow}>
+              <TextInput
+                value={labelName} onChangeText={setLabelName}
+                placeholder="Nom du groupe"
+                placeholderTextColor={colors.mutedForeground}
+                style={[styles.labelCreateInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]}
+                autoFocus returnKeyType="done" onSubmitEditing={handleCreateLabel}
+              />
+              <Pressable onPress={handleCreateLabel} disabled={!labelName.trim()}
+                style={[styles.labelCreateBtn, { backgroundColor: colors.primary, opacity: labelName.trim() ? 1 : 0.4 }]}
+              >
+                <Text style={[styles.labelCreateBtnText, { color: '#000' }]}>OK</Text>
+              </Pressable>
+            </View>
+          )}
+
+          {/* ── Catégorie géographique ── */}
+          <View style={styles.dividerRow}>
+            <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
+            <Text style={[styles.dividerText, { color: colors.mutedForeground }]}>catégorie géo</Text>
+            <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
+          </View>
+          {hasGeoMatches && (
             <>
-              <Text style={[styles.sheetSub, { color: colors.mutedForeground }]}>Catégories similaires existantes :</Text>
               {forwardMatches.map(c => (
                 <Pressable key={c.id} onPress={() => { onAssign(c.id, false); setName(''); }}
                   style={[styles.matchBtn, { backgroundColor: colors.muted, borderColor: colors.border }]}>
@@ -167,11 +238,6 @@ function GroupModal({
                   <Text style={[styles.matchBtnBadge, { color: colors.mutedForeground }]}>← Retour</Text>
                 </Pressable>
               ))}
-              <View style={styles.dividerRow}>
-                <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
-                <Text style={[styles.dividerText, { color: colors.mutedForeground }]}>ou créer</Text>
-                <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
-              </View>
             </>
           )}
           <TextInput
@@ -179,15 +245,15 @@ function GroupModal({
             placeholder="Nom (ex: Maison → Travail)"
             placeholderTextColor={colors.mutedForeground}
             style={[styles.nameInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]}
-            autoFocus={!hasMatches} returnKeyType="done" onSubmitEditing={handleCreate}
+            returnKeyType="done" onSubmitEditing={handleCreate}
           />
           <View style={styles.sheetActions}>
-            <Pressable onPress={() => { onClose(); setName(''); }} style={[styles.sheetBtn, { backgroundColor: colors.muted }]}>
+            <Pressable onPress={handleClose} style={[styles.sheetBtn, { backgroundColor: colors.muted }]}>
               <Text style={[styles.sheetBtnText, { color: colors.mutedForeground }]}>Annuler</Text>
             </Pressable>
             <Pressable onPress={handleCreate} disabled={!name.trim()}
               style={[styles.sheetBtn, { backgroundColor: colors.primary, opacity: name.trim() ? 1 : 0.4 }]}>
-              <Text style={[styles.sheetBtnText, { color: '#000' }]}>Créer</Text>
+              <Text style={[styles.sheetBtnText, { color: '#000' }]}>Créer catégorie</Text>
             </Pressable>
           </View>
         </Pressable>
@@ -233,6 +299,137 @@ function RenameModal({
         </Pressable>
       </Pressable>
     </Modal>
+  );
+}
+
+// ── RenameLabelModal ──────────────────────────────────────────────────────────
+function RenameLabelModal({
+  visible, label, colors, onClose, onRename,
+}: {
+  visible: boolean;
+  label: TripLabel | null;
+  colors: ReturnType<typeof useColors>;
+  onClose: () => void;
+  onRename: (name: string) => void;
+}) {
+  const [name, setName] = useState('');
+  const insets = useSafeAreaInsets();
+  useEffect(() => { if (label) setName(label.name); }, [label]);
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={styles.overlay} onPress={onClose}>
+        <Pressable style={[styles.sheet, { backgroundColor: colors.card, paddingBottom: insets.bottom + 20 }]}>
+          <Text style={[styles.sheetTitle, { color: colors.foreground }]}>Renommer le groupe</Text>
+          <TextInput
+            value={name} onChangeText={setName}
+            style={[styles.nameInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]}
+            autoFocus returnKeyType="done"
+            onSubmitEditing={() => { if (name.trim()) onRename(name.trim()); }}
+          />
+          <View style={styles.sheetActions}>
+            <Pressable onPress={onClose} style={[styles.sheetBtn, { backgroundColor: colors.muted }]}>
+              <Text style={[styles.sheetBtnText, { color: colors.mutedForeground }]}>Annuler</Text>
+            </Pressable>
+            <Pressable onPress={() => { if (name.trim()) onRename(name.trim()); }} disabled={!name.trim()}
+              style={[styles.sheetBtn, { backgroundColor: colors.primary, opacity: name.trim() ? 1 : 0.4 }]}>
+              <Text style={[styles.sheetBtnText, { color: '#000' }]}>OK</Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+// ── LabelCard ─────────────────────────────────────────────────────────────────
+const LABEL_COLOR = '#9C27B0';
+
+function LabelCard({
+  label, allTrips, colors, onUpdate, onDelete, onRename, vehicles, onRemoveTripFromLabel,
+}: {
+  label: TripLabel;
+  allTrips: Trip[];
+  colors: ReturnType<typeof useColors>;
+  onUpdate: () => void;
+  onDelete: () => void;
+  onRename: () => void;
+  vehicles?: Vehicle[];
+  onRemoveTripFromLabel: (tripId: string) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+
+  const labelTrips = useMemo(() =>
+    allTrips.filter(t => t.labelId === label.id).sort((a, b) => b.startTime - a.startTime),
+    [allTrips, label.id],
+  );
+
+  const now = Date.now();
+  const weekAgo = now - 7 * 24 * 3_600_000;
+  const d = new Date();
+  const monthStart = new Date(d.getFullYear(), d.getMonth(), 1).getTime();
+  const yearStart = new Date(d.getFullYear(), 0, 1).getTime();
+
+  const total = labelTrips.length;
+  const thisWeek = labelTrips.filter(t => t.endTime >= weekAgo).length;
+  const thisMonth = labelTrips.filter(t => t.endTime >= monthStart).length;
+  const thisYear = labelTrips.filter(t => t.endTime >= yearStart).length;
+  const totalKm = labelTrips.reduce((s, t) => s + t.distanceKm, 0);
+
+  return (
+    <View style={[styles.catCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+      <Pressable onPress={() => setExpanded(e => !e)} style={styles.catHeader}>
+        <View style={[styles.catBadge, { backgroundColor: LABEL_COLOR + '22' }]}>
+          <Text style={[styles.catBadgeText, { color: LABEL_COLOR }]}>{total}</Text>
+        </View>
+        <MaterialCommunityIcons name="tag-outline" size={14} color={LABEL_COLOR} />
+        <Text style={[styles.catName, { color: colors.foreground }]} numberOfLines={1}>{label.name}</Text>
+        <Pressable onPress={onRename} hitSlop={10}>
+          <MaterialCommunityIcons name="pencil-outline" size={14} color={colors.mutedForeground} />
+        </Pressable>
+        <MaterialCommunityIcons name={expanded ? 'chevron-up' : 'chevron-down'} size={18} color={colors.mutedForeground} />
+      </Pressable>
+      <View style={styles.catStats}>
+        {thisWeek > 0 && (
+          <View style={[styles.chip, { backgroundColor: LABEL_COLOR + '18' }]}>
+            <Text style={[styles.chipText, { color: LABEL_COLOR }]}>{thisWeek}× sem.</Text>
+          </View>
+        )}
+        {thisMonth > 0 && (
+          <View style={[styles.chip, { backgroundColor: colors.muted }]}>
+            <Text style={[styles.chipText, { color: colors.foreground }]}>{thisMonth}× mois</Text>
+          </View>
+        )}
+        {thisYear > 0 && (
+          <View style={[styles.chip, { backgroundColor: colors.muted }]}>
+            <Text style={[styles.chipText, { color: colors.foreground }]}>{thisYear}× an</Text>
+          </View>
+        )}
+        <Text style={[styles.catMeta, { color: colors.mutedForeground }]}>
+          {totalKm.toFixed(1)} km total
+        </Text>
+      </View>
+      {expanded && (
+        <View style={styles.catTrips}>
+          {labelTrips.map(t => (
+            <View key={t.id}>
+              <TripRow trip={t} colors={colors} onUpdate={onUpdate} compact vehicles={vehicles} />
+              <Pressable
+                onPress={() => onRemoveTripFromLabel(t.id)}
+                style={[styles.removeLabelBtn, { borderColor: colors.border }]}
+              >
+                <MaterialCommunityIcons name="tag-remove-outline" size={12} color={colors.mutedForeground} />
+                <Text style={[styles.removeLabelText, { color: colors.mutedForeground }]}>Retirer du groupe</Text>
+              </Pressable>
+            </View>
+          ))}
+          <Pressable onPress={onDelete} style={[styles.deleteCatBtn, { borderColor: colors.border }]}>
+            <MaterialCommunityIcons name="trash-can-outline" size={14} color={colors.mutedForeground} />
+            <Text style={[styles.deleteCatText, { color: colors.mutedForeground }]}>Supprimer le groupe</Text>
+          </Pressable>
+        </View>
+      )}
+    </View>
   );
 }
 
@@ -484,7 +681,7 @@ function TripRow({
           </Pressable>
         </View>
       )}
-      {!compact && onGroup && !trip.categoryId && (
+      {!compact && onGroup && (
         <Pressable onPress={() => { Haptics.selectionAsync(); onGroup(trip); }}
           style={[styles.groupBtn, { borderColor: colors.border }]}>
           <MaterialCommunityIcons name="folder-plus-outline" size={13} color={colors.mutedForeground} />
@@ -589,18 +786,21 @@ export default function TripListScreen() {
 
   const [trips, setTrips] = useState<Trip[]>([]);
   const [categories, setCategories] = useState<TripCategory[]>([]);
+  const [labels, setLabels] = useState<TripLabel[]>([]);
   const [settings, setSettings] = useState<Vehicle[]>([]);
   const [walkRoutes, setWalkRoutes] = useState<WalkRoute[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [groupingTrip, setGroupingTrip] = useState<Trip | null>(null);
   const [renameTarget, setRenameTarget] = useState<TripCategory | null>(null);
+  const [renameLabelTarget, setRenameLabelTarget] = useState<TripLabel | null>(null);
 
   const load = useCallback(async () => {
-    const [t, s, c, wr] = await Promise.all([getTrips(), getVehicleSettings(), getCategories(), getWalkRoutes()]);
+    const [t, s, c, wr, lb] = await Promise.all([getTrips(), getVehicleSettings(), getCategories(), getWalkRoutes(), getLabels()]);
     setTrips(t.sort((a, b) => b.startTime - a.startTime));
     setSettings(s);
     setCategories(c);
     setWalkRoutes(wr);
+    setLabels(lb);
   }, []);
 
   useEffect(() => { load(); }, [load]);
@@ -642,9 +842,44 @@ export default function TripListScreen() {
 
   async function handleDeleteTrip(id: string) { await deleteTrip(id); await load(); }
 
+  async function handleLabelAssign(labelId: string | undefined) {
+    if (!groupingTrip) return;
+    setGroupingTrip(null);
+    await updateTrip(groupingTrip.id, { labelId });
+    await load();
+  }
+
+  async function handleLabelCreate(name: string) {
+    if (!groupingTrip) return;
+    setGroupingTrip(null);
+    const label = await createLabel(name);
+    await updateTrip(groupingTrip.id, { labelId: label.id });
+    await load();
+  }
+
+  async function handleDeleteLabel(labelId: string) {
+    Alert.alert('Supprimer le groupe', 'Les trajets ne seront pas supprimés, seulement dissociés.', [
+      { text: 'Annuler', style: 'cancel' },
+      { text: 'Supprimer', style: 'destructive', onPress: async () => { await deleteLabelAndUnlink(labelId); await load(); } },
+    ]);
+  }
+
+  async function handleRenameLabel(labelId: string, name: string) {
+    setRenameLabelTarget(null);
+    await renameLabel(labelId, name);
+    await load();
+  }
+
+  async function handleRemoveTripFromLabel(tripId: string) {
+    await updateTrip(tripId, { labelId: undefined });
+    await load();
+  }
+
   const walkRouteMap = useMemo(() => new Map(walkRoutes.map(r => [r.id, r.name])), [walkRoutes]);
   const catIds = useMemo(() => new Set(categories.map(c => c.id)), [categories]);
   const activeCats = useMemo(() => categories.filter(c => trips.some(t => t.categoryId === c.id)), [categories, trips]);
+  const activeLabels = useMemo(() => labels.filter(l => trips.some(t => t.labelId === l.id)), [labels, trips]);
+  const activeLabelIds = useMemo(() => new Set(activeLabels.map(l => l.id)), [activeLabels]);
 
   const walkVehicleIds = useMemo(() => new Set(settings.filter(v => v.type === 'walk').map(v => v.id)), [settings]);
   const activeWalkRoutes = useMemo(() =>
@@ -654,10 +889,11 @@ export default function TripListScreen() {
 
   const uncategorized = useMemo(() =>
     trips.filter(t =>
+      (!t.labelId || !activeLabelIds.has(t.labelId)) &&
       (!t.categoryId || !catIds.has(t.categoryId)) &&
       !(t.walkRouteId && walkVehicleIds.has(t.vehicle ?? '')),
     ),
-    [trips, catIds, walkVehicleIds],
+    [trips, catIds, walkVehicleIds, activeLabelIds],
   );
   const pending = uncategorized.filter(t => t.vehicle === null);
   const monthStats = useMemo(() => computeMonthStats(trips, settings), [trips, settings]);
@@ -667,13 +903,19 @@ export default function TripListScreen() {
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       <GroupModal
-        visible={groupingTrip !== null} trip={groupingTrip} categories={categories} colors={colors}
+        visible={groupingTrip !== null} trip={groupingTrip} categories={categories} labels={labels} colors={colors}
         onClose={() => setGroupingTrip(null)} onCreate={handleGroupCreate} onAssign={handleGroupAssign}
+        onAssignLabel={handleLabelAssign} onCreateLabel={handleLabelCreate}
       />
       <RenameModal
         visible={renameTarget !== null} category={renameTarget} colors={colors}
         onClose={() => setRenameTarget(null)}
         onRename={name => renameTarget && handleRenameCategory(renameTarget.id, name)}
+      />
+      <RenameLabelModal
+        visible={renameLabelTarget !== null} label={renameLabelTarget} colors={colors}
+        onClose={() => setRenameLabelTarget(null)}
+        onRename={name => renameLabelTarget && handleRenameLabel(renameLabelTarget.id, name)}
       />
 
       {/* Header */}
@@ -720,6 +962,25 @@ export default function TripListScreen() {
             );
           })}
         </View>
+
+        {activeLabels.length > 0 && (
+          <View style={styles.section}>
+            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Groupes</Text>
+            {activeLabels.map(label => (
+              <LabelCard
+                key={label.id}
+                label={label}
+                allTrips={trips}
+                colors={colors}
+                vehicles={settings}
+                onUpdate={load}
+                onDelete={() => handleDeleteLabel(label.id)}
+                onRename={() => setRenameLabelTarget(label)}
+                onRemoveTripFromLabel={handleRemoveTripFromLabel}
+              />
+            ))}
+          </View>
+        )}
 
         {activeCats.length > 0 && (
           <View style={styles.section}>
@@ -880,6 +1141,16 @@ const styles = StyleSheet.create({
   retagLabel: { fontSize: 11, fontFamily: 'Inter_600SemiBold' },
   groupBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 5, paddingTop: 4, borderTopWidth: StyleSheet.hairlineWidth },
   groupBtnText: { fontSize: 11, fontFamily: 'Inter_400Regular' },
+
+  labelChipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  labelChip: { flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: 20, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 6 },
+  labelChipText: { fontSize: 12, fontFamily: 'Inter_500Medium' },
+  labelCreateRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
+  labelCreateInput: { flex: 1, borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, fontFamily: 'Inter_400Regular' },
+  labelCreateBtn: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10 },
+  labelCreateBtnText: { fontSize: 14, fontFamily: 'Inter_600SemiBold' },
+  removeLabelBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 4, paddingVertical: 4, paddingHorizontal: 4, borderTopWidth: StyleSheet.hairlineWidth },
+  removeLabelText: { fontSize: 11, fontFamily: 'Inter_400Regular' },
 
   fab: {
     position: 'absolute', bottom: 28, right: 20,
