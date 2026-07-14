@@ -1,5 +1,5 @@
 import { Tabs, useRouter, useSegments } from 'expo-router';
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { BackHandler } from 'react-native';
 
 import { CustomTabBar } from '@/components/CustomTabBar';
@@ -12,6 +12,16 @@ export const unstable_settings = {
 function BackGuard() {
   const router   = useRouter();
   const segments = useSegments();
+  const didRedirect = useRef(false);
+
+  // Force accueil at every cold start, regardless of persisted nav state
+  useEffect(() => {
+    if (!didRedirect.current) {
+      didRedirect.current = true;
+      router.replace('/(tabs)/accueil' as any);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     const currentTab = (segments[segments.length - 1] ?? '') as string;
