@@ -45,6 +45,8 @@ export interface Trip {
   osrmSegments?: number;
   /** IDs of walk participants present on this trip (only for walk-type vehicles). */
   walkParticipants?: string[];
+  /** ID of the WalkRoute chosen for this trip. */
+  walkRouteId?: string;
 }
 
 /** A named group of trips with a similar start/end geography. */

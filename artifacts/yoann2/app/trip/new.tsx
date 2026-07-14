@@ -18,9 +18,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useColors } from '@/hooks/useColors';
 import { genId } from '@/utils/ids';
-import type { KnownPlace } from '@/types/places';
+import type { KnownPlace, WalkRoute } from '@/types/places';
 import type { RoutePoint, Vehicle } from '@/types/trips';
-import { findNearestPlace, getKnownPlaces } from '@/utils/placesStorage';
+import { findNearestPlace, getKnownPlaces, getWalkRoutes } from '@/utils/placesStorage';
 import { simplifyRoute } from '@/utils/routeSimplification';
 import { getVehicleSettings, saveTrip, updateTrip } from '@/utils/tripStorage';
 
@@ -141,7 +141,8 @@ export default function NewTripScreen() {
   const [walkStartTime, setWalkStartTime] = useState(getParisTime);
   const [walkDuration, setWalkDuration] = useState('');
   const [walkDistanceKm, setWalkDistanceKm] = useState('');
-  const [walkRoute, setWalkRoute] = useState('');
+  const [walkRouteId, setWalkRouteId] = useState<string | null>(null);
+  const [walkRoutes, setWalkRoutes] = useState<WalkRoute[]>([]);
 
   const [startAddress, setStartAddress] = useState('');
   const [endAddress, setEndAddress] = useState('');
@@ -164,13 +165,14 @@ export default function NewTripScreen() {
   });
 
   useEffect(() => {
-    Promise.all([getVehicleSettings(), getKnownPlaces()]).then(([v, p]) => {
+    Promise.all([getVehicleSettings(), getKnownPlaces(), getWalkRoutes()]).then(([v, p, r]) => {
       setVehicles(v);
       if (v.length > 0) {
         const walkVehicle = params.vehicleType === 'walk' ? v.find(v => v.type === 'walk') : undefined;
         setSelectedVehicleId((walkVehicle ?? v[0]!).id);
       }
       setKnownPlaces(p);
+      setWalkRoutes(r);
     });
   }, []);
 
@@ -281,7 +283,7 @@ export default function NewTripScreen() {
         walkParticipants: walkParticipantIds.length > 0 ? walkParticipantIds : undefined,
         pointCount: 0,
         source: 'manual',
-        ...(walkRoute.trim() ? { startAddress: walkRoute.trim() } : {}),
+        ...(walkRouteId ? { walkRouteId } : {}),
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       router.back();
@@ -554,14 +556,27 @@ export default function NewTripScreen() {
         {isWalk && (
           <View style={styles.section}>
             <Text style={[styles.label, { color: colors.mutedForeground }]}>PARCOURS (FACULTATIF)</Text>
-            <TextInput
-              style={[styles.input, { backgroundColor: colors.input, borderColor: colors.border, color: colors.foreground }]}
-              value={walkRoute}
-              onChangeText={setWalkRoute}
-              placeholder="ex: Parc de la Tête d'Or"
-              placeholderTextColor={colors.mutedForeground}
-              returnKeyType="done"
-            />
+            {walkRoutes.length === 0 ? (
+              <Text style={[styles.confirmedText, { color: colors.mutedForeground, fontStyle: 'italic' }]}>
+                Aucun parcours configuré — ajoute-en dans Lieux connus.
+              </Text>
+            ) : (
+              <View style={styles.vehicleRow}>
+                {walkRoutes.map(r => {
+                  const active = walkRouteId === r.id;
+                  return (
+                    <Pressable
+                      key={r.id}
+                      onPress={() => { Haptics.selectionAsync(); setWalkRouteId(active ? null : r.id); }}
+                      style={[styles.vehicleChip, { backgroundColor: active ? '#4CAF5022' : colors.muted, borderColor: active ? '#4CAF50' : colors.border }]}
+                    >
+                      <MaterialCommunityIcons name="map-marker-path" size={13} color={active ? '#4CAF50' : colors.mutedForeground} />
+                      <Text style={[styles.vehicleChipText, { color: active ? '#4CAF50' : colors.mutedForeground }]}>{r.name}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            )}
           </View>
         )}
 

@@ -22,10 +22,12 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { useApp } from '@/contexts/AppContext';
 import { useColors } from '@/hooks/useColors';
 import type { MaintenanceItem, Trip, Vehicle, VehicleInsurance, WalkParticipant } from '@/types/trips';
+import type { WalkRoute } from '@/types/places';
 import { fmtHHMM, fmtWeekdayShort } from '@/utils/date';
 import { computeAutoCostPerKm } from '@/utils/costPerKm';
 import { addTransaction } from '@/utils/bankStorage';
 import { computeOdometer, getTrips, getVehicleSettings, saveVehicleSettings, recalibrateOdometer, lastOdometerRecalStatus } from '@/utils/tripStorage';
+import { getWalkRoutes } from '@/utils/placesStorage';
 import { genId } from '@/utils/ids';
 
 // ── Local types ───────────────────────────────────────────────────────────────
@@ -116,9 +118,11 @@ export default function VehicleSettingsScreen() {
   const [recalValue, setRecalValue] = useState('');
   const [expandedParticipants, setExpandedParticipants] = useState<Set<string>>(new Set());
   const [visiblePastTrips, setVisiblePastTrips] = useState<Set<string>>(new Set());
+  const [walkRoutes, setWalkRoutes] = useState<WalkRoute[]>([]);
 
   const load = useCallback(async () => {
-    const [v, t] = await Promise.all([getVehicleSettings(), getTrips()]);
+    const [v, t, wr] = await Promise.all([getVehicleSettings(), getTrips(), getWalkRoutes()]);
+    setWalkRoutes(wr);
     setVehicles(v);
     setTrips(t);
   }, []);
@@ -921,6 +925,11 @@ export default function VehicleSettingsScreen() {
                                   <View style={{ flex: 1 }}>
                                     <Text style={[styles.pastTripDate, { color: colors.foreground }]}>{fmtWeekdayShort(t.startTime)}</Text>
                                     <Text style={[styles.pastTripTime, { color: colors.mutedForeground }]}>{fmtHHMM(t.startTime)} → {fmtHHMM(t.endTime)}</Text>
+                                    {!!t.walkRouteId && walkRoutes.find(r => r.id === t.walkRouteId) && (
+                                      <Text style={[styles.pastTripRoute, { color: '#4CAF50' }]} numberOfLines={1}>
+                                        {walkRoutes.find(r => r.id === t.walkRouteId)!.name}
+                                      </Text>
+                                    )}
                                   </View>
                                   <View style={styles.pastTripRight}>
                                     <Text style={[styles.pastTripDist, { color: colors.foreground }]}>{t.distanceKm.toFixed(1)} km</Text>
@@ -1317,6 +1326,7 @@ const styles = StyleSheet.create({
   pastTripIcon: { width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   pastTripDate: { fontSize: 12, fontFamily: 'Inter_600SemiBold' },
   pastTripTime: { fontSize: 11, fontFamily: 'Inter_400Regular', marginTop: 1 },
+  pastTripRoute: { fontSize: 10, fontFamily: 'Inter_500Medium', marginTop: 2 },
   pastTripRight: { alignItems: 'flex-end', gap: 1 },
   pastTripDist: { fontSize: 12, fontFamily: 'Inter_700Bold' },
   pastTripDur: { fontSize: 11, fontFamily: 'Inter_400Regular' },

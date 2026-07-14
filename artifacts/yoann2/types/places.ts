@@ -1,3 +1,9 @@
+export interface WalkRoute {
+  id: string;
+  name: string;
+  createdAt: number;
+}
+
 export interface PlaceCategory {
   id: string;
   name: string;

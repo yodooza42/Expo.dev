@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import type { KnownPlace, PlaceCategory } from '@/types/places';
+import type { KnownPlace, PlaceCategory, WalkRoute } from '@/types/places';
 import { DEFAULT_PLACE_CATEGORIES } from '@/types/places';
 import { haversineKm } from '@/utils/haversine';
 
@@ -69,6 +69,36 @@ export async function deleteKnownPlace(id: string): Promise<void> {
   try {
     const places = await getKnownPlaces();
     await AsyncStorage.setItem(KEY_PLACES, JSON.stringify(places.filter(p => p.id !== id)));
+  } catch {}
+}
+
+// ── Walk routes ───────────────────────────────────────────────────────────────
+
+const KEY_WALK_ROUTES = '@yoann2_walk_routes';
+
+export async function getWalkRoutes(): Promise<WalkRoute[]> {
+  try {
+    const raw = await AsyncStorage.getItem(KEY_WALK_ROUTES);
+    return raw ? (JSON.parse(raw) as WalkRoute[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function saveWalkRoute(route: WalkRoute): Promise<void> {
+  try {
+    const routes = await getWalkRoutes();
+    const idx = routes.findIndex(r => r.id === route.id);
+    if (idx >= 0) routes[idx] = route;
+    else routes.push(route);
+    await AsyncStorage.setItem(KEY_WALK_ROUTES, JSON.stringify(routes));
+  } catch {}
+}
+
+export async function deleteWalkRoute(id: string): Promise<void> {
+  try {
+    const routes = await getWalkRoutes();
+    await AsyncStorage.setItem(KEY_WALK_ROUTES, JSON.stringify(routes.filter(r => r.id !== id)));
   } catch {}
 }
 

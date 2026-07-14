@@ -25,16 +25,21 @@ import {
   PLACE_ICONS,
   type KnownPlace,
   type PlaceCategory,
+  type WalkRoute,
 } from '@/types/places';
 import { forwardGeocode } from '@/utils/geocoding';
 import {
   deletePlaceCategory,
   deleteKnownPlace,
+  deleteWalkRoute,
   getKnownPlaces,
   getPlaceCategories,
+  getWalkRoutes,
   savePlaceCategory,
   saveKnownPlace,
+  saveWalkRoute,
 } from '@/utils/placesStorage';
+import { genId } from '@/utils/ids';
 
 const COLOR_PALETTE = [
   '#FFC107', '#FF9800', '#FF5722', '#F44336', '#E91E63',
@@ -526,15 +531,21 @@ export default function KnownPlacesScreen() {
   const [editPlace, setEditPlace]     = useState<Partial<KnownPlace> | null>(null);
   const [editCat, setEditCat]         = useState<Partial<PlaceCategory> | null>(null);
 
+  const [walkRoutes, setWalkRoutes]       = useState<WalkRoute[]>([]);
+  const [routeModal, setRouteModal]       = useState(false);
+  const [editRouteId, setEditRouteId]     = useState<string | null>(null);
+  const [editRouteName, setEditRouteName] = useState('');
+
   const [mapPickerVisible, setMapPickerVisible]   = useState(false);
   const [pickerInitLat, setPickerInitLat]         = useState<number | null>(null);
   const [pickerInitLng, setPickerInitLng]         = useState<number | null>(null);
   const [coordsFromPicker, setCoordsFromPicker]   = useState<{ lat: number; lng: number } | null>(null);
 
   const load = useCallback(async () => {
-    const [cats, pls] = await Promise.all([getPlaceCategories(), getKnownPlaces()]);
+    const [cats, pls, wr] = await Promise.all([getPlaceCategories(), getKnownPlaces(), getWalkRoutes()]);
     setCategories(cats);
     setPlaces(pls);
+    setWalkRoutes(wr);
     setExpanded(new Set(cats.map(c => c.id)));
   }, []);
 
@@ -587,6 +598,29 @@ export default function KnownPlacesScreen() {
     );
   }
 
+  async function handleSaveRoute() {
+    const name = editRouteName.trim();
+    if (!name) return;
+    await saveWalkRoute({ id: editRouteId ?? genId(), name, createdAt: Date.now() });
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    setRouteModal(false);
+    load();
+  }
+
+  function handleDeleteRoute(r: WalkRoute) {
+    Alert.alert('Supprimer ce parcours ?', r.name, [
+      { text: 'Annuler', style: 'cancel' },
+      {
+        text: 'Supprimer', style: 'destructive',
+        onPress: async () => {
+          await deleteWalkRoute(r.id);
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+          load();
+        },
+      },
+    ]);
+  }
+
   function toggleExpand(id: string) {
     setExpanded(prev => {
       const next = new Set(prev);
@@ -617,6 +651,45 @@ export default function KnownPlacesScreen() {
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 100 }]}
         showsVerticalScrollIndicator={false}
       >
+        {/* ── Parcours balades ─────────────────────────────────────────────── */}
+        <View style={[styles.routesSection, { borderColor: colors.border }]}>
+          <View style={styles.routesHeader}>
+            <MaterialCommunityIcons name="map-marker-path" size={20} color="#4CAF50" />
+            <Text style={[styles.routesTitle, { color: colors.foreground }]}>Parcours balades</Text>
+            <Pressable
+              hitSlop={10}
+              onPress={() => { setEditRouteId(null); setEditRouteName(''); setRouteModal(true); }}
+            >
+              <MaterialCommunityIcons name="plus-circle-outline" size={22} color="#4CAF50" />
+            </Pressable>
+          </View>
+          {walkRoutes.length === 0 && (
+            <Text style={[styles.emptyTxt, { color: colors.mutedForeground }]}>
+              Aucun parcours. Appuie sur + pour en ajouter.
+            </Text>
+          )}
+          {walkRoutes.map(r => (
+            <View key={r.id} style={[styles.routeRow, { borderTopColor: colors.border }]}>
+              <MaterialCommunityIcons name="map-marker-path" size={15} color="#4CAF5088" />
+              <Text style={[styles.routeName, { color: colors.foreground, flex: 1 }]}>{r.name}</Text>
+              <Pressable
+                hitSlop={8}
+                onPress={() => { setEditRouteId(r.id); setEditRouteName(r.name); setRouteModal(true); }}
+                style={{ padding: 6 }}
+              >
+                <MaterialCommunityIcons name="pencil-outline" size={17} color={colors.mutedForeground} />
+              </Pressable>
+              <Pressable hitSlop={8} onPress={() => handleDeleteRoute(r)} style={{ padding: 6 }}>
+                <MaterialCommunityIcons name="trash-can-outline" size={17} color={colors.mutedForeground} />
+              </Pressable>
+            </View>
+          ))}
+        </View>
+
+        {/* ── Séparateur ───────────────────────────────────────────────────── */}
+        <View style={[styles.routesDivider, { backgroundColor: colors.border }]} />
+
+        {/* ── Lieux par catégorie ───────────────────────────────────────────── */}
         {categories.map(cat => {
           const catPlaces = places.filter(p => p.categoryId === cat.id);
           const open = expanded.has(cat.id);
@@ -734,6 +807,37 @@ export default function KnownPlacesScreen() {
         onSave={handleSaveCat}
         onClose={() => setCatModal(false)}
       />
+
+      {/* ── Route add/edit modal ─────────────────────────────────────────── */}
+      <Modal visible={routeModal} transparent animationType="fade" onRequestClose={() => setRouteModal(false)}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+          <Pressable style={{ flex: 1, backgroundColor: '#00000066' }} onPress={() => setRouteModal(false)} />
+          <View style={[styles.sheet, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.sheetTitle, { color: colors.foreground }]}>
+              {editRouteId ? 'Modifier le parcours' : 'Nouveau parcours'}
+            </Text>
+            <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>NOM DU PARCOURS</Text>
+            <TextInput
+              style={[styles.input, { backgroundColor: colors.input, borderColor: colors.border, color: colors.foreground }]}
+              value={editRouteName}
+              onChangeText={setEditRouteName}
+              placeholder="ex: Forêt de la Coubre"
+              placeholderTextColor={colors.mutedForeground}
+              autoFocus
+              returnKeyType="done"
+              onSubmitEditing={handleSaveRoute}
+            />
+            <View style={styles.sheetBtns}>
+              <Pressable style={[styles.cancelBtn, { borderColor: colors.border }]} onPress={() => setRouteModal(false)}>
+                <Text style={[styles.cancelTxt, { color: colors.mutedForeground }]}>Annuler</Text>
+              </Pressable>
+              <Pressable style={[styles.saveBtn, { backgroundColor: '#4CAF50' }]} onPress={handleSaveRoute}>
+                <Text style={[styles.saveTxt, { color: '#fff' }]}>Sauvegarder</Text>
+              </Pressable>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
@@ -826,6 +930,39 @@ const styles = StyleSheet.create({
   placeCoords: {
     fontSize: 11,
     fontFamily: 'Inter_400Regular',
+  },
+
+  routesSection: {
+    borderRadius: 12,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  routesHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    padding: 12,
+  },
+  routesTitle: {
+    flex: 1,
+    fontSize: 15,
+    fontFamily: 'Inter_600SemiBold',
+  },
+  routesDivider: {
+    height: StyleSheet.hairlineWidth,
+    marginVertical: 4,
+  },
+  routeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    gap: 6,
+  },
+  routeName: {
+    fontSize: 14,
+    fontFamily: 'Inter_500Medium',
   },
 
   fab: {
