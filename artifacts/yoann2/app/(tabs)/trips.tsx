@@ -104,21 +104,6 @@ function WalkCard({ vehicle, km, count, lastTripParticipants, dogLastWalk, color
           </Text>
         )}
 
-        {lastNames.length > 0 && (
-          <View style={{ flexDirection: 'row', gap: 4, marginTop: 2, flexWrap: 'wrap' }}>
-            {lastNames.slice(0, 6).map((p, i) => (
-              <View key={i} style={{
-                width: 20, height: 20, borderRadius: 10,
-                backgroundColor: p.type === 'dog' ? '#FF980040' : '#2196F340',
-                alignItems: 'center', justifyContent: 'center',
-              }}>
-                <Text style={{ color: p.type === 'dog' ? '#FF9800' : '#2196F3', fontSize: 8, fontFamily: 'Inter_700Bold' }}>
-                  {p.name.charAt(0).toUpperCase()}
-                </Text>
-              </View>
-            ))}
-          </View>
-        )}
       </View>
       <MaterialCommunityIcons name="chevron-right" size={20} color={walkColor} />
     </View>

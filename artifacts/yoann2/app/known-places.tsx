@@ -532,6 +532,7 @@ export default function KnownPlacesScreen() {
   const [editCat, setEditCat]         = useState<Partial<PlaceCategory> | null>(null);
 
   const [walkRoutes, setWalkRoutes]       = useState<WalkRoute[]>([]);
+  const [routesOpen, setRoutesOpen]       = useState(true);
   const [routeModal, setRouteModal]       = useState(false);
   const [editRouteId, setEditRouteId]     = useState<string | null>(null);
   const [editRouteName, setEditRouteName] = useState('');
@@ -653,22 +654,24 @@ export default function KnownPlacesScreen() {
       >
         {/* ── Parcours balades ─────────────────────────────────────────────── */}
         <View style={[styles.routesSection, { borderColor: colors.border }]}>
-          <View style={styles.routesHeader}>
+          <Pressable style={styles.routesHeader} onPress={() => setRoutesOpen(o => !o)}>
             <MaterialCommunityIcons name="map-marker-path" size={20} color="#4CAF50" />
             <Text style={[styles.routesTitle, { color: colors.foreground }]}>Parcours balades</Text>
+            <Text style={[styles.catCount, { color: colors.mutedForeground }]}>{walkRoutes.length}</Text>
+            <MaterialCommunityIcons name={routesOpen ? 'chevron-up' : 'chevron-down'} size={20} color={colors.mutedForeground} />
             <Pressable
               hitSlop={10}
               onPress={() => { setEditRouteId(null); setEditRouteName(''); setRouteModal(true); }}
             >
               <MaterialCommunityIcons name="plus-circle-outline" size={22} color="#4CAF50" />
             </Pressable>
-          </View>
-          {walkRoutes.length === 0 && (
+          </Pressable>
+          {routesOpen && walkRoutes.length === 0 && (
             <Text style={[styles.emptyTxt, { color: colors.mutedForeground }]}>
               Aucun parcours. Appuie sur + pour en ajouter.
             </Text>
           )}
-          {walkRoutes.map(r => (
+          {routesOpen && walkRoutes.map(r => (
             <View key={r.id} style={[styles.routeRow, { borderTopColor: colors.border }]}>
               <MaterialCommunityIcons name="map-marker-path" size={15} color="#4CAF5088" />
               <Text style={[styles.routeName, { color: colors.foreground, flex: 1 }]}>{r.name}</Text>
