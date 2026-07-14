@@ -4,7 +4,9 @@ import { useFocusEffect } from 'expo-router';
 import React, { useCallback, useState } from 'react';
 import {
   Alert,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -38,8 +40,7 @@ function fmtTime(iso: string): string {
   const d = new Date(iso);
   const h = String(d.getHours()).padStart(2, '0');
   const m = String(d.getMinutes()).padStart(2, '0');
-  const s = String(d.getSeconds()).padStart(2, '0');
-  return `${h}:${m}:${s}`;
+  return `${h}:${m}`;
 }
 
 function fmtDayLabel(dateStr: string): string {
@@ -126,6 +127,7 @@ function AddModal({
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={handleClose}>
       <Pressable style={styles.overlay} onPress={handleClose}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.kvWrap}>
         <Pressable style={[styles.sheet, { backgroundColor: colors.card }]}>
           <Text style={[styles.sheetTitle, { color: colors.foreground }]}>Ajouter manuellement</Text>
 
@@ -204,6 +206,7 @@ function AddModal({
             </Pressable>
           </View>
         </Pressable>
+        </KeyboardAvoidingView>
       </Pressable>
     </Modal>
   );
@@ -320,7 +323,18 @@ export default function CountersScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <SubPageHeader title="Consommation" />
+      <SubPageHeader
+        title="Consommation"
+        right={
+          <Pressable
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {}); setShowAddModal(true); }}
+            hitSlop={8}
+            style={styles.headerAddBtn}
+          >
+            <Text style={[styles.headerAddText, { color: colors.foreground }]}>＋</Text>
+          </Pressable>
+        }
+      />
 
       <AddModal
         visible={showAddModal}
@@ -356,16 +370,6 @@ export default function CountersScreen() {
             </Text>
           </View>
         </View>
-
-        {/* ── Bouton ajout manuel ── */}
-        <Pressable
-          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {}); setShowAddModal(true); }}
-          style={[styles.addBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
-        >
-          <Text style={styles.addBtnEmoji}>➕</Text>
-          <Text style={[styles.addBtnText, { color: colors.foreground }]}>Ajouter café / clope</Text>
-          <Text style={[styles.addBtnSub, { color: colors.mutedForeground }]}>avec heure</Text>
-        </Pressable>
 
         {/* ── Historique par jour ── */}
         {days.length === 0 ? (
@@ -460,7 +464,10 @@ const styles = StyleSheet.create({
   logTag:          { fontSize: 11, fontFamily: 'Inter_600SemiBold' },
   logData:         { fontSize: 10, fontFamily: 'Inter_400Regular', color: '#78909C' },
 
+  headerAddBtn:    { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
+  headerAddText:   { fontSize: 22, fontFamily: 'Inter_400Regular' },
   overlay:         { flex: 1, backgroundColor: '#00000066', justifyContent: 'flex-end' },
+  kvWrap:          { width: '100%' },
   sheet:           { borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, gap: 16, paddingBottom: 36 },
   sheetTitle:      { fontSize: 17, fontFamily: 'Inter_700Bold' },
   typeRow:         { flexDirection: 'row', gap: 10 },

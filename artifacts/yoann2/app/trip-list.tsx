@@ -963,9 +963,9 @@ export default function TripListScreen() {
           })}
         </View>
 
-        {activeLabels.length > 0 && (
+        {(activeLabels.length > 0 || activeCats.length > 0) && (
           <View style={styles.section}>
-            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Groupes</Text>
+            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Trajets</Text>
             {activeLabels.map(label => (
               <LabelCard
                 key={label.id}
@@ -979,12 +979,6 @@ export default function TripListScreen() {
                 onRemoveTripFromLabel={handleRemoveTripFromLabel}
               />
             ))}
-          </View>
-        )}
-
-        {activeCats.length > 0 && (
-          <View style={styles.section}>
-            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Trajets</Text>
             {activeCats.map(cat => (
               <CategoryCard key={cat.id} category={cat} allTrips={trips} colors={colors} vehicles={settings}
                 onUpdate={load} onDelete={() => handleDeleteCategory(cat.id)} onRename={() => setRenameTarget(cat)} />
