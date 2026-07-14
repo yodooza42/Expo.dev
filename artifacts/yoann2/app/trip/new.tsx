@@ -137,6 +137,9 @@ export default function NewTripScreen() {
   const [walkParticipantIds, setWalkParticipantIds] = useState<string[]>([]);
   const [knownPlaces, setKnownPlaces] = useState<KnownPlace[]>([]);
 
+  // Start time for all manual trips
+  const [manualStartTime, setManualStartTime] = useState(getParisTime);
+
   // Walk-specific manual fields
   const [walkStartTime, setWalkStartTime] = useState(getParisTime);
   const [walkDuration, setWalkDuration] = useState('');
@@ -317,7 +320,13 @@ export default function NewTripScreen() {
 
     const distanceKm = route.distance / 1000;
     const durationMs = route.duration * 1000;
-    const dateMs = new Date(tripDate).getTime();
+
+    const timeStr = normalizeWalkTime(manualStartTime) ?? manualStartTime;
+    const timeParts = timeStr.match(/^(\d{1,2}):(\d{2})$/);
+    const startH  = timeParts ? parseInt(timeParts[1]!, 10) : 0;
+    const startMn = timeParts ? parseInt(timeParts[2]!, 10) : 0;
+    const [y, mo, d] = tripDate.split('-').map(Number);
+    const dateMs = new Date(y!, mo! - 1, d!, startH, startMn, 0, 0).getTime();
 
     const startLat = parseFloat(startResult.lat);
     const startLon = parseFloat(startResult.lon);
@@ -423,6 +432,26 @@ export default function NewTripScreen() {
             keyboardType="numeric"
           />
         </View>
+
+        {/* Heure de début — pour tous les trajets manuels (sauf walk qui a son propre champ) */}
+        {!isWalk && (
+          <View style={styles.section}>
+            <Text style={[styles.label, { color: colors.mutedForeground }]}>HEURE DE DÉBUT</Text>
+            <TextInput
+              style={[styles.input, {
+                backgroundColor: colors.input,
+                borderColor: normalizeWalkTime(manualStartTime) ? colors.primary : colors.border,
+                color: colors.foreground,
+              }]}
+              value={manualStartTime}
+              onChangeText={setManualStartTime}
+              onBlur={() => { const n = normalizeWalkTime(manualStartTime); if (n) setManualStartTime(n); }}
+              placeholder="ex : 930 = 09:30"
+              placeholderTextColor={colors.mutedForeground}
+              keyboardType="number-pad"
+            />
+          </View>
+        )}
 
         {/* Vehicle selector */}
         <View style={styles.section}>
