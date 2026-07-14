@@ -11,6 +11,8 @@ export interface ShoppingItem {
   name: string;
   checked: boolean;
   categoryId?: string;
+  stock?: number;
+  threshold?: number;
 }
 
 const LIST_KEY = '@yoann2/shopping_list';
