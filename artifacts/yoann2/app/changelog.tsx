@@ -195,6 +195,9 @@ const HISTORY: VersionEntry[] = [
       'Consommation : heures affichées en HH:MM (sans les secondes)',
       'Consommation : modal d\'ajout remonte au-dessus du clavier (KeyboardAvoidingView)',
       'Consommation : bouton d\'ajout déplacé dans le header (＋) pour libérer l\'écran',
+      'Stats trajets : véhicule "Balade" exclu des sections carburant (sans moteur)',
+      'Navigation : onglet fantôme (cercle gris) supprimé de la barre du bas',
+      'Paramètres : version affichée correcte, card À propos visuellement séparée',
     ],
   },
 ];
