@@ -45,7 +45,7 @@ const TAB_LABELS: Record<string, string> = {
   map:        'Carte',
 };
 
-const HIDDEN_TABS = ['settings', 'map', 'navigation', 'projects', 'kanban', 'player'];
+const HIDDEN_TABS = ['settings', 'map', 'navigation', 'projects', 'kanban', 'player', 'index'];
 
 export function CustomTabBar({ state, navigation }: TabBarProps) {
   const colors    = useColors();
