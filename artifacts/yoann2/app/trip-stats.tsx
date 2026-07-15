@@ -221,7 +221,7 @@ export default function TripStatsScreen() {
         {vehicles.filter(v => v.id === 'car' || v.id === 'moto' || true).length > 0 && (
           <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <Text style={[styles.cardTitle, { color: colors.foreground }]}>Coût / km effectif</Text>
-            {vehicles.map(v => {
+            {vehicles.filter(v => v.type !== 'walk').map(v => {
               const cpk = effectiveCostMap.get(v.id) ?? v.costPerKm;
               const isAuto = v.costMode === 'auto';
               const vColor = v.type === 'moto' ? '#FF9800' : '#2196F3';
@@ -259,7 +259,7 @@ export default function TripStatsScreen() {
 
         {/* €/100km comparative */}
         {(() => {
-          const vehsWithData = vehicles.filter(v => fuelBreakdownMap.has(v.id));
+          const vehsWithData = vehicles.filter(v => v.type !== 'walk' && fuelBreakdownMap.has(v.id));
           if (vehsWithData.length < 1) return null;
           const maxC100 = Math.max(...vehsWithData.map(v => fuelBreakdownMap.get(v.id)!.fuelCostPer100km), 1);
           const sorted = [...vehsWithData].sort((a, b) =>
