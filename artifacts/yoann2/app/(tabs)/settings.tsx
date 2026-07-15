@@ -545,11 +545,11 @@ export default function SettingsScreen() {
           onPress={() => router.push('/changelog')}
           colors={colors}
         />
-        <View style={[styles.about, { borderColor: colors.border }]}>
+        <View style={[styles.about, { borderColor: colors.border, backgroundColor: colors.card }]}>
           <MaterialCommunityIcons name="brain" size={24} color={colors.primary} />
           <Text style={[styles.aboutTitle, { color: colors.foreground }]}>Yoann2.0</Text>
           <Text style={[styles.aboutSub, { color: colors.mutedForeground }]}>par et pour Gorge Yoann</Text>
-          <Text style={[styles.aboutVersion, { color: colors.primary }]}>v2.6.0</Text>
+          <Text style={[styles.aboutVersion, { color: colors.primary }]}>v2.10.0</Text>
         </View>
 
         {/* ── DANGER ── */}
@@ -805,9 +805,10 @@ const styles = StyleSheet.create({
   },
   about: {
     alignItems: 'center',
-    marginTop: 12,
-    paddingVertical: 20,
-    borderTopWidth: 1,
+    marginTop: 8,
+    padding: 20,
+    borderRadius: 12,
+    borderWidth: 1,
     gap: 4,
   },
   aboutTitle: {

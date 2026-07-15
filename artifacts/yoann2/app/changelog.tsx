@@ -136,6 +136,23 @@ const HISTORY: VersionEntry[] = [
     ],
   },
   {
+    version: 'v2.7.0',
+    date: 'Juillet 2026 — Trajets manuels & Travail',
+    items: [
+      'Trajet manuel via widget : bouton ▶ Départ (vert) / ⏹ Fin (rouge)',
+      'GPS activé uniquement entre les deux boutons (économie batterie)',
+      'Intervalle GPS 15 s / 50 m — distance calculée sur la vraie route (OSRM)',
+      'Auto-détection désactivée en mode manuel (pas de doublons)',
+      'Tolérance feux rouges : 30 s de vitesse basse avant d\'annuler la détection',
+      'Plein de carburant : sélecteur de véhicule nommé (Doblo / Msx)',
+      'Carburant : type mémorisé par véhicule (Gazole / SP95 / SP98)',
+      'Carburant : saisie date, Total € + Litres, transaction finance auto-créée',
+      'Stats carburant : coût / 100 km comparatif avec ratio d\'efficacité',
+      'Travail : navigation ← → entre semaines pour compléter les jours passés',
+      'Travail : rapport mensuel mis à jour automatiquement à chaque saisie',
+    ],
+  },
+  {
     version: 'v2.8.0',
     date: 'Juillet 2026 — Musique & GPS',
     items: [
@@ -167,20 +184,17 @@ const HISTORY: VersionEntry[] = [
     ],
   },
   {
-    version: 'v2.7.0',
-    date: 'Juillet 2026 — Trajets manuels & Travail',
+    version: 'v2.10.0',
+    date: 'Juillet 2026 — Polissage & Consommation',
     items: [
-      'Trajet manuel via widget : bouton ▶ Départ (vert) / ⏹ Fin (rouge)',
-      'GPS activé uniquement entre les deux boutons (économie batterie)',
-      'Intervalle GPS 15 s / 50 m — distance calculée sur la vraie route (OSRM)',
-      'Auto-détection désactivée en mode manuel (pas de doublons)',
-      'Tolérance feux rouges : 30 s de vitesse basse avant d\'annuler la détection',
-      'Plein de carburant : sélecteur de véhicule nommé (Doblo / Msx)',
-      'Carburant : type mémorisé par véhicule (Gazole / SP95 / SP98)',
-      'Carburant : saisie date, Total € + Litres, transaction finance auto-créée',
-      'Stats carburant : coût / 100 km comparatif avec ratio d\'efficacité',
-      'Travail : navigation ← → entre semaines pour compléter les jours passés',
-      'Travail : rapport mensuel mis à jour automatiquement à chaque saisie',
+      'Trajets : système de groupes libres (labels) indépendants des catégories géo',
+      'Trajets : section "Groupes" fusionnée dans "Trajets" — un seul titre, deux types de regroupement',
+      'Accueil : carte Aujourd\'hui/Nanny remontée au-dessus des Prochaines Balades',
+      'Consommation : confirmation avant suppression d\'une entrée café / clope',
+      'Consommation : ajout manuel avec heure personnalisée (format 1250 = 12h50) et sélecteur de jour',
+      'Consommation : heures affichées en HH:MM (sans les secondes)',
+      'Consommation : modal d\'ajout remonte au-dessus du clavier (KeyboardAvoidingView)',
+      'Consommation : bouton d\'ajout déplacé dans le header (＋) pour libérer l\'écran',
     ],
   },
 ];
@@ -205,7 +219,7 @@ export default function ChangelogScreen() {
             Bienvenue dans mon cerveau numérique
           </Text>
           <Text style={[styles.heroVersion, { color: colors.primary }]}>
-            Yoann2.0  ·  v2.9.0
+            Yoann2.0  ·  v2.10.0
           </Text>
         </View>
 
