@@ -1,15 +1,16 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import React from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { useColors } from '@/hooks/useColors';
-import type { Trip, VehicleType } from '@/types/trips';
+import type { Trip, Vehicle } from '@/types/trips';
 import { fmtDayLong, fmtHHMM } from '@/utils/date';
 
 interface TripTagModalProps {
   trip: Trip | null;
-  onTag: (vehicleType: VehicleType) => void;
+  vehicles?: Vehicle[];
+  onTag: (vehicleId: string) => void;
 }
 
 function fmtDuration(ms: number): string {
@@ -20,16 +21,17 @@ function fmtDuration(ms: number): string {
   return rem > 0 ? `${h}h${String(rem).padStart(2, '0')}` : `${h}h`;
 }
 
-
-export function TripTagModal({ trip, onTag }: TripTagModalProps) {
+export function TripTagModal({ trip, vehicles = [], onTag }: TripTagModalProps) {
   const colors = useColors();
 
   if (!trip) return null;
 
-  function handle(v: VehicleType) {
+  function handle(id: string) {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    onTag(v);
+    onTag(id);
   }
+
+  const walkVehicles = vehicles.filter(v => v.type === 'walk');
 
   return (
     <Modal visible transparent animationType="fade">
@@ -69,6 +71,7 @@ export function TripTagModal({ trip, onTag }: TripTagModalProps) {
             Quel véhicule ?
           </Text>
 
+          {/* Row 1 : Voiture + Moto */}
           <View style={styles.btnRow}>
             <Pressable
               onPress={() => handle('car')}
@@ -84,6 +87,20 @@ export function TripTagModal({ trip, onTag }: TripTagModalProps) {
               <MaterialCommunityIcons name="motorbike" size={24} color="#FFF" />
               <Text style={styles.tagLabel}>Moto</Text>
             </Pressable>
+          </View>
+
+          {/* Row 2 : véhicules Balade + Ignorer */}
+          <View style={styles.btnRow}>
+            {walkVehicles.map(v => (
+              <Pressable
+                key={v.id}
+                onPress={() => handle(v.id)}
+                style={({ pressed }) => [styles.tagBtn, { backgroundColor: '#4CAF50', opacity: pressed ? 0.8 : 1 }]}
+              >
+                <MaterialCommunityIcons name="walk" size={24} color="#FFF" />
+                <Text style={styles.tagLabel}>{v.name}</Text>
+              </Pressable>
+            ))}
             <Pressable
               onPress={() => handle('ignored')}
               style={({ pressed }) => [styles.tagBtn, { backgroundColor: colors.muted, opacity: pressed ? 0.8 : 1 }]}

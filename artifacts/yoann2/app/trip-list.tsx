@@ -546,6 +546,7 @@ function TripRow({
 }) {
   const router = useRouter();
   const [showParticipants, setShowParticipants] = useState(false);
+  const [showChangeVehicle, setShowChangeVehicle] = useState(false);
   const carColor = '#2196F3';
   const motoColor = '#FF9800';
   const walkColor = '#4CAF50';
@@ -572,7 +573,7 @@ function TripRow({
         .filter((p): p is NonNullable<typeof p> => !!p)
     : [];
 
-  async function retag(vehicle: VehicleType) {
+  async function retag(vehicle: string) {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     await updateTrip(trip.id, { vehicle });
     onUpdate();
@@ -665,21 +666,50 @@ function TripRow({
           )}
         </View>
       )}
-      {isPending && !compact && (
-        <View style={styles.retagRow}>
-          <Pressable onPress={() => retag('car')} style={[styles.retagBtn, { backgroundColor: carColor + '22', borderColor: carColor }]}>
-            <MaterialCommunityIcons name="car" size={14} color={carColor} />
-            <Text style={[styles.retagLabel, { color: carColor }]}>Voiture</Text>
-          </Pressable>
-          <Pressable onPress={() => retag('moto')} style={[styles.retagBtn, { backgroundColor: motoColor + '22', borderColor: motoColor }]}>
-            <MaterialCommunityIcons name="motorbike" size={14} color={motoColor} />
-            <Text style={[styles.retagLabel, { color: motoColor }]}>Moto</Text>
-          </Pressable>
-          <Pressable onPress={() => retag('ignored')} style={[styles.retagBtn, { backgroundColor: colors.muted, borderColor: colors.border }]}>
-            <MaterialCommunityIcons name="close" size={14} color={colors.mutedForeground} />
-            <Text style={[styles.retagLabel, { color: colors.mutedForeground }]}>Ignorer</Text>
-          </Pressable>
+      {(isPending || showChangeVehicle) && !compact && (
+        <View style={styles.retagSection}>
+          {showChangeVehicle && !isPending && (
+            <Text style={[styles.retagHint, { color: colors.mutedForeground }]}>Changer le véhicule</Text>
+          )}
+          <View style={styles.retagRow}>
+            <Pressable onPress={() => { retag('car'); setShowChangeVehicle(false); }} style={[styles.retagBtn, { backgroundColor: carColor + '22', borderColor: carColor }]}>
+              <MaterialCommunityIcons name="car" size={14} color={carColor} />
+              <Text style={[styles.retagLabel, { color: carColor }]}>Voiture</Text>
+            </Pressable>
+            <Pressable onPress={() => { retag('moto'); setShowChangeVehicle(false); }} style={[styles.retagBtn, { backgroundColor: motoColor + '22', borderColor: motoColor }]}>
+              <MaterialCommunityIcons name="motorbike" size={14} color={motoColor} />
+              <Text style={[styles.retagLabel, { color: motoColor }]}>Moto</Text>
+            </Pressable>
+            {(vehicles ?? []).filter(v => v.type === 'walk').map(v => (
+              <Pressable key={v.id} onPress={() => { retag(v.id); setShowChangeVehicle(false); }} style={[styles.retagBtn, { backgroundColor: walkColor + '22', borderColor: walkColor }]}>
+                <MaterialCommunityIcons name="walk" size={14} color={walkColor} />
+                <Text style={[styles.retagLabel, { color: walkColor }]}>{v.name}</Text>
+              </Pressable>
+            ))}
+            <Pressable onPress={() => { retag('ignored'); setShowChangeVehicle(false); }} style={[styles.retagBtn, { backgroundColor: colors.muted, borderColor: colors.border }]}>
+              <MaterialCommunityIcons name="close" size={14} color={colors.mutedForeground} />
+              <Text style={[styles.retagLabel, { color: colors.mutedForeground }]}>Ignorer</Text>
+            </Pressable>
+          </View>
         </View>
+      )}
+      {!compact && !isPending && !showChangeVehicle && (
+        <Pressable
+          onPress={() => { Haptics.selectionAsync(); setShowChangeVehicle(true); }}
+          style={[styles.changeVehicleBtn, { borderColor: colors.border }]}
+        >
+          <MaterialCommunityIcons name="pencil-outline" size={13} color={colors.mutedForeground} />
+          <Text style={[styles.changeVehicleBtnText, { color: colors.mutedForeground }]}>Changer véhicule</Text>
+        </Pressable>
+      )}
+      {!compact && showChangeVehicle && (
+        <Pressable
+          onPress={() => { Haptics.selectionAsync(); setShowChangeVehicle(false); }}
+          style={[styles.changeVehicleBtn, { borderColor: colors.border }]}
+        >
+          <MaterialCommunityIcons name="close" size={13} color={colors.mutedForeground} />
+          <Text style={[styles.changeVehicleBtnText, { color: colors.mutedForeground }]}>Annuler</Text>
+        </Pressable>
       )}
       {!compact && onGroup && (
         <Pressable onPress={() => { Haptics.selectionAsync(); onGroup(trip); }}
@@ -1130,9 +1160,13 @@ const styles = StyleSheet.create({
   participantTooltip: { marginTop: 2, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, borderWidth: StyleSheet.hairlineWidth, alignSelf: 'flex-start' },
   participantTooltipText: { fontSize: 11, fontFamily: 'Inter_400Regular' },
   tripDeleteBtn: { padding: 4, marginLeft: 2 },
-  retagRow: { flexDirection: 'row', gap: 8 },
-  retagBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, borderRadius: 8, borderWidth: 1, paddingVertical: 7 },
+  retagSection: { gap: 4 },
+  retagHint: { fontSize: 10, fontFamily: 'Inter_500Medium', textAlign: 'center' },
+  retagRow: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
+  retagBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, borderRadius: 8, borderWidth: 1, paddingVertical: 7, minWidth: 60 },
   retagLabel: { fontSize: 11, fontFamily: 'Inter_600SemiBold' },
+  changeVehicleBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 5, paddingTop: 4, borderTopWidth: StyleSheet.hairlineWidth },
+  changeVehicleBtnText: { fontSize: 11, fontFamily: 'Inter_400Regular' },
   groupBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 5, paddingTop: 4, borderTopWidth: StyleSheet.hairlineWidth },
   groupBtnText: { fontSize: 11, fontFamily: 'Inter_400Regular' },
 

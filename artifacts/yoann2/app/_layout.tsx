@@ -19,7 +19,7 @@ import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { TripTagModal } from '@/components/TripTagModal';
 import { AppProvider, useApp } from '@/contexts/AppContext';
 import { ThemeProvider } from '@/contexts/ThemeContext';
-import type { Trip, VehicleType } from '@/types/trips';
+import type { Trip, Vehicle } from '@/types/trips';
 import { rebuildBackupListFromSAF, runDailyBackupIfNeeded } from '@/utils/backup';
 import { purgeOldData, requestLocationPermissions, startManualTracking, LOCATION_TASK_NAME } from '@/utils/locationTracking';
 import { isManualTripActive } from '@/utils/manualTripStorage';
@@ -76,6 +76,7 @@ async function bootstrapLocationTracking() {
 function RootLayoutNav() {
   const router = useRouter();
   const [pendingTrip, setPendingTrip] = useState<Trip | null>(null);
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const checkingRef = useRef(false);
 
   const checkPendingTrips = useCallback(async () => {
@@ -98,6 +99,7 @@ function RootLayoutNav() {
     runScheduler();
     rebuildBackupListFromSAF().catch(() => {});
     runDailyBackupIfNeeded().catch(() => {});
+    getVehicleSettings().then(setVehicles).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [checkPendingTrips]);
 
@@ -154,7 +156,7 @@ function RootLayoutNav() {
     } catch {}
   }
 
-  async function handleTag(vehicle: VehicleType) {
+  async function handleTag(vehicle: string) {
     if (!pendingTrip) return;
     const tripId = pendingTrip.id;
     setPendingTrip(null);
@@ -220,7 +222,7 @@ function RootLayoutNav() {
         <Stack.Screen name="market-manager" options={{ headerShown: false, presentation: 'card' }} />
         <Stack.Screen name="shopping-list" options={{ headerShown: false, presentation: 'card' }} />
       </Stack>
-      <TripTagModal trip={pendingTrip} onTag={handleTag} />
+      <TripTagModal trip={pendingTrip} vehicles={vehicles} onTag={handleTag} />
     </>
   );
 }
