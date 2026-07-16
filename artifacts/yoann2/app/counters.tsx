@@ -15,6 +15,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { SubPageHeader } from '@/components/SubPageHeader';
 import { useColors } from '@/hooks/useColors';
@@ -121,14 +122,15 @@ function AddModal({
     onClose();
   }
 
+  const insets = useSafeAreaInsets();
   const dayLabels: Record<number, string> = { 0: "Aujourd'hui", '-1': 'Hier', '-2': 'Avant-hier' };
   const dayLabel = dayLabels[dayOffset] ?? `J${dayOffset}`;
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={handleClose}>
-      <Pressable style={styles.overlay} onPress={handleClose}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.kvWrap}>
-        <Pressable style={[styles.sheet, { backgroundColor: colors.card }]}>
+      <KeyboardAvoidingView style={styles.overlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={handleClose} />
+        <View style={[styles.sheet, { backgroundColor: colors.card, paddingBottom: insets.bottom + 20 }]}>
           <Text style={[styles.sheetTitle, { color: colors.foreground }]}>Ajouter manuellement</Text>
 
           {/* Type selector */}
@@ -205,9 +207,8 @@ function AddModal({
               </Text>
             </Pressable>
           </View>
-        </Pressable>
-        </KeyboardAvoidingView>
-      </Pressable>
+        </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -467,8 +468,7 @@ const styles = StyleSheet.create({
   headerAddBtn:    { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
   headerAddText:   { fontSize: 22, fontFamily: 'Inter_400Regular' },
   overlay:         { flex: 1, backgroundColor: '#00000066', justifyContent: 'flex-end' },
-  kvWrap:          { width: '100%' },
-  sheet:           { borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, gap: 16, paddingBottom: 36 },
+  sheet:           { borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, gap: 16 },
   sheetTitle:      { fontSize: 17, fontFamily: 'Inter_700Bold' },
   typeRow:         { flexDirection: 'row', gap: 10 },
   typeBtn:         { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 12, borderWidth: 1, paddingVertical: 14 },
