@@ -26,25 +26,30 @@ import { getVehicleSettings, saveTrip, updateTrip } from '@/utils/tripStorage';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-interface OsrmRoute {
-  distance: number;
-  duration: number;
-}
-
 interface GeoResult {
   display_name: string;
   lat: string;
   lon: string;
 }
 
+interface Waypoint {
+  id: string;
+  geo: GeoResult | null;
+  address: string;
+  suggestions: GeoResult[];
+}
+
+interface OsrmRoute {
+  distance: number;   // metres
+  duration: number;   // seconds
+  geometry?: RoutePoint[];
+  legs?: Array<{ distance: number; duration: number }>;
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function placeToGeoResult(p: KnownPlace): GeoResult {
-  return {
-    display_name: p.name,
-    lat: p.lat.toString(),
-    lon: p.lng.toString(),
-  };
+  return { display_name: p.name, lat: p.lat.toString(), lon: p.lng.toString() };
 }
 
 async function geocode(query: string): Promise<GeoResult[]> {
@@ -64,6 +69,32 @@ async function fetchRoutes(
   const data = await res.json() as { routes?: Array<{ distance: number; duration: number }> };
   if (!data.routes?.length) throw new Error('Aucun itinéraire trouvé');
   return data.routes.map(r => ({ distance: r.distance, duration: r.duration }));
+}
+
+async function fetchMultiPointRoute(
+  points: Array<{ lat: number; lon: number }>,
+): Promise<OsrmRoute> {
+  const coords = points.map(p => `${p.lon},${p.lat}`).join(';');
+  const url = `https://router.project-osrm.org/route/v1/driving/${coords}?alternatives=false&overview=full&geometries=geojson`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('OSRM error');
+  const data = await res.json() as {
+    routes?: Array<{
+      distance: number;
+      duration: number;
+      geometry: { coordinates: [number, number][] };
+      legs: Array<{ distance: number; duration: number }>;
+    }>;
+  };
+  if (!data.routes?.length) throw new Error('Aucun itinéraire trouvé');
+  const r = data.routes[0]!;
+  const geometry = simplifyRoute(r.geometry.coordinates.map(([lng, lat]) => ({ lat, lng })));
+  return {
+    distance: r.distance,
+    duration: r.duration,
+    geometry,
+    legs: r.legs.map(l => ({ distance: l.distance, duration: l.duration })),
+  };
 }
 
 async function fetchOsrmGeometry(
@@ -124,6 +155,10 @@ function fmtDur(s: number): string {
   return `${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}`;
 }
 
+function makeWaypoint(id: string): Waypoint {
+  return { id, geo: null, address: '', suggestions: [] };
+}
+
 // ── Screen ────────────────────────────────────────────────────────────────────
 
 export default function NewTripScreen() {
@@ -137,23 +172,23 @@ export default function NewTripScreen() {
   const [walkParticipantIds, setWalkParticipantIds] = useState<string[]>([]);
   const [knownPlaces, setKnownPlaces] = useState<KnownPlace[]>([]);
 
-  // Start time for all manual trips
   const [manualStartTime, setManualStartTime] = useState(getParisTime);
 
-  // Walk-specific manual fields
   const [walkStartTime, setWalkStartTime] = useState(getParisTime);
   const [walkDuration, setWalkDuration] = useState('');
   const [walkDistanceKm, setWalkDistanceKm] = useState('');
   const [walkRouteId, setWalkRouteId] = useState<string | null>(null);
   const [walkRoutes, setWalkRoutes] = useState<WalkRoute[]>([]);
 
+  // ── Waypoint state ─────────────────────────────────────────────────────────
   const [startAddress, setStartAddress] = useState('');
   const [endAddress, setEndAddress] = useState('');
-
   const [startResult, setStartResult] = useState<GeoResult | null>(null);
   const [endResult, setEndResult] = useState<GeoResult | null>(null);
   const [startSuggestions, setStartSuggestions] = useState<GeoResult[]>([]);
   const [endSuggestions, setEndSuggestions] = useState<GeoResult[]>([]);
+
+  const [intermediates, setIntermediates] = useState<Waypoint[]>([]);
 
   const [routes, setRoutes] = useState<OsrmRoute[]>([]);
   const [selectedRouteIdx, setSelectedRouteIdx] = useState(0);
@@ -162,10 +197,7 @@ export default function NewTripScreen() {
   const [loadingRoutes, setLoadingRoutes] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const [tripDate, setTripDate] = useState(() => {
-    const now = new Date();
-    return now.toISOString().split('T')[0]!;
-  });
+  const [tripDate, setTripDate] = useState(() => new Date().toISOString().split('T')[0]!);
 
   useEffect(() => {
     Promise.all([getVehicleSettings(), getKnownPlaces(), getWalkRoutes()]).then(([v, p, r]) => {
@@ -183,12 +215,50 @@ export default function NewTripScreen() {
     setWalkParticipantIds([]);
   }, [selectedVehicleId]);
 
+  // ── Route calculation ──────────────────────────────────────────────────────
+
+  async function triggerRouteCalc(
+    start: GeoResult | null,
+    end: GeoResult | null,
+    mids: Waypoint[],
+  ) {
+    if (!start || !end) return;
+    const allMidsResolved = mids.every(w => w.geo !== null);
+    if (!allMidsResolved) return;
+
+    setLoadingRoutes(true);
+    setRoutes([]);
+    try {
+      if (mids.length === 0) {
+        const r = await fetchRoutes(
+          parseFloat(start.lat), parseFloat(start.lon),
+          parseFloat(end.lat), parseFloat(end.lon),
+        );
+        setRoutes(r);
+      } else {
+        const points = [
+          { lat: parseFloat(start.lat), lon: parseFloat(start.lon) },
+          ...mids.map(w => ({ lat: parseFloat(w.geo!.lat), lon: parseFloat(w.geo!.lon) })),
+          { lat: parseFloat(end.lat), lon: parseFloat(end.lon) },
+        ];
+        const r = await fetchMultiPointRoute(points);
+        setRoutes([r]);
+      }
+      setSelectedRouteIdx(0);
+    } catch (e: unknown) {
+      Alert.alert('Erreur', e instanceof Error ? e.message : 'Impossible de calculer l\'itinéraire');
+    } finally {
+      setLoadingRoutes(false);
+    }
+  }
+
+  // ── Start / End search ─────────────────────────────────────────────────────
+
   const searchStart = useCallback(async () => {
     if (startAddress.length < 3) return;
     setLoading(true);
     try {
-      const results = await geocode(startAddress);
-      setStartSuggestions(results);
+      setStartSuggestions(await geocode(startAddress));
     } catch {
       setStartSuggestions([]);
     } finally {
@@ -200,8 +270,7 @@ export default function NewTripScreen() {
     if (endAddress.length < 3) return;
     setLoading(true);
     try {
-      const results = await geocode(endAddress);
-      setEndSuggestions(results);
+      setEndSuggestions(await geocode(endAddress));
     } catch {
       setEndSuggestions([]);
     } finally {
@@ -209,49 +278,79 @@ export default function NewTripScreen() {
     }
   }, [endAddress]);
 
-  async function fetchRoutesIfReady(start: GeoResult | null, end: GeoResult | null) {
-    if (!start || !end) return;
-    setLoadingRoutes(true);
-    setRoutes([]);
-    try {
-      const r = await fetchRoutes(
-        parseFloat(start.lat), parseFloat(start.lon),
-        parseFloat(end.lat), parseFloat(end.lon),
-      );
-      setRoutes(r);
-      setSelectedRouteIdx(0);
-    } catch (e: unknown) {
-      Alert.alert('Erreur', e instanceof Error ? e.message : 'Impossible de calculer l\'itinéraire');
-    } finally {
-      setLoadingRoutes(false);
-    }
-  }
-
   function selectStart(geo: GeoResult) {
     setStartResult(geo);
     setStartAddress(geo.display_name.split(',')[0] ?? geo.display_name);
     setStartSuggestions([]);
-    fetchRoutesIfReady(geo, endResult);
+    triggerRouteCalc(geo, endResult, intermediates);
   }
 
   function selectEnd(geo: GeoResult) {
     setEndResult(geo);
     setEndAddress(geo.display_name.split(',')[0] ?? geo.display_name);
     setEndSuggestions([]);
-    fetchRoutesIfReady(startResult, geo);
+    triggerRouteCalc(startResult, geo, intermediates);
   }
 
   function selectKnownPlaceStart(place: KnownPlace) {
     Haptics.selectionAsync();
-    const geo = placeToGeoResult(place);
-    selectStart(geo);
+    selectStart(placeToGeoResult(place));
   }
 
   function selectKnownPlaceEnd(place: KnownPlace) {
     Haptics.selectionAsync();
-    const geo = placeToGeoResult(place);
-    selectEnd(geo);
+    selectEnd(placeToGeoResult(place));
   }
+
+  // ── Intermediate waypoints ─────────────────────────────────────────────────
+
+  function addIntermediate() {
+    Haptics.selectionAsync();
+    setRoutes([]);
+    setIntermediates(prev => [...prev, makeWaypoint(genId())]);
+  }
+
+  function removeIntermediate(id: string) {
+    Haptics.selectionAsync();
+    const next = intermediates.filter(w => w.id !== id);
+    setIntermediates(next);
+    setRoutes([]);
+    triggerRouteCalc(startResult, endResult, next);
+  }
+
+  function updateIntermediate(id: string, patch: Partial<Waypoint>) {
+    setIntermediates(prev => prev.map(w => w.id === id ? { ...w, ...patch } : w));
+  }
+
+  async function searchIntermediate(id: string, address: string) {
+    if (address.length < 3) return;
+    setLoading(true);
+    try {
+      const results = await geocode(address);
+      updateIntermediate(id, { suggestions: results });
+    } catch {
+      updateIntermediate(id, { suggestions: [] });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function selectIntermediateGeo(id: string, geo: GeoResult) {
+    const next = intermediates.map(w =>
+      w.id === id
+        ? { ...w, geo, address: geo.display_name.split(',')[0] ?? geo.display_name, suggestions: [] }
+        : w
+    );
+    setIntermediates(next);
+    triggerRouteCalc(startResult, endResult, next);
+  }
+
+  function selectKnownPlaceIntermediate(id: string, place: KnownPlace) {
+    Haptics.selectionAsync();
+    selectIntermediateGeo(id, placeToGeoResult(place));
+  }
+
+  // ── Walk save ──────────────────────────────────────────────────────────────
 
   async function handleSaveWalk() {
     const distKm = parseFloat(walkDistanceKm);
@@ -259,22 +358,18 @@ export default function NewTripScreen() {
       Alert.alert('Distance manquante', 'Indique la distance en km.');
       return;
     }
-
     const dur = normalizeDurationInput(walkDuration);
     if (!dur || (dur.h === 0 && dur.m === 0)) {
       Alert.alert('Durée manquante', 'Ex : 125 = 1h25, 45 = 45 min.');
       return;
     }
-
     const timeStr = normalizeWalkTime(walkStartTime) ?? walkStartTime;
     const timeParts = timeStr.match(/^(\d{1,2}):(\d{2})$/);
     const startH  = timeParts ? parseInt(timeParts[1]!, 10) : 0;
     const startMn = timeParts ? parseInt(timeParts[2]!, 10) : 0;
-
     const [y, mo, d] = tripDate.split('-').map(Number);
     const startMs = new Date(y!, mo! - 1, d!, startH, startMn, 0, 0).getTime();
     const durationMs = (dur.h * 60 + dur.m) * 60_000;
-
     setSaving(true);
     try {
       await saveTrip({
@@ -297,13 +392,17 @@ export default function NewTripScreen() {
     }
   }
 
+  // ── Car/Moto save ──────────────────────────────────────────────────────────
+
   async function handleSave() {
-    if (selectedVehicle?.type === 'walk') {
-      return handleSaveWalk();
-    }
+    if (selectedVehicle?.type === 'walk') return handleSaveWalk();
 
     if (!startResult || !endResult) {
       Alert.alert('Adresses manquantes', 'Veuillez sélectionner un départ et une arrivée.');
+      return;
+    }
+    if (intermediates.some(w => !w.geo)) {
+      Alert.alert('Étape incomplète', 'Toutes les étapes doivent être renseignées ou supprimées.');
       return;
     }
     if (routes.length === 0) {
@@ -348,7 +447,7 @@ export default function NewTripScreen() {
         distanceKm,
         vehicle: selectedVehicleId || null,
         walkParticipants: walkParticipantIds.length > 0 ? walkParticipantIds : undefined,
-        pointCount: 2,
+        pointCount: intermediates.length > 0 ? intermediates.length + 2 : 2,
         startLat,
         startLon,
         endLat,
@@ -360,7 +459,11 @@ export default function NewTripScreen() {
         source: 'manual',
       });
 
-      const geometry = await fetchOsrmGeometry(startLat, startLon, endLat, endLon);
+      // Geometry: use cached from multi-point call, or fetch for simple 2-point route
+      let geometry = route.geometry ?? null;
+      if (!geometry) {
+        geometry = await fetchOsrmGeometry(startLat, startLon, endLat, endLon);
+      }
       if (geometry) {
         await updateTrip(tripId, { route: geometry }).catch(() => {});
       }
@@ -374,9 +477,13 @@ export default function NewTripScreen() {
     }
   }
 
+  // ── Derived ────────────────────────────────────────────────────────────────
+
   const selectedVehicle = vehicles.find(v => v.id === selectedVehicleId);
   const selectedRoute = routes[selectedRouteIdx];
   const isWalk = selectedVehicle?.type === 'walk';
+  const hasIntermediates = intermediates.length > 0;
+
   const walkDistNum = parseFloat(walkDistanceKm);
   const parsedDur = normalizeDurationInput(walkDuration);
   const walkDurMin = parsedDur ? parsedDur.h * 60 + parsedDur.m : 0;
@@ -387,9 +494,48 @@ export default function NewTripScreen() {
     const endMins = startTotalMins + walkDurMin;
     return `${String(Math.floor(endMins / 60) % 24).padStart(2, '0')}:${String(endMins % 60).padStart(2, '0')}`;
   })() : null;
+
   const canSave = isWalk
     ? (!!selectedVehicleId && walkDistNum > 0 && walkDurMin > 0)
-    : (!!startResult && !!endResult && routes.length > 0 && !!selectedVehicleId);
+    : (!!startResult && !!endResult && routes.length > 0 && !!selectedVehicleId && intermediates.every(w => !!w.geo));
+
+  // ── Shared address block (used for start, end, intermediates) ──────────────
+
+  function KnownPlaceChips({
+    activeGeo,
+    onSelect,
+  }: {
+    activeGeo: GeoResult | null;
+    onSelect: (p: KnownPlace) => void;
+  }) {
+    if (knownPlaces.length === 0) return null;
+    return (
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.placeScroll}>
+        <View style={styles.placeChipRow}>
+          {knownPlaces.map(p => {
+            const active = activeGeo?.lat === p.lat.toString() && activeGeo?.lon === p.lng.toString();
+            return (
+              <Pressable
+                key={p.id}
+                onPress={() => onSelect(p)}
+                style={[styles.placeChip, {
+                  borderColor: active ? '#4CAF50' : colors.border,
+                  backgroundColor: active ? '#4CAF5018' : colors.card,
+                }]}
+              >
+                <MaterialCommunityIcons name="map-marker" size={12} color={active ? '#4CAF50' : colors.mutedForeground} />
+                <Text style={[styles.placeChipText, { color: active ? '#4CAF50' : colors.mutedForeground }]}>
+                  {p.name}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </ScrollView>
+    );
+  }
+
+  // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
     <KeyboardAvoidingView
@@ -433,7 +579,7 @@ export default function NewTripScreen() {
           />
         </View>
 
-        {/* Heure de début — pour tous les trajets manuels (sauf walk qui a son propre champ) */}
+        {/* Start time — non-walk only */}
         {!isWalk && (
           <View style={styles.section}>
             <Text style={[styles.label, { color: colors.mutedForeground }]}>HEURE DE DÉBUT</Text>
@@ -470,11 +616,7 @@ export default function NewTripScreen() {
                     borderColor: active ? c : colors.border,
                   }]}
                 >
-                  <MaterialCommunityIcons
-                    name={icon as any}
-                    size={16}
-                    color={active ? c : colors.mutedForeground}
-                  />
+                  <MaterialCommunityIcons name={icon as any} size={16} color={active ? c : colors.mutedForeground} />
                   <Text style={[styles.vehicleChipText, { color: active ? c : colors.mutedForeground }]}>{v.name}</Text>
                 </Pressable>
               );
@@ -529,227 +671,229 @@ export default function NewTripScreen() {
           </View>
         )}
 
-        {/* Walk — heure / durée / distance / parcours */}
+        {/* Walk fields */}
         {isWalk && (
-          <View style={styles.section}>
-            <Text style={[styles.label, { color: colors.mutedForeground }]}>HEURE DE DÉBUT</Text>
-            <TextInput
-              style={[styles.input, { backgroundColor: colors.input, borderColor: parsedStart ? '#4CAF50' : colors.border, color: colors.foreground }]}
-              value={walkStartTime}
-              onChangeText={setWalkStartTime}
-              onBlur={() => { const n = normalizeWalkTime(walkStartTime); if (n) setWalkStartTime(n); }}
-              placeholder="ex : 930 = 09:30"
-              placeholderTextColor={colors.mutedForeground}
-              keyboardType="number-pad"
-            />
-          </View>
-        )}
-        {isWalk && (
-          <View style={styles.section}>
-            <Text style={[styles.label, { color: colors.mutedForeground }]}>DURÉE</Text>
-            <TextInput
-              style={[styles.input, { backgroundColor: colors.input, borderColor: walkDurMin > 0 ? '#4CAF50' : colors.border, color: colors.foreground }]}
-              value={walkDuration}
-              onChangeText={setWalkDuration}
-              onBlur={() => {
-                const dur = normalizeDurationInput(walkDuration);
-                if (dur) setWalkDuration(`${dur.h}h${String(dur.m).padStart(2, '0')}`);
-              }}
-              placeholder="ex : 125 = 1h25, 45 = 45 min"
-              placeholderTextColor={colors.mutedForeground}
-              keyboardType="number-pad"
-            />
-            {walkEndTime && (
-              <View style={styles.confirmedRow}>
-                <MaterialCommunityIcons name="clock-check-outline" size={14} color="#4CAF50" />
-                <Text style={[styles.confirmedText, { color: '#4CAF50' }]}>
-                  Fin estimée : {walkEndTime}
+          <>
+            <View style={styles.section}>
+              <Text style={[styles.label, { color: colors.mutedForeground }]}>HEURE DE DÉBUT</Text>
+              <TextInput
+                style={[styles.input, { backgroundColor: colors.input, borderColor: parsedStart ? '#4CAF50' : colors.border, color: colors.foreground }]}
+                value={walkStartTime}
+                onChangeText={setWalkStartTime}
+                onBlur={() => { const n = normalizeWalkTime(walkStartTime); if (n) setWalkStartTime(n); }}
+                placeholder="ex : 930 = 09:30"
+                placeholderTextColor={colors.mutedForeground}
+                keyboardType="number-pad"
+              />
+            </View>
+            <View style={styles.section}>
+              <Text style={[styles.label, { color: colors.mutedForeground }]}>DURÉE</Text>
+              <TextInput
+                style={[styles.input, { backgroundColor: colors.input, borderColor: walkDurMin > 0 ? '#4CAF50' : colors.border, color: colors.foreground }]}
+                value={walkDuration}
+                onChangeText={setWalkDuration}
+                onBlur={() => { const dur = normalizeDurationInput(walkDuration); if (dur) setWalkDuration(`${dur.h}h${String(dur.m).padStart(2, '0')}`); }}
+                placeholder="ex : 125 = 1h25, 45 = 45 min"
+                placeholderTextColor={colors.mutedForeground}
+                keyboardType="number-pad"
+              />
+              {walkEndTime && (
+                <View style={styles.confirmedRow}>
+                  <MaterialCommunityIcons name="clock-check-outline" size={14} color="#4CAF50" />
+                  <Text style={[styles.confirmedText, { color: '#4CAF50' }]}>Fin estimée : {walkEndTime}</Text>
+                </View>
+              )}
+            </View>
+            <View style={styles.section}>
+              <Text style={[styles.label, { color: colors.mutedForeground }]}>DISTANCE (KM)</Text>
+              <TextInput
+                style={[styles.input, { backgroundColor: colors.input, borderColor: walkDistNum > 0 ? '#4CAF50' : colors.border, color: colors.foreground }]}
+                value={walkDistanceKm}
+                onChangeText={setWalkDistanceKm}
+                placeholder="ex: 3.5"
+                placeholderTextColor={colors.mutedForeground}
+                keyboardType="decimal-pad"
+              />
+            </View>
+            <View style={styles.section}>
+              <Text style={[styles.label, { color: colors.mutedForeground }]}>PARCOURS (FACULTATIF)</Text>
+              {walkRoutes.length === 0 ? (
+                <Text style={[styles.confirmedText, { color: colors.mutedForeground, fontStyle: 'italic' }]}>
+                  Aucun parcours configuré — ajoute-en dans Lieux connus.
                 </Text>
-              </View>
-            )}
-          </View>
-        )}
-        {isWalk && (
-          <View style={styles.section}>
-            <Text style={[styles.label, { color: colors.mutedForeground }]}>DISTANCE (KM)</Text>
-            <TextInput
-              style={[styles.input, { backgroundColor: colors.input, borderColor: walkDistNum > 0 ? '#4CAF50' : colors.border, color: colors.foreground }]}
-              value={walkDistanceKm}
-              onChangeText={setWalkDistanceKm}
-              placeholder="ex: 3.5"
-              placeholderTextColor={colors.mutedForeground}
-              keyboardType="decimal-pad"
-            />
-          </View>
-        )}
-        {isWalk && (
-          <View style={styles.section}>
-            <Text style={[styles.label, { color: colors.mutedForeground }]}>PARCOURS (FACULTATIF)</Text>
-            {walkRoutes.length === 0 ? (
-              <Text style={[styles.confirmedText, { color: colors.mutedForeground, fontStyle: 'italic' }]}>
-                Aucun parcours configuré — ajoute-en dans Lieux connus.
-              </Text>
-            ) : (
-              <View style={styles.vehicleRow}>
-                {walkRoutes.map(r => {
-                  const active = walkRouteId === r.id;
-                  return (
-                    <Pressable
-                      key={r.id}
-                      onPress={() => { Haptics.selectionAsync(); setWalkRouteId(active ? null : r.id); }}
-                      style={[styles.vehicleChip, { backgroundColor: active ? '#4CAF5022' : colors.muted, borderColor: active ? '#4CAF50' : colors.border }]}
-                    >
-                      <MaterialCommunityIcons name="map-marker-path" size={13} color={active ? '#4CAF50' : colors.mutedForeground} />
-                      <Text style={[styles.vehicleChipText, { color: active ? '#4CAF50' : colors.mutedForeground }]}>{r.name}</Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            )}
-          </View>
-        )}
-
-        {/* Start address */}
-        {!isWalk && <View style={styles.section}>
-          <Text style={[styles.label, { color: colors.mutedForeground }]}>DÉPART</Text>
-
-          {/* Known place shortcuts */}
-          {knownPlaces.length > 0 && (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.placeScroll}>
-              <View style={styles.placeChipRow}>
-                {knownPlaces.map(p => {
-                  const active = startResult?.lat === p.lat.toString() && startResult?.lon === p.lng.toString();
-                  return (
-                    <Pressable
-                      key={p.id}
-                      onPress={() => selectKnownPlaceStart(p)}
-                      style={[styles.placeChip, {
-                        borderColor: active ? '#4CAF50' : colors.border,
-                        backgroundColor: active ? '#4CAF5018' : colors.card,
-                      }]}
-                    >
-                      <MaterialCommunityIcons name="map-marker" size={12} color={active ? '#4CAF50' : colors.mutedForeground} />
-                      <Text style={[styles.placeChipText, { color: active ? '#4CAF50' : colors.mutedForeground }]}>
-                        {p.name}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            </ScrollView>
-          )}
-
-          <View style={styles.searchRow}>
-            <TextInput
-              style={[styles.input, { flex: 1, backgroundColor: colors.input, borderColor: startResult ? '#4CAF50' : colors.border, color: colors.foreground }]}
-              value={startAddress}
-              onChangeText={t => { setStartAddress(t); setStartResult(null); setStartSuggestions([]); }}
-              placeholder="Adresse de départ…"
-              placeholderTextColor={colors.mutedForeground}
-              returnKeyType="search"
-              onSubmitEditing={searchStart}
-            />
-            <Pressable onPress={searchStart} style={[styles.searchBtn, { backgroundColor: colors.primary }]}>
-              {loading ? <ActivityIndicator size="small" color="#121212" /> : <MaterialCommunityIcons name="magnify" size={18} color="#121212" />}
-            </Pressable>
-          </View>
-          {startSuggestions.map((g, i) => (
-            <Pressable
-              key={i}
-              onPress={() => selectStart(g)}
-              style={[styles.suggestion, { backgroundColor: colors.card, borderColor: colors.border }]}
-            >
-              <MaterialCommunityIcons name="map-marker-outline" size={14} color={colors.mutedForeground} />
-              <Text style={[styles.suggestionText, { color: colors.foreground }]} numberOfLines={2}>
-                {g.display_name}
-              </Text>
-            </Pressable>
-          ))}
-          {startResult && (
-            <View style={styles.confirmedRow}>
-              <MaterialCommunityIcons name="check-circle" size={14} color="#4CAF50" />
-              <Text style={[styles.confirmedText, { color: '#4CAF50' }]}>
-                {startResult.display_name.split(',').slice(0, 2).join(',')}
-              </Text>
+              ) : (
+                <View style={styles.vehicleRow}>
+                  {walkRoutes.map(r => {
+                    const active = walkRouteId === r.id;
+                    return (
+                      <Pressable
+                        key={r.id}
+                        onPress={() => { Haptics.selectionAsync(); setWalkRouteId(active ? null : r.id); }}
+                        style={[styles.vehicleChip, { backgroundColor: active ? '#4CAF5022' : colors.muted, borderColor: active ? '#4CAF50' : colors.border }]}
+                      >
+                        <MaterialCommunityIcons name="map-marker-path" size={13} color={active ? '#4CAF50' : colors.mutedForeground} />
+                        <Text style={[styles.vehicleChipText, { color: active ? '#4CAF50' : colors.mutedForeground }]}>{r.name}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              )}
             </View>
-          )}
-        </View>}
+          </>
+        )}
 
-        {/* End address */}
-        {!isWalk && <View style={styles.section}>
-          <Text style={[styles.label, { color: colors.mutedForeground }]}>ARRIVÉE</Text>
-
-          {/* Known place shortcuts */}
-          {knownPlaces.length > 0 && (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.placeScroll}>
-              <View style={styles.placeChipRow}>
-                {knownPlaces.map(p => {
-                  const active = endResult?.lat === p.lat.toString() && endResult?.lon === p.lng.toString();
-                  return (
-                    <Pressable
-                      key={p.id}
-                      onPress={() => selectKnownPlaceEnd(p)}
-                      style={[styles.placeChip, {
-                        borderColor: active ? '#4CAF50' : colors.border,
-                        backgroundColor: active ? '#4CAF5018' : colors.card,
-                      }]}
-                    >
-                      <MaterialCommunityIcons name="map-marker" size={12} color={active ? '#4CAF50' : colors.mutedForeground} />
-                      <Text style={[styles.placeChipText, { color: active ? '#4CAF50' : colors.mutedForeground }]}>
-                        {p.name}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            </ScrollView>
-          )}
-
-          <View style={styles.searchRow}>
-            <TextInput
-              style={[styles.input, { flex: 1, backgroundColor: colors.input, borderColor: endResult ? '#4CAF50' : colors.border, color: colors.foreground }]}
-              value={endAddress}
-              onChangeText={t => { setEndAddress(t); setEndResult(null); setEndSuggestions([]); }}
-              placeholder="Adresse d'arrivée…"
-              placeholderTextColor={colors.mutedForeground}
-              returnKeyType="search"
-              onSubmitEditing={searchEnd}
-            />
-            <Pressable onPress={searchEnd} style={[styles.searchBtn, { backgroundColor: colors.primary }]}>
-              {loading ? <ActivityIndicator size="small" color="#121212" /> : <MaterialCommunityIcons name="magnify" size={18} color="#121212" />}
-            </Pressable>
-          </View>
-          {endSuggestions.map((g, i) => (
-            <Pressable
-              key={i}
-              onPress={() => selectEnd(g)}
-              style={[styles.suggestion, { backgroundColor: colors.card, borderColor: colors.border }]}
-            >
-              <MaterialCommunityIcons name="map-marker-outline" size={14} color={colors.mutedForeground} />
-              <Text style={[styles.suggestionText, { color: colors.foreground }]} numberOfLines={2}>
-                {g.display_name}
-              </Text>
-            </Pressable>
-          ))}
-          {endResult && (
-            <View style={styles.confirmedRow}>
-              <MaterialCommunityIcons name="check-circle" size={14} color="#4CAF50" />
-              <Text style={[styles.confirmedText, { color: '#4CAF50' }]}>
-                {endResult.display_name.split(',').slice(0, 2).join(',')}
-              </Text>
-            </View>
-          )}
-        </View>}
-
-        {/* Routes + summary — car/moto only */}
+        {/* ── Car / Moto address sections ── */}
         {!isWalk && (
           <>
+            {/* DÉPART */}
+            <View style={styles.section}>
+              <Text style={[styles.label, { color: colors.mutedForeground }]}>DÉPART</Text>
+              <KnownPlaceChips activeGeo={startResult} onSelect={selectKnownPlaceStart} />
+              <View style={styles.searchRow}>
+                <TextInput
+                  style={[styles.input, { flex: 1, backgroundColor: colors.input, borderColor: startResult ? '#4CAF50' : colors.border, color: colors.foreground }]}
+                  value={startAddress}
+                  onChangeText={t => { setStartAddress(t); setStartResult(null); setStartSuggestions([]); setRoutes([]); }}
+                  placeholder="Adresse de départ…"
+                  placeholderTextColor={colors.mutedForeground}
+                  returnKeyType="search"
+                  onSubmitEditing={searchStart}
+                />
+                <Pressable onPress={searchStart} style={[styles.searchBtn, { backgroundColor: colors.primary }]}>
+                  {loading ? <ActivityIndicator size="small" color="#121212" /> : <MaterialCommunityIcons name="magnify" size={18} color="#121212" />}
+                </Pressable>
+              </View>
+              {startSuggestions.map((g, i) => (
+                <Pressable
+                  key={i}
+                  onPress={() => selectStart(g)}
+                  style={[styles.suggestion, { backgroundColor: colors.card, borderColor: colors.border }]}
+                >
+                  <MaterialCommunityIcons name="map-marker-outline" size={14} color={colors.mutedForeground} />
+                  <Text style={[styles.suggestionText, { color: colors.foreground }]} numberOfLines={2}>{g.display_name}</Text>
+                </Pressable>
+              ))}
+              {startResult && (
+                <View style={styles.confirmedRow}>
+                  <MaterialCommunityIcons name="check-circle" size={14} color="#4CAF50" />
+                  <Text style={[styles.confirmedText, { color: '#4CAF50' }]}>
+                    {startResult.display_name.split(',').slice(0, 2).join(',')}
+                  </Text>
+                </View>
+              )}
+            </View>
+
+            {/* ── Intermediate waypoints ── */}
+            {intermediates.map((wp, idx) => (
+              <View key={wp.id} style={[styles.section, styles.waypointSection, { borderColor: colors.border }]}>
+                <View style={styles.waypointHeader}>
+                  <View style={[styles.waypointDot, { backgroundColor: colors.primary }]}>
+                    <Text style={styles.waypointDotText}>{idx + 1}</Text>
+                  </View>
+                  <Text style={[styles.label, { color: colors.mutedForeground, flex: 1 }]}>ÉTAPE {idx + 1}</Text>
+                  <Pressable
+                    onPress={() => removeIntermediate(wp.id)}
+                    hitSlop={10}
+                    style={[styles.removeWaypointBtn, { backgroundColor: colors.muted }]}
+                  >
+                    <MaterialCommunityIcons name="close" size={14} color={colors.mutedForeground} />
+                  </Pressable>
+                </View>
+
+                <KnownPlaceChips activeGeo={wp.geo} onSelect={p => selectKnownPlaceIntermediate(wp.id, p)} />
+
+                <View style={styles.searchRow}>
+                  <TextInput
+                    style={[styles.input, { flex: 1, backgroundColor: colors.input, borderColor: wp.geo ? '#4CAF50' : colors.border, color: colors.foreground }]}
+                    value={wp.address}
+                    onChangeText={t => { updateIntermediate(wp.id, { address: t, geo: null, suggestions: [] }); setRoutes([]); }}
+                    placeholder={`Adresse étape ${idx + 1}…`}
+                    placeholderTextColor={colors.mutedForeground}
+                    returnKeyType="search"
+                    onSubmitEditing={() => searchIntermediate(wp.id, wp.address)}
+                  />
+                  <Pressable
+                    onPress={() => searchIntermediate(wp.id, wp.address)}
+                    style={[styles.searchBtn, { backgroundColor: colors.primary }]}
+                  >
+                    {loading ? <ActivityIndicator size="small" color="#121212" /> : <MaterialCommunityIcons name="magnify" size={18} color="#121212" />}
+                  </Pressable>
+                </View>
+                {wp.suggestions.map((g, i) => (
+                  <Pressable
+                    key={i}
+                    onPress={() => selectIntermediateGeo(wp.id, g)}
+                    style={[styles.suggestion, { backgroundColor: colors.card, borderColor: colors.border }]}
+                  >
+                    <MaterialCommunityIcons name="map-marker-outline" size={14} color={colors.mutedForeground} />
+                    <Text style={[styles.suggestionText, { color: colors.foreground }]} numberOfLines={2}>{g.display_name}</Text>
+                  </Pressable>
+                ))}
+                {wp.geo && (
+                  <View style={styles.confirmedRow}>
+                    <MaterialCommunityIcons name="check-circle" size={14} color="#4CAF50" />
+                    <Text style={[styles.confirmedText, { color: '#4CAF50' }]}>
+                      {wp.geo.display_name.split(',').slice(0, 2).join(',')}
+                    </Text>
+                  </View>
+                )}
+              </View>
+            ))}
+
+            {/* Add étape button */}
+            <Pressable
+              onPress={addIntermediate}
+              style={[styles.addWaypointBtn, { borderColor: colors.primary, backgroundColor: colors.primary + '12' }]}
+            >
+              <MaterialCommunityIcons name="map-marker-plus-outline" size={16} color={colors.primary} />
+              <Text style={[styles.addWaypointText, { color: colors.primary }]}>Ajouter une étape</Text>
+            </Pressable>
+
+            {/* ARRIVÉE */}
+            <View style={styles.section}>
+              <Text style={[styles.label, { color: colors.mutedForeground }]}>ARRIVÉE</Text>
+              <KnownPlaceChips activeGeo={endResult} onSelect={selectKnownPlaceEnd} />
+              <View style={styles.searchRow}>
+                <TextInput
+                  style={[styles.input, { flex: 1, backgroundColor: colors.input, borderColor: endResult ? '#4CAF50' : colors.border, color: colors.foreground }]}
+                  value={endAddress}
+                  onChangeText={t => { setEndAddress(t); setEndResult(null); setEndSuggestions([]); setRoutes([]); }}
+                  placeholder="Adresse d'arrivée…"
+                  placeholderTextColor={colors.mutedForeground}
+                  returnKeyType="search"
+                  onSubmitEditing={searchEnd}
+                />
+                <Pressable onPress={searchEnd} style={[styles.searchBtn, { backgroundColor: colors.primary }]}>
+                  {loading ? <ActivityIndicator size="small" color="#121212" /> : <MaterialCommunityIcons name="magnify" size={18} color="#121212" />}
+                </Pressable>
+              </View>
+              {endSuggestions.map((g, i) => (
+                <Pressable
+                  key={i}
+                  onPress={() => selectEnd(g)}
+                  style={[styles.suggestion, { backgroundColor: colors.card, borderColor: colors.border }]}
+                >
+                  <MaterialCommunityIcons name="map-marker-outline" size={14} color={colors.mutedForeground} />
+                  <Text style={[styles.suggestionText, { color: colors.foreground }]} numberOfLines={2}>{g.display_name}</Text>
+                </Pressable>
+              ))}
+              {endResult && (
+                <View style={styles.confirmedRow}>
+                  <MaterialCommunityIcons name="check-circle" size={14} color="#4CAF50" />
+                  <Text style={[styles.confirmedText, { color: '#4CAF50' }]}>
+                    {endResult.display_name.split(',').slice(0, 2).join(',')}
+                  </Text>
+                </View>
+              )}
+            </View>
+
+            {/* Route display */}
             {loadingRoutes ? (
               <View style={styles.routeLoading}>
                 <ActivityIndicator color={colors.primary} />
                 <Text style={[styles.routeLoadingText, { color: colors.mutedForeground }]}>Calcul de l'itinéraire…</Text>
               </View>
-            ) : routes.length > 0 ? (
+            ) : routes.length > 0 && !hasIntermediates ? (
               <View style={styles.section}>
                 <Text style={[styles.label, { color: colors.mutedForeground }]}>ITINÉRAIRE</Text>
                 {routes.map((r, i) => (
@@ -805,6 +949,30 @@ export default function NewTripScreen() {
                     </Text>
                   </View>
                 )}
+                {/* Per-leg breakdown for multi-point routes */}
+                {selectedRoute.legs && selectedRoute.legs.length > 1 && (
+                  <View style={styles.legBreakdown}>
+                    <Text style={[styles.legBreakdownTitle, { color: colors.mutedForeground }]}>Détail des segments</Text>
+                    {selectedRoute.legs.map((leg, i) => {
+                      const labels = [
+                        startResult?.display_name.split(',')[0] ?? 'Départ',
+                        ...intermediates.map((w, j) => w.geo?.display_name.split(',')[0] ?? `Étape ${j + 1}`),
+                        endResult?.display_name.split(',')[0] ?? 'Arrivée',
+                      ];
+                      return (
+                        <View key={i} style={styles.legRow}>
+                          <MaterialCommunityIcons name="arrow-right" size={12} color={colors.mutedForeground} />
+                          <Text style={[styles.legLabel, { color: colors.mutedForeground }]} numberOfLines={1}>
+                            {labels[i]} → {labels[i + 1]}
+                          </Text>
+                          <Text style={[styles.legValue, { color: colors.foreground }]}>
+                            {fmtDist(leg.distance)} · {fmtDur(leg.duration)}
+                          </Text>
+                        </View>
+                      );
+                    })}
+                  </View>
+                )}
               </View>
             )}
           </>
@@ -837,8 +1005,7 @@ const styles = StyleSheet.create({
   placeChipRow: { flexDirection: 'row', gap: 6, paddingRight: 4 },
   placeChip: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingHorizontal: 10, paddingVertical: 5,
-    borderRadius: 16, borderWidth: 1,
+    paddingHorizontal: 10, paddingVertical: 5, borderRadius: 16, borderWidth: 1,
   },
   placeChipText: { fontSize: 12, fontFamily: 'Inter_500Medium' },
 
@@ -850,6 +1017,23 @@ const styles = StyleSheet.create({
 
   confirmedRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   confirmedText: { fontSize: 12, fontFamily: 'Inter_500Medium', flex: 1 },
+
+  // Intermediate waypoints
+  waypointSection: {
+    borderWidth: 1, borderRadius: 14, borderStyle: 'dashed', padding: 12,
+  },
+  waypointHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  waypointDot: {
+    width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center',
+  },
+  waypointDotText: { fontSize: 11, fontFamily: 'Inter_700Bold', color: '#121212' },
+  removeWaypointBtn: { padding: 6, borderRadius: 20 },
+
+  addWaypointBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 8, borderRadius: 12, borderWidth: 1, borderStyle: 'dashed', paddingVertical: 12,
+  },
+  addWaypointText: { fontSize: 14, fontFamily: 'Inter_600SemiBold' },
 
   routeLoading: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 16 },
   routeLoadingText: { fontSize: 14, fontFamily: 'Inter_400Regular' },
@@ -863,6 +1047,13 @@ const styles = StyleSheet.create({
   summaryTitle: { fontSize: 15, fontFamily: 'Inter_600SemiBold', marginBottom: 4 },
   summaryRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   summaryVal: { fontSize: 14, fontFamily: 'Inter_500Medium' },
+
+  legBreakdown: { gap: 6, marginTop: 4, paddingTop: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#ffffff20' },
+  legBreakdownTitle: { fontSize: 10, fontFamily: 'Inter_600SemiBold', letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: 2 },
+  legRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  legLabel: { flex: 1, fontSize: 12, fontFamily: 'Inter_400Regular' },
+  legValue: { fontSize: 12, fontFamily: 'Inter_600SemiBold' },
+
   partGroupLabel: { fontSize: 10, fontFamily: 'Inter_600SemiBold', letterSpacing: 0.8, textTransform: 'uppercase' },
   walkUnit: { fontSize: 11, fontFamily: 'Inter_400Regular', textAlign: 'center', marginTop: 4 },
 });
