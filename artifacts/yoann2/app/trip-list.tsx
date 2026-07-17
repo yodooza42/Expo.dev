@@ -630,7 +630,14 @@ function TripRow({
         <View style={styles.tripAddrRow}>
           <MaterialCommunityIcons name="map-marker-outline" size={11} color={colors.mutedForeground} />
           <Text style={[styles.tripAddr, { color: colors.mutedForeground }]} numberOfLines={1}>
-            {trip.startAddress ?? '…'} → {trip.endAddress ?? '…'}
+            {(() => {
+              const start = trip.startAddress ?? '…';
+              const end = trip.endAddress ?? '…';
+              const ints = trip.intermediates ?? [];
+              if (ints.length === 0) return `${start} → ${end}`;
+              if (ints.length === 1) return `${start} → ${ints[0]!.name} → ${end}`;
+              return `${start} → ${ints.length} étapes → ${end}`;
+            })()}
           </Text>
         </View>
       ) : null}

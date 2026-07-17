@@ -434,10 +434,21 @@ export default function NewTripScreen() {
 
     setSaving(true);
     try {
-      const [startPlace, endPlace] = await Promise.all([
+      const [startPlace, endPlace, ...intermediatePlaces] = await Promise.all([
         findNearestPlace(startLat, startLon).catch(() => null),
         findNearestPlace(endLat, endLon).catch(() => null),
+        ...intermediates.map(w =>
+          findNearestPlace(parseFloat(w.geo!.lat), parseFloat(w.geo!.lon)).catch(() => null)
+        ),
       ]);
+
+      const intermediateData = intermediates.map((w, i) => {
+        const place = intermediatePlaces[i] ?? null;
+        return {
+          name: place?.name ?? w.geo!.display_name.split(',').slice(0, 2).join(','),
+          ...(place ? { placeId: place.id } : {}),
+        };
+      });
 
       const tripId = genId();
       await saveTrip({
@@ -457,6 +468,7 @@ export default function NewTripScreen() {
         endAddress: endPlace?.name ?? endResult.display_name.split(',').slice(0, 2).join(','),
         endPlaceId: endPlace?.id,
         source: 'manual',
+        ...(intermediateData.length > 0 ? { intermediates: intermediateData } : {}),
       });
 
       // Geometry: use cached from multi-point call, or fetch for simple 2-point route

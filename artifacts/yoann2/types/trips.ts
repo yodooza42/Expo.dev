@@ -49,6 +49,8 @@ export interface Trip {
   walkRouteId?: string;
   /** ID of a user-defined TripLabel (free grouping, any itinerary). */
   labelId?: string;
+  /** Intermediate stops for multi-waypoint manual trips. */
+  intermediates?: Array<{ name: string; placeId?: string }>;
 }
 
 /** A user-defined free group that can contain trips with any itinerary. */
