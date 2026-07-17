@@ -63,12 +63,22 @@ async function fetchRoutes(
   startLat: number, startLon: number,
   endLat: number, endLon: number,
 ): Promise<OsrmRoute[]> {
-  const url = `https://router.project-osrm.org/route/v1/driving/${startLon},${startLat};${endLon},${endLat}?alternatives=true&overview=false&steps=false`;
+  const url = `https://router.project-osrm.org/route/v1/driving/${startLon},${startLat};${endLon},${endLat}?alternatives=true&overview=full&geometries=geojson&steps=false`;
   const res = await fetch(url);
   if (!res.ok) throw new Error('OSRM error');
-  const data = await res.json() as { routes?: Array<{ distance: number; duration: number }> };
+  const data = await res.json() as {
+    routes?: Array<{
+      distance: number;
+      duration: number;
+      geometry: { coordinates: [number, number][] };
+    }>;
+  };
   if (!data.routes?.length) throw new Error('Aucun itinéraire trouvé');
-  return data.routes.map(r => ({ distance: r.distance, duration: r.duration }));
+  return data.routes.map(r => ({
+    distance: r.distance,
+    duration: r.duration,
+    geometry: simplifyRoute(r.geometry.coordinates.map(([lng, lat]) => ({ lat, lng }))),
+  }));
 }
 
 async function fetchMultiPointRoute(

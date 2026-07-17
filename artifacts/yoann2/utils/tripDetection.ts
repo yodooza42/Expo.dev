@@ -66,16 +66,16 @@ async function flushSegment(state: TripDetectionState): Promise<void> {
     const dist = Math.round(computeRouteDistanceKm(osrmRoute) * 100) / 100;
     state.segments.push({ points: osrmRoute, distanceKm: dist, source: 'osrm' });
     state.osrmSegmentsCount += 1;
+    // Seed next segment from the last OSRM-snapped point (not raw GPS) so
+    // the stored route is continuous without ghost lines between segments.
+    state.routePoints = [osrmRoute[osrmRoute.length - 1]!];
   } else {
     // OSRM failed for this segment only: use local cleaned fallback pipeline
     // (outlier removal + smoothing + corrected haversine) as approximation.
     const rawDist = Math.round(computeCleanedDistanceKm(points) * 100) / 100;
     state.segments.push({ points: [...points], distanceKm: rawDist, source: 'gps' });
+    state.routePoints = [points[points.length - 1]!];
   }
-
-  // Seed next segment with the last point so the path is continuous.
-  const lastPoint = points[points.length - 1]!;
-  state.routePoints = [lastPoint];
 }
 
 /**
