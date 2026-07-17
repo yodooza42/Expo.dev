@@ -205,6 +205,68 @@ const editStyles = StyleSheet.create({
   btnText: { fontSize: 14, fontFamily: 'Inter_600SemiBold' },
 });
 
+// ── WalkParticipantPickerModal ────────────────────────────────────────────────
+function WalkParticipantPickerModal({
+  visible, allParticipants, selectedIds, colors, onClose, onToggle,
+}: {
+  visible: boolean;
+  allParticipants: WalkParticipant[];
+  selectedIds: string[];
+  colors: ReturnType<typeof useColors>;
+  onClose: () => void;
+  onToggle: (id: string) => void;
+}) {
+  const insets = useSafeAreaInsets();
+  const humans = allParticipants.filter(p => p.type === 'human');
+  const dogs   = allParticipants.filter(p => p.type === 'dog');
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable style={editStyles.overlay} onPress={onClose}>
+        <Pressable style={[routePickerStyles.sheet, { backgroundColor: colors.card, paddingBottom: insets.bottom + 20 }]}>
+          <Text style={[routePickerStyles.title, { color: colors.foreground }]}>Participants</Text>
+          {allParticipants.length === 0 ? (
+            <Text style={[routePickerStyles.empty, { color: colors.mutedForeground }]}>
+              Aucun participant — ajoute-en dans Véhicules & entretien.
+            </Text>
+          ) : (
+            <View style={routePickerStyles.chips}>
+              {humans.map(p => {
+                const active = selectedIds.includes(p.id);
+                return (
+                  <Pressable
+                    key={p.id}
+                    onPress={() => { Haptics.selectionAsync(); onToggle(p.id); }}
+                    style={[routePickerStyles.chip, { backgroundColor: active ? '#2196F322' : colors.muted, borderColor: active ? '#2196F3' : colors.border }]}
+                  >
+                    <Text style={{ fontSize: 12 }}>👤</Text>
+                    <Text style={[routePickerStyles.chipText, { color: active ? '#2196F3' : colors.foreground }]}>{p.name}</Text>
+                  </Pressable>
+                );
+              })}
+              {dogs.map(p => {
+                const active = selectedIds.includes(p.id);
+                return (
+                  <Pressable
+                    key={p.id}
+                    onPress={() => { Haptics.selectionAsync(); onToggle(p.id); }}
+                    style={[routePickerStyles.chip, { backgroundColor: active ? '#FFC10722' : colors.muted, borderColor: active ? '#FFC107' : colors.border }]}
+                  >
+                    <Text style={{ fontSize: 12 }}>🐕</Text>
+                    <Text style={[routePickerStyles.chipText, { color: active ? '#FFC107' : colors.foreground }]}>{p.name}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          )}
+          <Pressable onPress={onClose} style={[routePickerStyles.cancelBtn, { backgroundColor: colors.muted }]}>
+            <Text style={[routePickerStyles.cancelText, { color: colors.mutedForeground }]}>Fermer</Text>
+          </Pressable>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
 // ── WalkRoutePickerModal ──────────────────────────────────────────────────────
 function WalkRoutePickerModal({
   visible, routes, currentId, colors, onClose, onPick,
@@ -290,6 +352,7 @@ export default function TripMapScreen() {
   const [editingField, setEditingField] = useState<'start' | 'end' | null>(null);
   const [addressUsage, setAddressUsage] = useState<Record<string, number>>({});
   const [pickingRoute, setPickingRoute] = useState(false);
+  const [pickingParticipants, setPickingParticipants] = useState(false);
 
   const [dtPickerStep, setDtPickerStep] = useState<'date' | 'startTime' | 'endTime' | null>(null);
   const [draftStart, setDraftStart] = useState<Date>(new Date());
@@ -520,56 +583,58 @@ export default function TripMapScreen() {
         <View style={[styles.card, { backgroundColor: colors.card, borderTopColor: colors.border }]}>
           {/* Address banner / walk route chip */}
           {isWalkTrip ? (
-            <View style={[styles.addrBanner, { borderBottomColor: colors.border }]}>
-              {/* Parcours chip */}
-              <Pressable
-                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setPickingRoute(true); }}
-                style={({ pressed }) => [styles.walkRoutePressable, { opacity: pressed ? 0.65 : 1 }]}
-              >
-                {walkRouteName ? (
-                  <View style={styles.walkRouteChip}>
-                    <MaterialCommunityIcons name="walk" size={14} color="#4CAF50" />
-                    <Text style={[styles.walkRouteChipText, { color: '#4CAF50' }]}>{walkRouteName}</Text>
-                  </View>
-                ) : (
-                  <View style={[styles.walkRouteChip, { backgroundColor: colors.muted }]}>
-                    <MaterialCommunityIcons name="walk" size={14} color={colors.mutedForeground} />
-                    <Text style={[styles.walkRouteChipText, { color: colors.mutedForeground }]}>Aucun parcours</Text>
-                  </View>
-                )}
-                <MaterialCommunityIcons name="pencil-outline" size={13} color={colors.mutedForeground} />
-              </Pressable>
+            <View style={[styles.addrBannerCol, { borderBottomColor: colors.border }]}>
+              {/* Row 1: parcours chip + participants button */}
+              <View style={styles.walkTopRow}>
+                {/* Parcours */}
+                <Pressable
+                  onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setPickingRoute(true); }}
+                  style={({ pressed }) => [styles.walkRoutePressable, { opacity: pressed ? 0.65 : 1, flex: 1 }]}
+                >
+                  {walkRouteName ? (
+                    <View style={styles.walkRouteChip}>
+                      <MaterialCommunityIcons name="walk" size={14} color="#4CAF50" />
+                      <Text style={[styles.walkRouteChipText, { color: '#4CAF50' }]}>{walkRouteName}</Text>
+                    </View>
+                  ) : (
+                    <View style={[styles.walkRouteChip, { backgroundColor: colors.muted }]}>
+                      <MaterialCommunityIcons name="walk" size={14} color={colors.mutedForeground} />
+                      <Text style={[styles.walkRouteChipText, { color: colors.mutedForeground }]}>Aucun parcours</Text>
+                    </View>
+                  )}
+                  <MaterialCommunityIcons name="pencil-outline" size={13} color={colors.mutedForeground} />
+                </Pressable>
 
-              {/* Participants chips */}
-              {allWalkParticipants.length > 0 && (
-                <View style={styles.walkParticipantsRow}>
-                  {humanParticipants.map(p => {
-                    const active = walkParticipantIds.includes(p.id);
-                    return (
-                      <Pressable
-                        key={p.id}
-                        onPress={() => handleToggleParticipant(p.id)}
-                        style={[styles.partChip, active && styles.partChipHumanActive, !active && { borderColor: colors.border }]}
-                      >
-                        <Text style={styles.partChipEmoji}>👤</Text>
-                        <Text style={[styles.partChipName, { color: active ? '#2196F3' : colors.mutedForeground }]}>{p.name}</Text>
-                      </Pressable>
-                    );
-                  })}
-                  {dogParticipants.map(p => {
-                    const active = walkParticipantIds.includes(p.id);
-                    return (
-                      <Pressable
-                        key={p.id}
-                        onPress={() => handleToggleParticipant(p.id)}
-                        style={[styles.partChip, active && styles.partChipDogActive, !active && { borderColor: colors.border }]}
-                      >
-                        <Text style={styles.partChipEmoji}>🐕</Text>
-                        <Text style={[styles.partChipName, { color: active ? '#FFC107' : colors.mutedForeground }]}>{p.name}</Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
+                {/* Participants button */}
+                {allWalkParticipants.length > 0 && (
+                  <Pressable
+                    onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setPickingParticipants(true); }}
+                    style={[styles.walkRouteChip, {
+                      backgroundColor: walkParticipantIds.length > 0 ? '#2196F318' : colors.muted,
+                      borderWidth: 1,
+                      borderColor: walkParticipantIds.length > 0 ? '#2196F360' : colors.border,
+                    }]}
+                  >
+                    <MaterialCommunityIcons
+                      name="account-group-outline"
+                      size={14}
+                      color={walkParticipantIds.length > 0 ? '#2196F3' : colors.mutedForeground}
+                    />
+                    <Text style={[styles.walkRouteChipText, { color: walkParticipantIds.length > 0 ? '#2196F3' : colors.mutedForeground }]}>
+                      Participants
+                    </Text>
+                  </Pressable>
+                )}
+              </View>
+
+              {/* Row 2: selected participant names */}
+              {walkParticipantIds.length > 0 && (
+                <Text style={[styles.walkParticipantsLabel, { color: colors.mutedForeground }]}>
+                  {walkParticipantIds
+                    .map(pid => allWalkParticipants.find(p => p.id === pid)?.name)
+                    .filter((n): n is string => !!n)
+                    .join(' · ')}
+                </Text>
               )}
             </View>
           ) : (
@@ -645,9 +710,18 @@ export default function TripMapScreen() {
             {trip.vehicle && trip.vehicle !== 'ignored' && (() => {
               const veh = vehicles.find(v => v.id === trip.vehicle);
               const name = veh?.name ?? (trip.vehicle === 'moto' ? 'Moto' : 'Voiture');
-              const color = veh?.type === 'moto' || trip.vehicle === 'moto' ? '#FF9800' : '#2196F3';
-              const icon = veh?.type === 'moto' || trip.vehicle === 'moto' ? 'motorbike' : 'car';
-              return <StatItem icon={icon} value={name} color={color} />;
+              const color = veh?.type === 'walk' ? '#4CAF50'
+                : veh?.type === 'moto' || trip.vehicle === 'moto' ? '#FF9800'
+                : '#2196F3';
+              const icon = veh?.type === 'walk' ? 'walk'
+                : veh?.type === 'moto' || trip.vehicle === 'moto' ? 'motorbike'
+                : 'car';
+              return (
+                <View style={[styles.vehicleChip, { backgroundColor: color + '18', borderColor: color + '60' }]}>
+                  <MaterialCommunityIcons name={icon as any} size={14} color={color} />
+                  <Text style={[styles.vehicleChipText, { color }]}>{name}</Text>
+                </View>
+              );
             })()}
           </View>
 
@@ -717,6 +791,16 @@ export default function TripMapScreen() {
         colors={colors}
         onClose={() => setPickingRoute(false)}
         onPick={handlePickWalkRoute}
+      />
+
+      {/* Walk participant picker */}
+      <WalkParticipantPickerModal
+        visible={pickingParticipants}
+        allParticipants={allWalkParticipants}
+        selectedIds={walkParticipantIds}
+        colors={colors}
+        onClose={() => setPickingParticipants(false)}
+        onToggle={handleToggleParticipant}
       />
 
       {/* Edit-address modal */}
@@ -837,20 +921,32 @@ const styles = StyleSheet.create({
     marginBottom: 4,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
+  addrBannerCol: {
+    flexDirection: 'column',
+    gap: 8,
+    paddingBottom: 12,
+    marginBottom: 4,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  walkTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  walkParticipantsLabel: {
+    fontSize: 12,
+    fontFamily: 'Inter_400Regular',
+    marginLeft: 2,
+  },
   addrBadge: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 5 },
   addrBadgeText: { flex: 1, fontSize: 12, fontFamily: 'Inter_500Medium' },
   walkRouteChip: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#4CAF5018', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 5 },
   walkRouteChipText: { fontSize: 13, fontFamily: 'Inter_500Medium' },
   walkRoutePressable: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  walkParticipantsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
-  partChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    borderRadius: 16, paddingHorizontal: 9, paddingVertical: 4,
-    borderWidth: 1, borderColor: 'transparent',
-    backgroundColor: 'transparent',
+  vehicleChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    borderRadius: 20, borderWidth: 1,
+    paddingHorizontal: 10, paddingVertical: 5,
   },
-  partChipHumanActive: { backgroundColor: '#2196F318', borderColor: '#2196F360' },
-  partChipDogActive:   { backgroundColor: '#FFC10718', borderColor: '#FFC10760' },
-  partChipEmoji: { fontSize: 12 },
-  partChipName: { fontSize: 12, fontFamily: 'Inter_500Medium' },
+  vehicleChipText: { fontSize: 13, fontFamily: 'Inter_500Medium' },
 });

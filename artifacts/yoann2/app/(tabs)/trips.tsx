@@ -46,12 +46,10 @@ function TurnaroundCard({ vehicle, odo, fillPct, remaining, isReserve, gaugeColo
       <Image source={DOBLO_IMG} style={trStyles.carImg} resizeMode="contain" />
       <Text style={[trStyles.odoVal, { color: colors.foreground }]}>{odo.toFixed(0)}</Text>
       <Text style={[trStyles.odoLabel, { color: colors.mutedForeground }]}>KM {vehicle.name.toUpperCase()}</Text>
-      {hasData && (
+      {fillPct !== null && (
         <View style={trStyles.gaugeWrapper}>
           <View style={[trStyles.gaugeTrack, { backgroundColor: colors.muted }]}>
-            {fillPct !== null && (
-              <View style={[trStyles.gaugeFill, { width: `${fillPct * 100}%` as any, backgroundColor: gaugeColor }]} />
-            )}
+            <View style={[trStyles.gaugeFill, { width: `${fillPct * 100}%` as any, backgroundColor: gaugeColor }]} />
           </View>
           <Text style={[trStyles.gaugeLabel, { color: isReserve ? '#F44336' : colors.mutedForeground }]}>
             {isReserve ? '⚠ Réserve' : remaining !== null ? `~${remaining.toFixed(0)} km` : '—'}
@@ -522,12 +520,10 @@ export default function TripsScreen() {
                     <Image source={MSX_IMG} style={trStyles.carImg} resizeMode="contain" />
                     <Text style={[trStyles.odoVal, { color: colors.foreground }]}>{odo.toFixed(0)}</Text>
                     <Text style={[trStyles.odoLabel, { color: colors.mutedForeground }]}>KM {v.name.toUpperCase()}</Text>
-                    {auto?.hasData && (
+                    {fillPct !== null && (
                       <View style={trStyles.gaugeWrapper}>
                         <View style={[trStyles.gaugeTrack, { backgroundColor: colors.muted }]}>
-                          {fillPct !== null && (
-                            <View style={[trStyles.gaugeFill, { width: `${fillPct * 100}%` as any, backgroundColor: gaugeColor }]} />
-                          )}
+                          <View style={[trStyles.gaugeFill, { width: `${fillPct * 100}%` as any, backgroundColor: gaugeColor }]} />
                         </View>
                         <Text style={[trStyles.gaugeLabel, { color: isReserve ? '#F44336' : colors.mutedForeground }]}>
                           {isReserve ? '⚠ Réserve' : remaining !== null ? `~${remaining.toFixed(0)} km` : '—'}
