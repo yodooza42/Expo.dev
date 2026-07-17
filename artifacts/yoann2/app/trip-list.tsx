@@ -343,8 +343,6 @@ function RenameLabelModal({
 }
 
 // ── LabelCard ─────────────────────────────────────────────────────────────────
-const LABEL_COLOR = '#9C27B0';
-
 function LabelCard({
   label, allTrips, colors, onUpdate, onDelete, onRename, vehicles, onRemoveTripFromLabel,
 }: {
@@ -379,10 +377,9 @@ function LabelCard({
   return (
     <View style={[styles.catCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
       <Pressable onPress={() => setExpanded(e => !e)} style={styles.catHeader}>
-        <View style={[styles.catBadge, { backgroundColor: LABEL_COLOR + '22' }]}>
-          <Text style={[styles.catBadgeText, { color: LABEL_COLOR }]}>{total}</Text>
+        <View style={[styles.catBadge, { backgroundColor: colors.primary + '22' }]}>
+          <Text style={[styles.catBadgeText, { color: colors.primary }]}>{total}</Text>
         </View>
-        <MaterialCommunityIcons name="tag-outline" size={14} color={LABEL_COLOR} />
         <Text style={[styles.catName, { color: colors.foreground }]} numberOfLines={1}>{label.name}</Text>
         <Pressable onPress={onRename} hitSlop={10}>
           <MaterialCommunityIcons name="pencil-outline" size={14} color={colors.mutedForeground} />
@@ -391,8 +388,8 @@ function LabelCard({
       </Pressable>
       <View style={styles.catStats}>
         {thisWeek > 0 && (
-          <View style={[styles.chip, { backgroundColor: LABEL_COLOR + '18' }]}>
-            <Text style={[styles.chipText, { color: LABEL_COLOR }]}>{thisWeek}× sem.</Text>
+          <View style={[styles.chip, { backgroundColor: colors.primary + '18' }]}>
+            <Text style={[styles.chipText, { color: colors.primary }]}>{thisWeek}× sem.</Text>
           </View>
         )}
         {thisMonth > 0 && (
@@ -1003,6 +1000,10 @@ export default function TripListScreen() {
         {(activeLabels.length > 0 || activeCats.length > 0) && (
           <View style={styles.section}>
             <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Trajets</Text>
+            {activeCats.map(cat => (
+              <CategoryCard key={cat.id} category={cat} allTrips={trips} colors={colors} vehicles={settings}
+                onUpdate={load} onDelete={() => handleDeleteCategory(cat.id)} onRename={() => setRenameTarget(cat)} />
+            ))}
             {activeLabels.map(label => (
               <LabelCard
                 key={label.id}
@@ -1015,10 +1016,6 @@ export default function TripListScreen() {
                 onRename={() => setRenameLabelTarget(label)}
                 onRemoveTripFromLabel={handleRemoveTripFromLabel}
               />
-            ))}
-            {activeCats.map(cat => (
-              <CategoryCard key={cat.id} category={cat} allTrips={trips} colors={colors} vehicles={settings}
-                onUpdate={load} onDelete={() => handleDeleteCategory(cat.id)} onRename={() => setRenameTarget(cat)} />
             ))}
           </View>
         )}
