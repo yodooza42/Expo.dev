@@ -410,58 +410,112 @@ function buildTripInjectScript(
   editable: boolean,
 ): string {
   const ptsJSON = JSON.stringify(points);
-  const editFlag = editable ? 'true' : 'false';
-  return '(function(){'
-    + 'if(window._tripLayers){window._tripLayers.forEach(function(l){l.remove();});}'
-    + 'window._tripLayers=[];'
-    + 'window._tripEditPts=' + ptsJSON + ';'
-    + "var C='" + color + "';"
-    + 'var EDIT=' + editFlag + ';'
+  const js = `
+(function(){
+  if(window._tripLayers){window._tripLayers.forEach(function(l){l.remove();});}
+  window._tripLayers=[];
+  window._tripEditPts=${ptsJSON};
+  window._selectMode=false;
+  window._selectedIndices={};
+  var C='${color}';
+  var EDIT=${editable};
 
-    + 'function mkHandleIcon(){'
-    + "return L.divIcon({className:'',html:'<div style=\"width:16px;height:16px;background:#fff;border-radius:50%;border:2.5px solid "+color+";box-shadow:0 2px 6px rgba(0,0,0,0.55);margin:-8px 0 0 -8px\"></div>',iconSize:[16,16],iconAnchor:[8,8]});}"
+  function mkHandleIcon(){
+    return L.divIcon({className:'',html:'<div style="width:16px;height:16px;background:#fff;border-radius:50%;border:2.5px solid ${color};box-shadow:0 2px 6px rgba(0,0,0,0.55);margin:-8px 0 0 -8px"></div>',iconSize:[16,16],iconAnchor:[8,8]});
+  }
+  function mkGhostIcon(){
+    return L.divIcon({className:'',html:'<div style="width:10px;height:10px;background:rgba(255,255,255,0.4);border-radius:50%;border:1.5px solid ${color};margin:-5px 0 0 -5px"></div>',iconSize:[10,10],iconAnchor:[5,5]});
+  }
+  function sendEdited(){
+    if(window.ReactNativeWebView){
+      window.ReactNativeWebView.postMessage(JSON.stringify({type:'routeEdited',points:window._tripEditPts}));
+    }
+  }
 
-    + 'function mkGhostIcon(){'
-    + "return L.divIcon({className:'',html:'<div style=\"width:10px;height:10px;background:rgba(255,255,255,0.4);border-radius:50%;border:1.5px solid "+color+";margin:-5px 0 0 -5px\"></div>',iconSize:[10,10],iconAnchor:[5,5]});}"
+  function redraw(){
+    window._tripLayers.forEach(function(l){l.remove();}); window._tripLayers=[];
+    var pts=window._tripEditPts; if(!pts||pts.length<1)return;
+    var ll=pts.map(function(p){return[p.lat,p.lng];});
+    var poly=L.polyline(ll,{color:C,weight:5,opacity:0.95,interactive:false}).addTo(map); window._tripLayers.push(poly);
+    var sm=L.circleMarker(ll[0],{radius:8,color:'#4CAF50',fillColor:'#4CAF50',fillOpacity:1,weight:2,interactive:false}).addTo(map); window._tripLayers.push(sm);
+    if(pts.length>1){
+      var em=L.circleMarker(ll[ll.length-1],{radius:8,color:C,fillColor:C,fillOpacity:1,weight:2,interactive:false}).addTo(map); window._tripLayers.push(em);
+    }
+    if(!EDIT)return;
+    for(var j=0;j<pts.length-1;j++){
+      (function(si){
+        var ml=(pts[si].lat+pts[si+1].lat)/2,mlg=(pts[si].lng+pts[si+1].lng)/2;
+        var gm=L.marker([ml,mlg],{icon:mkGhostIcon(),interactive:true,keyboard:false,zIndexOffset:-100}).addTo(map);
+        window._tripLayers.push(gm);
+        gm.on('click',function(e){L.DomEvent.stopPropagation(e);window._tripEditPts.splice(si+1,0,{lat:ml,lng:mlg});redraw();sendEdited();});
+      })(j);
+    }
+    for(var i=0;i<pts.length;i++){
+      (function(idx){
+        var mk=L.marker([pts[idx].lat,pts[idx].lng],{icon:mkHandleIcon(),draggable:true,keyboard:false}).addTo(map);
+        window._tripLayers.push(mk);
+        var lpT=null;
+        mk.on('mousedown',function(){lpT=setTimeout(function(){lpT=null;if(window._tripEditPts.length<=2)return;window._tripEditPts.splice(idx,1);redraw();sendEdited();},700);});
+        mk.on('mouseup',function(){if(lpT){clearTimeout(lpT);lpT=null;}});
+        mk.on('dragstart',function(){if(lpT){clearTimeout(lpT);lpT=null;}});
+        mk.on('dragend',function(e){var ll=e.target.getLatLng();window._tripEditPts[idx]={lat:ll.lat,lng:ll.lng};redraw();sendEdited();});
+      })(i);
+    }
+  }
 
-    + 'function sendEdited(){'
-    + 'if(window.ReactNativeWebView){'
-    + "window.ReactNativeWebView.postMessage(JSON.stringify({type:'routeEdited',points:window._tripEditPts}));}}"
+  function redrawSelect(){
+    window._tripLayers.forEach(function(l){l.remove();}); window._tripLayers=[];
+    var pts=window._tripEditPts; if(!pts||pts.length<1)return;
+    var ll=pts.map(function(p){return[p.lat,p.lng];});
+    var poly=L.polyline(ll,{color:C,weight:5,opacity:0.95,interactive:false}).addTo(map); window._tripLayers.push(poly);
+    var sm=L.circleMarker(ll[0],{radius:8,color:'#4CAF50',fillColor:'#4CAF50',fillOpacity:1,weight:2,interactive:false}).addTo(map); window._tripLayers.push(sm);
+    if(pts.length>1){
+      var em=L.circleMarker(ll[ll.length-1],{radius:8,color:C,fillColor:C,fillOpacity:1,weight:2,interactive:false}).addTo(map); window._tripLayers.push(em);
+    }
+    for(var i=1;i<pts.length-1;i++){
+      (function(idx){
+        var sel=!!window._selectedIndices[idx];
+        var mk=L.circleMarker([pts[idx].lat,pts[idx].lng],{
+          radius:11,color:sel?'#F44336':'#ffffff',
+          fillColor:sel?'#F44336':'#ffffff',fillOpacity:0.92,weight:3,interactive:true
+        }).addTo(map);
+        window._tripLayers.push(mk);
+        mk.on('click',function(e){
+          L.DomEvent.stopPropagation(e);
+          if(window._selectedIndices[idx]){delete window._selectedIndices[idx];}
+          else{window._selectedIndices[idx]=true;}
+          var cnt=Object.keys(window._selectedIndices).length;
+          if(window.ReactNativeWebView){
+            window.ReactNativeWebView.postMessage(JSON.stringify({type:'selectCount',count:cnt}));
+          }
+          redrawSelect();
+        });
+      })(i);
+    }
+  }
 
-    + 'function redraw(){'
-    + 'window._tripLayers.forEach(function(l){l.remove();});window._tripLayers=[];'
-    + 'var pts=window._tripEditPts;if(!pts||pts.length<1)return;'
-    + 'var ll=pts.map(function(p){return[p.lat,p.lng];});'
-    + 'var poly=L.polyline(ll,{color:C,weight:5,opacity:0.95,interactive:false}).addTo(map);window._tripLayers.push(poly);'
-    + 'var sm=L.circleMarker(ll[0],{radius:8,color:"#4CAF50",fillColor:"#4CAF50",fillOpacity:1,weight:2,interactive:false}).addTo(map);window._tripLayers.push(sm);'
-    + 'if(pts.length>1){var em=L.circleMarker(ll[ll.length-1],{radius:8,color:C,fillColor:C,fillOpacity:1,weight:2,interactive:false}).addTo(map);window._tripLayers.push(em);}'
+  window.enterSelectMode=function(){
+    window._selectMode=true; window._selectedIndices={};
+    redrawSelect();
+  };
+  window.exitSelectMode=function(){
+    window._selectMode=false; window._selectedIndices={};
+    redraw();
+  };
+  window.deleteSelectedPoints=function(){
+    var indices=Object.keys(window._selectedIndices).map(Number).sort(function(a,b){return b-a;});
+    indices.forEach(function(i){window._tripEditPts.splice(i,1);});
+    window._selectMode=false; window._selectedIndices={};
+    redraw(); sendEdited();
+  };
 
-    + 'if(!EDIT)return;'
-
-    + 'for(var j=0;j<pts.length-1;j++){'
-    + '(function(si){'
-    + 'var ml=(pts[si].lat+pts[si+1].lat)/2,mlg=(pts[si].lng+pts[si+1].lng)/2;'
-    + 'var gm=L.marker([ml,mlg],{icon:mkGhostIcon(),interactive:true,keyboard:false,zIndexOffset:-100}).addTo(map);'
-    + 'window._tripLayers.push(gm);'
-    + 'gm.on("click",function(e){L.DomEvent.stopPropagation(e);window._tripEditPts.splice(si+1,0,{lat:ml,lng:mlg});redraw();sendEdited();});'
-    + '})(j);}'
-
-    + 'for(var i=0;i<pts.length;i++){'
-    + '(function(idx){'
-    + 'var mk=L.marker([pts[idx].lat,pts[idx].lng],{icon:mkHandleIcon(),draggable:true,keyboard:false}).addTo(map);'
-    + 'window._tripLayers.push(mk);'
-    + 'var lpT=null;'
-    + 'mk.on("mousedown",function(){lpT=setTimeout(function(){lpT=null;if(window._tripEditPts.length<=2)return;window._tripEditPts.splice(idx,1);redraw();sendEdited();},700);});'
-    + 'mk.on("mouseup",function(){if(lpT){clearTimeout(lpT);lpT=null;}});'
-    + 'mk.on("dragstart",function(){if(lpT){clearTimeout(lpT);lpT=null;}});'
-    + 'mk.on("dragend",function(e){var ll=e.target.getLatLng();window._tripEditPts[idx]={lat:ll.lat,lng:ll.lng};redraw();sendEdited();});'
-    + '})(i);}}'
-
-    + 'redraw();'
-    + 'if(window._tripEditPts&&window._tripEditPts.length>0){'
-    + 'var b=L.polyline(window._tripEditPts.map(function(p){return[p.lat,p.lng];})).getBounds();'
-    + 'map.fitBounds(b.pad(0.15));}'
-    + '})();true;';
+  redraw();
+  if(window._tripEditPts&&window._tripEditPts.length>0){
+    var b=L.polyline(window._tripEditPts.map(function(p){return[p.lat,p.lng];})).getBounds();
+    map.fitBounds(b.pad(0.15));
+  }
+})();true;`.trim();
+  return js;
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -557,6 +611,10 @@ export default function MapScreen() {
 
   // ── Panel collapse state ─────────────────────────────────────────────────────
   const [panelExpanded, setPanelExpanded] = useState(false);
+
+  // ── Point-selection state (for batch delete) ─────────────────────────────────
+  const [selectMode, setSelectMode]   = useState(false);
+  const [selectCount, setSelectCount] = useState(0);
 
   // ── Replay state ────────────────────────────────────────────────────────────
   const [replayOpen, setReplayOpen]           = useState(false);
@@ -695,6 +753,8 @@ export default function MapScreen() {
       setSelectedTripId(null);
       setPendingRoute(null);
       setOriginalRoute(null);
+      setSelectMode(false);
+      setSelectCount(0);
       webRef.current?.injectJavaScript(
         'if(window._tripLayers){window._tripLayers.forEach(function(l){l.remove();});window._tripLayers=null;}true;',
       );
@@ -704,6 +764,8 @@ export default function MapScreen() {
     const color = trip.vehicle === 'moto' ? '#FFC107' : '#2196F3';
     setSelectedTripId(trip.id);
     setPendingRoute(null);
+    setSelectMode(false);
+    setSelectCount(0);
 
     if (route.length >= 2) {
       setOriginalRoute(route);
@@ -762,6 +824,8 @@ export default function MapScreen() {
   const handleCancelEdit = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setPendingRoute(null);
+    setSelectMode(false);
+    setSelectCount(0);
     if (!selectedTripId || !originalRoute) return;
     const trip = dayTrips.find(t => t.id === selectedTripId);
     if (trip) {
@@ -769,6 +833,27 @@ export default function MapScreen() {
       webRef.current?.injectJavaScript(buildTripInjectScript(originalRoute, color, true));
     }
   }, [selectedTripId, originalRoute, dayTrips]);
+
+  const handleEnterSelectMode = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setSelectMode(true);
+    setSelectCount(0);
+    webRef.current?.injectJavaScript('window.enterSelectMode && window.enterSelectMode(); true;');
+  }, []);
+
+  const handleCancelSelect = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setSelectMode(false);
+    setSelectCount(0);
+    webRef.current?.injectJavaScript('window.exitSelectMode && window.exitSelectMode(); true;');
+  }, []);
+
+  const handleDeleteSelected = useCallback(() => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    setSelectMode(false);
+    setSelectCount(0);
+    webRef.current?.injectJavaScript('window.deleteSelectedPoints && window.deleteSelectedPoints(); true;');
+  }, []);
 
   // ── Replay handlers ─────────────────────────────────────────────────────────
 
@@ -868,6 +953,7 @@ export default function MapScreen() {
         points?: Array<{ lat: number; lng: number }>;
         lat?: number;
         lng?: number;
+        count?: number;
       };
 
       if (msg.type === 'replay_progress') {
@@ -883,6 +969,10 @@ export default function MapScreen() {
         if (msg.points && msg.points.length >= 2) {
           setPendingRoute(msg.points as RoutePoint[]);
         }
+        return;
+      }
+      if (msg.type === 'selectCount') {
+        setSelectCount(msg.count ?? 0);
         return;
       }
       if (msg.type === 'mapLongPress') {
@@ -1292,6 +1382,46 @@ export default function MapScreen() {
                     })}
                   </View>
                 </ScrollView>
+              </View>
+            )}
+
+            {selectedTripId && !replayMode && !pendingRoute && (originalRoute?.length ?? 0) > 2 && (
+              <View style={styles.selectRow}>
+                {!selectMode ? (
+                  <Pressable
+                    onPress={handleEnterSelectMode}
+                    style={[styles.selectBtn, { borderColor: colors.border, backgroundColor: colors.muted }]}
+                  >
+                    <MaterialCommunityIcons name="cursor-pointer" size={14} color={colors.mutedForeground} />
+                    <Text style={[styles.selectBtnTxt, { color: colors.mutedForeground }]}>Sélectionner des points</Text>
+                  </Pressable>
+                ) : selectCount === 0 ? (
+                  <Pressable
+                    onPress={handleCancelSelect}
+                    style={[styles.selectBtn, { borderColor: colors.border, backgroundColor: colors.muted }]}
+                  >
+                    <MaterialCommunityIcons name="cursor-pointer" size={14} color={colors.primary} />
+                    <Text style={[styles.selectBtnTxt, { color: colors.mutedForeground }]}>Tapez des points sur la carte…</Text>
+                    <MaterialCommunityIcons name="close" size={14} color={colors.mutedForeground} />
+                  </Pressable>
+                ) : (
+                  <View style={styles.selectBtnGroup}>
+                    <Pressable
+                      onPress={handleDeleteSelected}
+                      style={[styles.selectBtn, { borderColor: '#F44336', backgroundColor: '#F4433618', flex: 1 }]}
+                    >
+                      <MaterialCommunityIcons name="delete-outline" size={14} color="#F44336" />
+                      <Text style={[styles.selectBtnTxt, { color: '#F44336' }]}>Supprimer ({selectCount})</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={handleCancelSelect}
+                      style={[styles.selectBtn, { borderColor: colors.border, backgroundColor: colors.muted }]}
+                    >
+                      <MaterialCommunityIcons name="close" size={14} color={colors.mutedForeground} />
+                      <Text style={[styles.selectBtnTxt, { color: colors.mutedForeground }]}>Annuler</Text>
+                    </Pressable>
+                  </View>
+                )}
               </View>
             )}
 
@@ -1836,6 +1966,31 @@ const styles = StyleSheet.create({
   tripChipTime: {
     fontSize: 10,
     fontFamily: 'Inter_400Regular',
+  },
+
+  // ── Select points ─────────────────────────────────────────────────────────────
+  selectRow: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  selectBtnGroup: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  selectBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  selectBtnTxt: {
+    fontSize: 12,
+    fontFamily: 'Inter_500Medium',
+    flex: 1,
   },
 
   // ── Place sheet ───────────────────────────────────────────────────────────────
