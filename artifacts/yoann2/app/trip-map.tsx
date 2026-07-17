@@ -20,7 +20,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TripMapView } from '@/components/TripMapView';
 import { useColors } from '@/hooks/useColors';
 import type { KnownPlace, PlaceCategory, WalkRoute } from '@/types/places';
-import type { RoutePoint, Trip, Vehicle } from '@/types/trips';
+import type { RoutePoint, Trip, Vehicle, WalkParticipant } from '@/types/trips';
 import { simplifyRoute } from '@/utils/routeSimplification';
 import {
   getAddressUsage,
@@ -285,6 +285,8 @@ export default function TripMapScreen() {
   const [knownPlaces, setKnownPlaces] = useState<KnownPlace[]>([]);
   const [walkRoutes, setWalkRoutes] = useState<WalkRoute[]>([]);
 
+  const [walkParticipantIds, setWalkParticipantIds] = useState<string[]>([]);
+
   const [editingField, setEditingField] = useState<'start' | 'end' | null>(null);
   const [addressUsage, setAddressUsage] = useState<Record<string, number>>({});
   const [pickingRoute, setPickingRoute] = useState(false);
@@ -368,6 +370,7 @@ export default function TripMapScreen() {
       const found = trips.find(t => t.id === id) ?? null;
       setTrip(found);
       setVehicles(v);
+      setWalkParticipantIds(found?.walkParticipants ?? []);
       setLoading(false);
 
       if (
@@ -434,6 +437,19 @@ export default function TripMapScreen() {
     tripEvents.emitTripUpdated();
   }
 
+  async function handleToggleParticipant(participantId: string) {
+    if (!trip) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const next = walkParticipantIds.includes(participantId)
+      ? walkParticipantIds.filter(x => x !== participantId)
+      : [...walkParticipantIds, participantId];
+    setWalkParticipantIds(next);
+    const patch: Partial<Trip> = { walkParticipants: next.length > 0 ? next : undefined };
+    setTrip({ ...trip, ...patch });
+    await updateTrip(trip.id, patch);
+    tripEvents.emitTripUpdated();
+  }
+
   const MAP_H = SCREEN_H * 0.62;
   const MAP_W = SCREEN_W;
 
@@ -448,6 +464,11 @@ export default function TripMapScreen() {
   const walkRouteName = isWalkTrip && trip?.walkRouteId
     ? walkRoutes.find(r => r.id === trip.walkRouteId)?.name
     : undefined;
+
+  const walkVehicle = isWalkTrip ? vehicles.find(v => v.id === trip!.vehicle) : null;
+  const allWalkParticipants: WalkParticipant[] = walkVehicle?.walkParticipants ?? [];
+  const humanParticipants = allWalkParticipants.filter(p => p.type === 'human');
+  const dogParticipants   = allWalkParticipants.filter(p => p.type === 'dog');
 
   return (
     <View style={[styles.root, { backgroundColor: '#121212' }]}>
@@ -499,23 +520,58 @@ export default function TripMapScreen() {
         <View style={[styles.card, { backgroundColor: colors.card, borderTopColor: colors.border }]}>
           {/* Address banner / walk route chip */}
           {isWalkTrip ? (
-            <Pressable
-              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setPickingRoute(true); }}
-              style={({ pressed }) => [styles.addrBanner, { borderBottomColor: colors.border, opacity: pressed ? 0.65 : 1 }]}
-            >
-              {walkRouteName ? (
-                <View style={styles.walkRouteChip}>
-                  <MaterialCommunityIcons name="walk" size={14} color="#4CAF50" />
-                  <Text style={[styles.walkRouteChipText, { color: '#4CAF50' }]}>{walkRouteName}</Text>
-                </View>
-              ) : (
-                <View style={[styles.walkRouteChip, { backgroundColor: colors.muted }]}>
-                  <MaterialCommunityIcons name="walk" size={14} color={colors.mutedForeground} />
-                  <Text style={[styles.walkRouteChipText, { color: colors.mutedForeground }]}>Aucun parcours</Text>
+            <View style={[styles.addrBanner, { borderBottomColor: colors.border }]}>
+              {/* Parcours chip */}
+              <Pressable
+                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setPickingRoute(true); }}
+                style={({ pressed }) => [styles.walkRoutePressable, { opacity: pressed ? 0.65 : 1 }]}
+              >
+                {walkRouteName ? (
+                  <View style={styles.walkRouteChip}>
+                    <MaterialCommunityIcons name="walk" size={14} color="#4CAF50" />
+                    <Text style={[styles.walkRouteChipText, { color: '#4CAF50' }]}>{walkRouteName}</Text>
+                  </View>
+                ) : (
+                  <View style={[styles.walkRouteChip, { backgroundColor: colors.muted }]}>
+                    <MaterialCommunityIcons name="walk" size={14} color={colors.mutedForeground} />
+                    <Text style={[styles.walkRouteChipText, { color: colors.mutedForeground }]}>Aucun parcours</Text>
+                  </View>
+                )}
+                <MaterialCommunityIcons name="pencil-outline" size={13} color={colors.mutedForeground} />
+              </Pressable>
+
+              {/* Participants chips */}
+              {allWalkParticipants.length > 0 && (
+                <View style={styles.walkParticipantsRow}>
+                  {humanParticipants.map(p => {
+                    const active = walkParticipantIds.includes(p.id);
+                    return (
+                      <Pressable
+                        key={p.id}
+                        onPress={() => handleToggleParticipant(p.id)}
+                        style={[styles.partChip, active && styles.partChipHumanActive, !active && { borderColor: colors.border }]}
+                      >
+                        <Text style={styles.partChipEmoji}>👤</Text>
+                        <Text style={[styles.partChipName, { color: active ? '#2196F3' : colors.mutedForeground }]}>{p.name}</Text>
+                      </Pressable>
+                    );
+                  })}
+                  {dogParticipants.map(p => {
+                    const active = walkParticipantIds.includes(p.id);
+                    return (
+                      <Pressable
+                        key={p.id}
+                        onPress={() => handleToggleParticipant(p.id)}
+                        style={[styles.partChip, active && styles.partChipDogActive, !active && { borderColor: colors.border }]}
+                      >
+                        <Text style={styles.partChipEmoji}>🐕</Text>
+                        <Text style={[styles.partChipName, { color: active ? '#FFC107' : colors.mutedForeground }]}>{p.name}</Text>
+                      </Pressable>
+                    );
+                  })}
                 </View>
               )}
-              <MaterialCommunityIcons name="pencil-outline" size={13} color={colors.mutedForeground} style={{ marginLeft: 'auto' as any }} />
-            </Pressable>
+            </View>
           ) : (
             <View style={[styles.addrBanner, { borderBottomColor: colors.border }]}>
               <AddressBadge
@@ -785,4 +841,16 @@ const styles = StyleSheet.create({
   addrBadgeText: { flex: 1, fontSize: 12, fontFamily: 'Inter_500Medium' },
   walkRouteChip: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#4CAF5018', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 5 },
   walkRouteChipText: { fontSize: 13, fontFamily: 'Inter_500Medium' },
+  walkRoutePressable: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  walkParticipantsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
+  partChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    borderRadius: 16, paddingHorizontal: 9, paddingVertical: 4,
+    borderWidth: 1, borderColor: 'transparent',
+    backgroundColor: 'transparent',
+  },
+  partChipHumanActive: { backgroundColor: '#2196F318', borderColor: '#2196F360' },
+  partChipDogActive:   { backgroundColor: '#FFC10718', borderColor: '#FFC10760' },
+  partChipEmoji: { fontSize: 12 },
+  partChipName: { fontSize: 12, fontFamily: 'Inter_500Medium' },
 });
