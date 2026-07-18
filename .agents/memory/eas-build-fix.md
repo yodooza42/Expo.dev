@@ -39,9 +39,10 @@ The global eas binary is at `/home/runner/workspace/.config/npm/node_global/bin/
 | yozvfkzucbzbc | yoann-20 | 6774b277-b066-4921-bcbb-b88f0959acb4 | exhausted Jul 2026 |
 | yoann420-team | yoann-20 | 4c6f8706-6d85-44d4-aeea-9c1edf3be837 | exhausted Jul 2026 |
 | yo13juills-team | yo13juill | 0e087e7f-e0c6-45ca-844a-ea88ee3701a8 | exhausted Jul 2026 |
-| **yoann42s-teami** | **yoann-20** | **206fa3d3-8913-4c38-be7e-d228bdcc2e01** | **ACTIVE — build 5f72060b soumis Jul 2026** |
+| yoann42s-teami | yoann-20 | 206fa3d3-8913-4c38-be7e-d228bdcc2e01 | exhausted Jul 2026 |
+| **stpyoann202027rbfifs-team** | **yoann-20** | **2bfd24b3-58f5-470c-92d8-487b9d469576** | **ACTIVE — build v85 soumis Jul 2026** |
 
-**app.json currently points to: yoann42s-teami / yoann-20 / 206fa3d3-8913-4c38-be7e-d228bdcc2e01**
+**app.json currently points to: stpyoann202027rbfifs-team / yoann-20 / 2bfd24b3-58f5-470c-92d8-487b9d469576**
 
 When user provides new token: update `EXPO_TOKEN` secret AND `app.json` → `expo.owner` + `expo.extra.eas.projectId`.
 Then check `eas whoami` output to confirm owner name matches before running build.
