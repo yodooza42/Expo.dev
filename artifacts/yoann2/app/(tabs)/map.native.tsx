@@ -963,7 +963,7 @@ export default function MapScreen() {
   const [placeSheetSaving, setPlaceSheetSaving] = useState(false);
 
   // ── Panel collapse state ─────────────────────────────────────────────────────
-  const [panelExpanded, setPanelExpanded] = useState(false);
+  const [panelExpanded, setPanelExpanded] = useState(true);
 
   // ── Point-selection state (for batch delete) ─────────────────────────────────
   const [selectMode, setSelectMode]   = useState(false);
@@ -1015,7 +1015,17 @@ export default function MapScreen() {
     if (!selectedTripId) { setTripPoints([]); return; }
     const trip = dayTrips.find(t => t.id === selectedTripId);
     if (!trip) { setTripPoints([]); return; }
-    setTripPoints(dayStats.points.filter(p => p.timestamp >= trip.startTime && p.timestamp <= trip.endTime));
+    const raw = dayStats.points.filter(p => p.timestamp >= trip.startTime && p.timestamp <= trip.endTime);
+    // Coupure anti-diagonale : on arrête à la première pause > 10 min entre points
+    // consécutifs. Empêche d'inclure le trajet retour quand startTime/endTime
+    // englobent la journée entière.
+    const GAP_MS = 10 * 60 * 1000;
+    const pts: typeof raw = [];
+    for (let i = 0; i < raw.length; i++) {
+      if (i > 0 && raw[i]!.timestamp - raw[i - 1]!.timestamp > GAP_MS) break;
+      pts.push(raw[i]!);
+    }
+    setTripPoints(pts);
   }, [selectedTripId, dayTrips, dayStats.points]);
 
   const handleSearch = useCallback(() => {
@@ -1739,7 +1749,7 @@ export default function MapScreen() {
             )}
 
             {/* Speed chart */}
-            {selectedTripId && !replayMode && tripPoints.length >= 2 && (
+            {panelExpanded && selectedTripId && !replayMode && tripPoints.length >= 2 && (
               <TripSpeedChart
                 points={tripPoints}
                 color={selectedTripColor}
@@ -1748,7 +1758,7 @@ export default function MapScreen() {
             )}
 
             {/* Altitude chart */}
-            {selectedTripId && !replayMode && tripPoints.length >= 2 && (
+            {panelExpanded && selectedTripId && !replayMode && tripPoints.length >= 2 && (
               <TripAltitudeChart
                 points={tripPoints}
                 color={selectedTripColor}
