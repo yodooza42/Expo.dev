@@ -140,6 +140,7 @@ function buildMapHtml(
   points: LocationPoint[],
   primaryColor: string,
   highlightPt: LocationPoint | null,
+  tripIntervals: Array<{ s: number; e: number }> = [],
 ): string {
   const ptsData = JSON.stringify(
     points.map(p => ({
@@ -154,6 +155,7 @@ function buildMapHtml(
   const highlightColor = highlightPt
     ? (ACTIVITY_COLORS[highlightPt.activity ?? 'unknown'] ?? primaryColor)
     : primaryColor;
+  const tripIntervalsJSON = JSON.stringify(tripIntervals);
 
   return `<!DOCTYPE html>
 <html>
@@ -177,6 +179,7 @@ L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{max
 var ptsData=${ptsData};
 var hl=${highlight};
 var hlColor='${highlightColor}';
+var tripIntervals=${tripIntervalsJSON};
 
 var COLORS={walk:'#4CAF50',car:'#2196F3',unknown:'#FFC107'};
 var ACT_LABELS={walk:'🚶 Marche',car:'🚗 Voiture',unknown:'❓ Inconnu'};
@@ -190,9 +193,19 @@ function fmtTime(ts){
   return h+'h'+m;
 }
 
+function inTrip(ts){
+  for(var k=0;k<tripIntervals.length;k++){
+    if(ts>=tripIntervals[k].s&&ts<=tripIntervals[k].e)return true;
+  }
+  return false;
+}
+
 function makeSeg(i){
   var seg=[[ptsData[i].lat,ptsData[i].lng],[ptsData[i+1].lat,ptsData[i+1].lng]];
   var col=colorFor(ptsData[i].activity);
+  var covered=inTrip(ptsData[i].ts)||inTrip(ptsData[i+1].ts);
+  var visOpacity=covered?0.9:0.13;
+  var visWeight=covered?4:2;
   var hitLine=L.polyline(seg,{color:col,weight:14,opacity:0,interactive:true}).addTo(map);
   var lpTimer=null;
   hitLine.on('click',function(e){
@@ -217,7 +230,7 @@ function makeSeg(i){
     if(lpTimer){clearTimeout(lpTimer);lpTimer=null;}
   });
   hitLine.on('contextmenu',function(e){L.DomEvent.stopPropagation(e);});
-  L.polyline(seg,{color:col,weight:4,opacity:0.9,interactive:false}).addTo(map);
+  L.polyline(seg,{color:col,weight:visWeight,opacity:visOpacity,interactive:false}).addTo(map);
 }
 
 if(ptsData.length>0){
@@ -1035,11 +1048,11 @@ export default function MapScreen() {
 
   const mapHtml = replayMode
     ? buildReplayHtml(replayPoints)
-    : buildMapHtml(dayStats.points, colors.primary, highlightPt);
+    : buildMapHtml(dayStats.points, colors.primary, highlightPt, dayTrips.map(t => ({ s: t.startTime, e: t.endTime })));
 
   const mapKey = replayMode
     ? `replay-${replayPoints.length}-${replayPoints[0]?.timestamp ?? 0}`
-    : `${selectedDay}-${highlightPt?.timestamp ?? 'none'}-${correctionCount}`;
+    : `${selectedDay}-${highlightPt?.timestamp ?? 'none'}-${correctionCount}-${dayTrips.length}`;
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
