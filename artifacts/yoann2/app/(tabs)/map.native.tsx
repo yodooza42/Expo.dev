@@ -445,18 +445,37 @@ function buildTripInjectScript(
     }
   }
 
-  // Seuil de détection des jonctions inter-segments OSRM (~440 m en degrés)
-  var JUMP_DEG=0.004;
-  function ptDist2(a,b){var d0=a[0]-b[0],d1=a[1]-b[1];return d0*d0+d1*d1;}
+  // Détection des jonctions fantômes inter-segments OSRM :
+  // un connecteur parasite se reconnaît à un changement de cap brutal (≥110°)
+  // combiné à une distance minimale (>100 m). Une longue ligne droite à 130 km/h
+  // ne change jamais de cap → pas de faux positifs sur autoroute.
+  // Fallback : segment très long (>3 km) même sans changement de cap détectable.
+  var GHOST_MIN_D2=0.0009*0.0009; // 100 m en degrés²
+  var GHOST_FAR_D2=0.027*0.027;   // 3 km — fantôme certain sans contexte angulaire
+  var GHOST_ANGLE=110;            // degrés de changement de cap minimum
 
-  // Dessine la polyligne en découpant aux sauts anormaux (jonctions OSRM/GPS)
+  function ptDist2(a,b){var d0=a[0]-b[0],d1=a[1]-b[1];return d0*d0+d1*d1;}
+  function capDeg(a,b){return Math.atan2(b[1]-a[1],b[0]-a[0])*180/Math.PI;}
+  function angleDiff(x,y){var d=Math.abs(x-y)%360;return d>180?360-d:d;}
+
+  function isGhostSeg(ll,i){
+    var d2=ptDist2(ll[i-1],ll[i]);
+    if(d2>GHOST_FAR_D2)return true;                        // très long → fantôme certain
+    if(d2<GHOST_MIN_D2)return false;                       // trop court → segment normal
+    if(i<2||i>=ll.length-1)return false;                   // pas assez de contexte angulaire
+    var capBefore=capDeg(ll[i-2],ll[i-1]);
+    var capAfter=capDeg(ll[i-1],ll[i]);
+    return angleDiff(capBefore,capAfter)>=GHOST_ANGLE;     // cap brutal → fantôme
+  }
+
+  // Dessine la polyligne en découpant aux jonctions fantômes détectées
   function drawRoutePoly(ll){
+    if(ll.length<2)return;
     var cur=[ll[0]];
     for(var i=1;i<ll.length;i++){
-      if(ptDist2(ll[i-1],ll[i])>JUMP_DEG*JUMP_DEG){
+      if(isGhostSeg(ll,i)){
         if(cur.length>=2){var p=L.polyline(cur,{color:C,weight:5,opacity:0.95,interactive:false}).addTo(map);window._tripLayers.push(p);}
-        // Jonction fantôme : tirets quasi-transparents
-        var gp=L.polyline([ll[i-1],ll[i]],{color:C,weight:2,opacity:0.12,dashArray:'5 10',interactive:false}).addTo(map);window._tripLayers.push(gp);
+        var gp=L.polyline([ll[i-1],ll[i]],{color:C,weight:2,opacity:0.1,dashArray:'5 10',interactive:false}).addTo(map);window._tripLayers.push(gp);
         cur=[ll[i]];
       } else {
         cur.push(ll[i]);
