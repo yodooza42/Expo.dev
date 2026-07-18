@@ -44,6 +44,10 @@ args = "EAS Build v80 prod"
 task = "workflow.run"
 args = "EAS Build v81 prod"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "EAS Build v82 prod"
+
 [[workflows.workflow]]
 name = "EAS Build v72 prod"
 author = "agent"
@@ -112,6 +116,17 @@ outputType = "console"
 
 [[workflows.workflow]]
 name = "EAS Build v81 prod"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd /home/runner/workspace/artifacts/yoann2 && export EXPO_TOKEN=QqyUJhzaZZTQS4jR8z_TvG_OR-wKjtu85m-ewMkJ && GIT_OPTIONAL_LOCKS=0 /home/runner/workspace/.config/npm/node_global/bin/eas build --platform android --profile production --non-interactive --no-wait 2>&1"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow]]
+name = "EAS Build v82 prod"
 author = "agent"
 
 [[workflows.workflow.tasks]]

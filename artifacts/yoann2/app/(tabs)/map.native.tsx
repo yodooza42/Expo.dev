@@ -200,12 +200,29 @@ function inTrip(ts){
   return false;
 }
 
+var GHOST_MIN_D2_DAY=0.0009*0.0009;
+var GHOST_FAR_D2_DAY=0.027*0.027;
+var GHOST_ANGLE_DAY=110;
+function isDayGhost(i){
+  var a=ptsData[i],b=ptsData[i+1];
+  var d0=a.lat-b.lat,d1=a.lng-b.lng,d2=d0*d0+d1*d1;
+  if(d2>GHOST_FAR_D2_DAY)return true;
+  if(d2<GHOST_MIN_D2_DAY)return false;
+  if(i<1||i+1>=ptsData.length-1)return false;
+  var prev=ptsData[i-1];
+  var capBefore=Math.atan2(a.lng-prev.lng,a.lat-prev.lat)*180/Math.PI;
+  var capAfter=Math.atan2(b.lng-a.lng,b.lat-a.lat)*180/Math.PI;
+  var diff=Math.abs(capBefore-capAfter)%360;
+  return(diff>180?360-diff:diff)>=GHOST_ANGLE_DAY;
+}
+
 function makeSeg(i){
   var seg=[[ptsData[i].lat,ptsData[i].lng],[ptsData[i+1].lat,ptsData[i+1].lng]];
   var col=colorFor(ptsData[i].activity);
   var covered=inTrip(ptsData[i].ts)||inTrip(ptsData[i+1].ts);
-  var visOpacity=covered?0.9:0.13;
-  var visWeight=covered?4:2;
+  var ghost=isDayGhost(i);
+  var visOpacity=ghost?0.1:(covered?0.9:0.13);
+  var visWeight=ghost?2:(covered?4:2);
   var hitLine=L.polyline(seg,{color:col,weight:14,opacity:0,interactive:true}).addTo(map);
   var lpTimer=null;
   hitLine.on('click',function(e){
@@ -230,7 +247,9 @@ function makeSeg(i){
     if(lpTimer){clearTimeout(lpTimer);lpTimer=null;}
   });
   hitLine.on('contextmenu',function(e){L.DomEvent.stopPropagation(e);});
-  L.polyline(seg,{color:col,weight:visWeight,opacity:visOpacity,interactive:false}).addTo(map);
+  var visOpts={color:col,weight:visWeight,opacity:visOpacity,interactive:false};
+  if(ghost)visOpts.dashArray='5 10';
+  L.polyline(seg,visOpts).addTo(map);
 }
 
 if(ptsData.length>0){
