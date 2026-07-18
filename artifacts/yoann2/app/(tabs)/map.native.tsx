@@ -1,5 +1,7 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Haptics from 'expo-haptics';
+import * as Sharing from 'expo-sharing';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActionSheetIOS,
@@ -299,6 +301,138 @@ window.moveScrubMarker=function(lat,lng){
 };
 window.clearScrubMarker=function(){
   if(_scrubMk){_scrubMk.remove();_scrubMk=null;}
+};
+
+window.generateStory=function(opts){
+  var cW=720,cH=1280;
+  var cv=document.createElement('canvas');
+  cv.width=cW;cv.height=cH;
+  document.body.appendChild(cv);
+  cv.style.position='absolute';cv.style.top='-9999px';cv.style.left='-9999px';
+  var ctx=cv.getContext('2d');
+  var mimes=['video/mp4;codecs=avc1','video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm'];
+  var mime='video/webm';
+  for(var mi=0;mi<mimes.length;mi++){if(MediaRecorder.isTypeSupported(mimes[mi])){mime=mimes[mi];break;}}
+  var chunks=[];
+  var stream=cv.captureStream(30);
+  var rec=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:2500000});
+  rec.ondataavailable=function(e){if(e.data&&e.data.size>0)chunks.push(e.data);};
+  rec.onstop=function(){
+    document.body.removeChild(cv);
+    var blob=new Blob(chunks,{type:mime.split(';')[0]});
+    var fr=new FileReader();
+    fr.onload=function(){
+      var du=fr.result,ci=du.indexOf(',');
+      var mimeOut=du.slice(5,du.indexOf(';'));
+      var b64=du.slice(ci+1);
+      var CHUNK=200000,total=Math.ceil(b64.length/CHUNK);
+      for(var i=0;i<total;i++){
+        window.ReactNativeWebView.postMessage(JSON.stringify({type:'story_chunk',index:i,total:total,mime:mimeOut,data:b64.slice(i*CHUNK,(i+1)*CHUNK)}));
+      }
+    };
+    fr.readAsDataURL(blob);
+  };
+  var route=opts.route;
+  var lats=route.map(function(p){return p.lat;}),lngs=route.map(function(p){return p.lng;});
+  var minLat=Math.min.apply(null,lats),maxLat=Math.max.apply(null,lats);
+  var minLng=Math.min.apply(null,lngs),maxLng=Math.max.apply(null,lngs);
+  var latSpan=maxLat-minLat||0.001,lngSpan=maxLng-minLng||0.001;
+  var mT=195,mB=780,mL=60,mR=660;
+  var mW=mR-mL,mH=mB-mT;
+  var rAsp=(lngSpan/latSpan)*Math.cos((minLat+maxLat)/2*Math.PI/180);
+  var mapAsp=mW/mH;
+  if(rAsp>mapAsp){var nH=mW/rAsp;mT=mT+(mH-nH)/2;mB=mT+nH;mH=nH;}
+  else{var nW=mH*rAsp;mL=mL+(mW-nW)/2;mR=mL+nW;mW=nW;}
+  function projX(lng){return mL+(lng-minLng)/lngSpan*mW;}
+  function projY(lat){return mB-(lat-minLat)/latSpan*mH;}
+  var DUR=18000,t0=null,lastRep=0;
+  var maxSpd=opts.maxSpeed||1;
+  var altSpan=Math.max(opts.maxAlt-opts.minAlt,1);
+  var totalKm=opts.points.length>0?opts.points[opts.points.length-1].km:1;
+  rec.start();
+  function frame(ts){
+    if(!t0)t0=ts;
+    var el=ts-t0,prog=Math.min(1,el/DUR);
+    ctx.fillStyle='#0E0E0E';ctx.fillRect(0,0,cW,cH);
+    ctx.strokeStyle='#161616';ctx.lineWidth=1;
+    for(var gx=0;gx<cW;gx+=60){ctx.beginPath();ctx.moveTo(gx,0);ctx.lineTo(gx,cH);ctx.stroke();}
+    for(var gy=0;gy<cH;gy+=60){ctx.beginPath();ctx.moveTo(0,gy);ctx.lineTo(cW,gy);ctx.stroke();}
+    ctx.fillStyle='#141414';ctx.fillRect(0,0,cW,180);
+    ctx.fillStyle=opts.color;ctx.font='bold 50px Arial,sans-serif';ctx.textAlign='center';
+    ctx.fillText(opts.vehicleEmoji+'  '+opts.dateLabel,cW/2,72);
+    ctx.fillStyle='#777';ctx.font='32px Arial,sans-serif';
+    ctx.fillText(opts.timeLabel,cW/2,122);
+    ctx.strokeStyle=opts.color+'33';ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(0,180);ctx.lineTo(cW,180);ctx.stroke();
+    if(route.length>1){
+      ctx.beginPath();ctx.moveTo(projX(route[0].lng),projY(route[0].lat));
+      for(var ri=1;ri<route.length;ri++)ctx.lineTo(projX(route[ri].lng),projY(route[ri].lat));
+      ctx.strokeStyle='#FFFFFF0A';ctx.lineWidth=4;ctx.lineJoin='round';ctx.lineCap='round';ctx.stroke();
+    }
+    var nPts=Math.max(2,Math.floor(route.length*prog));
+    if(nPts>1){
+      ctx.beginPath();ctx.moveTo(projX(route[0].lng),projY(route[0].lat));
+      for(var ri2=1;ri2<nPts;ri2++)ctx.lineTo(projX(route[ri2].lng),projY(route[ri2].lat));
+      ctx.strokeStyle=opts.color;ctx.lineWidth=6;ctx.lineJoin='round';ctx.lineCap='round';ctx.globalAlpha=0.95;ctx.stroke();ctx.globalAlpha=1;
+    }
+    ctx.beginPath();ctx.arc(projX(route[0].lng),projY(route[0].lat),9,0,Math.PI*2);ctx.fillStyle='#4CAF50';ctx.fill();
+    var cp=route[Math.min(nPts-1,route.length-1)];
+    ctx.beginPath();ctx.arc(projX(cp.lng),projY(cp.lat),14,0,Math.PI*2);ctx.fillStyle='#FFFFFF22';ctx.fill();
+    ctx.beginPath();ctx.arc(projX(cp.lng),projY(cp.lat),9,0,Math.PI*2);ctx.fillStyle=opts.color;ctx.fill();
+    var ci2=Math.min(Math.floor(opts.points.length*prog),opts.points.length-1);
+    var curPt=opts.points[ci2]||opts.points[0];
+    ctx.fillStyle='#141414';ctx.fillRect(0,800,cW,115);
+    ctx.strokeStyle=opts.color+'22';ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(0,800);ctx.lineTo(cW,800);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(0,915);ctx.lineTo(cW,915);ctx.stroke();
+    ctx.fillStyle=opts.color;ctx.font='bold 84px Arial,sans-serif';ctx.textAlign='center';
+    ctx.fillText((curPt.spd||0)+' km/h',cW/2,882);
+    ctx.fillStyle='#555';ctx.font='28px Arial,sans-serif';
+    ctx.fillText((curPt.km||0).toFixed(1)+' km · '+opts.durationLabel,cW/2,928);
+    var sL=50,sR=670,sTop=965,sH=85;
+    ctx.fillStyle='#161616';ctx.fillRect(sL-5,sTop-5,sR-sL+10,sH+10);
+    ctx.fillStyle='#444';ctx.font='20px Arial,sans-serif';ctx.textAlign='left';
+    ctx.fillText('VITESSE',sL,sTop-14);
+    var ni=Math.max(2,Math.floor(opts.points.length*prog));
+    if(ni>1){
+      var pts2=opts.points.slice(0,ni);
+      ctx.beginPath();ctx.moveTo(sL,sTop+sH);
+      for(var j=0;j<pts2.length;j++){var spx=sL+(pts2[j].km/totalKm)*(sR-sL),spy=sTop+sH-(pts2[j].spd/maxSpd)*sH;ctx.lineTo(spx,spy);}
+      ctx.lineTo(sL+(pts2[pts2.length-1].km/totalKm)*(sR-sL),sTop+sH);ctx.closePath();ctx.fillStyle=opts.color+'33';ctx.fill();
+      ctx.beginPath();
+      for(var j2=0;j2<pts2.length;j2++){var spx2=sL+(pts2[j2].km/totalKm)*(sR-sL),spy2=sTop+sH-(pts2[j2].spd/maxSpd)*sH;if(j2===0)ctx.moveTo(spx2,spy2);else ctx.lineTo(spx2,spy2);}
+      ctx.strokeStyle=opts.color;ctx.lineWidth=2.5;ctx.lineJoin='round';ctx.stroke();
+    }
+    if(opts.hasAlt){
+      var aTop=1105,aH=80;
+      ctx.fillStyle='#161616';ctx.fillRect(sL-5,aTop-5,sR-sL+10,aH+10);
+      ctx.fillStyle='#444';ctx.font='20px Arial,sans-serif';ctx.textAlign='left';ctx.fillText('ALTITUDE',sL,aTop-14);
+      var pts3=opts.points.slice(0,ni).filter(function(p){return p.alt!=null;});
+      if(pts3.length>1){
+        ctx.beginPath();ctx.moveTo(sL,aTop+aH);
+        for(var k=0;k<pts3.length;k++){var apx=sL+(pts3[k].km/totalKm)*(sR-sL),apy=aTop+aH-((pts3[k].alt-opts.minAlt)/altSpan)*aH;ctx.lineTo(apx,apy);}
+        ctx.lineTo(sL+(pts3[pts3.length-1].km/totalKm)*(sR-sL),aTop+aH);ctx.closePath();ctx.fillStyle='#AAAAAA22';ctx.fill();
+        ctx.beginPath();
+        for(var k2=0;k2<pts3.length;k2++){var apx2=sL+(pts3[k2].km/totalKm)*(sR-sL),apy2=aTop+aH-((pts3[k2].alt-opts.minAlt)/altSpan)*aH;if(k2===0)ctx.moveTo(apx2,apy2);else ctx.lineTo(apx2,apy2);}
+        ctx.strokeStyle='#AAAAAA';ctx.lineWidth=2.5;ctx.stroke();
+      }
+    }
+    if(prog>0.82){
+      var fa=Math.min(1,(prog-0.82)/0.12);ctx.globalAlpha=fa;
+      var bY=opts.hasAlt?1235:1165;
+      ctx.fillStyle='#111';ctx.fillRect(0,bY-52,cW,cH-bY+52);
+      ctx.fillStyle='#E0E0E0';ctx.font='bold 32px Arial,sans-serif';ctx.textAlign='center';
+      var stats='MAX '+opts.maxSpeed+' km/h';
+      if(opts.gainM>0)stats+=' · +'+opts.gainM+' m';
+      stats+=' · '+opts.distKm+' km';
+      ctx.fillText(stats,cW/2,bY+2);
+      ctx.fillStyle='#555';ctx.font='26px Arial,sans-serif';ctx.fillText(opts.timeLabel,cW/2,bY+42);
+      ctx.globalAlpha=1;
+    }
+    if(el-lastRep>400){lastRep=el;window.ReactNativeWebView.postMessage(JSON.stringify({type:'story_progress',p:Math.round(prog*100)}));}
+    if(prog<1){requestAnimationFrame(frame);}else{setTimeout(function(){rec.stop();},300);}
+  }
+  requestAnimationFrame(frame);
 };
 </script>
 </body>
@@ -1001,6 +1135,11 @@ export default function MapScreen() {
   const [tripPoints, setTripPoints]           = useState<LocationPoint[]>([]);
   const [tripReplaySpeed, setTripReplaySpeed] = useState<1|2|5|10>(1);
 
+  // ── Story generation state ───────────────────────────────────────────────────
+  const [isGeneratingStory, setIsGeneratingStory] = useState(false);
+  const [storyProgress, setStoryProgress]         = useState(0);
+  const storyChunksRef = useRef<{mime: string; chunks: string[]; total: number}>({mime: 'video/mp4', chunks: [], total: 0});
+
   // ── Replay state ────────────────────────────────────────────────────────────
   const [replayOpen, setReplayOpen]           = useState(false);
   const [replayStartDay, setReplayStartDay]   = useState('');
@@ -1369,6 +1508,11 @@ export default function MapScreen() {
         lat?: number;
         lng?: number;
         count?: number;
+        p?: number;
+        index?: number;
+        total?: number;
+        mime?: string;
+        data?: string;
       };
 
       if (msg.type === 'replay_progress') {
@@ -1378,6 +1522,43 @@ export default function MapScreen() {
       if (msg.type === 'replay_done') {
         setReplayPlaying(false);
         setReplayIsPaused(false);
+        return;
+      }
+      if (msg.type === 'story_progress') {
+        setStoryProgress(msg.p ?? 0);
+        return;
+      }
+      if (msg.type === 'story_chunk') {
+        const idx   = msg.index ?? 0;
+        const total = msg.total ?? 1;
+        const mime  = msg.mime  ?? 'video/mp4';
+        const data  = msg.data  ?? '';
+        if (idx === 0) {
+          storyChunksRef.current = { mime, chunks: new Array(total).fill(''), total };
+        }
+        storyChunksRef.current.chunks[idx] = data;
+        const received = storyChunksRef.current.chunks.filter(s => s !== '').length;
+        if (received === storyChunksRef.current.total) {
+          const { mime: m, chunks } = storyChunksRef.current;
+          const ext = m === 'video/mp4' ? 'mp4' : 'webm';
+          const path = `${FileSystem.cacheDirectory ?? ''}story_${Date.now()}.${ext}`;
+          const b64 = chunks.join('');
+          void (async () => {
+            try {
+              await FileSystem.writeAsStringAsync(path, b64, { encoding: FileSystem.EncodingType.Base64 });
+              setIsGeneratingStory(false);
+              await Sharing.shareAsync(path, { mimeType: m, dialogTitle: 'Partager la story' });
+            } catch {
+              setIsGeneratingStory(false);
+              Alert.alert('Erreur', 'Impossible de sauvegarder la vidéo.');
+            }
+          })();
+        }
+        return;
+      }
+      if (msg.type === 'story_error') {
+        setIsGeneratingStory(false);
+        Alert.alert('Erreur', 'Génération de story non supportée sur cet appareil.');
         return;
       }
       if (msg.type === 'routeEdited') {
@@ -1450,6 +1631,71 @@ export default function MapScreen() {
 
   const selectedTrip = selectedTripId ? (dayTrips.find(t => t.id === selectedTripId) ?? null) : null;
   const selectedTripColor = selectedTrip?.vehicle === 'moto' ? '#FFC107' : '#2196F3';
+
+  const handleGenerateStory = useCallback(() => {
+    if (!selectedTrip || tripPoints.length < 2 || isGeneratingStory) return;
+
+    const step = Math.max(1, Math.floor(tripPoints.length / 100));
+    const sampled: LocationPoint[] = [];
+    for (let i = 0; i < tripPoints.length; i++) {
+      if (i % step === 0 || i === tripPoints.length - 1) sampled.push(tripPoints[i]!);
+    }
+
+    let cumDist = 0;
+    const chartPts: Array<{ km: number; spd: number; alt: number | null }> = [];
+    for (let i = 0; i < sampled.length; i++) {
+      if (i > 0) cumDist += haversineKm(sampled[i - 1]!.lat, sampled[i - 1]!.lng, sampled[i]!.lat, sampled[i]!.lng);
+      chartPts.push({ km: parseFloat(cumDist.toFixed(3)), spd: sampled[i]!.speedKmh ?? 0, alt: sampled[i]!.altitudeM ?? null });
+    }
+
+    const speeds = tripPoints.map(p => p.speedKmh ?? 0);
+    const maxSpeed = Math.max(...speeds, 1);
+    const alts = tripPoints.map(p => p.altitudeM).filter((a): a is number => a != null);
+    const minAlt = alts.length > 0 ? Math.min(...alts) : 0;
+    const maxAlt = alts.length > 0 ? Math.max(...alts) : 0;
+    let gainM = 0;
+    for (let i = 1; i < tripPoints.length; i++) {
+      const a = tripPoints[i]!.altitudeM, b = tripPoints[i - 1]!.altitudeM;
+      if (a != null && b != null && a > b) gainM += a - b;
+    }
+
+    const durationMs = selectedTrip.endTime - selectedTrip.startTime;
+    const durationLabel = `${Math.round(durationMs / 60000)} min`;
+    const startDate = new Date(selectedTrip.startTime);
+    const DAYS = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
+    const MONTHS = ['jan', 'fév', 'mar', 'avr', 'mai', 'juin', 'juil', 'août', 'sep', 'oct', 'nov', 'déc'];
+    const dateLabel = `${DAYS[startDate.getDay()]} ${startDate.getDate()} ${MONTHS[startDate.getMonth()]}`;
+    const fmtH = (d: Date) => `${String(d.getHours()).padStart(2, '0')}h${String(d.getMinutes()).padStart(2, '0')}`;
+    const timeLabel = `${fmtH(startDate)} → ${fmtH(new Date(selectedTrip.endTime))}`;
+    const vehicleEmoji = selectedTrip.vehicle === 'moto' ? '🏍' : selectedTrip.vehicle === 'walk' ? '🚶' : '🚗';
+
+    const routeStep = Math.max(1, Math.floor(tripPoints.length / 150));
+    const route: Array<{ lat: number; lng: number }> = [];
+    for (let i = 0; i < tripPoints.length; i++) {
+      if (i % routeStep === 0 || i === tripPoints.length - 1) route.push({ lat: tripPoints[i]!.lat, lng: tripPoints[i]!.lng });
+    }
+
+    const opts = {
+      color: selectedTripColor,
+      vehicleEmoji,
+      dateLabel,
+      timeLabel,
+      distKm: parseFloat(cumDist.toFixed(1)),
+      durationLabel,
+      maxSpeed,
+      gainM: Math.round(gainM),
+      minAlt,
+      maxAlt,
+      hasAlt: alts.length > 0,
+      points: chartPts,
+      route,
+    };
+
+    setIsGeneratingStory(true);
+    setStoryProgress(0);
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    webRef.current?.injectJavaScript(`(function(){window.generateStory(${JSON.stringify(opts)});})();true;`);
+  }, [selectedTrip, selectedTripColor, tripPoints, isGeneratingStory]);
 
   // ── Map HTML / key ──────────────────────────────────────────────────────────
 
@@ -1825,34 +2071,52 @@ export default function MapScreen() {
 
             {/* Trip replay bar */}
             {selectedTripId && !replayMode && !pendingRoute && tripPoints.length >= 2 && (
-              <View style={styles.tripReplayBar}>
-                <View style={styles.tripReplaySpeedRow}>
-                  {([1, 2, 5, 10] as const).map(spd => (
-                    <Pressable
-                      key={spd}
-                      onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setTripReplaySpeed(spd); }}
-                      style={[
-                        styles.tripReplaySpeedBtn,
-                        {
-                          borderColor: tripReplaySpeed === spd ? selectedTripColor : colors.border,
-                          backgroundColor: tripReplaySpeed === spd ? selectedTripColor + '22' : 'transparent',
-                        },
-                      ]}
-                    >
-                      <Text style={[styles.tripReplaySpeedTxt, { color: tripReplaySpeed === spd ? selectedTripColor : colors.mutedForeground }]}>
-                        ×{spd}
-                      </Text>
-                    </Pressable>
-                  ))}
+              <>
+                <View style={styles.tripReplayBar}>
+                  <View style={styles.tripReplaySpeedRow}>
+                    {([1, 2, 5, 10] as const).map(spd => (
+                      <Pressable
+                        key={spd}
+                        onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setTripReplaySpeed(spd); }}
+                        style={[
+                          styles.tripReplaySpeedBtn,
+                          {
+                            borderColor: tripReplaySpeed === spd ? selectedTripColor : colors.border,
+                            backgroundColor: tripReplaySpeed === spd ? selectedTripColor + '22' : 'transparent',
+                          },
+                        ]}
+                      >
+                        <Text style={[styles.tripReplaySpeedTxt, { color: tripReplaySpeed === spd ? selectedTripColor : colors.mutedForeground }]}>
+                          ×{spd}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                  <Pressable
+                    style={[styles.tripReplayPlayBtn, { backgroundColor: selectedTripColor }]}
+                    onPress={handleTripReplay}
+                  >
+                    <MaterialCommunityIcons name="play" size={13} color="#121212" />
+                    <Text style={styles.tripReplayPlayTxt}>Replay</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.tripStoryBtn, { borderColor: selectedTripColor, opacity: isGeneratingStory ? 0.5 : 1 }]}
+                    onPress={handleGenerateStory}
+                    disabled={isGeneratingStory}
+                  >
+                    <MaterialCommunityIcons name="instagram" size={13} color={selectedTripColor} />
+                    <Text style={[styles.tripStoryTxt, { color: selectedTripColor }]}>Story</Text>
+                  </Pressable>
                 </View>
-                <Pressable
-                  style={[styles.tripReplayPlayBtn, { backgroundColor: selectedTripColor }]}
-                  onPress={handleTripReplay}
-                >
-                  <MaterialCommunityIcons name="play" size={13} color="#121212" />
-                  <Text style={styles.tripReplayPlayTxt}>Replay</Text>
-                </Pressable>
-              </View>
+                {isGeneratingStory && (
+                  <View style={styles.storyProgressRow}>
+                    <Text style={styles.storyProgressLabel}>Génération… {storyProgress}%</Text>
+                    <View style={styles.storyProgressTrack}>
+                      <View style={[styles.storyProgressFill, { width: `${storyProgress}%` as `${number}%`, backgroundColor: selectedTripColor }]} />
+                    </View>
+                  </View>
+                )}
+              </>
             )}
 
             {selectedTripId && !replayMode && !pendingRoute && (originalRoute?.length ?? 0) > 2 && (
@@ -2441,6 +2705,40 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontFamily: 'Inter_700Bold',
     color: '#121212',
+  },
+  tripStoryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  tripStoryTxt: {
+    fontSize: 12,
+    fontFamily: 'Inter_700Bold',
+  },
+  storyProgressRow: {
+    paddingTop: 6,
+    paddingBottom: 2,
+    gap: 4,
+  },
+  storyProgressLabel: {
+    fontSize: 11,
+    fontFamily: 'Inter_400Regular',
+    color: '#666',
+    textAlign: 'center',
+  },
+  storyProgressTrack: {
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: '#2A2A2A',
+    overflow: 'hidden',
+  },
+  storyProgressFill: {
+    height: 3,
+    borderRadius: 2,
   },
 
   // ── Trip chips ───────────────────────────────────────────────────────────────
