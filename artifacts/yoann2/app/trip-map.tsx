@@ -1,10 +1,13 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useRef, useState } from 'react';
+import * as Sharing from 'expo-sharing';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Dimensions,
   Keyboard,
   Modal,
@@ -16,6 +19,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import WebView from 'react-native-webview';
 
 import { TripMapView } from '@/components/TripMapView';
 import { useColors } from '@/hooks/useColors';
@@ -33,6 +37,9 @@ import {
 import { tripEvents } from '@/utils/tripEvents';
 import { getTrips, getVehicleSettings, updateTrip } from '@/utils/tripStorage';
 import { fmtDayLong, fmtHHMM } from '@/utils/date';
+import { haversineKm } from '@/utils/haversine';
+import { loadMultiDayPoints } from '@/utils/locationTracking';
+import { buildStoryHtml } from '@/utils/storyGenerator';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
@@ -358,6 +365,137 @@ export default function TripMapScreen() {
   const [draftStart, setDraftStart] = useState<Date>(new Date());
   const [draftEnd, setDraftEnd] = useState<Date>(new Date());
 
+  const [isGeneratingStory, setIsGeneratingStory] = useState(false);
+  const [storyProgress, setStoryProgress]         = useState(0);
+  const storyChunksRef = useRef<{ mime: string; chunks: string[]; total: number }>({ mime: 'video/mp4', chunks: [], total: 0 });
+  const storyWebViewRef = useRef<WebView>(null);
+  const storyHtml = useRef(buildStoryHtml()).current;
+
+  const handleStoryWebViewMessage = useCallback((event: { nativeEvent: { data: string } }) => {
+    let msg: Record<string, unknown>;
+    try { msg = JSON.parse(event.nativeEvent.data) as Record<string, unknown>; } catch { return; }
+    if (msg.type === 'story_progress') {
+      setStoryProgress(msg.p as number ?? 0);
+      return;
+    }
+    if (msg.type === 'story_chunk') {
+      const idx   = msg.index as number ?? 0;
+      const total = msg.total as number ?? 1;
+      const mime  = msg.mime  as string ?? 'video/mp4';
+      const data  = msg.data  as string ?? '';
+      if (idx === 0) {
+        storyChunksRef.current = { mime, chunks: new Array(total).fill(''), total };
+      }
+      storyChunksRef.current.chunks[idx] = data;
+      const received = storyChunksRef.current.chunks.filter(s => s !== '').length;
+      if (received === storyChunksRef.current.total) {
+        const { mime: m, chunks } = storyChunksRef.current;
+        const ext = m === 'video/mp4' ? 'mp4' : 'webm';
+        const path = `${FileSystem.cacheDirectory ?? ''}story_${Date.now()}.${ext}`;
+        const b64 = chunks.join('');
+        void (async () => {
+          try {
+            await FileSystem.writeAsStringAsync(path, b64, { encoding: FileSystem.EncodingType.Base64 });
+            setIsGeneratingStory(false);
+            await Sharing.shareAsync(path, { mimeType: m, dialogTitle: 'Partager la story' });
+          } catch {
+            setIsGeneratingStory(false);
+            Alert.alert('Erreur', 'Impossible de générer la story.');
+          }
+        })();
+      }
+    }
+  }, []);
+
+  const handleGenerateStory = useCallback(() => {
+    if (!trip || isGeneratingStory) return;
+    setIsGeneratingStory(true);
+    setStoryProgress(0);
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    void (async () => {
+      try {
+        const gpsPoints = await loadMultiDayPoints(trip.startTime, trip.endTime);
+        const tripPoints = gpsPoints.filter(p => p.timestamp >= trip.startTime && p.timestamp <= trip.endTime);
+
+        const storedRoute = trip.route ?? [];
+        const route: Array<{ lat: number; lng: number }> =
+          storedRoute.length >= 2
+            ? storedRoute
+            : tripPoints.length >= 2
+              ? tripPoints
+                  .filter((_, i) => i % Math.max(1, Math.floor(tripPoints.length / 150)) === 0 || i === tripPoints.length - 1)
+                  .map(p => ({ lat: p.lat, lng: p.lng }))
+              : [];
+
+        if (route.length < 2) {
+          setIsGeneratingStory(false);
+          Alert.alert('Story', 'Tracé GPS insuffisant pour générer une story.');
+          return;
+        }
+
+        const step = Math.max(1, Math.floor(tripPoints.length / 100));
+        const sampled = tripPoints.filter((_, i) => i % step === 0 || i === tripPoints.length - 1);
+
+        let rawCumDist = 0;
+        const rawChartPts: Array<{ km: number; spd: number; alt: number | null }> = [];
+        for (let i = 0; i < sampled.length; i++) {
+          if (i > 0) rawCumDist += haversineKm(sampled[i - 1]!.lat, sampled[i - 1]!.lng, sampled[i]!.lat, sampled[i]!.lng);
+          rawChartPts.push({ km: rawCumDist, spd: sampled[i]!.speedKmh ?? 0, alt: sampled[i]!.altitudeM ?? null });
+        }
+        const distScale = rawCumDist > 0 ? trip.distanceKm / rawCumDist : 1;
+        const chartPts = rawChartPts.map(p => ({ ...p, km: parseFloat((p.km * distScale).toFixed(3)) }));
+
+        const speeds = tripPoints.map(p => p.speedKmh ?? 0);
+        const maxSpeed = Math.max(...speeds, 1);
+        const alts = tripPoints.map(p => p.altitudeM).filter((a): a is number => a != null);
+        const minAlt = alts.length > 0 ? Math.min(...alts) : 0;
+        const maxAlt = alts.length > 0 ? Math.max(...alts) : 0;
+        let gainM = 0;
+        for (let i = 1; i < tripPoints.length; i++) {
+          const a = tripPoints[i]!.altitudeM, b = tripPoints[i - 1]!.altitudeM;
+          if (a != null && b != null && a > b) gainM += a - b;
+        }
+
+        const durationMs = trip.endTime - trip.startTime;
+        const durationLabel = `${Math.round(durationMs / 60000)} min`;
+        const startDate = new Date(trip.startTime);
+        const DAYS   = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
+        const MONTHS = ['jan', 'fév', 'mar', 'avr', 'mai', 'juin', 'juil', 'août', 'sep', 'oct', 'nov', 'déc'];
+        const dateLabel = `${DAYS[startDate.getDay()]} ${startDate.getDate()} ${MONTHS[startDate.getMonth()]}`;
+        const fmtH = (d: Date) => `${String(d.getHours()).padStart(2, '0')}h${String(d.getMinutes()).padStart(2, '0')}`;
+        const timeLabel = `${fmtH(startDate)} → ${fmtH(new Date(trip.endTime))}`;
+
+        const veh = vehicles.find(v => v.id === trip.vehicle);
+        const vehicleColor = veh?.type === 'walk' ? '#4CAF50'
+          : veh?.type === 'moto' || trip.vehicle === 'moto' ? '#FF9800'
+          : '#2196F3';
+        const vehicleEmoji = veh?.type === 'moto' || trip.vehicle === 'moto' ? '🏍'
+          : veh?.type === 'walk' ? '🚶' : '🚗';
+
+        const opts = {
+          color: vehicleColor,
+          vehicleEmoji,
+          dateLabel,
+          timeLabel,
+          distKm: parseFloat(trip.distanceKm.toFixed(1)),
+          durationLabel,
+          maxSpeed,
+          gainM: Math.round(gainM),
+          minAlt,
+          maxAlt,
+          hasAlt: alts.length > 0,
+          points: chartPts,
+          route,
+        };
+
+        storyWebViewRef.current?.injectJavaScript(`(function(){window.generateStory(${JSON.stringify(opts)});})();true;`);
+      } catch {
+        setIsGeneratingStory(false);
+        Alert.alert('Erreur', 'Impossible de générer la story.');
+      }
+    })();
+  }, [trip, vehicles, isGeneratingStory]);
+
   function handleOpenDtPicker() {
     if (!trip) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -661,21 +799,53 @@ export default function TripMapScreen() {
             </View>
           )}
 
-          <Pressable
-            onPress={handleOpenDtPicker}
-            style={({ pressed }) => [styles.dtRow, pressed && { opacity: 0.65 }]}
-            hitSlop={6}
-          >
-            <View style={{ flex: 1 }}>
+          <View style={styles.dtRow}>
+            <Pressable
+              onPress={handleOpenDtPicker}
+              style={({ pressed }) => [{ flex: 1, opacity: pressed ? 0.65 : 1 }]}
+              hitSlop={6}
+            >
               <Text style={[styles.dateText, { color: colors.foreground }]}>
                 {fmtDayLong(trip.startTime)}
               </Text>
               <Text style={[styles.timeText, { color: colors.mutedForeground }]}>
                 {fmtHHMM(trip.startTime)} → {fmtHHMM(trip.endTime)}
               </Text>
-            </View>
-            <MaterialCommunityIcons name="pencil-outline" size={15} color={colors.mutedForeground} />
-          </Pressable>
+            </Pressable>
+            {(() => {
+              const veh = vehicles.find(v => v.id === trip.vehicle);
+              const vColor = veh?.type === 'walk' ? '#4CAF50'
+                : veh?.type === 'moto' || trip.vehicle === 'moto' ? '#FF9800'
+                : '#2196F3';
+              return (
+                <Pressable
+                  onPress={handleGenerateStory}
+                  disabled={isGeneratingStory}
+                  style={[styles.tripStoryBtn, { borderColor: vColor, opacity: isGeneratingStory ? 0.5 : 1 }]}
+                >
+                  <MaterialCommunityIcons name="instagram" size={13} color={vColor} />
+                  <Text style={[styles.tripStoryTxt, { color: vColor }]}>Story</Text>
+                </Pressable>
+              );
+            })()}
+            <Pressable onPress={handleOpenDtPicker} hitSlop={6}>
+              <MaterialCommunityIcons name="pencil-outline" size={15} color={colors.mutedForeground} />
+            </Pressable>
+          </View>
+          {isGeneratingStory && (() => {
+            const veh = vehicles.find(v => v.id === trip.vehicle);
+            const vColor = veh?.type === 'walk' ? '#4CAF50'
+              : veh?.type === 'moto' || trip.vehicle === 'moto' ? '#FF9800'
+              : '#2196F3';
+            return (
+              <View style={styles.storyProgressRow}>
+                <Text style={styles.storyProgressLabel}>Génération… {storyProgress}%</Text>
+                <View style={styles.storyProgressTrack}>
+                  <View style={[styles.storyProgressFill, { width: `${storyProgress}%` as `${number}%`, backgroundColor: vColor }]} />
+                </View>
+              </View>
+            );
+          })()}
 
           <View style={styles.statsRow}>
             <StatItem
@@ -818,6 +988,16 @@ export default function TripMapScreen() {
         onSave={handleSaveAddress}
         onChipUsed={handleChipUsed}
       />
+
+      {/* Hidden WebView for story generation */}
+      <WebView
+        ref={storyWebViewRef}
+        source={{ html: storyHtml }}
+        onMessage={handleStoryWebViewMessage}
+        javaScriptEnabled
+        mediaPlaybackRequiresUserAction={false}
+        style={styles.storyWebView}
+      />
     </View>
   );
 }
@@ -949,4 +1129,44 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10, paddingVertical: 5,
   },
   vehicleChipText: { fontSize: 13, fontFamily: 'Inter_500Medium' },
+  tripStoryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  tripStoryTxt: {
+    fontSize: 12,
+    fontFamily: 'Inter_700Bold',
+  },
+  storyProgressRow: {
+    paddingTop: 6,
+    paddingBottom: 2,
+    gap: 4,
+  },
+  storyProgressLabel: {
+    fontSize: 11,
+    fontFamily: 'Inter_400Regular',
+    color: '#666',
+    textAlign: 'center',
+  },
+  storyProgressTrack: {
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: '#2A2A2A',
+    overflow: 'hidden',
+  },
+  storyProgressFill: {
+    height: 3,
+    borderRadius: 2,
+  },
+  storyWebView: {
+    position: 'absolute',
+    width: 1,
+    height: 1,
+    opacity: 0,
+  },
 });
