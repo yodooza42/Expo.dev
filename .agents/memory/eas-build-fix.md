@@ -40,7 +40,7 @@ The global eas binary is at `/home/runner/workspace/.config/npm/node_global/bin/
 | yoann420-team | yoann-20 | 4c6f8706-6d85-44d4-aeea-9c1edf3be837 | exhausted Jul 2026 |
 | yo13juills-team | yo13juill | 0e087e7f-e0c6-45ca-844a-ea88ee3701a8 | exhausted Jul 2026 |
 | yoann42s-teami | yoann-20 | 206fa3d3-8913-4c38-be7e-d228bdcc2e01 | exhausted Jul 2026 |
-| **stpyoann202027rbfifs-team** | **yoann-20** | **2bfd24b3-58f5-470c-92d8-487b9d469576** | **ACTIVE — build v85 soumis Jul 2026** |
+| **stpyoann202027rbfifs-team** | **yoann-20** | **2bfd24b3-58f5-470c-92d8-487b9d469576** | **ACTIVE — build v86 soumis Jul 2026** |
 
 **app.json currently points to: stpyoann202027rbfifs-team / yoann-20 / 2bfd24b3-58f5-470c-92d8-487b9d469576**
 

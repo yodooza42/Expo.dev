@@ -37,13 +37,23 @@ import { correctActivity, deleteDayPoints, loadMultiDayPoints } from '@/utils/lo
 import type { ActivityType, LocationPoint } from '@/utils/locationTracking';
 import { haversineKm } from '@/utils/haversine';
 import { simplifyRoute } from '@/utils/routeSimplification';
-import { getTrips, updateTrip } from '@/utils/tripStorage';
-import type { Trip, RoutePoint } from '@/types/trips';
+import { getTrips, getVehicleSettings, updateTrip } from '@/utils/tripStorage';
+import type { Trip, RoutePoint, Vehicle } from '@/types/trips';
 import type { PlaceCategory } from '@/types/places';
 import { getPlaceCategories, saveKnownPlace } from '@/utils/placesStorage';
 import { reverseGeocode } from '@/utils/geocoding';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+/** Résout le type, la couleur, l'icône MCI et l'emoji d'un véhicule à partir de son ID. */
+function vehicleInfoFromList(vehicleId: string | null, vehicles: Vehicle[]) {
+  const v = vehicles.find(v => v.id === vehicleId);
+  const type = v?.type ?? 'car';
+  const color      = type === 'moto' ? '#FFC107' : type === 'walk' ? '#4CAF50' : type === 'other' ? '#9E9E9E' : '#2196F3';
+  const iconName   = type === 'moto' ? 'motorbike' : type === 'walk' ? 'walk' : 'car';
+  const emoji      = type === 'moto' ? '🏍' : type === 'walk' ? '🚶' : type === 'other' ? '🚙' : '🚗';
+  return { type, color, iconName, emoji };
+}
 
 function formatDayLabel(day: string): string {
   const d = new Date(day + 'T12:00:00');
@@ -1110,6 +1120,10 @@ export default function MapScreen() {
   const pendingTimeRef                         = useRef<string | null>(null);
   const [correctionCount, setCorrectionCount] = useState(0);
 
+  // ── Vehicles (pour résoudre type/couleur/icône depuis l'ID du trajet) ──────────
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  useEffect(() => { void getVehicleSettings().then(setVehicles); }, []);
+
   // ── Trip state ───────────────────────────────────────────────────────────────
   const [dayTrips, setDayTrips]               = useState<Trip[]>([]);
   const [selectedTripId, setSelectedTripId]   = useState<string | null>(null);
@@ -1315,7 +1329,7 @@ export default function MapScreen() {
       return;
     }
     const route = trip.route ?? [];
-    const color = trip.vehicle === 'moto' ? '#FFC107' : '#2196F3';
+    const color = vehicleInfoFromList(trip.vehicle, vehicles).color;
     setSelectedTripId(trip.id);
     setPendingRoute(null);
     setSelectMode(false);
@@ -1352,7 +1366,7 @@ export default function MapScreen() {
     } else {
       setOriginalRoute(route);
     }
-  }, [selectedTripId]);
+  }, [selectedTripId, vehicles]);
 
   const handleConfirmEdit = useCallback(async () => {
     if (!pendingRoute || !selectedTripId) return;
@@ -1383,10 +1397,10 @@ export default function MapScreen() {
     if (!selectedTripId || !originalRoute) return;
     const trip = dayTrips.find(t => t.id === selectedTripId);
     if (trip) {
-      const color = trip.vehicle === 'moto' ? '#FFC107' : '#2196F3';
+      const color = vehicleInfoFromList(trip.vehicle, vehicles).color;
       webRef.current?.injectJavaScript(buildTripInjectScript(originalRoute, color, true));
     }
-  }, [selectedTripId, originalRoute, dayTrips]);
+  }, [selectedTripId, originalRoute, dayTrips, vehicles]);
 
   const handleEnterSelectMode = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -1630,7 +1644,7 @@ export default function MapScreen() {
   // ── Derived ─────────────────────────────────────────────────────────────────
 
   const selectedTrip = selectedTripId ? (dayTrips.find(t => t.id === selectedTripId) ?? null) : null;
-  const selectedTripColor = selectedTrip?.vehicle === 'moto' ? '#FFC107' : '#2196F3';
+  const selectedTripColor = vehicleInfoFromList(selectedTrip?.vehicle ?? null, vehicles).color;
 
   const handleGenerateStory = useCallback(() => {
     if (!selectedTrip || tripPoints.length < 2 || isGeneratingStory) return;
@@ -1667,7 +1681,7 @@ export default function MapScreen() {
     const dateLabel = `${DAYS[startDate.getDay()]} ${startDate.getDate()} ${MONTHS[startDate.getMonth()]}`;
     const fmtH = (d: Date) => `${String(d.getHours()).padStart(2, '0')}h${String(d.getMinutes()).padStart(2, '0')}`;
     const timeLabel = `${fmtH(startDate)} → ${fmtH(new Date(selectedTrip.endTime))}`;
-    const vehicleEmoji = selectedTrip.vehicle === 'moto' ? '🏍' : selectedTrip.vehicle === 'walk' ? '🚶' : '🚗';
+    const vehicleEmoji = vehicleInfoFromList(selectedTrip.vehicle, vehicles).emoji;
 
     const routeStep = Math.max(1, Math.floor(tripPoints.length / 150));
     const route: Array<{ lat: number; lng: number }> = [];
@@ -2016,8 +2030,7 @@ export default function MapScreen() {
                   <View style={styles.tripChipRow}>
                     {dayTrips.map(trip => {
                       const isSel   = selectedTripId === trip.id;
-                      const vColor  = trip.vehicle === 'moto' ? '#FFC107' : '#2196F3';
-                      const vIcon   = trip.vehicle === 'moto' ? 'motorbike' : 'car';
+                      const { color: vColor, iconName: vIcon } = vehicleInfoFromList(trip.vehicle, vehicles);
                       const hasRoute = (trip.route?.length ?? 0) >= 2
                         || !!(trip.startLat && trip.startLon && trip.endLat && trip.endLon);
                       return (
