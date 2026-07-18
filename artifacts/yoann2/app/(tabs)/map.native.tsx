@@ -1,10 +1,11 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActionSheetIOS,
   ActivityIndicator,
   Alert,
+  Dimensions,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -15,6 +16,15 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import Svg, {
+  Circle,
+  Defs,
+  Line as SvgLine,
+  LinearGradient,
+  Path,
+  Stop,
+  Text as SvgText,
+} from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import WebView, { type WebViewMessageEvent } from 'react-native-webview';
 
@@ -281,6 +291,15 @@ map.on('contextmenu',function(e){
     window.ReactNativeWebView.postMessage(JSON.stringify({type:'mapLongPress',lat:e.latlng.lat,lng:e.latlng.lng}));
   }
 });
+
+var _scrubMk=null;
+window.moveScrubMarker=function(lat,lng){
+  if(_scrubMk){_scrubMk.setLatLng([lat,lng]);}
+  else{_scrubMk=L.circleMarker([lat,lng],{radius:10,color:'#FF9800',fillColor:'#FF9800',fillOpacity:0.9,weight:3,zIndexOffset:1000,interactive:false}).addTo(map);}
+};
+window.clearScrubMarker=function(){
+  if(_scrubMk){_scrubMk.remove();_scrubMk=null;}
+};
 </script>
 </body>
 </html>`;
@@ -636,6 +655,154 @@ const DURATIONS: { label: string; ms: number }[] = [
   { label: '3 min', ms: 180_000 },
 ];
 
+// ── Trip speed chart (Strava-style) ──────────────────────────────────────────
+
+function fmtChartDur(ms: number): string {
+  const s = Math.round(ms / 1000);
+  const m = Math.floor(s / 60);
+  const h = Math.floor(m / 60);
+  if (h > 0) return `${h}h${String(m % 60).padStart(2, '0')}`;
+  return `${m}min`;
+}
+
+function TripSpeedChart({
+  points,
+  color,
+  onScrub,
+}: {
+  points: LocationPoint[];
+  color: string;
+  onScrub: (pt: LocationPoint | null) => void;
+}) {
+  const colors = useColors();
+  const [scrubX, setScrubX] = useState<number | null>(null);
+
+  const chartData = useMemo(() => {
+    const pts = points.filter(p => p.speedKmh != null && (p.speedKmh as number) >= 0);
+    if (pts.length < 2) return null;
+    let cumDist = 0;
+    const data: Array<{ km: number; spd: number; lat: number; lng: number; ts: number }> = [];
+    data.push({ km: 0, spd: pts[0]!.speedKmh ?? 0, lat: pts[0]!.lat, lng: pts[0]!.lng, ts: pts[0]!.timestamp });
+    for (let i = 1; i < pts.length; i++) {
+      cumDist += haversineKm(pts[i - 1]!.lat, pts[i - 1]!.lng, pts[i]!.lat, pts[i]!.lng);
+      data.push({ km: cumDist, spd: pts[i]!.speedKmh ?? 0, lat: pts[i]!.lat, lng: pts[i]!.lng, ts: pts[i]!.timestamp });
+    }
+    const rawMax = Math.max(...data.map(d => d.spd), 1);
+    const maxSpd = Math.ceil(rawMax / 10) * 10;
+    const avgSpd = data.reduce((s, d) => s + d.spd, 0) / data.length;
+    const totalKm = Math.max(cumDist, 0.001);
+    const durationMs = pts[pts.length - 1]!.timestamp - pts[0]!.timestamp;
+    return { data, maxSpd, avgSpd, totalKm, durationMs };
+  }, [points]);
+
+  const findNearest = useCallback((x: number, cData: typeof chartData) => {
+    if (!cData) return null;
+    const { data, totalKm } = cData;
+    const W = Dimensions.get('window').width - 32;
+    const PL = 30; const PR = 8; const cW = W - PL - PR;
+    const frac = Math.max(0, Math.min(1, (x - PL) / cW));
+    const targetKm = frac * totalKm;
+    let best = data[0]!;
+    let bestD = Math.abs(best.km - targetKm);
+    for (const d of data) {
+      const dd = Math.abs(d.km - targetKm);
+      if (dd < bestD) { best = d; bestD = dd; }
+    }
+    return best;
+  }, []);
+
+  if (!chartData) return null;
+  const { data, maxSpd, avgSpd, totalKm, durationMs } = chartData;
+
+  const W = Dimensions.get('window').width - 32;
+  const H = 84;
+  const PL = 30; const PR = 8; const PT = 8; const PB = 16;
+  const cW = W - PL - PR;
+  const cH = H - PT - PB;
+
+  const mx = (km: number) => PL + (km / totalKm) * cW;
+  const my = (spd: number) => PT + (1 - spd / maxSpd) * cH;
+
+  const pts2 = data.map(d => `${mx(d.km).toFixed(1)},${my(d.spd).toFixed(1)}`);
+  const linePath = `M ${pts2.join(' L ')}`;
+  const areaPath = `${linePath} L ${mx(totalKm).toFixed(1)},${(PT + cH).toFixed(1)} L ${PL},${(PT + cH).toFixed(1)} Z`;
+
+  const scrubPt = scrubX !== null ? findNearest(scrubX, chartData) : null;
+
+  return (
+    <View style={{ borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, paddingTop: 6, paddingBottom: 4 }}>
+      <View
+        onStartShouldSetResponder={() => true}
+        onMoveShouldSetResponder={() => true}
+        onResponderGrant={e => {
+          const x = e.nativeEvent.locationX;
+          setScrubX(x);
+          const nearest = findNearest(x, chartData);
+          onScrub(nearest ? (points.find(p => p.timestamp === nearest.ts) ?? null) : null);
+        }}
+        onResponderMove={e => {
+          const x = e.nativeEvent.locationX;
+          setScrubX(x);
+          const nearest = findNearest(x, chartData);
+          onScrub(nearest ? (points.find(p => p.timestamp === nearest.ts) ?? null) : null);
+        }}
+        onResponderRelease={() => { setScrubX(null); onScrub(null); }}
+        onResponderTerminate={() => { setScrubX(null); onScrub(null); }}
+      >
+        <Svg width={W} height={H}>
+          <Defs>
+            <LinearGradient id="spd_grad" x1="0" y1="0" x2="0" y2="1">
+              <Stop offset="0" stopColor={color} stopOpacity="0.45" />
+              <Stop offset="1" stopColor={color} stopOpacity="0.04" />
+            </LinearGradient>
+          </Defs>
+          <Path d={areaPath} fill="url(#spd_grad)" />
+          <Path d={linePath} stroke={color} strokeWidth={2} fill="none" strokeLinejoin="round" />
+          <SvgLine x1={PL} y1={my(avgSpd)} x2={W - PR} y2={my(avgSpd)} stroke="#FFFFFF55" strokeWidth={1} strokeDasharray="3 4" />
+          {scrubPt !== null && scrubX !== null && (
+            <>
+              <SvgLine x1={mx(scrubPt.km)} y1={PT} x2={mx(scrubPt.km)} y2={PT + cH} stroke="#FFFFFFCC" strokeWidth={1.5} />
+              <Circle cx={mx(scrubPt.km)} cy={my(scrubPt.spd)} r={5} fill="#FFFFFF" stroke={color} strokeWidth={2} />
+            </>
+          )}
+          <SvgText x={PL - 3} y={PT + 5} textAnchor="end" fontSize={8} fill="#666">{maxSpd}</SvgText>
+          <SvgText x={PL - 3} y={PT + cH + 1} textAnchor="end" fontSize={8} fill="#666">0</SvgText>
+          <SvgText x={PL - 3} y={PT + cH / 2 + 3} textAnchor="end" fontSize={7} fill="#444">km/h</SvgText>
+          <SvgText x={PL + 1} y={H - 2} textAnchor="start" fontSize={8} fill="#666">0</SvgText>
+          <SvgText x={W - PR} y={H - 2} textAnchor="end" fontSize={8} fill="#666">{totalKm.toFixed(1)} km</SvgText>
+        </Svg>
+      </View>
+
+      {scrubPt ? (
+        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6, paddingHorizontal: 2, paddingTop: 2 }}>
+          <Text style={{ color, fontFamily: 'Inter_700Bold', fontSize: 18, lineHeight: 22 }}>
+            {Math.round(scrubPt.spd)} km/h
+          </Text>
+          <Text style={{ color: '#555', fontSize: 12 }}>·</Text>
+          <Text style={{ color: '#888', fontFamily: 'Inter_400Regular', fontSize: 12 }}>
+            {scrubPt.km.toFixed(2)} km
+          </Text>
+        </View>
+      ) : (
+        <View style={{ flexDirection: 'row', gap: 20, paddingHorizontal: 2, paddingTop: 2 }}>
+          <View>
+            <Text style={{ color: '#555', fontSize: 9, fontFamily: 'Inter_400Regular', textTransform: 'uppercase', letterSpacing: 0.8 }}>MOY</Text>
+            <Text style={{ color: colors.foreground, fontSize: 14, fontFamily: 'Inter_700Bold' }}>{Math.round(avgSpd)} km/h</Text>
+          </View>
+          <View>
+            <Text style={{ color: '#555', fontSize: 9, fontFamily: 'Inter_400Regular', textTransform: 'uppercase', letterSpacing: 0.8 }}>MAX</Text>
+            <Text style={{ color: colors.foreground, fontSize: 14, fontFamily: 'Inter_700Bold' }}>{Math.round(maxSpd)} km/h</Text>
+          </View>
+          <View>
+            <Text style={{ color: '#555', fontSize: 9, fontFamily: 'Inter_400Regular', textTransform: 'uppercase', letterSpacing: 0.8 }}>DURÉE</Text>
+            <Text style={{ color: colors.foreground, fontSize: 14, fontFamily: 'Inter_700Bold' }}>{fmtChartDur(durationMs)}</Text>
+          </View>
+        </View>
+      )}
+    </View>
+  );
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function MapScreen() {
@@ -687,6 +854,10 @@ export default function MapScreen() {
   const [selectMode, setSelectMode]   = useState(false);
   const [selectCount, setSelectCount] = useState(0);
 
+  // ── Trip chart / replay state ────────────────────────────────────────────────
+  const [tripPoints, setTripPoints]           = useState<LocationPoint[]>([]);
+  const [tripReplaySpeed, setTripReplaySpeed] = useState<1|2|5|10>(1);
+
   // ── Replay state ────────────────────────────────────────────────────────────
   const [replayOpen, setReplayOpen]           = useState(false);
   const [replayStartDay, setReplayStartDay]   = useState('');
@@ -725,6 +896,13 @@ export default function MapScreen() {
       setDayTrips(trips.filter(t => t.startTime >= dayStart && t.startTime <= dayEnd));
     }).catch(() => setDayTrips([]));
   }, [selectedDay]);
+
+  useEffect(() => {
+    if (!selectedTripId) { setTripPoints([]); return; }
+    const trip = dayTrips.find(t => t.id === selectedTripId);
+    if (!trip) { setTripPoints([]); return; }
+    setTripPoints(dayStats.points.filter(p => p.timestamp >= trip.startTime && p.timestamp <= trip.endTime));
+  }, [selectedTripId, dayTrips, dayStats.points]);
 
   const handleSearch = useCallback(() => {
     const q = search.trim();
@@ -795,6 +973,29 @@ export default function MapScreen() {
     }
   }, [backupBusy, refresh]);
 
+  const handleTripReplay = useCallback(() => {
+    if (tripPoints.length < 2) return;
+    const BASE_MS: Record<number, number> = { 1: 60_000, 2: 30_000, 5: 12_000, 10: 6_000 };
+    const dur = BASE_MS[tripReplaySpeed] ?? 30_000;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setReplayPoints(tripPoints);
+    pendingReplayRef.current = dur;
+    setReplayMode(true);
+    setReplayPlaying(true);
+    setReplayIsPaused(false);
+    setReplayCurrentTime('');
+  }, [tripPoints, tripReplaySpeed]);
+
+  const handleChartScrub = useCallback((pt: LocationPoint | null) => {
+    if (pt) {
+      webRef.current?.injectJavaScript(
+        `window.moveScrubMarker && window.moveScrubMarker(${pt.lat}, ${pt.lng}); true;`,
+      );
+    } else {
+      webRef.current?.injectJavaScript('window.clearScrubMarker && window.clearScrubMarker(); true;');
+    }
+  }, []);
+
   const handleDeleteDay = useCallback(() => {
     if (dayStats.points.length === 0) return;
     const label = fmtReplayDay(selectedDay);
@@ -827,7 +1028,7 @@ export default function MapScreen() {
       setSelectMode(false);
       setSelectCount(0);
       webRef.current?.injectJavaScript(
-        'if(window._tripLayers){window._tripLayers.forEach(function(l){l.remove();});window._tripLayers=null;}true;',
+        'if(window._tripLayers){window._tripLayers.forEach(function(l){l.remove();});window._tripLayers=null;}window.clearScrubMarker&&window.clearScrubMarker();true;',
       );
       return;
     }
@@ -1101,6 +1302,11 @@ export default function MapScreen() {
       // ignore malformed messages
     }
   }, [selectedDay, refresh, replayMode]);
+
+  // ── Derived ─────────────────────────────────────────────────────────────────
+
+  const selectedTrip = selectedTripId ? (dayTrips.find(t => t.id === selectedTripId) ?? null) : null;
+  const selectedTripColor = selectedTrip?.vehicle === 'moto' ? '#FFC107' : '#2196F3';
 
   // ── Map HTML / key ──────────────────────────────────────────────────────────
 
@@ -1453,6 +1659,47 @@ export default function MapScreen() {
                     })}
                   </View>
                 </ScrollView>
+              </View>
+            )}
+
+            {/* Speed chart */}
+            {selectedTripId && !replayMode && tripPoints.length >= 2 && (
+              <TripSpeedChart
+                points={tripPoints}
+                color={selectedTripColor}
+                onScrub={handleChartScrub}
+              />
+            )}
+
+            {/* Trip replay bar */}
+            {selectedTripId && !replayMode && !pendingRoute && tripPoints.length >= 2 && (
+              <View style={styles.tripReplayBar}>
+                <View style={styles.tripReplaySpeedRow}>
+                  {([1, 2, 5, 10] as const).map(spd => (
+                    <Pressable
+                      key={spd}
+                      onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setTripReplaySpeed(spd); }}
+                      style={[
+                        styles.tripReplaySpeedBtn,
+                        {
+                          borderColor: tripReplaySpeed === spd ? selectedTripColor : colors.border,
+                          backgroundColor: tripReplaySpeed === spd ? selectedTripColor + '22' : 'transparent',
+                        },
+                      ]}
+                    >
+                      <Text style={[styles.tripReplaySpeedTxt, { color: tripReplaySpeed === spd ? selectedTripColor : colors.mutedForeground }]}>
+                        ×{spd}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+                <Pressable
+                  style={[styles.tripReplayPlayBtn, { backgroundColor: selectedTripColor }]}
+                  onPress={handleTripReplay}
+                >
+                  <MaterialCommunityIcons name="play" size={13} color="#121212" />
+                  <Text style={styles.tripReplayPlayTxt}>Replay</Text>
+                </Pressable>
               </View>
             )}
 
@@ -2003,6 +2250,45 @@ const styles = StyleSheet.create({
   editBandeauBtnTxt: {
     fontSize: 12,
     fontFamily: 'Inter_600SemiBold',
+  },
+
+  // ── Trip replay bar ──────────────────────────────────────────────────────────
+  tripReplayBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingTop: 4,
+    paddingBottom: 2,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  tripReplaySpeedRow: {
+    flexDirection: 'row',
+    gap: 5,
+    flex: 1,
+  },
+  tripReplaySpeedBtn: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 5,
+    borderRadius: 7,
+    borderWidth: 1,
+  },
+  tripReplaySpeedTxt: {
+    fontSize: 12,
+    fontFamily: 'Inter_700Bold',
+  },
+  tripReplayPlayBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  tripReplayPlayTxt: {
+    fontSize: 12,
+    fontFamily: 'Inter_700Bold',
+    color: '#121212',
   },
 
   // ── Trip chips ───────────────────────────────────────────────────────────────
