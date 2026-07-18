@@ -1335,10 +1335,25 @@ export default function MapScreen() {
     setSelectMode(false);
     setSelectCount(0);
 
-    if (route.length >= 2) {
+    // A GPS trip whose route was previously corrupted by an erroneous OSRM
+    // planning call will have routeSource === 'gps' but only 2 points (straight
+    // line A→B). Detect and clear it so the trip falls through to the GPS
+    // fallback below rather than displaying a phantom route.
+    const isCorruptedGpsRoute =
+      trip.source !== 'manual' &&
+      route.length > 0 &&
+      route.length < 5 &&
+      trip.routeSource === 'gps';
+
+    if (isCorruptedGpsRoute) {
+      updateTrip(trip.id, { route: undefined }).catch(() => {});
+      setDayTrips(prev => prev.map(t => t.id === trip.id ? { ...t, route: undefined } : t));
+    }
+
+    if (!isCorruptedGpsRoute && route.length >= 2) {
       setOriginalRoute(route);
       webRef.current?.injectJavaScript(buildTripInjectScript(route, color, true));
-    } else if (trip.startLat && trip.startLon && trip.endLat && trip.endLon) {
+    } else if (trip.source === 'manual' && trip.startLat && trip.startLon && trip.endLat && trip.endLon) {
       // Manual trip with no stored route — show straight fallback immediately,
       // then fetch real OSRM geometry, persist it, and update the map.
       const fallback: RoutePoint[] = [
@@ -1363,6 +1378,15 @@ export default function MapScreen() {
           setDayTrips(prev => prev.map(t => t.id === tripId ? { ...t, route: pts } : t));
         })
         .catch(() => {});
+    } else if (trip.startLat && trip.startLon && trip.endLat && trip.endLon) {
+      // GPS trip with no stored route — show a straight-line fallback in memory
+      // only. Never call OSRM and never persist this fallback to the DB.
+      const fallback: RoutePoint[] = [
+        { lat: trip.startLat, lng: trip.startLon },
+        { lat: trip.endLat, lng: trip.endLon },
+      ];
+      setOriginalRoute(fallback);
+      webRef.current?.injectJavaScript(buildTripInjectScript(fallback, color, true));
     } else {
       setOriginalRoute(route);
     }
