@@ -32,8 +32,7 @@ import WebView, { type WebViewMessageEvent } from 'react-native-webview';
 
 import { useColors } from '@/hooks/useColors';
 import { useLocationHistory } from '@/hooks/useLocationHistory';
-import { exportBackup, importBackup } from '@/utils/locationBackup';
-import { correctActivity, deleteDayPoints, loadMultiDayPoints } from '@/utils/locationTracking';
+import { correctActivity, loadMultiDayPoints } from '@/utils/locationTracking';
 import type { ActivityType, LocationPoint } from '@/utils/locationTracking';
 import { haversineKm } from '@/utils/haversine';
 import { simplifyRoute } from '@/utils/routeSimplification';
@@ -65,19 +64,6 @@ function fmtTripTime(ts: number): string {
   return String(d.getHours()).padStart(2, '0') + 'h' + String(d.getMinutes()).padStart(2, '0');
 }
 
-function fmtReplayDay(day: string): string {
-  const d = new Date(day + 'T12:00:00');
-  const dd = String(d.getDate()).padStart(2, '0');
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const wd = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'][d.getDay()]!;
-  return `${wd} ${dd}/${mm}`;
-}
-
-function shiftDay(day: string, delta: number): string {
-  const d = new Date(day + 'T12:00:00');
-  d.setDate(d.getDate() + delta);
-  return d.toISOString().slice(0, 10);
-}
 
 const FR_MONTHS: Record<string, number> = {
   janvier: 1, février: 2, fevrier: 2, mars: 3, avril: 4,
@@ -771,33 +757,6 @@ function StatChip({
   );
 }
 
-function Stepper({
-  label, onDec, onInc, colors,
-}: {
-  label: string; onDec: () => void; onInc: () => void;
-  colors: ReturnType<typeof useColors>;
-}) {
-  return (
-    <View style={styles.stepper}>
-      <Pressable onPress={onDec} hitSlop={10} style={styles.stepperBtn}>
-        <MaterialCommunityIcons name="chevron-left" size={22} color={colors.foreground} />
-      </Pressable>
-      <Text style={[styles.stepperVal, { color: colors.foreground }]}>{label}</Text>
-      <Pressable onPress={onInc} hitSlop={10} style={styles.stepperBtn}>
-        <MaterialCommunityIcons name="chevron-right" size={22} color={colors.foreground} />
-      </Pressable>
-    </View>
-  );
-}
-
-// ── Duration options ──────────────────────────────────────────────────────────
-
-const DURATIONS: { label: string; ms: number }[] = [
-  { label: '10 s', ms: 10_000 },
-  { label: '30 s', ms: 30_000 },
-  { label: '1 min', ms: 60_000 },
-  { label: '3 min', ms: 180_000 },
-];
 
 // ── Trip speed chart (Strava-style) ──────────────────────────────────────────
 
@@ -1096,21 +1055,15 @@ export default function MapScreen() {
   const colors   = useColors();
   const insets   = useSafeAreaInsets();
   const webRef   = useRef<WebView>(null);
-  const [backupBusy, setBackupBusy] = useState(false);
-
   const {
     selectedDay,
     setSelectedDay,
     dayStats,
-    periodAvg7,
-    periodAvg30,
-    paused,
     hasPermission,
     loading,
     goToPrevDay,
     goToNextDay,
     enableTracking,
-    togglePause,
     findPointByTime,
     refresh,
   } = useLocationHistory();
@@ -1155,12 +1108,6 @@ export default function MapScreen() {
   const storyChunksRef = useRef<{mime: string; chunks: string[]; total: number}>({mime: 'video/mp4', chunks: [], total: 0});
 
   // ── Replay state ────────────────────────────────────────────────────────────
-  const [replayOpen, setReplayOpen]           = useState(false);
-  const [replayStartDay, setReplayStartDay]   = useState('');
-  const [replayStartHour, setReplayStartHour] = useState(0);
-  const [replayEndDay, setReplayEndDay]       = useState('');
-  const [replayEndHour, setReplayEndHour]     = useState(23);
-  const [replayDurMs, setReplayDurMs]         = useState(30_000);
   const [replayMode, setReplayMode]           = useState(false);
   const [replayPlaying, setReplayPlaying]     = useState(false);
   const [replayIsPaused, setReplayIsPaused]   = useState(false);
@@ -1234,41 +1181,6 @@ export default function MapScreen() {
     }
   }, [enableTracking, refresh]);
 
-  const handleTogglePause = useCallback(async () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    await togglePause();
-  }, [togglePause]);
-
-  const handleExport = useCallback(async () => {
-    if (backupBusy) return;
-    setBackupBusy(true);
-    try {
-      await exportBackup();
-    } catch {
-      Alert.alert('Erreur', "Impossible d'exporter les données.");
-    } finally {
-      setBackupBusy(false);
-    }
-  }, [backupBusy]);
-
-  const handleImport = useCallback(async () => {
-    if (backupBusy) return;
-    setBackupBusy(true);
-    try {
-      const { restored, error } = await importBackup();
-      if (error) {
-        Alert.alert('Erreur', error);
-      } else if (restored > 0) {
-        Alert.alert('Importé', `${restored} jour${restored > 1 ? 's' : ''} restauré${restored > 1 ? 's' : ''}.`);
-        refresh();
-      }
-    } catch {
-      Alert.alert('Erreur', "Impossible d'importer le fichier.");
-    } finally {
-      setBackupBusy(false);
-    }
-  }, [backupBusy, refresh]);
-
   const handleTripReplay = useCallback(() => {
     if (tripPoints.length < 2) return;
     const BASE_MS: Record<number, number> = { 1: 60_000, 2: 30_000, 5: 12_000, 10: 6_000 };
@@ -1291,27 +1203,6 @@ export default function MapScreen() {
       webRef.current?.injectJavaScript('window.clearScrubMarker && window.clearScrubMarker(); true;');
     }
   }, []);
-
-  const handleDeleteDay = useCallback(() => {
-    if (dayStats.points.length === 0) return;
-    const label = fmtReplayDay(selectedDay);
-    Alert.alert(
-      'Effacer ce jour',
-      `Effacer les ${dayStats.points.length} point${dayStats.points.length > 1 ? 's' : ''} du ${label} ?`,
-      [
-        { text: 'Annuler', style: 'cancel' },
-        {
-          text: 'Effacer',
-          style: 'destructive',
-          onPress: async () => {
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-            await deleteDayPoints(selectedDay);
-            refresh();
-          },
-        },
-      ],
-    );
-  }, [dayStats.points.length, selectedDay, refresh]);
 
   // ── Trip handlers ───────────────────────────────────────────────────────────
 
@@ -1446,49 +1337,6 @@ export default function MapScreen() {
     setSelectCount(0);
     webRef.current?.injectJavaScript('window.deleteSelectedPoints && window.deleteSelectedPoints(); true;');
   }, []);
-
-  // ── Replay handlers ─────────────────────────────────────────────────────────
-
-  const handleOpenReplay = useCallback(() => {
-    setReplayStartDay(selectedDay);
-    setReplayStartHour(0);
-    setReplayEndDay(selectedDay);
-    setReplayEndHour(23);
-    setReplayOpen(true);
-  }, [selectedDay]);
-
-  const handleCloseReplay = useCallback(() => {
-    setReplayOpen(false);
-  }, []);
-
-  const handleLancer = useCallback(async () => {
-    const startTs = new Date(
-      `${replayStartDay}T${String(replayStartHour).padStart(2, '0')}:00:00`,
-    ).getTime();
-    const endTs = new Date(
-      `${replayEndDay}T${String(replayEndHour).padStart(2, '0')}:59:59`,
-    ).getTime();
-
-    if (endTs <= startTs) {
-      Alert.alert('Période invalide', 'La fin doit être après le début.');
-      return;
-    }
-
-    const pts = await loadMultiDayPoints(startTs, endTs);
-    if (pts.length < 2) {
-      Alert.alert('Pas de données', 'Aucun point GPS enregistré dans cette période.');
-      return;
-    }
-
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    setReplayPoints(pts);
-    pendingReplayRef.current = replayDurMs;
-    setReplayMode(true);
-    setReplayPlaying(true);
-    setReplayIsPaused(false);
-    setReplayCurrentTime('');
-    setReplayOpen(false);
-  }, [replayStartDay, replayStartHour, replayEndDay, replayEndHour, replayDurMs]);
 
   const handleWebViewLoad = useCallback(() => {
     if (pendingReplayRef.current !== null) {
@@ -1935,83 +1783,6 @@ export default function MapScreen() {
             </Pressable>
           </View>
 
-        /* ── Replay settings panel ── */
-        ) : replayOpen ? (
-          <View style={styles.replayPanel}>
-            <View style={styles.replayPanelHeader}>
-              <MaterialCommunityIcons name="play-circle-outline" size={18} color={colors.primary} />
-              <Text style={[styles.replayPanelTitle, { color: colors.foreground }]}>Replay GPS</Text>
-              <Pressable onPress={handleCloseReplay} hitSlop={10}>
-                <MaterialCommunityIcons name="close" size={20} color={colors.mutedForeground} />
-              </Pressable>
-            </View>
-
-            <View style={styles.replayRow}>
-              <View style={styles.replayCol}>
-                <Text style={[styles.replayColLabel, { color: colors.mutedForeground }]}>Début</Text>
-                <Stepper
-                  label={fmtReplayDay(replayStartDay)}
-                  onDec={() => setReplayStartDay(d => shiftDay(d, -1))}
-                  onInc={() => setReplayStartDay(d => shiftDay(d, 1))}
-                  colors={colors}
-                />
-                <Stepper
-                  label={`${String(replayStartHour).padStart(2, '0')}h00`}
-                  onDec={() => setReplayStartHour(h => Math.max(0, h - 1))}
-                  onInc={() => setReplayStartHour(h => Math.min(23, h + 1))}
-                  colors={colors}
-                />
-              </View>
-              <View style={[styles.replayColDivider, { backgroundColor: colors.border }]} />
-              <View style={styles.replayCol}>
-                <Text style={[styles.replayColLabel, { color: colors.mutedForeground }]}>Fin</Text>
-                <Stepper
-                  label={fmtReplayDay(replayEndDay)}
-                  onDec={() => setReplayEndDay(d => shiftDay(d, -1))}
-                  onInc={() => setReplayEndDay(d => shiftDay(d, 1))}
-                  colors={colors}
-                />
-                <Stepper
-                  label={`${String(replayEndHour).padStart(2, '0')}h00`}
-                  onDec={() => setReplayEndHour(h => Math.max(0, h - 1))}
-                  onInc={() => setReplayEndHour(h => Math.min(23, h + 1))}
-                  colors={colors}
-                />
-              </View>
-            </View>
-
-            <View style={styles.replayDurRow}>
-              {DURATIONS.map(d => (
-                <Pressable
-                  key={d.ms}
-                  onPress={() => setReplayDurMs(d.ms)}
-                  style={[
-                    styles.replayDurBtn,
-                    {
-                      borderColor: replayDurMs === d.ms ? colors.primary : colors.border,
-                      backgroundColor: replayDurMs === d.ms ? colors.primary + '22' : 'transparent',
-                    },
-                  ]}
-                >
-                  <Text style={[
-                    styles.replayDurTxt,
-                    { color: replayDurMs === d.ms ? colors.primary : colors.mutedForeground },
-                  ]}>
-                    {d.label}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-
-            <Pressable
-              style={[styles.lancerBtn, { backgroundColor: colors.primary }]}
-              onPress={handleLancer}
-            >
-              <MaterialCommunityIcons name="play" size={16} color="#121212" />
-              <Text style={styles.lancerTxt}>Lancer</Text>
-            </Pressable>
-          </View>
-
         /* ── Normal panel content ── */
         ) : loading ? (
           <ActivityIndicator color={colors.primary} style={{ marginVertical: 12 }} />
@@ -2204,103 +1975,6 @@ export default function MapScreen() {
               </View>
             )}
 
-            {panelExpanded && (
-              <>
-                <View style={styles.legendRow}>
-                  <View style={styles.legendItem}>
-                    <View style={[styles.legendDot, { backgroundColor: '#4CAF50' }]} />
-                    <Text style={[styles.legendLabel, { color: colors.mutedForeground }]}>Marche</Text>
-                  </View>
-                  <View style={styles.legendItem}>
-                    <View style={[styles.legendDot, { backgroundColor: '#2196F3' }]} />
-                    <Text style={[styles.legendLabel, { color: colors.mutedForeground }]}>Voiture</Text>
-                  </View>
-                  <View style={styles.legendItem}>
-                    <View style={[styles.legendDot, { backgroundColor: '#FFC107' }]} />
-                    <Text style={[styles.legendLabel, { color: colors.mutedForeground }]}>Inconnu</Text>
-                  </View>
-                </View>
-
-                <View style={[styles.avgSection, { borderTopColor: colors.border }]}>
-                  <View style={styles.avgGrid}>
-                    <View style={styles.avgCell}>
-                      <MaterialCommunityIcons name="walk" size={13} color="#4CAF50" />
-                      <Text style={[styles.avgPeriod, { color: colors.mutedForeground }]}>7 jours</Text>
-                      <Text style={[styles.avgVal, { color: colors.foreground }]}>{periodAvg7.walkAvgKmPerDay} km/j</Text>
-                    </View>
-                    <View style={[styles.avgDivider, { backgroundColor: colors.border }]} />
-                    <View style={styles.avgCell}>
-                      <MaterialCommunityIcons name="car" size={13} color="#2196F3" />
-                      <Text style={[styles.avgPeriod, { color: colors.mutedForeground }]}>7 jours</Text>
-                      <Text style={[styles.avgVal, { color: colors.foreground }]}>{periodAvg7.carAvgKmPerDay} km/j</Text>
-                    </View>
-                    <View style={[styles.avgDivider, { backgroundColor: colors.border }]} />
-                    <View style={styles.avgCell}>
-                      <MaterialCommunityIcons name="walk" size={13} color="#4CAF50" />
-                      <Text style={[styles.avgPeriod, { color: colors.mutedForeground }]}>30 jours</Text>
-                      <Text style={[styles.avgVal, { color: colors.foreground }]}>{periodAvg30.walkAvgKmPerDay} km/j</Text>
-                    </View>
-                    <View style={[styles.avgDivider, { backgroundColor: colors.border }]} />
-                    <View style={styles.avgCell}>
-                      <MaterialCommunityIcons name="car" size={13} color="#2196F3" />
-                      <Text style={[styles.avgPeriod, { color: colors.mutedForeground }]}>30 jours</Text>
-                      <Text style={[styles.avgVal, { color: colors.foreground }]}>{periodAvg30.carAvgKmPerDay} km/j</Text>
-                    </View>
-                  </View>
-                  <Pressable
-                    style={[
-                      styles.pauseBtn,
-                      { backgroundColor: paused ? '#4CAF5022' : '#FF572222', borderColor: paused ? '#4CAF50' : '#FF5722' },
-                    ]}
-                    onPress={handleTogglePause}
-                  >
-                    <MaterialCommunityIcons
-                      name={paused ? 'play-circle-outline' : 'pause-circle-outline'}
-                      size={18}
-                      color={paused ? '#4CAF50' : '#FF5722'}
-                    />
-                    <Text style={[styles.pauseTxt, { color: paused ? '#4CAF50' : '#FF5722' }]}>
-                      {paused ? 'Reprendre' : 'Pause'}
-                    </Text>
-                  </Pressable>
-                </View>
-
-                <View style={[styles.backupRow, { borderTopColor: colors.border }]}>
-                  <Pressable
-                    style={[styles.backupBtn, { borderColor: colors.border, opacity: backupBusy ? 0.5 : 1 }]}
-                    onPress={handleExport}
-                    disabled={backupBusy}
-                  >
-                    <MaterialCommunityIcons name="export-variant" size={15} color={colors.mutedForeground} />
-                    <Text style={[styles.backupTxt, { color: colors.mutedForeground }]}>Exporter</Text>
-                  </Pressable>
-                  <Pressable
-                    style={[styles.backupBtn, { borderColor: colors.border, opacity: backupBusy ? 0.5 : 1 }]}
-                    onPress={handleImport}
-                    disabled={backupBusy}
-                  >
-                    <MaterialCommunityIcons name="import" size={15} color={colors.mutedForeground} />
-                    <Text style={[styles.backupTxt, { color: colors.mutedForeground }]}>Importer</Text>
-                  </Pressable>
-                  <Pressable
-                    style={[styles.backupBtn, { borderColor: colors.primary + '88', backgroundColor: colors.primary + '12' }]}
-                    onPress={handleOpenReplay}
-                  >
-                    <MaterialCommunityIcons name="play-circle-outline" size={15} color={colors.primary} />
-                    <Text style={[styles.backupTxt, { color: colors.primary }]}>Replay</Text>
-                  </Pressable>
-                  {dayStats.points.length > 0 && (
-                    <Pressable
-                      style={[styles.backupBtn, { borderColor: '#F4433688', backgroundColor: '#F4433612' }]}
-                      onPress={handleDeleteDay}
-                    >
-                      <MaterialCommunityIcons name="trash-can-outline" size={15} color="#F44336" />
-                      <Text style={[styles.backupTxt, { color: '#F44336' }]}>Effacer</Text>
-                    </Pressable>
-                  )}
-                </View>
-              </>
-            )}
           </>
         )}
       </View>
@@ -2496,149 +2170,7 @@ const styles = StyleSheet.create({
   statLabel: { fontSize: 9, fontFamily: 'Inter_400Regular' },
   statValue: { fontSize: 14, fontFamily: 'Inter_700Bold' },
 
-  avgSection: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    paddingTop: 6,
-    gap: 6,
-  },
-  avgGrid: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  avgCell: { flex: 1, alignItems: 'center', gap: 2 },
-  avgPeriod: { fontSize: 10, fontFamily: 'Inter_400Regular' },
-  avgVal: { fontSize: 13, fontFamily: 'Inter_700Bold' },
-  avgDivider: { width: 1, height: 34, marginHorizontal: 4 },
-
-  pauseBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-    borderWidth: 1,
-  },
-  pauseTxt: { fontSize: 12, fontFamily: 'Inter_500Medium' },
-
-  backupRow: {
-    flexDirection: 'row',
-    gap: 8,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    paddingTop: 6,
-  },
-  backupBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 5,
-    paddingVertical: 6,
-    borderRadius: 8,
-    borderWidth: StyleSheet.hairlineWidth,
-  },
-  backupTxt: { fontSize: 11, fontFamily: 'Inter_500Medium' },
-
-  legendRow: {
-    flexDirection: 'row',
-    gap: 12,
-    alignItems: 'center',
-  },
-  legendItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-  },
-  legendDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-  },
-  legendLabel: {
-    fontSize: 11,
-    fontFamily: 'Inter_400Regular',
-  },
-
   // ── Replay styles ────────────────────────────────────────────────────────────
-
-  replayPanel: { gap: 12 },
-
-  replayPanelHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  replayPanelTitle: {
-    flex: 1,
-    fontSize: 15,
-    fontFamily: 'Inter_600SemiBold',
-  },
-
-  replayRow: {
-    flexDirection: 'row',
-    gap: 0,
-  },
-  replayCol: {
-    flex: 1,
-    gap: 6,
-    alignItems: 'center',
-  },
-  replayColDivider: {
-    width: 1,
-    marginHorizontal: 8,
-    marginVertical: 4,
-  },
-  replayColLabel: {
-    fontSize: 10,
-    fontFamily: 'Inter_400Regular',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-
-  stepper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-  },
-  stepperBtn: {
-    padding: 4,
-  },
-  stepperVal: {
-    fontSize: 13,
-    fontFamily: 'Inter_600SemiBold',
-    minWidth: 72,
-    textAlign: 'center',
-  },
-
-  replayDurRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  replayDurBtn: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: 7,
-    borderRadius: 8,
-    borderWidth: 1,
-  },
-  replayDurTxt: {
-    fontSize: 12,
-    fontFamily: 'Inter_600SemiBold',
-  },
-
-  lancerBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 10,
-    borderRadius: 10,
-  },
-  lancerTxt: {
-    color: '#121212',
-    fontSize: 14,
-    fontFamily: 'Inter_700Bold',
-  },
 
   replayPlayContainer: { gap: 12 },
   replayStatusRow: {
