@@ -45,6 +45,7 @@ export type LocationPoint = {
   timestamp: number;
   activity?: ActivityType;
   speedKmh?: number;
+  altitudeM?: number;
 };
 
 function classifyActivity(speedMs: number | null | undefined): ActivityType {
@@ -405,12 +406,14 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
       if (timeS > 0 && distM / timeS > MAX_SPEED_MS) continue;
     }
 
+    const altM = loc.coords.altitude;
     const point: LocationPoint = {
       lat,
       lng,
       timestamp,
       activity: classifyActivity(speedMs),
       speedKmh: speedMs != null && speedMs >= 0 ? Math.round(speedMs * 3.6) : undefined,
+      altitudeM: altM != null ? Math.round(altM) : undefined,
     };
 
     await appendPoint(point);

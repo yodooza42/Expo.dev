@@ -803,6 +803,149 @@ function TripSpeedChart({
   );
 }
 
+// ── Trip altitude chart ───────────────────────────────────────────────────────
+
+function TripAltitudeChart({
+  points,
+  color,
+  onScrub,
+}: {
+  points: LocationPoint[];
+  color: string;
+  onScrub: (pt: LocationPoint | null) => void;
+}) {
+  const colors = useColors();
+  const [scrubX, setScrubX] = useState<number | null>(null);
+
+  const chartData = useMemo(() => {
+    const pts = points.filter(p => p.altitudeM != null);
+    if (pts.length < 2) return null;
+    let cumDist = 0;
+    const data: Array<{ km: number; alt: number; lat: number; lng: number; ts: number }> = [];
+    data.push({ km: 0, alt: pts[0]!.altitudeM!, lat: pts[0]!.lat, lng: pts[0]!.lng, ts: pts[0]!.timestamp });
+    for (let i = 1; i < pts.length; i++) {
+      cumDist += haversineKm(pts[i - 1]!.lat, pts[i - 1]!.lng, pts[i]!.lat, pts[i]!.lng);
+      data.push({ km: cumDist, alt: pts[i]!.altitudeM!, lat: pts[i]!.lat, lng: pts[i]!.lng, ts: pts[i]!.timestamp });
+    }
+    const alts = data.map(d => d.alt);
+    const minAlt = Math.min(...alts);
+    const maxAlt = Math.max(...alts);
+    const totalKm = Math.max(cumDist, 0.001);
+    let gainM = 0;
+    for (let i = 1; i < data.length; i++) {
+      const delta = data[i]!.alt - data[i - 1]!.alt;
+      if (delta > 0) gainM += delta;
+    }
+    return { data, minAlt, maxAlt, totalKm, gainM: Math.round(gainM) };
+  }, [points]);
+
+  const findNearest = useCallback((x: number, cData: typeof chartData) => {
+    if (!cData) return null;
+    const { data, totalKm } = cData;
+    const W = Dimensions.get('window').width - 32;
+    const PL = 34; const PR = 8; const cW = W - PL - PR;
+    const frac = Math.max(0, Math.min(1, (x - PL) / cW));
+    const targetKm = frac * totalKm;
+    let best = data[0]!;
+    let bestD = Math.abs(best.km - targetKm);
+    for (const d of data) {
+      const dd = Math.abs(d.km - targetKm);
+      if (dd < bestD) { best = d; bestD = dd; }
+    }
+    return best;
+  }, []);
+
+  if (!chartData) return null;
+  const { data, minAlt, maxAlt, totalKm, gainM } = chartData;
+
+  const W = Dimensions.get('window').width - 32;
+  const H = 84;
+  const PL = 34; const PR = 8; const PT = 8; const PB = 16;
+  const cW = W - PL - PR;
+  const cH = H - PT - PB;
+
+  const span = Math.max(maxAlt - minAlt, 1);
+  const mx = (km: number) => PL + (km / totalKm) * cW;
+  const my = (alt: number) => PT + (1 - (alt - minAlt) / span) * cH;
+
+  const pts2 = data.map(d => `${mx(d.km).toFixed(1)},${my(d.alt).toFixed(1)}`);
+  const linePath = `M ${pts2.join(' L ')}`;
+  const areaPath = `${linePath} L ${mx(totalKm).toFixed(1)},${(PT + cH).toFixed(1)} L ${PL},${(PT + cH).toFixed(1)} Z`;
+
+  const scrubPt = scrubX !== null ? findNearest(scrubX, chartData) : null;
+
+  return (
+    <View style={{ borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, paddingTop: 6, paddingBottom: 4 }}>
+      <View
+        onStartShouldSetResponder={() => true}
+        onMoveShouldSetResponder={() => true}
+        onResponderGrant={e => {
+          const x = e.nativeEvent.locationX;
+          setScrubX(x);
+          const nearest = findNearest(x, chartData);
+          onScrub(nearest ? (points.find(p => p.timestamp === nearest.ts) ?? null) : null);
+        }}
+        onResponderMove={e => {
+          const x = e.nativeEvent.locationX;
+          setScrubX(x);
+          const nearest = findNearest(x, chartData);
+          onScrub(nearest ? (points.find(p => p.timestamp === nearest.ts) ?? null) : null);
+        }}
+        onResponderRelease={() => { setScrubX(null); onScrub(null); }}
+        onResponderTerminate={() => { setScrubX(null); onScrub(null); }}
+      >
+        <Svg width={W} height={H}>
+          <Defs>
+            <LinearGradient id="alt_grad" x1="0" y1="0" x2="0" y2="1">
+              <Stop offset="0" stopColor="#9E9E9E" stopOpacity="0.5" />
+              <Stop offset="1" stopColor="#9E9E9E" stopOpacity="0.06" />
+            </LinearGradient>
+          </Defs>
+          <Path d={areaPath} fill="url(#alt_grad)" />
+          <Path d={linePath} stroke="#AAAAAA" strokeWidth={2} fill="none" strokeLinejoin="round" />
+          {scrubPt !== null && scrubX !== null && (
+            <>
+              <SvgLine x1={mx(scrubPt.km)} y1={PT} x2={mx(scrubPt.km)} y2={PT + cH} stroke="#FFFFFFCC" strokeWidth={1.5} />
+              <Circle cx={mx(scrubPt.km)} cy={my(scrubPt.alt)} r={5} fill="#FFFFFF" stroke="#AAAAAA" strokeWidth={2} />
+            </>
+          )}
+          <SvgText x={PL - 3} y={PT + 5} textAnchor="end" fontSize={8} fill="#666">{maxAlt} m</SvgText>
+          <SvgText x={PL - 3} y={PT + cH + 1} textAnchor="end" fontSize={8} fill="#666">{minAlt} m</SvgText>
+          <SvgText x={PL + 1} y={H - 2} textAnchor="start" fontSize={8} fill="#666">0</SvgText>
+          <SvgText x={W - PR} y={H - 2} textAnchor="end" fontSize={8} fill="#666">{totalKm.toFixed(1)} km</SvgText>
+        </Svg>
+      </View>
+
+      {scrubPt ? (
+        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6, paddingHorizontal: 2, paddingTop: 2 }}>
+          <Text style={{ color: '#AAAAAA', fontFamily: 'Inter_700Bold', fontSize: 18, lineHeight: 22 }}>
+            {scrubPt.alt} m
+          </Text>
+          <Text style={{ color: '#555', fontSize: 12 }}>·</Text>
+          <Text style={{ color: '#888', fontFamily: 'Inter_400Regular', fontSize: 12 }}>
+            {scrubPt.km.toFixed(2)} km
+          </Text>
+        </View>
+      ) : (
+        <View style={{ flexDirection: 'row', gap: 20, paddingHorizontal: 2, paddingTop: 2 }}>
+          <View>
+            <Text style={{ color: '#555', fontSize: 9, fontFamily: 'Inter_400Regular', textTransform: 'uppercase', letterSpacing: 0.8 }}>MIN</Text>
+            <Text style={{ color: colors.foreground, fontSize: 14, fontFamily: 'Inter_700Bold' }}>{minAlt} m</Text>
+          </View>
+          <View>
+            <Text style={{ color: '#555', fontSize: 9, fontFamily: 'Inter_400Regular', textTransform: 'uppercase', letterSpacing: 0.8 }}>MAX</Text>
+            <Text style={{ color: colors.foreground, fontSize: 14, fontFamily: 'Inter_700Bold' }}>{maxAlt} m</Text>
+          </View>
+          <View>
+            <Text style={{ color: '#555', fontSize: 9, fontFamily: 'Inter_400Regular', textTransform: 'uppercase', letterSpacing: 0.8 }}>DÉNIVELÉ +</Text>
+            <Text style={{ color: colors.foreground, fontSize: 14, fontFamily: 'Inter_700Bold' }}>+{gainM} m</Text>
+          </View>
+        </View>
+      )}
+    </View>
+  );
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function MapScreen() {
@@ -1665,6 +1808,15 @@ export default function MapScreen() {
             {/* Speed chart */}
             {selectedTripId && !replayMode && tripPoints.length >= 2 && (
               <TripSpeedChart
+                points={tripPoints}
+                color={selectedTripColor}
+                onScrub={handleChartScrub}
+              />
+            )}
+
+            {/* Altitude chart */}
+            {selectedTripId && !replayMode && tripPoints.length >= 2 && (
+              <TripAltitudeChart
                 points={tripPoints}
                 color={selectedTripColor}
                 onScrub={handleChartScrub}
