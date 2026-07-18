@@ -445,11 +445,31 @@ function buildTripInjectScript(
     }
   }
 
+  // Seuil de détection des jonctions inter-segments OSRM (~440 m en degrés)
+  var JUMP_DEG=0.004;
+  function ptDist2(a,b){var d0=a[0]-b[0],d1=a[1]-b[1];return d0*d0+d1*d1;}
+
+  // Dessine la polyligne en découpant aux sauts anormaux (jonctions OSRM/GPS)
+  function drawRoutePoly(ll){
+    var cur=[ll[0]];
+    for(var i=1;i<ll.length;i++){
+      if(ptDist2(ll[i-1],ll[i])>JUMP_DEG*JUMP_DEG){
+        if(cur.length>=2){var p=L.polyline(cur,{color:C,weight:5,opacity:0.95,interactive:false}).addTo(map);window._tripLayers.push(p);}
+        // Jonction fantôme : tirets quasi-transparents
+        var gp=L.polyline([ll[i-1],ll[i]],{color:C,weight:2,opacity:0.12,dashArray:'5 10',interactive:false}).addTo(map);window._tripLayers.push(gp);
+        cur=[ll[i]];
+      } else {
+        cur.push(ll[i]);
+      }
+    }
+    if(cur.length>=2){var p=L.polyline(cur,{color:C,weight:5,opacity:0.95,interactive:false}).addTo(map);window._tripLayers.push(p);}
+  }
+
   function redraw(){
     window._tripLayers.forEach(function(l){l.remove();}); window._tripLayers=[];
     var pts=window._tripEditPts; if(!pts||pts.length<1)return;
     var ll=pts.map(function(p){return[p.lat,p.lng];});
-    var poly=L.polyline(ll,{color:C,weight:5,opacity:0.95,interactive:false}).addTo(map); window._tripLayers.push(poly);
+    drawRoutePoly(ll);
     var sm=L.circleMarker(ll[0],{radius:8,color:'#4CAF50',fillColor:'#4CAF50',fillOpacity:1,weight:2,interactive:false}).addTo(map); window._tripLayers.push(sm);
     if(pts.length>1){
       var em=L.circleMarker(ll[ll.length-1],{radius:8,color:C,fillColor:C,fillOpacity:1,weight:2,interactive:false}).addTo(map); window._tripLayers.push(em);
@@ -480,7 +500,7 @@ function buildTripInjectScript(
     window._tripLayers.forEach(function(l){l.remove();}); window._tripLayers=[];
     var pts=window._tripEditPts; if(!pts||pts.length<1)return;
     var ll=pts.map(function(p){return[p.lat,p.lng];});
-    var poly=L.polyline(ll,{color:C,weight:5,opacity:0.95,interactive:false}).addTo(map); window._tripLayers.push(poly);
+    drawRoutePoly(ll);
     var sm=L.circleMarker(ll[0],{radius:8,color:'#4CAF50',fillColor:'#4CAF50',fillOpacity:1,weight:2,interactive:false}).addTo(map); window._tripLayers.push(sm);
     if(pts.length>1){
       var em=L.circleMarker(ll[ll.length-1],{radius:8,color:C,fillColor:C,fillOpacity:1,weight:2,interactive:false}).addTo(map); window._tripLayers.push(em);

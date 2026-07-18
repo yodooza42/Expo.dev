@@ -99,15 +99,23 @@ function computeFinalDistance(state: TripDetectionState): number {
 function buildFullRoute(state: TripDetectionState): RoutePoint[] {
   const full: RoutePoint[] = [];
   for (const seg of state.segments) {
-    for (const p of seg.points) {
-      full.push(p);
+    // For segments after the first, skip their first point: it was seeded from
+    // the previous segment's OSRM end-point and OSRM may re-snap it to a
+    // slightly different road position, creating a visible "ghost" connector.
+    // We bridge the gap by reusing the already-stored last point of `full`.
+    const start = full.length > 0 ? 1 : 0;
+    for (let j = start; j < seg.points.length; j++) {
+      full.push(seg.points[j]!);
     }
   }
-  // Append current segment simplified to keep storage size reasonable
+  // Append current (unflushed) segment — simplified to cap storage size.
+  // Also skip its first point when flushed segments already populated `full`
+  // (same reason: it's the seed point from the last flush).
   if (state.routePoints.length > 0) {
     const simplified = simplifyRoute(state.routePoints);
-    for (const p of simplified) {
-      full.push(p);
+    const start = full.length > 0 ? 1 : 0;
+    for (let j = start; j < simplified.length; j++) {
+      full.push(simplified[j]!);
     }
   }
   return full;
