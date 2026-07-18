@@ -1673,18 +1673,32 @@ export default function MapScreen() {
   const handleGenerateStory = useCallback(() => {
     if (!selectedTrip || tripPoints.length < 2 || isGeneratingStory) return;
 
+    // ── Route : tracé propre stocké (OSRM ou GPS simplifié), fallback GPS brut ──
+    const storedRoute = selectedTrip.route ?? [];
+    const route: Array<{ lat: number; lng: number }> =
+      storedRoute.length >= 2
+        ? storedRoute
+        : tripPoints
+            .filter((_, i) => i % Math.max(1, Math.floor(tripPoints.length / 150)) === 0 || i === tripPoints.length - 1)
+            .map(p => ({ lat: p.lat, lng: p.lng }));
+
+    // ── Chart : sous-échantillonnage des points GPS (vitesse + altitude) ────────
     const step = Math.max(1, Math.floor(tripPoints.length / 100));
     const sampled: LocationPoint[] = [];
     for (let i = 0; i < tripPoints.length; i++) {
       if (i % step === 0 || i === tripPoints.length - 1) sampled.push(tripPoints[i]!);
     }
 
-    let cumDist = 0;
-    const chartPts: Array<{ km: number; spd: number; alt: number | null }> = [];
+    // Distance GPS brute (peut être gonflée par le bruit) → normaliser sur la vraie distance du trajet
+    let rawCumDist = 0;
+    const rawChartPts: Array<{ km: number; spd: number; alt: number | null }> = [];
     for (let i = 0; i < sampled.length; i++) {
-      if (i > 0) cumDist += haversineKm(sampled[i - 1]!.lat, sampled[i - 1]!.lng, sampled[i]!.lat, sampled[i]!.lng);
-      chartPts.push({ km: parseFloat(cumDist.toFixed(3)), spd: sampled[i]!.speedKmh ?? 0, alt: sampled[i]!.altitudeM ?? null });
+      if (i > 0) rawCumDist += haversineKm(sampled[i - 1]!.lat, sampled[i - 1]!.lng, sampled[i]!.lat, sampled[i]!.lng);
+      rawChartPts.push({ km: rawCumDist, spd: sampled[i]!.speedKmh ?? 0, alt: sampled[i]!.altitudeM ?? null });
     }
+    const actualDistKm = selectedTrip.distanceKm;
+    const distScale = rawCumDist > 0 ? actualDistKm / rawCumDist : 1;
+    const chartPts = rawChartPts.map(p => ({ ...p, km: parseFloat((p.km * distScale).toFixed(3)) }));
 
     const speeds = tripPoints.map(p => p.speedKmh ?? 0);
     const maxSpeed = Math.max(...speeds, 1);
@@ -1707,18 +1721,12 @@ export default function MapScreen() {
     const timeLabel = `${fmtH(startDate)} → ${fmtH(new Date(selectedTrip.endTime))}`;
     const vehicleEmoji = vehicleInfoFromList(selectedTrip.vehicle, vehicles).emoji;
 
-    const routeStep = Math.max(1, Math.floor(tripPoints.length / 150));
-    const route: Array<{ lat: number; lng: number }> = [];
-    for (let i = 0; i < tripPoints.length; i++) {
-      if (i % routeStep === 0 || i === tripPoints.length - 1) route.push({ lat: tripPoints[i]!.lat, lng: tripPoints[i]!.lng });
-    }
-
     const opts = {
       color: selectedTripColor,
       vehicleEmoji,
       dateLabel,
       timeLabel,
-      distKm: parseFloat(cumDist.toFixed(1)),
+      distKm: parseFloat(actualDistKm.toFixed(1)),
       durationLabel,
       maxSpeed,
       gainM: Math.round(gainM),
