@@ -29,6 +29,7 @@ import {
   computeOdometer,
   getTrips,
   getVehicleSettings,
+  migrateCleanGhostRoutes,
   purgeOldTrips,
   updateTrip,
 } from '@/utils/tripStorage';
@@ -100,6 +101,7 @@ function RootLayoutNav() {
     rebuildBackupListFromSAF().catch(() => {});
     runDailyBackupIfNeeded().catch(() => {});
     getVehicleSettings().then(setVehicles).catch(() => {});
+    migrateCleanGhostRoutes().catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [checkPendingTrips]);
 
