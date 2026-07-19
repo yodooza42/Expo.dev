@@ -828,7 +828,7 @@ export default function TripMapScreen() {
 
       {/* Fixed info + charts panel — no scroll */}
       {trip && (
-        <View style={{ flex: 1, paddingHorizontal: 16, paddingTop: 8 }}>
+        <View style={{ flex: 1, paddingHorizontal: 16, paddingTop: 4 }}>
           {/* Legend */}
           {(trip.route || osrmRoute) && (
             <View style={[styles.legendRow, { marginBottom: 4 }]}>
@@ -902,7 +902,7 @@ export default function TripMapScreen() {
           )}
 
           {/* Date + vehicle row */}
-          <View style={[styles.dtRow, { marginTop: 8, marginBottom: 2 }]}>
+          <View style={[styles.dtRow, { marginTop: 4, marginBottom: 0 }]}>
             <Pressable onPress={handleOpenDtPicker} style={({ pressed }) => [{ flex: 1, opacity: pressed ? 0.65 : 1 }]} hitSlop={6}>
               <Text style={[styles.dateText, { color: colors.foreground }]}>{fmtDayLong(trip.startTime)}</Text>
               <Text style={[styles.timeText, { color: colors.mutedForeground }]}>{fmtHHMM(trip.startTime)} → {fmtHHMM(trip.endTime)}</Text>
@@ -998,7 +998,7 @@ export default function TripMapScreen() {
 
       {/* Fixed bottom bar */}
       {!screenshotMode && trip && (
-        <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 10, backgroundColor: colors.card, borderTopColor: colors.border }]}>
+        <View style={[styles.bottomBar, { paddingBottom: insets.bottom, backgroundColor: colors.card, borderTopColor: colors.border }]}>
           <View style={styles.bottomBarLeft}>
             {([10, 20, 30, 60] as const).map(s => (
               <Pressable
@@ -1224,7 +1224,7 @@ const styles = StyleSheet.create({
   dtRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   dateText: { fontSize: 17, fontFamily: 'Inter_600SemiBold', textTransform: 'capitalize' },
   timeText: { fontSize: 13, fontFamily: 'Inter_400Regular' },
-  statsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 14, marginTop: 8 },
+  statsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 14, marginTop: 4 },
   participantChip: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 4 },
   participantChipText: { fontSize: 12, fontFamily: 'Inter_400Regular' },
   statItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
@@ -1237,8 +1237,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    paddingBottom: 12,
-    marginBottom: 4,
+    paddingBottom: 6,
+    marginBottom: 2,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   addrBannerCol: {
