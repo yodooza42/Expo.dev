@@ -20,6 +20,15 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import WebView from 'react-native-webview';
+import Svg, {
+  Defs,
+  LinearGradient,
+  Line,
+  Polygon,
+  Polyline,
+  Stop,
+  Text as SvgText,
+} from 'react-native-svg';
 
 import { TripMapView } from '@/components/TripMapView';
 import { useColors } from '@/hooks/useColors';
@@ -365,6 +374,11 @@ export default function TripMapScreen() {
   const [draftStart, setDraftStart] = useState<Date>(new Date());
   const [draftEnd, setDraftEnd] = useState<Date>(new Date());
 
+  const [replaySpeed, setReplaySpeed] = useState<1 | 2 | 5 | 10>(1);
+  const [chartPts, setChartPts] = useState<Array<{ km: number; spd: number; alt: number | null }>>([]);
+  const [chartStats, setChartStats] = useState<{ avgSpd: number; maxSpd: number; minAlt: number; maxAlt: number; gainM: number } | null>(null);
+  const [chartLoading, setChartLoading] = useState(false);
+
   const [isGeneratingStory, setIsGeneratingStory] = useState(false);
   const [storyProgress, setStoryProgress]         = useState(0);
   const storyChunksRef = useRef<{ mime: string; chunks: string[]; total: number }>({ mime: 'video/mp4', chunks: [], total: 0 });
@@ -543,6 +557,48 @@ export default function TripMapScreen() {
     getWalkRoutes().then(setWalkRoutes).catch(() => {});
   }, []);
 
+  useEffect(() => {
+    if (!trip) return;
+    setChartLoading(true);
+    setChartPts([]);
+    setChartStats(null);
+    void (async () => {
+      try {
+        const gpsPoints = await loadMultiDayPoints(trip.startTime, trip.endTime);
+        const tripPoints = gpsPoints.filter(p => p.timestamp >= trip.startTime && p.timestamp <= trip.endTime);
+        if (tripPoints.length < 2) { setChartLoading(false); return; }
+
+        const step = Math.max(1, Math.floor(tripPoints.length / 200));
+        const sampled = tripPoints.filter((_, i) => i % step === 0 || i === tripPoints.length - 1);
+
+        let rawCumDist = 0;
+        const pts: Array<{ km: number; spd: number; alt: number | null }> = [];
+        for (let i = 0; i < sampled.length; i++) {
+          if (i > 0) rawCumDist += haversineKm(sampled[i - 1]!.lat, sampled[i - 1]!.lng, sampled[i]!.lat, sampled[i]!.lng);
+          pts.push({ km: rawCumDist, spd: sampled[i]!.speedKmh ?? 0, alt: sampled[i]!.altitudeM ?? null });
+        }
+        const distScale = rawCumDist > 0 ? trip.distanceKm / rawCumDist : 1;
+        const scaledPts = pts.map(p => ({ ...p, km: p.km * distScale }));
+
+        const speeds = tripPoints.map(p => p.speedKmh ?? 0);
+        const avgSpd = speeds.length > 0 ? speeds.reduce((a, b) => a + b, 0) / speeds.length : 0;
+        const maxSpd = Math.max(...speeds, 0);
+        const alts = tripPoints.map(p => p.altitudeM).filter((a): a is number => a != null);
+        const minAlt = alts.length > 0 ? Math.min(...alts) : 0;
+        const maxAlt = alts.length > 0 ? Math.max(...alts) : 0;
+        let gainM = 0;
+        for (let i = 1; i < tripPoints.length; i++) {
+          const a = tripPoints[i]!.altitudeM, b = tripPoints[i - 1]!.altitudeM;
+          if (a != null && b != null && a > b) gainM += a - b;
+        }
+
+        setChartPts(scaledPts);
+        setChartStats({ avgSpd: Math.round(avgSpd), maxSpd: Math.round(maxSpd), minAlt: Math.round(minAlt), maxAlt: Math.round(maxAlt), gainM: Math.round(gainM) });
+      } catch { /* no GPS data */ }
+      setChartLoading(false);
+    })();
+  }, [trip?.id]);
+
   function fetchOsrmRoute(t: Trip) {
     if (!t.startLat || !t.startLon || !t.endLat || !t.endLon) return;
     setLoadingRoute(true);
@@ -651,15 +707,13 @@ export default function TripMapScreen() {
     tripEvents.emitTripUpdated();
   }
 
-  const MAP_H = SCREEN_H * 0.62;
+  const MAP_H = SCREEN_H * 0.40;
   const MAP_W = SCREEN_W;
 
   const editingLabel = editingField === 'start' ? 'Lieu de départ' : "Lieu d'arrivée";
   const editingInitial = editingField === 'start'
     ? (trip?.startAddress ?? '')
     : (trip?.endAddress ?? '');
-
-  const hasAnyAddress = !!(trip?.startAddress || trip?.endAddress);
 
   const isWalkTrip = !!trip && vehicles.some(v => v.id === trip.vehicle && v.type === 'walk');
   const walkRouteName = isWalkTrip && trip?.walkRouteId
@@ -668,8 +722,13 @@ export default function TripMapScreen() {
 
   const walkVehicle = isWalkTrip ? vehicles.find(v => v.id === trip!.vehicle) : null;
   const allWalkParticipants: WalkParticipant[] = walkVehicle?.walkParticipants ?? [];
-  const humanParticipants = allWalkParticipants.filter(p => p.type === 'human');
-  const dogParticipants   = allWalkParticipants.filter(p => p.type === 'dog');
+
+  const vehColor = (() => {
+    const veh = vehicles.find(v => v.id === trip?.vehicle);
+    return veh?.type === 'walk' ? '#4CAF50'
+      : veh?.type === 'moto' || trip?.vehicle === 'moto' ? '#FF9800'
+      : '#2196F3';
+  })();
 
   return (
     <View style={[styles.root, { backgroundColor: '#121212' }]}>
@@ -679,17 +738,13 @@ export default function TripMapScreen() {
         style={[styles.backBtn, backLabel ? styles.backBtnLabelled : undefined, { top: insets.top + 10 }]}
       >
         <MaterialCommunityIcons name="chevron-left" size={26} color="#fff" />
-        {backLabel ? (
-          <Text style={styles.backBtnLabel}>{backLabel}</Text>
-        ) : null}
+        {backLabel ? <Text style={styles.backBtnLabel}>{backLabel}</Text> : null}
       </Pressable>
 
-      {/* Map area */}
+      {/* Map — 40% fixed height */}
       <View style={{ width: MAP_W, height: MAP_H, overflow: 'hidden' }}>
         {loading ? (
-          <View style={styles.center}>
-            <ActivityIndicator color="#FFC107" />
-          </View>
+          <View style={styles.center}><ActivityIndicator color="#FFC107" /></View>
         ) : (() => {
           const displayRoute = trip?.route && trip.route.length >= 2 ? trip.route : osrmRoute;
           if (!displayRoute || displayRoute.length < 2) {
@@ -716,194 +771,16 @@ export default function TripMapScreen() {
         })()}
       </View>
 
-      {/* Info card */}
+      {/* Scrollable info + charts */}
       {trip && (
-        <View style={[styles.card, { backgroundColor: colors.card, borderTopColor: colors.border }]}>
-          {/* Address banner / walk route chip */}
-          {isWalkTrip ? (
-            <View style={[styles.addrBannerCol, { borderBottomColor: colors.border }]}>
-              {/* Row 1: parcours chip + participants button */}
-              <View style={styles.walkTopRow}>
-                {/* Parcours */}
-                <Pressable
-                  onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setPickingRoute(true); }}
-                  style={({ pressed }) => [styles.walkRoutePressable, { opacity: pressed ? 0.65 : 1, flex: 1 }]}
-                >
-                  {walkRouteName ? (
-                    <View style={styles.walkRouteChip}>
-                      <MaterialCommunityIcons name="walk" size={14} color="#4CAF50" />
-                      <Text style={[styles.walkRouteChipText, { color: '#4CAF50' }]}>{walkRouteName}</Text>
-                    </View>
-                  ) : (
-                    <View style={[styles.walkRouteChip, { backgroundColor: colors.muted }]}>
-                      <MaterialCommunityIcons name="walk" size={14} color={colors.mutedForeground} />
-                      <Text style={[styles.walkRouteChipText, { color: colors.mutedForeground }]}>Aucun parcours</Text>
-                    </View>
-                  )}
-                  <MaterialCommunityIcons name="pencil-outline" size={13} color={colors.mutedForeground} />
-                </Pressable>
-
-                {/* Participants button */}
-                {allWalkParticipants.length > 0 && (
-                  <Pressable
-                    onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setPickingParticipants(true); }}
-                    style={[styles.walkRouteChip, {
-                      backgroundColor: walkParticipantIds.length > 0 ? '#2196F318' : colors.muted,
-                      borderWidth: 1,
-                      borderColor: walkParticipantIds.length > 0 ? '#2196F360' : colors.border,
-                    }]}
-                  >
-                    <MaterialCommunityIcons
-                      name="account-group-outline"
-                      size={14}
-                      color={walkParticipantIds.length > 0 ? '#2196F3' : colors.mutedForeground}
-                    />
-                    <Text style={[styles.walkRouteChipText, { color: walkParticipantIds.length > 0 ? '#2196F3' : colors.mutedForeground }]}>
-                      Participants
-                    </Text>
-                  </Pressable>
-                )}
-              </View>
-
-              {/* Row 2: selected participant names */}
-              {walkParticipantIds.length > 0 && (
-                <Text style={[styles.walkParticipantsLabel, { color: colors.mutedForeground }]}>
-                  {walkParticipantIds
-                    .map(pid => allWalkParticipants.find(p => p.id === pid)?.name)
-                    .filter((n): n is string => !!n)
-                    .join(' · ')}
-                </Text>
-              )}
-            </View>
-          ) : (
-            <View style={[styles.addrBanner, { borderBottomColor: colors.border }]}>
-              <AddressBadge
-                address={trip.startAddress}
-                placeId={trip.startPlaceId}
-                dotColor="#4CAF50"
-                categories={placeCategories}
-                places={knownPlaces}
-                colors={colors}
-                onPress={() => setEditingField('start')}
-              />
-              <MaterialCommunityIcons name="arrow-right" size={13} color={colors.mutedForeground} />
-              <AddressBadge
-                address={trip.endAddress}
-                placeId={trip.endPlaceId}
-                dotColor="#FFC107"
-                categories={placeCategories}
-                places={knownPlaces}
-                colors={colors}
-                onPress={() => setEditingField('end')}
-              />
-            </View>
-          )}
-
-          <View style={styles.dtRow}>
-            <Pressable
-              onPress={handleOpenDtPicker}
-              style={({ pressed }) => [{ flex: 1, opacity: pressed ? 0.65 : 1 }]}
-              hitSlop={6}
-            >
-              <Text style={[styles.dateText, { color: colors.foreground }]}>
-                {fmtDayLong(trip.startTime)}
-              </Text>
-              <Text style={[styles.timeText, { color: colors.mutedForeground }]}>
-                {fmtHHMM(trip.startTime)} → {fmtHHMM(trip.endTime)}
-              </Text>
-            </Pressable>
-            {(() => {
-              const veh = vehicles.find(v => v.id === trip.vehicle);
-              const vColor = veh?.type === 'walk' ? '#4CAF50'
-                : veh?.type === 'moto' || trip.vehicle === 'moto' ? '#FF9800'
-                : '#2196F3';
-              return (
-                <Pressable
-                  onPress={handleGenerateStory}
-                  disabled={isGeneratingStory}
-                  style={[styles.tripStoryBtn, { borderColor: vColor, opacity: isGeneratingStory ? 0.5 : 1 }]}
-                >
-                  <MaterialCommunityIcons name="instagram" size={13} color={vColor} />
-                  <Text style={[styles.tripStoryTxt, { color: vColor }]}>Story</Text>
-                </Pressable>
-              );
-            })()}
-            <Pressable onPress={handleOpenDtPicker} hitSlop={6}>
-              <MaterialCommunityIcons name="pencil-outline" size={15} color={colors.mutedForeground} />
-            </Pressable>
-          </View>
-          {isGeneratingStory && (() => {
-            const veh = vehicles.find(v => v.id === trip.vehicle);
-            const vColor = veh?.type === 'walk' ? '#4CAF50'
-              : veh?.type === 'moto' || trip.vehicle === 'moto' ? '#FF9800'
-              : '#2196F3';
-            return (
-              <View style={styles.storyProgressRow}>
-                <Text style={styles.storyProgressLabel}>Génération… {storyProgress}%</Text>
-                <View style={styles.storyProgressTrack}>
-                  <View style={[styles.storyProgressFill, { width: `${storyProgress}%` as `${number}%`, backgroundColor: vColor }]} />
-                </View>
-              </View>
-            );
-          })()}
-
-          <View style={styles.statsRow}>
-            <StatItem
-              icon="map-marker-distance"
-              value={`${trip.distanceKm.toFixed(1)} km`}
-              color="#FFC107"
-            />
-            <StatItem
-              icon="clock-outline"
-              value={fmtDuration(trip.endTime - trip.startTime)}
-              color={colors.mutedForeground}
-            />
-            <StatItem
-              icon={
-                trip.source === 'manual'
-                  ? 'pencil-outline'
-                  : trip.routeSource === 'osrm'
-                    ? 'road-variant'
-                    : 'navigation-variant-outline'
-              }
-              value={
-                trip.source === 'manual'
-                  ? 'Trajet manuel'
-                  : trip.routeSource === 'osrm'
-                    ? 'Tracé routier'
-                    : `${trip.pointCount} pts GPS`
-              }
-              color={
-                trip.routeSource === 'osrm' ? '#4CAF50' : colors.mutedForeground
-              }
-            />
-            {trip.vehicle && trip.vehicle !== 'ignored' && (() => {
-              const veh = vehicles.find(v => v.id === trip.vehicle);
-              const name = veh?.name ?? (trip.vehicle === 'moto' ? 'Moto' : 'Voiture');
-              const color = veh?.type === 'walk' ? '#4CAF50'
-                : veh?.type === 'moto' || trip.vehicle === 'moto' ? '#FF9800'
-                : '#2196F3';
-              const icon = veh?.type === 'walk' ? 'walk'
-                : veh?.type === 'moto' || trip.vehicle === 'moto' ? 'motorbike'
-                : 'car';
-              return (
-                <View style={[styles.vehicleChip, { backgroundColor: color + '18', borderColor: color + '60' }]}>
-                  <MaterialCommunityIcons name={icon as any} size={14} color={color} />
-                  <Text style={[styles.vehicleChipText, { color }]}>{name}</Text>
-                </View>
-              );
-            })()}
-          </View>
-
-          {!!participantName && (
-            <View style={styles.participantChip}>
-              <MaterialCommunityIcons name="account-outline" size={13} color="#4CAF50" />
-              <Text style={[styles.participantChipText, { color: colors.mutedForeground }]}>Avec {participantName}</Text>
-            </View>
-          )}
-
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Legend */}
           {(trip.route || osrmRoute) && (
-            <View style={styles.legendRow}>
+            <View style={[styles.legendRow, { marginBottom: 10 }]}>
               <View style={styles.legendItem}>
                 <View style={[styles.legendDot, { backgroundColor: '#4CAF50' }]} />
                 <Text style={[styles.legendText, { color: colors.mutedForeground }]}>Départ</Text>
@@ -921,83 +798,195 @@ export default function TripMapScreen() {
               </Text>
             </View>
           )}
+
+          {/* Address banner */}
+          {isWalkTrip ? (
+            <View style={[styles.addrBannerCol, { borderBottomColor: colors.border }]}>
+              <View style={styles.walkTopRow}>
+                <Pressable
+                  onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setPickingRoute(true); }}
+                  style={({ pressed }) => [styles.walkRoutePressable, { opacity: pressed ? 0.65 : 1, flex: 1 }]}
+                >
+                  {walkRouteName ? (
+                    <View style={styles.walkRouteChip}>
+                      <MaterialCommunityIcons name="walk" size={14} color="#4CAF50" />
+                      <Text style={[styles.walkRouteChipText, { color: '#4CAF50' }]}>{walkRouteName}</Text>
+                    </View>
+                  ) : (
+                    <View style={[styles.walkRouteChip, { backgroundColor: colors.muted }]}>
+                      <MaterialCommunityIcons name="walk" size={14} color={colors.mutedForeground} />
+                      <Text style={[styles.walkRouteChipText, { color: colors.mutedForeground }]}>Aucun parcours</Text>
+                    </View>
+                  )}
+                  <MaterialCommunityIcons name="pencil-outline" size={13} color={colors.mutedForeground} />
+                </Pressable>
+                {allWalkParticipants.length > 0 && (
+                  <Pressable
+                    onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setPickingParticipants(true); }}
+                    style={[styles.walkRouteChip, {
+                      backgroundColor: walkParticipantIds.length > 0 ? '#2196F318' : colors.muted,
+                      borderWidth: 1,
+                      borderColor: walkParticipantIds.length > 0 ? '#2196F360' : colors.border,
+                    }]}
+                  >
+                    <MaterialCommunityIcons name="account-group-outline" size={14} color={walkParticipantIds.length > 0 ? '#2196F3' : colors.mutedForeground} />
+                    <Text style={[styles.walkRouteChipText, { color: walkParticipantIds.length > 0 ? '#2196F3' : colors.mutedForeground }]}>Participants</Text>
+                  </Pressable>
+                )}
+              </View>
+              {walkParticipantIds.length > 0 && (
+                <Text style={[styles.walkParticipantsLabel, { color: colors.mutedForeground }]}>
+                  {walkParticipantIds.map(pid => allWalkParticipants.find(p => p.id === pid)?.name).filter((n): n is string => !!n).join(' · ')}
+                </Text>
+              )}
+            </View>
+          ) : (
+            <View style={[styles.addrBanner, { borderBottomColor: colors.border }]}>
+              <AddressBadge address={trip.startAddress} placeId={trip.startPlaceId} dotColor="#4CAF50" categories={placeCategories} places={knownPlaces} colors={colors} onPress={() => setEditingField('start')} />
+              <MaterialCommunityIcons name="arrow-right" size={13} color={colors.mutedForeground} />
+              <AddressBadge address={trip.endAddress} placeId={trip.endPlaceId} dotColor="#FFC107" categories={placeCategories} places={knownPlaces} colors={colors} onPress={() => setEditingField('end')} />
+            </View>
+          )}
+
+          {/* Date + vehicle row */}
+          <View style={[styles.dtRow, { marginTop: 12 }]}>
+            <Pressable onPress={handleOpenDtPicker} style={({ pressed }) => [{ flex: 1, opacity: pressed ? 0.65 : 1 }]} hitSlop={6}>
+              <Text style={[styles.dateText, { color: colors.foreground }]}>{fmtDayLong(trip.startTime)}</Text>
+              <Text style={[styles.timeText, { color: colors.mutedForeground }]}>{fmtHHMM(trip.startTime)} → {fmtHHMM(trip.endTime)}</Text>
+            </Pressable>
+            {trip.vehicle && trip.vehicle !== 'ignored' && (() => {
+              const veh = vehicles.find(v => v.id === trip.vehicle);
+              const color = veh?.type === 'walk' ? '#4CAF50' : veh?.type === 'moto' || trip.vehicle === 'moto' ? '#FF9800' : '#2196F3';
+              const icon = veh?.type === 'walk' ? 'walk' : veh?.type === 'moto' || trip.vehicle === 'moto' ? 'motorbike' : 'car';
+              const name = veh?.name ?? (trip.vehicle === 'moto' ? 'Moto' : 'Voiture');
+              return (
+                <View style={[styles.vehicleChip, { backgroundColor: color + '18', borderColor: color + '60' }]}>
+                  <MaterialCommunityIcons name={icon as any} size={14} color={color} />
+                  <Text style={[styles.vehicleChipText, { color }]}>{name}</Text>
+                </View>
+              );
+            })()}
+            <Pressable onPress={handleOpenDtPicker} hitSlop={6}>
+              <MaterialCommunityIcons name="pencil-outline" size={15} color={colors.mutedForeground} />
+            </Pressable>
+          </View>
+
+          {/* Stats row */}
+          <View style={[styles.statsRow, { marginTop: 10, marginBottom: 20 }]}>
+            <StatItem icon="map-marker-distance" value={`${trip.distanceKm.toFixed(1)} km`} color="#FFC107" />
+            <StatItem icon="clock-outline" value={fmtDuration(trip.endTime - trip.startTime)} color={colors.mutedForeground} />
+            <StatItem
+              icon={trip.source === 'manual' ? 'pencil-outline' : trip.routeSource === 'osrm' ? 'road-variant' : 'navigation-variant-outline'}
+              value={trip.source === 'manual' ? 'Trajet manuel' : trip.routeSource === 'osrm' ? 'Tracé routier' : `${trip.pointCount} pts GPS`}
+              color={trip.routeSource === 'osrm' ? '#4CAF50' : colors.mutedForeground}
+            />
+          </View>
+
+          {!!participantName && (
+            <View style={[styles.participantChip, { marginBottom: 16 }]}>
+              <MaterialCommunityIcons name="account-outline" size={13} color="#4CAF50" />
+              <Text style={[styles.participantChipText, { color: colors.mutedForeground }]}>Avec {participantName}</Text>
+            </View>
+          )}
+
+          {/* Speed chart */}
+          {chartLoading ? (
+            <View style={[styles.chartPlaceholder, { marginBottom: 24 }]}>
+              <ActivityIndicator size="small" color="#2196F3" />
+            </View>
+          ) : chartPts.length >= 2 ? (
+            <View style={{ marginBottom: 24 }}>
+              <SpeedChart
+                points={chartPts}
+                avgSpeed={chartStats?.avgSpd ?? 0}
+                maxSpeed={chartStats?.maxSpd ?? 0}
+                width={SCREEN_W - 40}
+              />
+              <View style={styles.chartStatsRow}>
+                <ChartStat label="MOY" value={`${chartStats?.avgSpd ?? 0} km/h`} />
+                <ChartStat label="MAX" value={`${chartStats?.maxSpd ?? 0} km/h`} />
+                <ChartStat label="DURÉE" value={fmtDuration(trip.endTime - trip.startTime)} />
+              </View>
+            </View>
+          ) : null}
+
+          {/* Altitude chart */}
+          {chartPts.length >= 2 && chartPts.some(p => p.alt != null) ? (
+            <View style={{ marginBottom: 24 }}>
+              <AltChart points={chartPts} width={SCREEN_W - 40} />
+              <View style={styles.chartStatsRow}>
+                <ChartStat label="MIN" value={`${chartStats?.minAlt ?? 0} m`} />
+                <ChartStat label="MAX" value={`${chartStats?.maxAlt ?? 0} m`} />
+                <ChartStat label="DÉNIVELÉ +" value={`+${chartStats?.gainM ?? 0} m`} />
+              </View>
+            </View>
+          ) : null}
+        </ScrollView>
+      )}
+
+      {/* Story progress */}
+      {trip && isGeneratingStory && (
+        <View style={[styles.storyProgressRow, { backgroundColor: colors.card }]}>
+          <Text style={styles.storyProgressLabel}>Génération story… {storyProgress}%</Text>
+          <View style={styles.storyProgressTrack}>
+            <View style={[styles.storyProgressFill, { width: `${storyProgress}%` as `${number}%`, backgroundColor: vehColor }]} />
+          </View>
+        </View>
+      )}
+
+      {/* Fixed bottom bar */}
+      {trip && (
+        <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 10, backgroundColor: colors.card, borderTopColor: colors.border }]}>
+          <View style={styles.bottomBarLeft}>
+            {([1, 2, 5, 10] as const).map(s => (
+              <Pressable
+                key={s}
+                onPress={() => { Haptics.selectionAsync(); setReplaySpeed(s); }}
+                style={[styles.speedChip, replaySpeed === s && styles.speedChipActive]}
+              >
+                <Text style={[styles.speedChipText, replaySpeed === s && styles.speedChipTextActive]}>×{s}</Text>
+              </Pressable>
+            ))}
+          </View>
+          <View style={styles.bottomBarRight}>
+            <Pressable
+              style={styles.replayBtn}
+              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); }}
+            >
+              <MaterialCommunityIcons name="play" size={15} color="#fff" />
+              <Text style={styles.replayBtnText}>Replay</Text>
+            </Pressable>
+            <Pressable
+              onPress={handleGenerateStory}
+              disabled={isGeneratingStory}
+              style={[styles.storyBtn, { borderColor: vehColor, opacity: isGeneratingStory ? 0.5 : 1 }]}
+            >
+              <MaterialCommunityIcons name="instagram" size={13} color={vehColor} />
+              <Text style={[styles.storyBtnText, { color: vehColor }]}>Story</Text>
+            </Pressable>
+          </View>
         </View>
       )}
 
       {/* Date / time pickers */}
-      {dtPickerStep === 'date' && (
-        <DateTimePicker
-          value={draftStart}
-          mode="date"
-          display="calendar"
-          maximumDate={new Date()}
-          onChange={handleDateChange}
-        />
-      )}
-      {dtPickerStep === 'startTime' && (
-        <DateTimePicker
-          value={draftStart}
-          mode="time"
-          display="clock"
-          is24Hour
-          onChange={handleStartTimeChange}
-        />
-      )}
-      {dtPickerStep === 'endTime' && (
-        <DateTimePicker
-          value={draftEnd}
-          mode="time"
-          display="clock"
-          is24Hour
-          onChange={handleEndTimeChange}
-        />
-      )}
+      {dtPickerStep === 'date' && <DateTimePicker value={draftStart} mode="date" display="calendar" maximumDate={new Date()} onChange={handleDateChange} />}
+      {dtPickerStep === 'startTime' && <DateTimePicker value={draftStart} mode="time" display="clock" is24Hour onChange={handleStartTimeChange} />}
+      {dtPickerStep === 'endTime' && <DateTimePicker value={draftEnd} mode="time" display="clock" is24Hour onChange={handleEndTimeChange} />}
 
-      {/* Walk route picker */}
-      <WalkRoutePickerModal
-        visible={pickingRoute}
-        routes={walkRoutes}
-        currentId={trip?.walkRouteId}
-        colors={colors}
-        onClose={() => setPickingRoute(false)}
-        onPick={handlePickWalkRoute}
-      />
-
-      {/* Walk participant picker */}
-      <WalkParticipantPickerModal
-        visible={pickingParticipants}
-        allParticipants={allWalkParticipants}
-        selectedIds={walkParticipantIds}
-        colors={colors}
-        onClose={() => setPickingParticipants(false)}
-        onToggle={handleToggleParticipant}
-      />
-
-      {/* Edit-address modal */}
+      <WalkRoutePickerModal visible={pickingRoute} routes={walkRoutes} currentId={trip?.walkRouteId} colors={colors} onClose={() => setPickingRoute(false)} onPick={handlePickWalkRoute} />
+      <WalkParticipantPickerModal visible={pickingParticipants} allParticipants={allWalkParticipants} selectedIds={walkParticipantIds} colors={colors} onClose={() => setPickingParticipants(false)} onToggle={handleToggleParticipant} />
       <EditAddressModal
         visible={editingField !== null}
         label={editingLabel}
         initialValue={editingInitial}
-        suggestions={sortSuggestionsByUsage(
-          knownPlaces.map(p => p.name),
-          DEFAULT_SUGGESTIONS,
-          addressUsage,
-        )}
+        suggestions={sortSuggestionsByUsage(knownPlaces.map(p => p.name), DEFAULT_SUGGESTIONS, addressUsage)}
         colors={colors}
         onCancel={() => setEditingField(null)}
         onSave={handleSaveAddress}
         onChipUsed={handleChipUsed}
       />
 
-      {/* Hidden WebView for story generation */}
-      <WebView
-        ref={storyWebViewRef}
-        source={{ html: storyHtml }}
-        onMessage={handleStoryWebViewMessage}
-        javaScriptEnabled
-        mediaPlaybackRequiresUserAction={false}
-        style={styles.storyWebView}
-      />
+      <WebView ref={storyWebViewRef} source={{ html: storyHtml }} onMessage={handleStoryWebViewMessage} javaScriptEnabled mediaPlaybackRequiresUserAction={false} style={styles.storyWebView} />
     </View>
   );
 }
@@ -1008,6 +997,92 @@ function StatItem({ icon, value, color }: { icon: string; value: string; color: 
       <MaterialCommunityIcons name={icon as any} size={16} color={color} />
       <Text style={[styles.statValue, { color }]}>{value}</Text>
     </View>
+  );
+}
+
+function ChartStat({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.chartStatItem}>
+      <Text style={styles.chartStatLabel}>{label}</Text>
+      <Text style={styles.chartStatValue}>{value}</Text>
+    </View>
+  );
+}
+
+function SpeedChart({ points, avgSpeed, maxSpeed, width }: {
+  points: Array<{ km: number; spd: number; alt: number | null }>;
+  avgSpeed: number;
+  maxSpeed: number;
+  width: number;
+}) {
+  const H = 90;
+  const PAD_TOP = 18;
+  const PAD_BOT = 10;
+  const chartH = H - PAD_TOP - PAD_BOT;
+  const maxKm = Math.max(points[points.length - 1]!.km, 0.001);
+  const maxSpd = Math.max(maxSpeed, 1);
+
+  const xs = points.map(p => (p.km / maxKm) * width);
+  const ys = points.map(p => PAD_TOP + chartH - (Math.min(p.spd, maxSpd) / maxSpd) * chartH);
+
+  const polyPts = points.map((_, i) => `${xs[i]},${ys[i]}`).join(' ');
+  const areaPts = `${xs[0]},${H} ` + points.map((_, i) => `${xs[i]},${ys[i]}`).join(' ') + ` ${xs[xs.length - 1]},${H}`;
+  const avgY = PAD_TOP + chartH - (Math.min(avgSpeed, maxSpd) / maxSpd) * chartH;
+
+  return (
+    <Svg width={width} height={H}>
+      <Defs>
+        <LinearGradient id="spd" x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor="#2196F3" stopOpacity={0.55} />
+          <Stop offset="1" stopColor="#2196F3" stopOpacity={0.04} />
+        </LinearGradient>
+      </Defs>
+      <Polygon points={areaPts} fill="url(#spd)" />
+      <Polyline points={polyPts} fill="none" stroke="#2196F3" strokeWidth={1.5} />
+      <Line x1={0} y1={avgY} x2={width} y2={avgY} stroke="#2196F3" strokeWidth={1} strokeDasharray="4 4" opacity={0.6} />
+      <SvgText x={4} y={PAD_TOP - 4} fontSize={9} fill="#2196F3" opacity={0.8}>{maxSpeed} km/h</SvgText>
+      <SvgText x={4} y={H - 2} fontSize={9} fill="#444">0</SvgText>
+      <SvgText x={width - 2} y={H - 2} fontSize={9} fill="#444" textAnchor="end">{maxKm.toFixed(1)} km</SvgText>
+    </Svg>
+  );
+}
+
+function AltChart({ points, width }: {
+  points: Array<{ km: number; spd: number; alt: number | null }>;
+  width: number;
+}) {
+  const altPts = points.filter((p): p is { km: number; spd: number; alt: number } => p.alt != null);
+  if (altPts.length < 2) return null;
+
+  const H = 90;
+  const PAD_TOP = 18;
+  const PAD_BOT = 10;
+  const chartH = H - PAD_TOP - PAD_BOT;
+  const maxKm = Math.max(altPts[altPts.length - 1]!.km, 0.001);
+  const minAlt = Math.min(...altPts.map(p => p.alt));
+  const maxAlt = Math.max(...altPts.map(p => p.alt));
+  const range = Math.max(maxAlt - minAlt, 1);
+
+  const xs = altPts.map(p => (p.km / maxKm) * width);
+  const ys = altPts.map(p => PAD_TOP + chartH - ((p.alt - minAlt) / range) * chartH);
+
+  const polyPts = altPts.map((_, i) => `${xs[i]},${ys[i]}`).join(' ');
+  const areaPts = `${xs[0]},${H} ` + altPts.map((_, i) => `${xs[i]},${ys[i]}`).join(' ') + ` ${xs[xs.length - 1]},${H}`;
+
+  return (
+    <Svg width={width} height={H}>
+      <Defs>
+        <LinearGradient id="alt" x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor="#9E9E9E" stopOpacity={0.5} />
+          <Stop offset="1" stopColor="#9E9E9E" stopOpacity={0.04} />
+        </LinearGradient>
+      </Defs>
+      <Polygon points={areaPts} fill="url(#alt)" />
+      <Polyline points={polyPts} fill="none" stroke="#9E9E9E" strokeWidth={1.5} />
+      <SvgText x={4} y={PAD_TOP - 4} fontSize={9} fill="#777">{Math.round(maxAlt)} m</SvgText>
+      <SvgText x={4} y={H - 2} fontSize={9} fill="#444">{Math.round(minAlt)} m</SvgText>
+      <SvgText x={width - 2} y={H - 2} fontSize={9} fill="#444" textAnchor="end">{maxKm.toFixed(1)} km</SvgText>
+    </Svg>
   );
 }
 
@@ -1169,4 +1244,79 @@ const styles = StyleSheet.create({
     height: 1,
     opacity: 0,
   },
+  scrollContent: {
+    paddingHorizontal: 20,
+    paddingTop: 14,
+    paddingBottom: 16,
+  },
+  chartPlaceholder: {
+    height: 90,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#1A1A1A',
+    borderRadius: 8,
+  },
+  chartStatsRow: {
+    flexDirection: 'row',
+    gap: 28,
+    marginTop: 12,
+  },
+  chartStatItem: { gap: 3 },
+  chartStatLabel: {
+    fontSize: 10,
+    fontFamily: 'Inter_400Regular',
+    color: '#555',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
+  chartStatValue: {
+    fontSize: 18,
+    fontFamily: 'Inter_700Bold',
+    color: '#fff',
+  },
+  bottomBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    gap: 8,
+  },
+  bottomBarLeft: { flexDirection: 'row', gap: 6, flex: 1, alignItems: 'center' },
+  bottomBarRight: { flexDirection: 'row', gap: 8, alignItems: 'center' },
+  speedChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 8,
+    backgroundColor: '#1E1E1E',
+    minWidth: 34,
+    alignItems: 'center',
+  },
+  speedChipActive: {
+    backgroundColor: '#2196F320',
+    borderWidth: 1,
+    borderColor: '#2196F360',
+  },
+  speedChipText: { fontSize: 12, fontFamily: 'Inter_500Medium', color: '#555' },
+  speedChipTextActive: { color: '#2196F3' },
+  replayBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    borderRadius: 8,
+    backgroundColor: '#2196F3',
+  },
+  replayBtnText: { fontSize: 13, fontFamily: 'Inter_700Bold', color: '#fff' },
+  storyBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  storyBtnText: { fontSize: 12, fontFamily: 'Inter_700Bold' },
 });
