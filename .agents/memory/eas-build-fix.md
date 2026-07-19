@@ -35,7 +35,7 @@ Run `eas whoami` first to confirm the EXPO_TOKEN matches the `owner` in app.json
 | yo13juills-team | yo13juill | 0e087e7f… | exhausted Jul 2026 |
 | yoann42s-teami | yoann-20 | 206fa3d3… | exhausted Jul 2026 |
 | stpyoann202027rbfifs-team | yoann-20 | 2bfd24b3… | exhausted Jul 2026 |
-| **yo1907cjeicjebfs-team** | **yoann-20** | **80f5b084-24ba-42e5-8377-5c6b055e4538** | **ACTIVE — build v94 soumis Jul 2026** |
+| **yo1907cjeicjebfs-team** | **yoann-20** | **80f5b084-24ba-42e5-8377-5c6b055e4538** | **ACTIVE — build v96 soumis 19 Jul 2026** |
 
 **app.json currently points to: yo1907cjeicjebfs-team / yoann-20 / 80f5b084-24ba-42e5-8377-5c6b055e4538**
 
