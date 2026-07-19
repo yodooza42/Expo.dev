@@ -57,7 +57,7 @@ import { getNavShortcuts } from '@/utils/navigationShortcuts';
 import { matchRouteOSRM, computeRouteDistanceKm } from '@/utils/osrmMatching';
 import { findNearestPlace, getKnownPlaces } from '@/utils/placesStorage';
 import { simplifyRoute } from '@/utils/routeSimplification';
-import { saveTrip } from '@/utils/tripStorage';
+import { getVehicleSettings, saveTrip } from '@/utils/tripStorage';
 import { AllInOneWidget } from './AllInOneWidget';
 import { getWidgetDataFromStorage } from './data';
 
@@ -438,11 +438,6 @@ async function handleTripEnd(
   resetTripTracking();
   await renderWidget(doRender, 'idle');
 
-  // Ouvre la page trajets si balade
-  if (savedMode === 'balade') {
-    Linking.openURL('yoann2:///(tabs)/trips').catch(() => {});
-  }
-
   const endLoc = await getCurrentPosition();
   const endLat = endLoc?.coords.latitude  ?? manualState.startLat;
   const endLon = endLoc?.coords.longitude ?? manualState.startLon;
@@ -510,6 +505,19 @@ async function handleTripEnd(
     source: 'manual',
   };
 
+  // Pré-assigne le véhicule selon le mode widget — évite le prompt "Quel véhicule?"
+  if (savedMode === 'voiture') {
+    trip.vehicle = 'car';
+  } else if (savedMode === 'moto') {
+    trip.vehicle = 'moto';
+  } else if (savedMode === 'balade') {
+    try {
+      const vehicleSettings = await getVehicleSettings();
+      const walkVehicle = vehicleSettings.find(v => v.type === 'walk');
+      if (walkVehicle) trip.vehicle = walkVehicle.id;
+    } catch {}
+  }
+
   const [startPlace, endPlace] = await Promise.all([
     findNearestPlace(trip.startLat!, trip.startLon!).catch(() => null),
     findNearestPlace(trip.endLat!, trip.endLon!).catch(() => null),
@@ -532,11 +540,16 @@ async function handleTripEnd(
 
   await saveTrip(trip);
 
+  // Ouvre directement la page du trajet balade pour choisir les participants
+  if (savedMode === 'balade') {
+    Linking.openURL(`yoann2:///trip-map?id=${trip.id}`).catch(() => {});
+  }
+
   await Notifications.scheduleNotificationAsync({
     content: {
       title: 'Trajet terminé — Yoann 2.0',
-      body: `${trip.distanceKm.toFixed(1)} km · Touchez pour sélectionner le véhicule`,
-      data: { url: '/(tabs)/trips', type: 'trip_completed' },
+      body: `${trip.distanceKm.toFixed(1)} km`,
+      data: { url: `/trip-map?id=${trip.id}`, type: 'trip_completed' },
     },
     trigger: null,
   }).catch(() => {});
