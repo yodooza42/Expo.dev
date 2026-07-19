@@ -6,7 +6,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as MediaLibrary from 'expo-media-library';
 import * as Sharing from 'expo-sharing';
 import { captureRef } from 'react-native-view-shot';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -805,6 +805,15 @@ export default function TripMapScreen() {
     : undefined;
 
   const walkVehicle = isWalkTrip ? vehicles.find(v => v.id === trip!.vehicle) : null;
+
+  // Intermediate stop positions for map waypoint dots
+  const intermediateWaypoints = useMemo(() => {
+    if (!trip?.intermediates?.length) return [];
+    return trip.intermediates
+      .map(int => knownPlaces.find(p => p.id === int.placeId))
+      .filter((p): p is NonNullable<typeof p> => p != null)
+      .map(p => ({ lat: p.lat, lng: p.lng }));
+  }, [trip?.intermediates, knownPlaces]);
   const allWalkParticipants: WalkParticipant[] = walkVehicle?.walkParticipants ?? [];
 
   const vehColor = (() => {
@@ -859,6 +868,7 @@ export default function TripMapScreen() {
               width={MAP_W}
               height={MAP_H}
               lineColor={trip?.source === 'manual' ? '#2196F3' : '#FFC107'}
+              waypoints={intermediateWaypoints.length > 0 ? intermediateWaypoints : undefined}
             />
           );
         })()}
@@ -878,6 +888,12 @@ export default function TripMapScreen() {
                 <View style={[styles.legendDot, { backgroundColor: trip.source === 'manual' ? '#2196F3' : '#FFC107' }]} />
                 <Text style={[styles.legendText, { color: colors.mutedForeground }]}>Arrivée</Text>
               </View>
+              {trip.intermediates && trip.intermediates.length > 0 && (
+                <View style={styles.legendItem}>
+                  <View style={[styles.legendDot, { backgroundColor: '#FFC107' }]} />
+                  <Text style={[styles.legendText, { color: colors.mutedForeground }]}>Étape</Text>
+                </View>
+              )}
               {!screenshotMode && (
                 <Text style={[styles.legendText, { color: trip.routeSource === 'osrm' ? '#4CAF50' : colors.mutedForeground }]}>
                   {trip.source === 'manual'
@@ -941,6 +957,16 @@ export default function TripMapScreen() {
             <View style={[styles.addrBanner, { borderBottomColor: colors.border }]}>
               <AddressBadge address={trip.startAddress} placeId={trip.startPlaceId} dotColor="#4CAF50" categories={placeCategories} places={knownPlaces} colors={colors} hideEdit={screenshotMode} onPress={() => setEditingField('start')} />
               <MaterialCommunityIcons name="arrow-right" size={13} color={colors.mutedForeground} />
+              {trip.intermediates && trip.intermediates.length > 0 ? (
+                <>
+                  <Text style={[styles.legendText, { color: '#FFC107', fontFamily: 'Inter_500Medium' }]}>
+                    {trip.intermediates.length === 1
+                      ? trip.intermediates[0]!.name
+                      : `${trip.intermediates.length} étapes`}
+                  </Text>
+                  <MaterialCommunityIcons name="arrow-right" size={13} color={colors.mutedForeground} />
+                </>
+              ) : null}
               <AddressBadge address={trip.endAddress} placeId={trip.endPlaceId} dotColor="#FFC107" categories={placeCategories} places={knownPlaces} colors={colors} hideEdit={screenshotMode} onPress={() => setEditingField('end')} />
             </View>
           )}

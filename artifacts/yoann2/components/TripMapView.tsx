@@ -11,13 +11,15 @@ interface Props {
   bgColor?: string;
   /** Route line color, default #FFC107 */
   lineColor?: string;
+  /** Intermediate stop positions — rendered as yellow waypoint dots */
+  waypoints?: Array<{ lat: number; lng: number }>;
 }
 
 const PAD = 0.12;
 
-export function TripMapView({ route, width, height, bgColor = '#1A1A1A', lineColor = '#FFC107' }: Props) {
-  const { pointsStr, startX, startY, endX, endY } = useMemo(() => {
-    if (!route || route.length < 2) return { pointsStr: '', startX: 0, startY: 0, endX: 0, endY: 0 };
+export function TripMapView({ route, width, height, bgColor = '#1A1A1A', lineColor = '#FFC107', waypoints }: Props) {
+  const { pointsStr, startX, startY, endX, endY, toX, toY } = useMemo(() => {
+    if (!route || route.length < 2) return { pointsStr: '', startX: 0, startY: 0, endX: 0, endY: 0, toX: () => 0, toY: () => 0 };
 
     const lats = route.map(p => p.lat);
     const lngs = route.map(p => p.lng);
@@ -65,6 +67,8 @@ export function TripMapView({ route, width, height, bgColor = '#1A1A1A', lineCol
       startY: toY(s.lat),
       endX: toX(e.lng),
       endY: toY(e.lat),
+      toX,
+      toY,
     };
   }, [route, width, height]);
 
@@ -82,6 +86,17 @@ export function TripMapView({ route, width, height, bgColor = '#1A1A1A', lineCol
         strokeLinecap="round"
         opacity={0.9}
       />
+      {/* Intermediate waypoints — yellow diamond-ish dots */}
+      {waypoints?.map((wp, i) => {
+        const cx = toX(wp.lng);
+        const cy = toY(wp.lat);
+        return (
+          <React.Fragment key={i}>
+            <Circle cx={cx} cy={cy} r={5} fill="#FFC107" opacity={0.95} />
+            <Circle cx={cx} cy={cy} r={2.5} fill="#121212" />
+          </React.Fragment>
+        );
+      })}
       {/* Start — green */}
       <Circle cx={startX} cy={startY} r={6} fill="#4CAF50" opacity={0.9} />
       <Circle cx={startX} cy={startY} r={3} fill="#fff" />
