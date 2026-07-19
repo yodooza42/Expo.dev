@@ -434,9 +434,9 @@ export default function TripMapScreen() {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setIsCapturing(true);
     setScreenshotMode(true);
-    await new Promise(r => setTimeout(r, 150));
+    await new Promise(r => setTimeout(r, 600));
     try {
-      const uri = await captureRef(captureViewRef, { format: 'jpg', quality: 0.95 });
+      const uri = await captureRef(captureViewRef, { format: 'png', quality: 1 });
       setScreenshotMode(false);
       setIsCapturing(false);
       Alert.alert(
@@ -831,7 +831,7 @@ export default function TripMapScreen() {
     : 90;
 
   return (
-    <View ref={captureViewRef} style={[styles.root, { backgroundColor: '#121212' }]}>
+    <View ref={captureViewRef} collapsable={false} style={[styles.root, { backgroundColor: '#121212' }]}>
       {/* Back button */}
       {!screenshotMode && (
         <Pressable
