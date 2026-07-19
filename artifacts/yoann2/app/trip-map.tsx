@@ -846,7 +846,7 @@ export default function TripMapScreen() {
 
       {/* Fixed info + charts panel — no scroll */}
       {trip && (
-        <View style={{ flex: 1, paddingHorizontal: 16, paddingTop: 4 }}>
+        <View style={{ paddingHorizontal: 16, paddingTop: 4 }}>
           {/* Legend */}
           {(trip.route || osrmRoute) && (
             <View style={[styles.legendRow, { marginBottom: 4 }]}>
