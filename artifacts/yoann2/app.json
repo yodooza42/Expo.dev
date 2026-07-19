@@ -26,7 +26,14 @@
         "android.permission.FOREGROUND_SERVICE_DATA_SYNC",
         "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
         "android.permission.POST_NOTIFICATIONS",
-        "android.permission.WAKE_LOCK"
+        "android.permission.WAKE_LOCK",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
+        "android.permission.ACCESS_MEDIA_LOCATION",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_MEDIA_VIDEO",
+        "android.permission.READ_MEDIA_AUDIO"
       ]
     },
     "web": {
@@ -116,7 +123,7 @@
     },
     "extra": {
       "eas": {
-        "projectId": "2bfd24b3-58f5-470c-92d8-487b9d469576"
+        "projectId": "80f5b084-24ba-42e5-8377-5c6b055e4538"
       },
       "router": {
         "origin": "https://replit.com/"
