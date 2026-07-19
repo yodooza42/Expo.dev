@@ -376,7 +376,7 @@ export default function TripMapScreen() {
   const [draftStart, setDraftStart] = useState<Date>(new Date());
   const [draftEnd, setDraftEnd] = useState<Date>(new Date());
 
-  const [replaySpeed, setReplaySpeed] = useState<1 | 2 | 5 | 10>(1);
+  const [storyDuration, setStoryDuration] = useState<10 | 20 | 30 | 60>(20);
   const [chartPts, setChartPts] = useState<Array<{ km: number; spd: number; alt: number | null }>>([]);
   const [chartStats, setChartStats] = useState<{ avgSpd: number; maxSpd: number; minAlt: number; maxAlt: number; gainM: number } | null>(null);
   const [chartLoading, setChartLoading] = useState(false);
@@ -545,6 +545,7 @@ export default function TripMapScreen() {
           hasAlt: alts.length > 0,
           points: chartPts,
           route,
+          videoDurationSec: storyDuration,
         };
 
         storyWebViewRef.current?.injectJavaScript(`(function(){window.generateStory(${JSON.stringify(opts)});})();true;`);
@@ -999,13 +1000,13 @@ export default function TripMapScreen() {
       {!screenshotMode && trip && (
         <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 10, backgroundColor: colors.card, borderTopColor: colors.border }]}>
           <View style={styles.bottomBarLeft}>
-            {([1, 2, 5, 10] as const).map(s => (
+            {([10, 20, 30, 60] as const).map(s => (
               <Pressable
                 key={s}
-                onPress={() => { Haptics.selectionAsync(); setReplaySpeed(s); }}
-                style={[styles.speedChip, replaySpeed === s && styles.speedChipActive]}
+                onPress={() => { Haptics.selectionAsync(); setStoryDuration(s); }}
+                style={[styles.speedChip, storyDuration === s && styles.speedChipActive]}
               >
-                <Text style={[styles.speedChipText, replaySpeed === s && styles.speedChipTextActive]}>×{s}</Text>
+                <Text style={[styles.speedChipText, storyDuration === s && styles.speedChipTextActive]}>{s === 60 ? '1min' : `${s}s`}</Text>
               </Pressable>
             ))}
           </View>
