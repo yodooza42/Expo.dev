@@ -3,7 +3,7 @@
     "name": "Yoann2.0",
     "slug": "yoann-20",
     "owner": "yo1907cjeicjebfs-team",
-    "version": "1.0.102",
+    "version": "1.0.103",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "yoann2",
@@ -15,7 +15,7 @@
     "android": {
       "backgroundColor": "#121212",
       "package": "com.yoann2.app",
-      "versionCode": 102,
+      "versionCode": 103,
       "permissions": [
         "android.permission.RECORD_AUDIO",
         "android.permission.ACCESS_COARSE_LOCATION",

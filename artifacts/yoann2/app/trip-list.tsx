@@ -344,7 +344,7 @@ function RenameLabelModal({
 
 // ── LabelCard ─────────────────────────────────────────────────────────────────
 function LabelCard({
-  label, allTrips, colors, onUpdate, onDelete, onRename, vehicles, onRemoveTripFromLabel,
+  label, allTrips, colors, onUpdate, onDelete, onRename, vehicles, onRemoveTripFromLabel, onDeleteTrip,
 }: {
   label: TripLabel;
   allTrips: Trip[];
@@ -354,6 +354,7 @@ function LabelCard({
   onRename: () => void;
   vehicles?: Vehicle[];
   onRemoveTripFromLabel: (tripId: string) => void;
+  onDeleteTrip?: (id: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
 
@@ -410,7 +411,7 @@ function LabelCard({
         <View style={styles.catTrips}>
           {labelTrips.map(t => (
             <View key={t.id}>
-              <TripRow trip={t} colors={colors} onUpdate={onUpdate} compact vehicles={vehicles} />
+              <TripRow trip={t} colors={colors} onUpdate={onUpdate} compact vehicles={vehicles} onDelete={onDeleteTrip ? () => onDeleteTrip(t.id) : undefined} />
               <Pressable
                 onPress={() => onRemoveTripFromLabel(t.id)}
                 style={[styles.removeLabelBtn, { borderColor: colors.border }]}
@@ -432,7 +433,7 @@ function LabelCard({
 
 // ── CategoryCard ──────────────────────────────────────────────────────────────
 function CategoryCard({
-  category, allTrips, colors, onUpdate, onDelete, onRename, vehicles,
+  category, allTrips, colors, onUpdate, onDelete, onRename, vehicles, onDeleteTrip,
 }: {
   category: TripCategory;
   allTrips: Trip[];
@@ -441,6 +442,7 @@ function CategoryCard({
   onDelete: () => void;
   onRename: () => void;
   vehicles?: Vehicle[];
+  onDeleteTrip?: (id: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const stats = computeCategoryStats(category.id, allTrips);
@@ -516,7 +518,7 @@ function CategoryCard({
       {expanded && (
         <View style={styles.catTrips}>
           {stats.trips.map(t => (
-            <TripRow key={t.id} trip={t} colors={colors} onUpdate={onUpdate} compact vehicles={vehicles} />
+            <TripRow key={t.id} trip={t} colors={colors} onUpdate={onUpdate} compact vehicles={vehicles} onDelete={onDeleteTrip ? () => onDeleteTrip(t.id) : undefined} />
           ))}
           <Pressable onPress={onDelete} style={[styles.deleteCatBtn, { borderColor: colors.border }]}>
             <MaterialCommunityIcons name="trash-can-outline" size={14} color={colors.mutedForeground} />
@@ -598,7 +600,7 @@ function TripRow({
           <Text style={[styles.tripDist, { color: colors.foreground }]}>{trip.distanceKm.toFixed(1)} km</Text>
           <Text style={[styles.tripDur, { color: colors.mutedForeground }]}>{fmtDuration(trip.endTime - trip.startTime)}</Text>
         </View>
-        {!compact && onDelete && (
+        {onDelete && (
           <Pressable
             onPress={() => Alert.alert(
               'Supprimer ce trajet ?',
@@ -1002,7 +1004,7 @@ export default function TripListScreen() {
             <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Trajets</Text>
             {activeCats.map(cat => (
               <CategoryCard key={cat.id} category={cat} allTrips={trips} colors={colors} vehicles={settings}
-                onUpdate={load} onDelete={() => handleDeleteCategory(cat.id)} onRename={() => setRenameTarget(cat)} />
+                onUpdate={load} onDelete={() => handleDeleteCategory(cat.id)} onRename={() => setRenameTarget(cat)} onDeleteTrip={handleDeleteTrip} />
             ))}
             {activeLabels.map(label => (
               <LabelCard
@@ -1015,6 +1017,7 @@ export default function TripListScreen() {
                 onDelete={() => handleDeleteLabel(label.id)}
                 onRename={() => setRenameLabelTarget(label)}
                 onRemoveTripFromLabel={handleRemoveTripFromLabel}
+                onDeleteTrip={handleDeleteTrip}
               />
             ))}
           </View>
