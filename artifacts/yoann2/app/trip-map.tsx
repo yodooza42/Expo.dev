@@ -1015,16 +1015,14 @@ export default function TripMapScreen() {
               onPress={handleScreenshot}
               disabled={isCapturing}
             >
-              <MaterialCommunityIcons name="camera-outline" size={15} color="#fff" />
-              <Text style={styles.screenshotBtnText}>Screenshot</Text>
+              <MaterialCommunityIcons name="camera-outline" size={18} color="#fff" />
             </Pressable>
             <Pressable
               onPress={handleGenerateStory}
               disabled={isGeneratingStory}
               style={[styles.storyBtn, { borderColor: vehColor, opacity: isGeneratingStory ? 0.5 : 1 }]}
             >
-              <MaterialCommunityIcons name="instagram" size={13} color={vehColor} />
-              <Text style={[styles.storyBtnText, { color: vehColor }]}>Story</Text>
+              <MaterialCommunityIcons name="instagram" size={18} color={vehColor} />
             </Pressable>
           </View>
         </View>
@@ -1366,22 +1364,19 @@ const styles = StyleSheet.create({
   speedChipText: { fontSize: 12, fontFamily: 'Inter_500Medium', color: '#555' },
   speedChipTextActive: { color: '#2196F3' },
   screenshotBtn: {
-    flexDirection: 'row',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 16,
-    paddingVertical: 9,
-    borderRadius: 8,
+    justifyContent: 'center',
     backgroundColor: '#2196F3',
   },
-  screenshotBtnText: { fontSize: 13, fontFamily: 'Inter_700Bold', color: '#fff' },
   storyBtn: {
-    flexDirection: 'row',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    borderRadius: 8,
+    justifyContent: 'center',
     borderWidth: 1,
   },
   storyBtnText: { fontSize: 12, fontFamily: 'Inter_700Bold' },
