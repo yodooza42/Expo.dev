@@ -49,6 +49,7 @@ import { tripEvents } from '@/utils/tripEvents';
 import { getTrips, getVehicleSettings, updateTrip } from '@/utils/tripStorage';
 import { fmtDayLong, fmtHHMM } from '@/utils/date';
 import { haversineKm } from '@/utils/haversine';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { loadMultiDayPoints } from '@/utils/locationTracking';
 import { buildStoryHtml } from '@/utils/storyGenerator';
 
@@ -380,6 +381,7 @@ export default function TripMapScreen() {
   const [chartPts, setChartPts] = useState<Array<{ km: number; spd: number; alt: number | null }>>([]);
   const [chartStats, setChartStats] = useState<{ avgSpd: number; maxSpd: number; minAlt: number; maxAlt: number; gainM: number } | null>(null);
   const [chartLoading, setChartLoading] = useState(false);
+  const [chartRefreshKey, setChartRefreshKey] = useState(0);
   const [chartAreaH, setChartAreaH] = useState(0);
 
   const [isGeneratingStory, setIsGeneratingStory] = useState(false);
@@ -643,7 +645,43 @@ export default function TripMapScreen() {
       } catch { /* no GPS data */ }
       setChartLoading(false);
     })();
-  }, [trip?.id]);
+  }, [trip?.id, chartRefreshKey]);
+
+  // ── Injection de données test (vitesse + altitude) ────────────────────────
+  const handleInjectTestData = useCallback(async () => {
+    if (!trip) return;
+    const SPEED_PROFILE  = [0, 15, 40, 75, 100, 115, 105, 90, 65, 45, 30, 15, 0];
+    const ALT_PROFILE    = [195, 200, 210, 220, 225, 222, 215, 205, 195, 185, 180, 177, 175];
+    const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+    const durationMs = trip.endTime - trip.startTime;
+    const intervalMs = 8_000;
+    const count = Math.max(10, Math.floor(durationMs / intervalMs));
+    const startLat = trip.startLat ?? 45.730;
+    const endLat   = trip.endLat   ?? 45.764;
+    const startLng = trip.startLon ?? 4.940;
+    const endLng   = trip.endLon   ?? 4.828;
+    const points = Array.from({ length: count }, (_, i) => {
+      const t = i / Math.max(1, count - 1);
+      const pi = t * (SPEED_PROFILE.length - 1);
+      const lo = Math.floor(pi), hi = Math.min(lo + 1, SPEED_PROFILE.length - 1);
+      const ft = pi - lo;
+      return {
+        lat: lerp(startLat, endLat, t) + (Math.random() - 0.5) * 0.0002,
+        lng: lerp(startLng, endLng, t) + (Math.random() - 0.5) * 0.0002,
+        timestamp: trip.startTime + i * intervalMs,
+        speedKmh: Math.max(0, Math.round(lerp(SPEED_PROFILE[lo]!, SPEED_PROFILE[hi]!, ft) + (Math.random() - 0.5) * 6)),
+        altitudeM: Math.round(lerp(ALT_PROFILE[lo]!, ALT_PROFILE[hi]!, ft) + (Math.random() - 0.5) * 3),
+        activity: 'car' as const,
+      };
+    });
+    const dayKey = (ts: number) => { const d = new Date(ts); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
+    const key = '@yoann2_location_' + dayKey(trip.startTime);
+    const raw = await AsyncStorage.getItem(key);
+    const existing = raw ? JSON.parse(raw) as typeof points : [];
+    const filtered = existing.filter((p: { timestamp: number }) => p.timestamp < trip.startTime || p.timestamp > trip.endTime);
+    await AsyncStorage.setItem(key, JSON.stringify([...filtered, ...points]));
+    setChartRefreshKey(k => k + 1);
+  }, [trip]);
 
   function fetchOsrmRoute(t: Trip) {
     if (!t.startLat || !t.startLon || !t.endLat || !t.endLon) return;
@@ -952,7 +990,18 @@ export default function TripMapScreen() {
               <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
                 <ActivityIndicator size="small" color="#2196F3" />
               </View>
-            ) : chartPts.length >= 2 ? (
+            ) : chartPts.length < 2 ? (
+              <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>Aucune donnée GPS</Text>
+                <Pressable
+                  onPress={handleInjectTestData}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, backgroundColor: '#2196F315', borderWidth: 1, borderColor: '#2196F340' }}
+                >
+                  <MaterialCommunityIcons name="flask-outline" size={14} color="#2196F3" />
+                  <Text style={{ fontSize: 12, color: '#2196F3', fontFamily: 'Inter_500Medium' }}>Injecter données test</Text>
+                </Pressable>
+              </View>
+            ) : (
               <>
                 {/* Speed chart */}
                 <View style={{ flex: 1, marginBottom: hasAltData ? 6 : 0 }}>
@@ -981,7 +1030,7 @@ export default function TripMapScreen() {
                   </View>
                 )}
               </>
-            ) : null}
+            )}
           </View>
         </View>
       )}
