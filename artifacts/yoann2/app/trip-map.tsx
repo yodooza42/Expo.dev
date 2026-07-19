@@ -378,6 +378,7 @@ export default function TripMapScreen() {
   const [chartPts, setChartPts] = useState<Array<{ km: number; spd: number; alt: number | null }>>([]);
   const [chartStats, setChartStats] = useState<{ avgSpd: number; maxSpd: number; minAlt: number; maxAlt: number; gainM: number } | null>(null);
   const [chartLoading, setChartLoading] = useState(false);
+  const [chartAreaH, setChartAreaH] = useState(0);
 
   const [isGeneratingStory, setIsGeneratingStory] = useState(false);
   const [storyProgress, setStoryProgress]         = useState(0);
@@ -707,7 +708,7 @@ export default function TripMapScreen() {
     tripEvents.emitTripUpdated();
   }
 
-  const MAP_H = SCREEN_H * 0.40;
+  const MAP_H = SCREEN_H * 0.45;
   const MAP_W = SCREEN_W;
 
   const editingLabel = editingField === 'start' ? 'Lieu de départ' : "Lieu d'arrivée";
@@ -729,6 +730,13 @@ export default function TripMapScreen() {
       : veh?.type === 'moto' || trip?.vehicle === 'moto' ? '#FF9800'
       : '#2196F3';
   })();
+
+  const hasAltData = chartPts.length >= 2 && chartPts.some(p => p.alt != null);
+  const numCharts  = chartPts.length >= 2 ? (hasAltData ? 2 : 1) : 0;
+  const CHART_STATS_H = 38;
+  const eachChartH = chartAreaH > 0 && numCharts > 0
+    ? Math.max(40, (chartAreaH - CHART_STATS_H * numCharts - (numCharts > 1 ? 6 : 0) - 4 * numCharts) / numCharts)
+    : 90;
 
   return (
     <View style={[styles.root, { backgroundColor: '#121212' }]}>
@@ -771,16 +779,12 @@ export default function TripMapScreen() {
         })()}
       </View>
 
-      {/* Scrollable info + charts */}
+      {/* Fixed info + charts panel — no scroll */}
       {trip && (
-        <ScrollView
-          style={{ flex: 1 }}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-        >
+        <View style={{ flex: 1, paddingHorizontal: 16, paddingTop: 8 }}>
           {/* Legend */}
           {(trip.route || osrmRoute) && (
-            <View style={[styles.legendRow, { marginBottom: 10 }]}>
+            <View style={[styles.legendRow, { marginBottom: 4 }]}>
               <View style={styles.legendItem}>
                 <View style={[styles.legendDot, { backgroundColor: '#4CAF50' }]} />
                 <Text style={[styles.legendText, { color: colors.mutedForeground }]}>Départ</Text>
@@ -849,7 +853,7 @@ export default function TripMapScreen() {
           )}
 
           {/* Date + vehicle row */}
-          <View style={[styles.dtRow, { marginTop: 12 }]}>
+          <View style={[styles.dtRow, { marginTop: 8, marginBottom: 2 }]}>
             <Pressable onPress={handleOpenDtPicker} style={({ pressed }) => [{ flex: 1, opacity: pressed ? 0.65 : 1 }]} hitSlop={6}>
               <Text style={[styles.dateText, { color: colors.foreground }]}>{fmtDayLong(trip.startTime)}</Text>
               <Text style={[styles.timeText, { color: colors.mutedForeground }]}>{fmtHHMM(trip.startTime)} → {fmtHHMM(trip.endTime)}</Text>
@@ -872,7 +876,7 @@ export default function TripMapScreen() {
           </View>
 
           {/* Stats row */}
-          <View style={[styles.statsRow, { marginTop: 10, marginBottom: 20 }]}>
+          <View style={[styles.statsRow, { marginTop: 4, marginBottom: 4 }]}>
             <StatItem icon="map-marker-distance" value={`${trip.distanceKm.toFixed(1)} km`} color="#FFC107" />
             <StatItem icon="clock-outline" value={fmtDuration(trip.endTime - trip.startTime)} color={colors.mutedForeground} />
             <StatItem
@@ -883,45 +887,50 @@ export default function TripMapScreen() {
           </View>
 
           {!!participantName && (
-            <View style={[styles.participantChip, { marginBottom: 16 }]}>
+            <View style={[styles.participantChip, { marginBottom: 4 }]}>
               <MaterialCommunityIcons name="account-outline" size={13} color="#4CAF50" />
               <Text style={[styles.participantChipText, { color: colors.mutedForeground }]}>Avec {participantName}</Text>
             </View>
           )}
 
-          {/* Speed chart */}
-          {chartLoading ? (
-            <View style={[styles.chartPlaceholder, { marginBottom: 24 }]}>
-              <ActivityIndicator size="small" color="#2196F3" />
-            </View>
-          ) : chartPts.length >= 2 ? (
-            <View style={{ marginBottom: 24 }}>
-              <SpeedChart
-                points={chartPts}
-                avgSpeed={chartStats?.avgSpd ?? 0}
-                maxSpeed={chartStats?.maxSpd ?? 0}
-                width={SCREEN_W - 40}
-              />
-              <View style={styles.chartStatsRow}>
-                <ChartStat label="MOY" value={`${chartStats?.avgSpd ?? 0} km/h`} />
-                <ChartStat label="MAX" value={`${chartStats?.maxSpd ?? 0} km/h`} />
-                <ChartStat label="DURÉE" value={fmtDuration(trip.endTime - trip.startTime)} />
+          {/* Charts area — fills all remaining space, no scroll */}
+          <View style={{ flex: 1 }} onLayout={e => setChartAreaH(e.nativeEvent.layout.height)}>
+            {chartLoading ? (
+              <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                <ActivityIndicator size="small" color="#2196F3" />
               </View>
-            </View>
-          ) : null}
-
-          {/* Altitude chart */}
-          {chartPts.length >= 2 && chartPts.some(p => p.alt != null) ? (
-            <View style={{ marginBottom: 24 }}>
-              <AltChart points={chartPts} width={SCREEN_W - 40} />
-              <View style={styles.chartStatsRow}>
-                <ChartStat label="MIN" value={`${chartStats?.minAlt ?? 0} m`} />
-                <ChartStat label="MAX" value={`${chartStats?.maxAlt ?? 0} m`} />
-                <ChartStat label="DÉNIVELÉ +" value={`+${chartStats?.gainM ?? 0} m`} />
-              </View>
-            </View>
-          ) : null}
-        </ScrollView>
+            ) : chartPts.length >= 2 ? (
+              <>
+                {/* Speed chart */}
+                <View style={{ flex: 1, marginBottom: hasAltData ? 6 : 0 }}>
+                  <SpeedChart
+                    points={chartPts}
+                    avgSpeed={chartStats?.avgSpd ?? 0}
+                    maxSpeed={chartStats?.maxSpd ?? 0}
+                    width={SCREEN_W - 32}
+                    height={eachChartH}
+                  />
+                  <View style={[styles.chartStatsRow, { marginTop: 4 }]}>
+                    <ChartStat label="MOY" value={`${chartStats?.avgSpd ?? 0} km/h`} />
+                    <ChartStat label="MAX" value={`${chartStats?.maxSpd ?? 0} km/h`} />
+                    <ChartStat label="DURÉE" value={fmtDuration(trip.endTime - trip.startTime)} />
+                  </View>
+                </View>
+                {/* Altitude chart */}
+                {hasAltData && (
+                  <View style={{ flex: 1 }}>
+                    <AltChart points={chartPts} width={SCREEN_W - 32} height={eachChartH} />
+                    <View style={[styles.chartStatsRow, { marginTop: 4 }]}>
+                      <ChartStat label="MIN" value={`${chartStats?.minAlt ?? 0} m`} />
+                      <ChartStat label="MAX" value={`${chartStats?.maxAlt ?? 0} m`} />
+                      <ChartStat label="DÉNIVELÉ +" value={`+${chartStats?.gainM ?? 0} m`} />
+                    </View>
+                  </View>
+                )}
+              </>
+            ) : null}
+          </View>
+        </View>
       )}
 
       {/* Story progress */}
@@ -1009,13 +1018,14 @@ function ChartStat({ label, value }: { label: string; value: string }) {
   );
 }
 
-function SpeedChart({ points, avgSpeed, maxSpeed, width }: {
+function SpeedChart({ points, avgSpeed, maxSpeed, width, height = 90 }: {
   points: Array<{ km: number; spd: number; alt: number | null }>;
   avgSpeed: number;
   maxSpeed: number;
   width: number;
+  height?: number;
 }) {
-  const H = 90;
+  const H = Math.max(40, height);
   const PAD_TOP = 18;
   const PAD_BOT = 10;
   const chartH = H - PAD_TOP - PAD_BOT;
@@ -1047,14 +1057,15 @@ function SpeedChart({ points, avgSpeed, maxSpeed, width }: {
   );
 }
 
-function AltChart({ points, width }: {
+function AltChart({ points, width, height = 90 }: {
   points: Array<{ km: number; spd: number; alt: number | null }>;
   width: number;
+  height?: number;
 }) {
   const altPts = points.filter((p): p is { km: number; spd: number; alt: number } => p.alt != null);
   if (altPts.length < 2) return null;
 
-  const H = 90;
+  const H = Math.max(40, height);
   const PAD_TOP = 18;
   const PAD_BOT = 10;
   const chartH = H - PAD_TOP - PAD_BOT;
