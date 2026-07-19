@@ -187,8 +187,11 @@ window.generateStory=function(opts){
     ctx.beginPath();ctx.moveTo(0,915);ctx.lineTo(cW,915);ctx.stroke();
     ctx.fillStyle=opts.color;ctx.font='bold 84px Arial,sans-serif';ctx.textAlign='center';
     ctx.fillText((curPt.spd||0)+' km/h',cW/2,882);
+    var elSec=Math.round(prog*opts.durationSec);
+    var elMin=Math.floor(elSec/60);var elH=Math.floor(elMin/60);
+    var elLabel=elH>0?elH+'h'+(elMin%60<10?'0':'')+(elMin%60):(elMin<1?'< 1':elMin)+' min';
     ctx.fillStyle='#555';ctx.font='28px Arial,sans-serif';
-    ctx.fillText((curPt.km||0).toFixed(1)+' km \xB7 '+opts.durationLabel,cW/2,928);
+    ctx.fillText((curPt.km||0).toFixed(1)+' km \xB7 '+elLabel,cW/2,928);
 
     // Speed chart
     var sL=50,sR=670,sTop=965,sH=85;

@@ -518,7 +518,7 @@ export default function TripMapScreen() {
         }
 
         const durationMs = trip.endTime - trip.startTime;
-        const durationLabel = `${Math.round(durationMs / 60000)} min`;
+        const durationSec = Math.round(durationMs / 1000);
         const startDate = new Date(trip.startTime);
         const DAYS   = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
         const MONTHS = ['jan', 'fév', 'mar', 'avr', 'mai', 'juin', 'juil', 'août', 'sep', 'oct', 'nov', 'déc'];
@@ -539,7 +539,7 @@ export default function TripMapScreen() {
           dateLabel,
           timeLabel,
           distKm: parseFloat(trip.distanceKm.toFixed(1)),
-          durationLabel,
+          durationSec,
           maxSpeed,
           gainM: Math.round(gainM),
           minAlt,
