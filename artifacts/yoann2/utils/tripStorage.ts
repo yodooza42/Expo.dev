@@ -1,29 +1,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import type { Trip, TripDetectionState, RouteSegment, RoutePoint, Vehicle, VehicleSettings, OdometerAdjustment } from '@/types/trips';
+import type { Trip, RouteSegment, RoutePoint, Vehicle, VehicleSettings, OdometerAdjustment } from '@/types/trips';
 
 const KEY_TRIPS = '@yoann2_trips';
 const KEY_VEHICLE_SETTINGS = '@yoann2_vehicle_settings';
-const KEY_DETECTION_STATE = '@yoann2_trip_detection_state';
 const KEY_MIGRATION_GHOST_V1 = '@yoann2_migration_ghost_clean_v1';
-
-const DEFAULT_DETECTION_STATE: TripDetectionState = {
-  status: 'idle',
-  candidateSince: 0,
-  candidatePauseSince: 0,
-  startTime: 0,
-  startLat: 0,
-  startLon: 0,
-  lastLat: 0,
-  lastLon: 0,
-  lastTimestamp: 0,
-  lastMovingTime: 0,
-  distanceKm: 0,
-  pointCount: 0,
-  routePoints: [],
-  segments: [],
-  osrmSegmentsCount: 0,
-};
 
 export const DEFAULT_VEHICLES: Vehicle[] = [
   { id: 'car',  name: 'Doblo', type: 'car',  costPerKm: 0.15, odometerBaseKm: 0, maintenanceItems: [] },
@@ -64,32 +45,6 @@ export async function deleteTrip(id: string): Promise<void> {
   } catch {}
 }
 
-export async function getTripDetectionState(): Promise<TripDetectionState> {
-  try {
-    const raw = await AsyncStorage.getItem(KEY_DETECTION_STATE);
-    if (!raw) return { ...DEFAULT_DETECTION_STATE };
-    const parsed = JSON.parse(raw) as TripDetectionState & { segments?: RouteSegment[]; osrmSegmentsCount?: number };
-    if (!Array.isArray(parsed.routePoints)) {
-      parsed.routePoints = [];
-    }
-    // Migration: old states didn't have segments. Treat the current routePoints as the active segment.
-    if (!Array.isArray(parsed.segments)) {
-      parsed.segments = [];
-    }
-    if (typeof parsed.osrmSegmentsCount !== 'number') {
-      parsed.osrmSegmentsCount = parsed.segments.filter(s => s.source === 'osrm').length;
-    }
-    return parsed as TripDetectionState;
-  } catch {
-    return { ...DEFAULT_DETECTION_STATE };
-  }
-}
-
-export async function saveTripDetectionState(state: TripDetectionState): Promise<void> {
-  try {
-    await AsyncStorage.setItem(KEY_DETECTION_STATE, JSON.stringify(state));
-  } catch {}
-}
 
 // ── Odometer helper ───────────────────────────────────────────────────────────
 

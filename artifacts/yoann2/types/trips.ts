@@ -137,23 +137,3 @@ export interface Vehicle {
 /** Array of vehicles — replaces the old {car, moto} fixed object */
 export type VehicleSettings = Vehicle[];
 
-export interface TripDetectionState {
-  status: 'idle' | 'candidate' | 'active' | 'ending';
-  candidateSince: number;
-  candidatePauseSince: number;
-  startTime: number;
-  startLat: number;
-  startLon: number;
-  lastLat: number;
-  lastLon: number;
-  lastTimestamp: number;
-  lastMovingTime: number;
-  distanceKm: number;
-  pointCount: number;
-  /** Raw GPS points accumulated during the current segment (capped at 3 000). */
-  routePoints: RoutePoint[];
-  /** Already-matched segments: their OSRM-corrected distance and route. */
-  segments: RouteSegment[];
-  /** Number of successfully OSRM-matched segments (debug). */
-  osrmSegmentsCount: number;
-}

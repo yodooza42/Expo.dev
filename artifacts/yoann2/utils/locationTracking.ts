@@ -4,7 +4,6 @@ import * as TaskManager from 'expo-task-manager';
 
 import { autoBackup } from '@/utils/locationBackup';
 import { haversineKm } from '@/utils/haversine';
-import { processPointForTrip, TRACKING_MODE_KEY } from '@/utils/tripDetection';
 
 export { haversineKm };
 
@@ -300,12 +299,13 @@ export async function startTracking(): Promise<void> {
   const isRegistered = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME).catch(() => false);
   if (isRegistered) return;
 
-  const mode = (await AsyncStorage.getItem(TRACKING_MODE_KEY).catch(() => null)) ?? 'idle';
-  const tripPhase = mode === 'active' ? 'active' : 'idle';
+  const savedMode = (await AsyncStorage.getItem(TRIP_MODE_KEY).catch(() => null));
+  const tripPhase = savedMode ? 'active' : 'idle';
+  const isWalking = savedMode === 'balade';
 
   await AsyncStorage.setItem(TRACKING_STARTED_MODE_KEY, tripPhase).catch(() => {});
   _currentTripPhase = tripPhase;
-  const opts = await buildLocationOptions(tripPhase);
+  const opts = await buildLocationOptions(tripPhase, isWalking);
   await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, opts);
 }
 
@@ -449,10 +449,6 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
     };
 
     await appendPoint(point);
-    // Pas de détection auto si un trajet manuel est en cours
-    if (!manualActive) {
-      await processPointForTrip(point).catch(() => {});
-    }
 
     // ── Suivi distance + notification FGS expo-location (throttlée à 15 s) ──
     if (manualActive && !manualPaused && lastValid) {
