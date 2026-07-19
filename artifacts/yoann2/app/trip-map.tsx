@@ -1006,38 +1006,6 @@ export default function TripMapScreen() {
             <>
               <TripSpeedChart points={tripLocPts} color={vehColor} onScrub={() => {}} />
               {hasAltData && <TripAltitudeChart points={tripLocPts} color={vehColor} onScrub={() => {}} />}
-              {/* Story/screenshot bar — inline, below altitude chart */}
-              {!screenshotMode && (
-                <View style={[styles.bottomBar, { backgroundColor: colors.card, borderTopColor: colors.border, paddingBottom: insets.bottom }]}>
-                  <View style={styles.bottomBarLeft}>
-                    {([10, 20, 30, 60] as const).map(s => (
-                      <Pressable
-                        key={s}
-                        onPress={() => { Haptics.selectionAsync(); setStoryDuration(s); }}
-                        style={[styles.speedChip, storyDuration === s && styles.speedChipActive]}
-                      >
-                        <Text style={[styles.speedChipText, storyDuration === s && styles.speedChipTextActive]}>{s === 60 ? '1min' : `${s}s`}</Text>
-                      </Pressable>
-                    ))}
-                  </View>
-                  <View style={styles.bottomBarRight}>
-                    <Pressable
-                      style={[styles.screenshotBtn, isCapturing && { opacity: 0.5 }]}
-                      onPress={handleScreenshot}
-                      disabled={isCapturing}
-                    >
-                      <MaterialCommunityIcons name="camera-outline" size={18} color="#fff" />
-                    </Pressable>
-                    <Pressable
-                      onPress={handleGenerateStory}
-                      disabled={isGeneratingStory}
-                      style={[styles.storyBtn, { borderColor: vehColor, opacity: isGeneratingStory ? 0.5 : 1 }]}
-                    >
-                      <MaterialCommunityIcons name="instagram" size={18} color={vehColor} />
-                    </Pressable>
-                  </View>
-                </View>
-              )}
             </>
           )}
         </View>
@@ -1049,6 +1017,39 @@ export default function TripMapScreen() {
           <Text style={styles.storyProgressLabel}>Génération story… {storyProgress}%</Text>
           <View style={styles.storyProgressTrack}>
             <View style={[styles.storyProgressFill, { width: `${storyProgress}%` as `${number}%`, backgroundColor: vehColor }]} />
+          </View>
+        </View>
+      )}
+
+      {/* Story/screenshot bar — sibling at root level so touches aren't clipped by overflow:hidden */}
+      {!screenshotMode && trip && tripLocPts.length >= 2 && (
+        <View style={[styles.bottomBar, { backgroundColor: colors.card, borderTopColor: colors.border, paddingBottom: insets.bottom }]}>
+          <View style={styles.bottomBarLeft}>
+            {([10, 20, 30, 60] as const).map(s => (
+              <Pressable
+                key={s}
+                onPress={() => { Haptics.selectionAsync(); setStoryDuration(s); }}
+                style={[styles.speedChip, storyDuration === s && styles.speedChipActive]}
+              >
+                <Text style={[styles.speedChipText, storyDuration === s && styles.speedChipTextActive]}>{s === 60 ? '1min' : `${s}s`}</Text>
+              </Pressable>
+            ))}
+          </View>
+          <View style={styles.bottomBarRight}>
+            <Pressable
+              style={[styles.screenshotBtn, isCapturing && { opacity: 0.5 }]}
+              onPress={handleScreenshot}
+              disabled={isCapturing}
+            >
+              <MaterialCommunityIcons name="camera-outline" size={18} color="#fff" />
+            </Pressable>
+            <Pressable
+              onPress={handleGenerateStory}
+              disabled={isGeneratingStory}
+              style={[styles.storyBtn, { borderColor: vehColor, opacity: isGeneratingStory ? 0.5 : 1 }]}
+            >
+              <MaterialCommunityIcons name="instagram" size={18} color={vehColor} />
+            </Pressable>
           </View>
         </View>
       )}
