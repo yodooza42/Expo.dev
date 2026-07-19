@@ -15,37 +15,32 @@ Fix: `cd /home/runner/workspace && pnpm install` before every EAS build.
 `react-native-health-connect` pulls `androidx.health.connect:connect-client` which needs minSdkVersion ≥ 26, but expo prebuild defaults to 24 → manifest merger fails. Fix via `expo-build-properties` plugin in app.json.
 
 ## Build command (works)
-**Use the Replit workflow approach** (archive is ~347MB, compression takes ~66s, total >120s — bash tool times out):
-```javascript
-await configureWorkflow({
-  name: "EAS Build vXX",
-  command: `cd /home/runner/workspace/artifacts/yoann2 && EXPO_TOKEN="<token>" GIT_OPTIONAL_LOCKS=0 EAS_SKIP_AUTO_FINGERPRINT=1 /home/runner/workspace/.config/npm/node_global/bin/eas build --platform android --profile production --non-interactive --no-wait 2>&1`,
-  outputType: "console",
-  autoStart: true
-});
-// Wait ~2.5 minutes (compression 66s + upload 5s + auth), then:
-const s = await getWorkflowStatus({ name: "EAS Build vXX", maxScrollbackLines: 100 });
-// Look for "See logs: https://..." in s.output
-await removeWorkflow({ name: "EAS Build vXX" });
+Use `--no-wait` flag so bash doesn't timeout. The global eas binary is at `/home/runner/workspace/.config/npm/node_global/bin/eas`.
+```bash
+cd /home/runner/workspace/artifacts/yoann2 && export EXPO_TOKEN=$EXPO_TOKEN && GIT_OPTIONAL_LOCKS=0 /home/runner/workspace/.config/npm/node_global/bin/eas build --platform android --profile production --non-interactive --no-wait 2>&1
 ```
-The global eas binary is at `/home/runner/workspace/.config/npm/node_global/bin/eas`.
+Archive is ~171MB (after adding .easignore?), uploads in ~3s. Command exits quickly with "See logs: https://..." URL.
+
+## Before running build — owner check
+Run `eas whoami` first to confirm the EXPO_TOKEN matches the `owner` in app.json. If they differ, the build fails with "Owner of project identified by extra.eas.projectId does not match owner specified in the owner field."
 
 ## Account history (monthly quota)
 | Account | Slug | Project ID | Status |
 |---|---|---|---|
 | marie2.0 | yoann20 | 206ea9d5… | exhausted Jul 2026 |
 | yoann42s-team | application-yoann20 | 875e84e9… | exhausted Jul 2026 |
-| stpyoann | yoann-20 | 5b936768-fba3-49ab-b3d6-ce5f820fb035 | exhausted Jul 2026 |
-| yozvfkzucbzbc | yoann-20 | 6774b277-b066-4921-bcbb-b88f0959acb4 | exhausted Jul 2026 |
-| yoann420-team | yoann-20 | 4c6f8706-6d85-44d4-aeea-9c1edf3be837 | exhausted Jul 2026 |
-| yo13juills-team | yo13juill | 0e087e7f-e0c6-45ca-844a-ea88ee3701a8 | exhausted Jul 2026 |
-| yoann42s-teami | yoann-20 | 206fa3d3-8913-4c38-be7e-d228bdcc2e01 | exhausted Jul 2026 |
-| **stpyoann202027rbfifs-team** | **yoann-20** | **2bfd24b3-58f5-470c-92d8-487b9d469576** | **ACTIVE — build v86 soumis Jul 2026** |
+| stpyoann | yoann-20 | 5b936768… | exhausted Jul 2026 |
+| yozvfkzucbzbc | yoann-20 | 6774b277… | exhausted Jul 2026 |
+| yoann420-team | yoann-20 | 4c6f8706… | exhausted Jul 2026 |
+| yo13juills-team | yo13juill | 0e087e7f… | exhausted Jul 2026 |
+| yoann42s-teami | yoann-20 | 206fa3d3… | exhausted Jul 2026 |
+| stpyoann202027rbfifs-team | yoann-20 | 2bfd24b3… | exhausted Jul 2026 |
+| **yo1907cjeicjebfs-team** | **yoann-20** | **80f5b084-24ba-42e5-8377-5c6b055e4538** | **ACTIVE — build v94 soumis Jul 2026** |
 
-**app.json currently points to: stpyoann202027rbfifs-team / yoann-20 / 2bfd24b3-58f5-470c-92d8-487b9d469576**
+**app.json currently points to: yo1907cjeicjebfs-team / yoann-20 / 80f5b084-24ba-42e5-8377-5c6b055e4538**
 
 When user provides new token: update `EXPO_TOKEN` secret AND `app.json` → `expo.owner` + `expo.extra.eas.projectId`.
-Then check `eas whoami` output to confirm owner name matches before running build.
+Then run `eas whoami` to confirm account name, then check owner in app.json matches before running build.
 
 ## Free plan quota
 ~30 Android builds/month per account. Reset 1st of each month. Error: "This account has used its Android builds from the Free plan this month".
