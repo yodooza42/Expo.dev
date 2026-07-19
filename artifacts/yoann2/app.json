@@ -97,6 +97,14 @@
           }
         }
       ],
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Yoann2.0 accède à votre galerie pour sauvegarder les screenshots.",
+          "savePhotosPermission": "Yoann2.0 sauvegarde des photos dans votre galerie.",
+          "isAccessMediaLocationEnabled": true
+        }
+      ],
       "./plugins/with-large-heap",
       "./plugins/with-navigation-app",
       "./plugins/withNotifeeManifest",

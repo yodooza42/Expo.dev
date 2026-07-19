@@ -3,7 +3,9 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import * as MediaLibrary from 'expo-media-library';
 import * as Sharing from 'expo-sharing';
+import { captureRef } from 'react-native-view-shot';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -385,6 +387,9 @@ export default function TripMapScreen() {
   const storyChunksRef = useRef<{ mime: string; chunks: string[]; total: number }>({ mime: 'video/mp4', chunks: [], total: 0 });
   const storyWebViewRef = useRef<WebView>(null);
   const storyHtml = useRef(buildStoryHtml()).current;
+  const captureViewRef = useRef<View>(null);
+  const [screenshotMode, setScreenshotMode] = useState(false);
+  const [isCapturing, setIsCapturing] = useState(false);
 
   const handleStoryWebViewMessage = useCallback((event: { nativeEvent: { data: string } }) => {
     let msg: Record<string, unknown>;
@@ -421,6 +426,45 @@ export default function TripMapScreen() {
       }
     }
   }, []);
+
+  const handleScreenshot = useCallback(async () => {
+    if (isCapturing || !captureViewRef.current) return;
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setIsCapturing(true);
+    setScreenshotMode(true);
+    await new Promise(r => setTimeout(r, 150));
+    try {
+      const uri = await captureRef(captureViewRef, { format: 'jpg', quality: 0.95 });
+      setScreenshotMode(false);
+      setIsCapturing(false);
+      Alert.alert(
+        'Screenshot prêt',
+        '',
+        [
+          {
+            text: 'Partager',
+            onPress: () => void Sharing.shareAsync(uri, { mimeType: 'image/jpeg' }),
+          },
+          {
+            text: 'Sauvegarder dans la galerie',
+            onPress: async () => {
+              const { status } = await MediaLibrary.requestPermissionsAsync();
+              if (status === 'granted') {
+                await MediaLibrary.saveToLibraryAsync(uri);
+                void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              } else {
+                Alert.alert('Permission refusée', 'Autorise l\'accès à la galerie dans les paramètres.');
+              }
+            },
+          },
+          { text: 'Annuler', style: 'cancel' },
+        ]
+      );
+    } catch {
+      setScreenshotMode(false);
+      setIsCapturing(false);
+    }
+  }, [isCapturing]);
 
   const handleGenerateStory = useCallback(() => {
     if (!trip || isGeneratingStory) return;
@@ -740,14 +784,17 @@ export default function TripMapScreen() {
 
   return (
     <View style={[styles.root, { backgroundColor: '#121212' }]}>
+      <View ref={captureViewRef} style={{ flex: 1, backgroundColor: '#121212' }}>
       {/* Back button */}
-      <Pressable
-        onPress={() => router.back()}
-        style={[styles.backBtn, backLabel ? styles.backBtnLabelled : undefined, { top: insets.top + 10 }]}
-      >
-        <MaterialCommunityIcons name="chevron-left" size={26} color="#fff" />
-        {backLabel ? <Text style={styles.backBtnLabel}>{backLabel}</Text> : null}
-      </Pressable>
+      {!screenshotMode && (
+        <Pressable
+          onPress={() => router.back()}
+          style={[styles.backBtn, backLabel ? styles.backBtnLabelled : undefined, { top: insets.top + 10 }]}
+        >
+          <MaterialCommunityIcons name="chevron-left" size={26} color="#fff" />
+          {backLabel ? <Text style={styles.backBtnLabel}>{backLabel}</Text> : null}
+        </Pressable>
+      )}
 
       {/* Map — 40% fixed height */}
       <View style={{ width: MAP_W, height: MAP_H, overflow: 'hidden' }}>
@@ -793,13 +840,15 @@ export default function TripMapScreen() {
                 <View style={[styles.legendDot, { backgroundColor: trip.source === 'manual' ? '#2196F3' : '#FFC107' }]} />
                 <Text style={[styles.legendText, { color: colors.mutedForeground }]}>Arrivée</Text>
               </View>
-              <Text style={[styles.legendText, { color: trip.routeSource === 'osrm' ? '#4CAF50' : colors.mutedForeground }]}>
-                {trip.source === 'manual'
-                  ? 'Itinéraire estimé (OSRM)'
-                  : trip.routeSource === 'osrm'
-                    ? `Tracé routier OSRM · ${trip.route?.length ?? 0} pts`
-                    : `${trip.route?.length ?? 0} pts (tracé GPS simplifié)`}
-              </Text>
+              {!screenshotMode && (
+                <Text style={[styles.legendText, { color: trip.routeSource === 'osrm' ? '#4CAF50' : colors.mutedForeground }]}>
+                  {trip.source === 'manual'
+                    ? 'Itinéraire estimé (OSRM)'
+                    : trip.routeSource === 'osrm'
+                      ? `Tracé routier OSRM · ${trip.route?.length ?? 0} pts`
+                      : `${trip.route?.length ?? 0} pts (tracé GPS simplifié)`}
+                </Text>
+              )}
             </View>
           )}
 
@@ -846,9 +895,9 @@ export default function TripMapScreen() {
             </View>
           ) : (
             <View style={[styles.addrBanner, { borderBottomColor: colors.border }]}>
-              <AddressBadge address={trip.startAddress} placeId={trip.startPlaceId} dotColor="#4CAF50" categories={placeCategories} places={knownPlaces} colors={colors} onPress={() => setEditingField('start')} />
+              <AddressBadge address={trip.startAddress} placeId={trip.startPlaceId} dotColor="#4CAF50" categories={placeCategories} places={knownPlaces} colors={colors} hideEdit={screenshotMode} onPress={() => setEditingField('start')} />
               <MaterialCommunityIcons name="arrow-right" size={13} color={colors.mutedForeground} />
-              <AddressBadge address={trip.endAddress} placeId={trip.endPlaceId} dotColor="#FFC107" categories={placeCategories} places={knownPlaces} colors={colors} onPress={() => setEditingField('end')} />
+              <AddressBadge address={trip.endAddress} placeId={trip.endPlaceId} dotColor="#FFC107" categories={placeCategories} places={knownPlaces} colors={colors} hideEdit={screenshotMode} onPress={() => setEditingField('end')} />
             </View>
           )}
 
@@ -858,7 +907,7 @@ export default function TripMapScreen() {
               <Text style={[styles.dateText, { color: colors.foreground }]}>{fmtDayLong(trip.startTime)}</Text>
               <Text style={[styles.timeText, { color: colors.mutedForeground }]}>{fmtHHMM(trip.startTime)} → {fmtHHMM(trip.endTime)}</Text>
             </Pressable>
-            {trip.vehicle && trip.vehicle !== 'ignored' && (() => {
+            {!screenshotMode && trip.vehicle && trip.vehicle !== 'ignored' && (() => {
               const veh = vehicles.find(v => v.id === trip.vehicle);
               const color = veh?.type === 'walk' ? '#4CAF50' : veh?.type === 'moto' || trip.vehicle === 'moto' ? '#FF9800' : '#2196F3';
               const icon = veh?.type === 'walk' ? 'walk' : veh?.type === 'moto' || trip.vehicle === 'moto' ? 'motorbike' : 'car';
@@ -870,20 +919,24 @@ export default function TripMapScreen() {
                 </View>
               );
             })()}
-            <Pressable onPress={handleOpenDtPicker} hitSlop={6}>
-              <MaterialCommunityIcons name="pencil-outline" size={15} color={colors.mutedForeground} />
-            </Pressable>
+            {!screenshotMode && (
+              <Pressable onPress={handleOpenDtPicker} hitSlop={6}>
+                <MaterialCommunityIcons name="pencil-outline" size={15} color={colors.mutedForeground} />
+              </Pressable>
+            )}
           </View>
 
           {/* Stats row */}
           <View style={[styles.statsRow, { marginTop: 4, marginBottom: 4 }]}>
             <StatItem icon="map-marker-distance" value={`${trip.distanceKm.toFixed(1)} km`} color="#FFC107" />
             <StatItem icon="clock-outline" value={fmtDuration(trip.endTime - trip.startTime)} color={colors.mutedForeground} />
-            <StatItem
-              icon={trip.source === 'manual' ? 'pencil-outline' : trip.routeSource === 'osrm' ? 'road-variant' : 'navigation-variant-outline'}
-              value={trip.source === 'manual' ? 'Trajet manuel' : trip.routeSource === 'osrm' ? 'Tracé routier' : `${trip.pointCount} pts GPS`}
-              color={trip.routeSource === 'osrm' ? '#4CAF50' : colors.mutedForeground}
-            />
+            {!screenshotMode && (
+              <StatItem
+                icon={trip.source === 'manual' ? 'pencil-outline' : trip.routeSource === 'osrm' ? 'road-variant' : 'navigation-variant-outline'}
+                value={trip.source === 'manual' ? 'Trajet manuel' : trip.routeSource === 'osrm' ? 'Tracé routier' : `${trip.pointCount} pts GPS`}
+                color={trip.routeSource === 'osrm' ? '#4CAF50' : colors.mutedForeground}
+              />
+            )}
           </View>
 
           {!!participantName && (
@@ -933,6 +986,8 @@ export default function TripMapScreen() {
         </View>
       )}
 
+      </View>{/* /captureViewRef */}
+
       {/* Story progress */}
       {trip && isGeneratingStory && (
         <View style={[styles.storyProgressRow, { backgroundColor: colors.card }]}>
@@ -959,11 +1014,12 @@ export default function TripMapScreen() {
           </View>
           <View style={styles.bottomBarRight}>
             <Pressable
-              style={styles.replayBtn}
-              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); }}
+              style={[styles.screenshotBtn, isCapturing && { opacity: 0.5 }]}
+              onPress={handleScreenshot}
+              disabled={isCapturing}
             >
-              <MaterialCommunityIcons name="play" size={15} color="#fff" />
-              <Text style={styles.replayBtnText}>Replay</Text>
+              <MaterialCommunityIcons name="camera-outline" size={15} color="#fff" />
+              <Text style={styles.screenshotBtnText}>Screenshot</Text>
             </Pressable>
             <Pressable
               onPress={handleGenerateStory}
@@ -1104,6 +1160,7 @@ function AddressBadge({
   categories,
   places,
   colors,
+  hideEdit,
   onPress,
 }: {
   address?: string;
@@ -1112,6 +1169,7 @@ function AddressBadge({
   categories: PlaceCategory[];
   places: Array<{ id: string; name: string; categoryId?: string }>;
   colors: ReturnType<typeof useColors>;
+  hideEdit?: boolean;
   onPress: () => void;
 }) {
   const place = placeId ? places.find(p => p.id === placeId) : null;
@@ -1129,7 +1187,7 @@ function AddressBadge({
       <Text style={[styles.addrBadgeText, { color: colors.foreground }]} numberOfLines={1}>
         {address ?? '—'}
       </Text>
-      <MaterialCommunityIcons name="pencil-outline" size={11} color={colors.mutedForeground} />
+      {!hideEdit && <MaterialCommunityIcons name="pencil-outline" size={11} color={colors.mutedForeground} />}
     </Pressable>
   );
 }
@@ -1310,7 +1368,7 @@ const styles = StyleSheet.create({
   },
   speedChipText: { fontSize: 12, fontFamily: 'Inter_500Medium', color: '#555' },
   speedChipTextActive: { color: '#2196F3' },
-  replayBtn: {
+  screenshotBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
@@ -1319,7 +1377,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: '#2196F3',
   },
-  replayBtnText: { fontSize: 13, fontFamily: 'Inter_700Bold', color: '#fff' },
+  screenshotBtnText: { fontSize: 13, fontFamily: 'Inter_700Bold', color: '#fff' },
   storyBtn: {
     flexDirection: 'row',
     alignItems: 'center',
