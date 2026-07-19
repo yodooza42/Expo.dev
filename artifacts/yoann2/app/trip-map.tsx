@@ -894,24 +894,35 @@ export default function TripMapScreen() {
           {isWalkTrip ? (
             <View style={[styles.addrBannerCol, { borderBottomColor: colors.border }]}>
               <View style={styles.walkTopRow}>
-                <Pressable
-                  onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setPickingRoute(true); }}
-                  style={({ pressed }) => [styles.walkRoutePressable, { opacity: pressed ? 0.65 : 1, flex: 1 }]}
-                >
-                  {walkRouteName ? (
-                    <View style={styles.walkRouteChip}>
-                      <MaterialCommunityIcons name="walk" size={14} color="#4CAF50" />
-                      <Text style={[styles.walkRouteChipText, { color: '#4CAF50' }]}>{walkRouteName}</Text>
-                    </View>
-                  ) : (
-                    <View style={[styles.walkRouteChip, { backgroundColor: colors.muted }]}>
-                      <MaterialCommunityIcons name="walk" size={14} color={colors.mutedForeground} />
-                      <Text style={[styles.walkRouteChipText, { color: colors.mutedForeground }]}>Aucun parcours</Text>
-                    </View>
+                {/* Left column: route chip + participant names */}
+                <View style={{ flex: 1, gap: 4 }}>
+                  <Pressable
+                    onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setPickingRoute(true); }}
+                    style={({ pressed }) => [styles.walkRoutePressable, { opacity: pressed ? 0.65 : 1 }]}
+                  >
+                    {walkRouteName ? (
+                      <View style={styles.walkRouteChip}>
+                        <MaterialCommunityIcons name="walk" size={14} color="#4CAF50" />
+                        <Text style={[styles.walkRouteChipText, { color: '#4CAF50' }]}>{walkRouteName}</Text>
+                      </View>
+                    ) : (
+                      <View style={[styles.walkRouteChip, { backgroundColor: colors.muted }]}>
+                        <MaterialCommunityIcons name="walk" size={14} color={colors.mutedForeground} />
+                        <Text style={[styles.walkRouteChipText, { color: colors.mutedForeground }]}>Aucun parcours</Text>
+                      </View>
+                    )}
+                    {!screenshotMode && (
+                      <MaterialCommunityIcons name="pencil-outline" size={13} color={colors.mutedForeground} />
+                    )}
+                  </Pressable>
+                  {walkParticipantIds.length > 0 && (
+                    <Text style={[styles.walkParticipantsLabel, { color: colors.mutedForeground }]}>
+                      {walkParticipantIds.map(pid => allWalkParticipants.find(p => p.id === pid)?.name).filter((n): n is string => !!n).join(' · ')}
+                    </Text>
                   )}
-                  <MaterialCommunityIcons name="pencil-outline" size={13} color={colors.mutedForeground} />
-                </Pressable>
-                {allWalkParticipants.length > 0 && (
+                </View>
+                {/* Participants button — hidden in screenshot mode */}
+                {allWalkParticipants.length > 0 && !screenshotMode && (
                   <Pressable
                     onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setPickingParticipants(true); }}
                     style={[styles.walkRouteChip, {
@@ -925,11 +936,6 @@ export default function TripMapScreen() {
                   </Pressable>
                 )}
               </View>
-              {walkParticipantIds.length > 0 && (
-                <Text style={[styles.walkParticipantsLabel, { color: colors.mutedForeground }]}>
-                  {walkParticipantIds.map(pid => allWalkParticipants.find(p => p.id === pid)?.name).filter((n): n is string => !!n).join(' · ')}
-                </Text>
-              )}
             </View>
           ) : (
             <View style={[styles.addrBanner, { borderBottomColor: colors.border }]}>
