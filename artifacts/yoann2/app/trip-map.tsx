@@ -752,7 +752,7 @@ export default function TripMapScreen() {
     tripEvents.emitTripUpdated();
   }
 
-  const MAP_H = SCREEN_H * 0.45;
+  const MAP_H = SCREEN_H * 0.40;
   const MAP_W = SCREEN_W;
 
   const editingLabel = editingField === 'start' ? 'Lieu de départ' : "Lieu d'arrivée";
@@ -783,8 +783,7 @@ export default function TripMapScreen() {
     : 90;
 
   return (
-    <View style={[styles.root, { backgroundColor: '#121212' }]}>
-      <View ref={captureViewRef} style={{ flex: 1, backgroundColor: '#121212' }}>
+    <View ref={captureViewRef} style={[styles.root, { backgroundColor: '#121212' }]}>
       {/* Back button */}
       {!screenshotMode && (
         <Pressable
@@ -986,10 +985,8 @@ export default function TripMapScreen() {
         </View>
       )}
 
-      </View>{/* /captureViewRef */}
-
       {/* Story progress */}
-      {trip && isGeneratingStory && (
+      {!screenshotMode && trip && isGeneratingStory && (
         <View style={[styles.storyProgressRow, { backgroundColor: colors.card }]}>
           <Text style={styles.storyProgressLabel}>Génération story… {storyProgress}%</Text>
           <View style={styles.storyProgressTrack}>
@@ -999,7 +996,7 @@ export default function TripMapScreen() {
       )}
 
       {/* Fixed bottom bar */}
-      {trip && (
+      {!screenshotMode && trip && (
         <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 10, backgroundColor: colors.card, borderTopColor: colors.border }]}>
           <View style={styles.bottomBarLeft}>
             {([1, 2, 5, 10] as const).map(s => (
