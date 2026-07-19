@@ -1,24 +1,18 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as Notifications from 'expo-notifications';
 
 import type { LocationPoint } from '@/utils/locationTracking';
 import { haversineKm } from '@/utils/haversine';
 import { matchRouteOSRM, computeRouteDistanceKm } from '@/utils/osrmMatching';
 import { computeCleanedDistanceKm } from '@/utils/fallbackMatching';
-import { reverseGeocode } from '@/utils/geocoding';
-import { genId } from '@/utils/ids';
 import { simplifyRoute } from '@/utils/routeSimplification';
 import {
   getTripDetectionState,
-  saveTrip,
   saveTripDetectionState,
 } from '@/utils/tripStorage';
-import { findNearestPlace } from '@/utils/placesStorage';
-import type { RoutePoint, RouteSegment, Trip, TripDetectionState } from '@/types/trips';
+import type { RoutePoint, RouteSegment, TripDetectionState } from '@/types/trips';
 
 const VEHICLE_SPEED_KMH = 15;
 const CANDIDATE_DURATION_MS = 30_000;
-const STOP_DURATION_MS = 180_000;
 const MIN_TRIP_KM = 0.3;
 // Cap raw points per segment to avoid huge AsyncStorage entries
 // (~3 000 pts ≈ 10 km at 3-sec interval, then flush to OSRM)
@@ -146,12 +140,11 @@ function resetToIdle(state: TripDetectionState): void {
 }
 
 
-export async function processPointForTrip(point: LocationPoint): Promise<Trip | null> {
+export async function processPointForTrip(point: LocationPoint): Promise<void> {
   const state = await getTripDetectionState();
   const speedKmh = point.speedKmh ?? 0;
   const now = point.timestamp;
   const { lat, lng } = point;
-  let completedTrip: Trip | null = null;
 
   const prevStatus = state.status;
 
@@ -209,32 +202,9 @@ export async function processPointForTrip(point: LocationPoint): Promise<Trip | 
         addDistance(state, lat, lng, now);
         state.status = 'active';
         state.lastMovingTime = now;
-      } else {
-        const stoppedMs = now - state.lastMovingTime;
-        if (stoppedMs >= STOP_DURATION_MS) {
-          if (state.distanceKm >= MIN_TRIP_KM) {
-            const distanceKm = computeFinalDistance(state);
-            const route = buildFullRoute(state);
-            const routeSource = overallRouteSource(state);
-            completedTrip = {
-              id: genId(),
-              startTime: state.startTime,
-              endTime: state.lastMovingTime,
-              distanceKm,
-              vehicle: null,
-              pointCount: state.pointCount,
-              startLat: state.startLat,
-              startLon: state.startLon,
-              endLat: state.lastLat,
-              endLon: state.lastLon,
-              route,
-              routeSource,
-              osrmSegments: state.osrmSegmentsCount,
-            };
-          }
-          resetToIdle(state);
-        }
       }
+      // Pas d'auto-fin : le trajet reste en état "ending" jusqu'à ce que
+      // l'utilisateur appuie sur Stop depuis le widget.
       break;
     }
   }
@@ -258,41 +228,4 @@ export async function processPointForTrip(point: LocationPoint): Promise<Trip | 
     await AsyncStorage.setItem(TRACKING_MODE_KEY, nowActive ? 'active' : 'idle').catch(() => {});
   }
 
-  if (completedTrip) {
-    // Resolve start/end addresses — known places first, Nominatim fallback
-    const [startPlace, endPlace] = await Promise.all([
-      findNearestPlace(completedTrip.startLat!, completedTrip.startLon!).catch(() => null),
-      findNearestPlace(completedTrip.endLat!, completedTrip.endLon!).catch(() => null),
-    ]);
-
-    if (startPlace) {
-      completedTrip.startAddress = startPlace.name;
-      completedTrip.startPlaceId = startPlace.id;
-    } else {
-      completedTrip.startAddress =
-        await reverseGeocode(completedTrip.startLat!, completedTrip.startLon!).catch(() => null) ?? undefined;
-    }
-
-    if (endPlace) {
-      completedTrip.endAddress = endPlace.name;
-      completedTrip.endPlaceId = endPlace.id;
-    } else {
-      // reverseGeocode enforces ≥1.1 s gap internally when Nominatim is called
-      completedTrip.endAddress =
-        await reverseGeocode(completedTrip.endLat!, completedTrip.endLon!).catch(() => null) ?? undefined;
-    }
-
-    await saveTrip(completedTrip);
-
-    await Notifications.scheduleNotificationAsync({
-      content: {
-        title: 'Trajet terminé — Yoann 2.0',
-        body: `${completedTrip.distanceKm.toFixed(1)} km${completedTrip.osrmSegments ? ` · ${completedTrip.osrmSegments} tronçon${completedTrip.osrmSegments > 1 ? 's' : ''} OSRM` : ''} · Tapez pour choisir le véhicule et la catégorie`,
-        data: { url: '/(tabs)/trips', type: 'trip_completed' },
-      },
-      trigger: null,
-    }).catch(() => {});
-  }
-
-  return completedTrip;
 }

@@ -28,7 +28,10 @@ const IMG_CIGARETTE = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGAAAABgCAQ
 
 export interface AllInOneWidgetProps extends WidgetData {
   shortcuts: { name: string; lat: number | null; lng: number | null }[];
-  tripStatus?: 'idle' | 'active' | 'paused';
+  tripStatus?: 'idle' | 'selecting' | 'active' | 'paused';
+  tripMode?: 'voiture' | 'moto' | 'balade' | null;
+  tripDistKm?: number;
+  tripElapsedMs?: number;
   spinAngle?: number;
 }
 
@@ -63,6 +66,44 @@ function ImgBtn({
   );
 }
 
+function TextBtn({
+  label,
+  sub,
+  clickAction,
+  bg = CARD,
+}: {
+  label: string;
+  sub?: string;
+  clickAction: string;
+  bg?: ColorProp;
+}) {
+  return (
+    <FlexWidget
+      clickAction={clickAction}
+      style={{
+        width: 49,
+        height: 49,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: bg,
+        borderRadius: 7,
+        flexDirection: 'column',
+      }}
+    >
+      <TextWidget
+        text={label}
+        style={{ fontSize: 11, fontWeight: 'bold', color: TEXT }}
+      />
+      {sub ? (
+        <TextWidget
+          text={sub}
+          style={{ fontSize: 9, color: MUTED }}
+        />
+      ) : null}
+    </FlexWidget>
+  );
+}
+
 export function AllInOneWidget({
   tasks,
   widgetAppts,
@@ -70,9 +111,20 @@ export function AllInOneWidget({
   todayDayNum,
   marieCircleColor,
   tripStatus = 'idle',
+  tripMode = null,
+  tripDistKm = 0,
+  tripElapsedMs = 0,
 }: AllInOneWidgetProps) {
   const isRepos  = todayWork === 'Repos';
   const nextAppt = widgetAppts[0] ?? null;
+
+  const tripDistStr = tripDistKm.toFixed(2) + ' km';
+  const totalMin = Math.floor(tripElapsedMs / 60_000);
+  const hh = Math.floor(totalMin / 60);
+  const mm = totalMin % 60;
+  const tripTimeStr = hh > 0
+    ? `${hh}h ${String(mm).padStart(2, '0')}`
+    : `${mm} min`;
 
   return (
     <FlexWidget
@@ -166,19 +218,21 @@ export function AllInOneWidget({
           flexGap: 4,
         }}
       >
-        <ImgBtn image={IMG_HOME} clickAction="NAVIGATE_HOME" />
-        <ImgBtn image={IMG_GAS}  clickAction="OPEN_FUEL" />
-        <ImgBtn image={IMG_NAV}  clickAction="NAVIGATE_TO" />
-        <ImgBtn image={IMG_ADD}  clickAction="ADD_TRANSACTION" />
-
+        {/* ── idle : navigation normale + play ── */}
+        {(tripStatus === 'idle' || tripStatus === 'paused') && (
+          <ImgBtn image={IMG_HOME} clickAction="NAVIGATE_HOME" />
+        )}
+        {(tripStatus === 'idle' || tripStatus === 'paused') && (
+          <ImgBtn image={IMG_GAS}  clickAction="OPEN_FUEL" />
+        )}
+        {(tripStatus === 'idle' || tripStatus === 'paused') && (
+          <ImgBtn image={IMG_NAV}  clickAction="NAVIGATE_TO" />
+        )}
+        {(tripStatus === 'idle' || tripStatus === 'paused') && (
+          <ImgBtn image={IMG_ADD}  clickAction="ADD_TRANSACTION" />
+        )}
         {tripStatus === 'idle' && (
-          <ImgBtn image={IMG_PLAY}  clickAction="MANUAL_TRIP_START" bg={ACCENT_BG} />
-        )}
-        {tripStatus === 'active' && (
-          <ImgBtn image={IMG_PAUSE} clickAction="MANUAL_TRIP_PAUSE" />
-        )}
-        {tripStatus === 'active' && (
-          <ImgBtn image={IMG_STOP}  clickAction="MANUAL_TRIP_END" />
+          <ImgBtn image={IMG_PLAY} clickAction="MANUAL_TRIP_START" bg={ACCENT_BG} />
         )}
         {tripStatus === 'paused' && (
           <ImgBtn image={IMG_PLAY}  clickAction="MANUAL_TRIP_RESUME" bg={ACCENT_BG} />
@@ -187,13 +241,71 @@ export function AllInOneWidget({
           <ImgBtn image={IMG_STOP}  clickAction="MANUAL_TRIP_END" />
         )}
 
-        {/* Séparateur entre Play et Café */}
-        <FlexWidget
-          style={{ width: 8, height: 'match_parent', backgroundColor: NAVBAR }}
-        />
+        {/* ── selecting : choisir le mode ── */}
+        {tripStatus === 'selecting' && (
+          <TextBtn label="Auto" sub="voiture" clickAction="SELECT_MODE_VOITURE" bg={ACCENT_BG} />
+        )}
+        {tripStatus === 'selecting' && (
+          <TextBtn label="Moto" clickAction="SELECT_MODE_MOTO" bg={ACCENT_BG} />
+        )}
+        {tripStatus === 'selecting' && (
+          <TextBtn label="Pied" sub="balade" clickAction="SELECT_MODE_BALADE" bg={ACCENT_BG} />
+        )}
+        {tripStatus === 'selecting' && (
+          <ImgBtn image={IMG_ADD} clickAction="ADD_TRANSACTION" />
+        )}
 
-        <ImgBtn image={IMG_COFFEE}    clickAction="ADD_COFFEE" />
-        <ImgBtn image={IMG_CIGARETTE} clickAction="ADD_CIGARETTE" />
+        {/* ── active : pause + stop (position dépend du mode) + infos trajet ── */}
+        {tripStatus === 'active' && (
+          <ImgBtn image={IMG_PAUSE} clickAction="MANUAL_TRIP_PAUSE" />
+        )}
+        {tripStatus === 'active' && tripMode !== 'voiture' && (
+          <ImgBtn image={IMG_STOP} clickAction="MANUAL_TRIP_END" />
+        )}
+        {tripStatus === 'active' && (
+          <ImgBtn image={IMG_NAV} clickAction="NAVIGATE_TO" />
+        )}
+        {tripStatus === 'active' && tripMode === 'voiture' && (
+          <ImgBtn image={IMG_STOP} clickAction="MANUAL_TRIP_END" />
+        )}
+
+        {/* Séparateur entre boutons et café (idle/paused/selecting uniquement) */}
+        {(tripStatus === 'idle' || tripStatus === 'paused' || tripStatus === 'selecting') && (
+          <FlexWidget
+            style={{ width: 8, height: 'match_parent', backgroundColor: NAVBAR }}
+          />
+        )}
+
+        {(tripStatus === 'idle' || tripStatus === 'paused' || tripStatus === 'selecting') && (
+          <ImgBtn image={IMG_COFFEE}    clickAction="ADD_COFFEE" />
+        )}
+        {(tripStatus === 'idle' || tripStatus === 'paused' || tripStatus === 'selecting') && (
+          <ImgBtn image={IMG_CIGARETTE} clickAction="ADD_CIGARETTE" />
+        )}
+
+        {/* ── active : bloc infos trajet (remplace ADD + sep + café + cig) ── */}
+        {tripStatus === 'active' && (
+          <FlexWidget
+            style={{
+              flex: 1,
+              height: 'match_parent',
+              backgroundColor: CARD,
+              borderRadius: 7,
+              justifyContent: 'center',
+              alignItems: 'center',
+              flexDirection: 'column',
+            }}
+          >
+            <TextWidget
+              text={tripDistStr}
+              style={{ fontSize: 13, fontWeight: 'bold', color: PRIMARY }}
+            />
+            <TextWidget
+              text={tripTimeStr}
+              style={{ fontSize: 11, color: TEXT }}
+            />
+          </FlexWidget>
+        )}
       </FlexWidget>
     </FlexWidget>
   );

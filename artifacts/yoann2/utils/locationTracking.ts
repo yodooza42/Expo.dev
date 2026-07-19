@@ -189,14 +189,20 @@ const GPS_INTERVAL_KEY = '@yoann2_gps_interval';
 const LAST_VALID_KEY = '@yoann2_last_valid_point';
 const TRACKING_STARTED_MODE_KEY = '@yoann2_tracking_started_mode';
 
-// GPS accuracy filter: ignore points with horizontal accuracy worse than this.
-// 50m — generous enough to capture trip start in covered/urban areas without
-// letting obvious drift through (200m+ accuracy points are always noise).
-const MAX_ACCURACY_METERS = 50;
+// Clé persistant le mode de trajet actif (voiture / moto / balade)
+// — lue par la tâche background pour adapter les filtres.
+export const TRIP_MODE_KEY = '@yoann2_trip_mode_active';
 
-// Speed sanity filter: ignore points implying faster than 200 km/h
+// ── Filtres GPS par mode ──────────────────────────────────────────────────────
+// Mode normal (voiture / moto)
+const MAX_ACCURACY_METERS = 50;
 const MIN_DISTANCE_METERS = 15;
 const MAX_SPEED_MS = 55.56; // 200 km/h
+
+// Mode balade (piéton) — précision et seuils réduits
+const WALKING_MAX_ACCURACY_METERS = 20;
+const WALKING_MIN_DISTANCE_METERS = 3;
+const WALKING_MAX_SPEED_MS = 6; // ~22 km/h max pour un piéton / jogger
 
 export type GpsInterval = {
   label: string;
@@ -238,23 +244,30 @@ export async function setTrackingPaused(paused: boolean): Promise<void> {
 
 // ── Adaptive interval helpers ─────────────────────────────────────────────────
 
-// Returns the Location options adapted to current trip phase.
-// - idle   → economy mode (user-selected interval, balanced accuracy)
-// - active → dense mode (3s / 2m, high accuracy) for precise trace + distance
-// - paused → low-power mode (30s / 50m) — FGS reste actif pour garder le process vivant
+// Returns the Location options adapted to current trip phase and mode.
+// - idle    → economy mode (user-selected interval, balanced accuracy)
+// - active  → dense mode (3s/2m for voiture/moto, 1s/1m for balade)
+// - paused  → low-power mode (30s / 50m) — FGS reste actif pour garder le process vivant
 //
 async function buildLocationOptions(
   tripPhase: 'active' | 'paused' | 'idle',
+  walkingMode?: boolean,
 ): Promise<Location.LocationTaskOptions> {
   const baseInterval = await getGpsInterval();
   const isActive = tripPhase === 'active';
   const isPaused = tripPhase === 'paused';
   return {
     accuracy: isActive ? Location.Accuracy.High : Location.Accuracy.Balanced,
-    timeInterval: isActive ? 3_000 : isPaused ? 30_000 : baseInterval.timeIntervalMs,
-    distanceInterval: isActive ? 2 : isPaused ? 50 : baseInterval.distanceIntervalM,
+    timeInterval: isActive
+      ? (walkingMode ? 1_000 : 3_000)
+      : isPaused ? 30_000 : baseInterval.timeIntervalMs,
+    distanceInterval: isActive
+      ? (walkingMode ? 1 : 2)
+      : isPaused ? 50 : baseInterval.distanceIntervalM,
     ...(isActive && {
-      activityType: Location.ActivityType.AutomotiveNavigation,
+      activityType: walkingMode
+        ? Location.ActivityType.Fitness
+        : Location.ActivityType.AutomotiveNavigation,
       pausesUpdatesAutomatically: false,
     }),
     showsBackgroundLocationIndicator: isActive,
@@ -311,9 +324,21 @@ export async function stopTracking(): Promise<void> {
   }
 }
 
-export async function startManualTracking(): Promise<void> {
+export async function startManualTracking(
+  mode?: 'voiture' | 'moto' | 'balade',
+): Promise<void> {
   const hasServices = await Location.hasServicesEnabledAsync();
   if (!hasServices) return;
+
+  // Persiste le mode pour que la tâche background adapte ses filtres.
+  // Si mode est undefined (reprise après pause), on conserve la valeur existante.
+  if (mode !== undefined) {
+    if (mode) {
+      await AsyncStorage.setItem(TRIP_MODE_KEY, mode).catch(() => {});
+    } else {
+      await AsyncStorage.removeItem(TRIP_MODE_KEY).catch(() => {});
+    }
+  }
 
   // NE JAMAIS stop/start ici : startLocationUpdatesAsync sur une tâche déjà
   // enregistrée patche les options en place (startForeground même ID côté
@@ -322,7 +347,7 @@ export async function startManualTracking(): Promise<void> {
   // (~10 s après l'appui widget) → ForegroundServiceStartNotAllowedException,
   // pas de notification, pas de GPS.
   _currentTripPhase = 'active';
-  const opts = await buildLocationOptions('active');
+  const opts = await buildLocationOptions('active', mode === 'balade');
   await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, opts);
 }
 
@@ -376,6 +401,13 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
   const manualActive = manualParsed?.active === true;
   const manualPaused = manualParsed?.paused === true;
 
+  // ── Mode actif (voiture / moto / balade) → adapte les filtres ────────────────
+  const tripModeRaw = await AsyncStorage.getItem(TRIP_MODE_KEY).catch(() => null);
+  const isWalkingMode = tripModeRaw === 'balade';
+  const effectiveMaxAccuracy = isWalkingMode ? WALKING_MAX_ACCURACY_METERS : MAX_ACCURACY_METERS;
+  const effectiveMinDistance = isWalkingMode ? WALKING_MIN_DISTANCE_METERS : MIN_DISTANCE_METERS;
+  const effectiveMaxSpeed   = isWalkingMode ? WALKING_MAX_SPEED_MS        : MAX_SPEED_MS;
+
   // ── Récupération distance si process JS redémarré (foreground service vivant) ─
   if (manualActive && !_tripDistLoaded) {
     try {
@@ -394,16 +426,16 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
     const accuracy = loc.coords.accuracy;
 
     // 1. Precision filter: skip points with degraded horizontal accuracy
-    if (accuracy != null && accuracy > MAX_ACCURACY_METERS) continue;
+    if (accuracy != null && accuracy > effectiveMaxAccuracy) continue;
 
     // 2. Distance filter: skip micro-movements
     if (lastValid) {
       const distM = haversineKm(lastValid.lat, lastValid.lng, lat, lng) * 1000;
       const timeS = (timestamp - lastValid.timestamp) / 1000;
 
-      if (distM < MIN_DISTANCE_METERS) continue;
+      if (distM < effectiveMinDistance) continue;
       // 3. Speed sanity filter: skip physically impossible jumps
-      if (timeS > 0 && distM / timeS > MAX_SPEED_MS) continue;
+      if (timeS > 0 && distM / timeS > effectiveMaxSpeed) continue;
     }
 
     const altM = loc.coords.altitude;

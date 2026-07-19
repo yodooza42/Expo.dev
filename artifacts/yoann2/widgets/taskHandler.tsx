@@ -36,6 +36,7 @@ import {
   pauseManualTracking,
   startManualTracking,
   stopTracking,
+  TRIP_MODE_KEY,
 } from '@/utils/locationTracking';
 import {
   pauseCarPlayer,
@@ -94,6 +95,10 @@ const LOCK_MS: Record<string, number> = {
   MANUAL_TRIP_PAUSE:   60_000,
   MANUAL_TRIP_RESUME:  60_000,
   MANUAL_TRIP_END:     60_000,
+  // Sélection de mode : 10 s (protection double-tap)
+  SELECT_MODE_VOITURE: 10_000,
+  SELECT_MODE_MOTO:    10_000,
+  SELECT_MODE_BALADE:  10_000,
   // Consommation : 5 min par type
   ADD_COFFEE:         300_000,
   ADD_CIGARETTE:      300_000,
@@ -143,7 +148,7 @@ async function widgetLog(tag: string, data: unknown): Promise<void> {
 /** Rend le widget AllInOne avec l'état courant du trajet. */
 async function renderWidget(
   doRender: WidgetTaskHandlerProps['renderWidget'],
-  tripStatus?: 'idle' | 'active' | 'paused',
+  tripStatus?: 'idle' | 'selecting' | 'active' | 'paused',
 ): Promise<void> {
   await widgetLog('renderWidget:start', `tripStatus=${tripStatus ?? 'auto'}`);
   try {
@@ -152,12 +157,33 @@ async function renderWidget(
       getNavShortcuts(),
       tripStatus !== undefined ? Promise.resolve(tripStatus) : getManualTripStatus(),
     ]);
+
+    let tripMode: 'voiture' | 'moto' | 'balade' | null = null;
+    let tripDistKm = 0;
+    let tripElapsedMs = 0;
+
+    if (status === 'active' || status === 'paused') {
+      const tripState = await getManualTripState();
+      if (tripState) {
+        tripMode = tripState.tripMode ?? null;
+        const distRaw = await AsyncStorage.getItem('@yoann2_trip_dist_km').catch(() => null);
+        tripDistKm = distRaw ? (parseFloat(distRaw) || 0) : getTripDistKm();
+        const now = Date.now();
+        for (const seg of tripState.segments) {
+          tripElapsedMs += (seg.end ?? now) - seg.start;
+        }
+      }
+    }
+
     await widgetLog('renderWidget:data', `tasks=${data.tasks.length} shortcuts=${shortcuts.length} status=${status}`);
     doRender(
       <AllInOneWidget
         {...data}
         shortcuts={shortcuts.map(s => ({ name: s.name, lat: s.lat, lng: s.lng }))}
         tripStatus={status}
+        tripMode={tripMode}
+        tripDistKm={tripDistKm}
+        tripElapsedMs={tripElapsedMs}
       />,
     );
     await widgetLog('renderWidget:done', 'ok');
@@ -168,7 +194,7 @@ async function renderWidget(
 }
 
 /** Rafraîchit tous les widgets de type TodoWidget (requestWidgetUpdate). */
-async function refreshAllWidgets(tripStatus: 'idle' | 'active' | 'paused'): Promise<void> {
+async function refreshAllWidgets(tripStatus: 'idle' | 'selecting' | 'active' | 'paused'): Promise<void> {
   const [data, shortcuts] = await Promise.all([getWidgetDataFromStorage(), getNavShortcuts()]);
   await requestWidgetUpdate({
     widgetName: WIDGET_NAME,
@@ -257,25 +283,56 @@ async function handleTripStart(
     await renderWidget(doRender, existingState.paused ? 'paused' : 'active');
     return;
   }
+  // Guard état : déjà en sélection → re-rendre sans réinitialiser
+  if (existingState?.selecting) {
+    await renderWidget(doRender, 'selecting');
+    return;
+  }
+
+  // Passer en mode "sélection" : l'utilisateur doit choisir Voiture / Moto / Balade
+  await saveManualTripState({
+    active: false,
+    selecting: true,
+    paused: false,
+    startTime: 0,
+    startLat: 0,
+    startLon: 0,
+    segments: [],
+  });
+
+  await renderWidget(doRender, 'selecting');
+}
+
+async function handleSelectMode(
+  mode: 'voiture' | 'moto' | 'balade',
+  doRender: WidgetTaskHandlerProps['renderWidget'],
+): Promise<void> {
+  const existingState = await getManualTripState();
+  if (!existingState?.selecting) {
+    await renderWidget(doRender);
+    return;
+  }
 
   resetTripTracking();
   const now = Date.now();
 
   await saveManualTripState({
     active: true,
+    selecting: false,
     paused: false,
     startTime: now,
     startLat: 0,
     startLon: 0,
     segments: [{ start: now }],
+    tripMode: mode,
   });
 
-  // CRITIQUE : démarrer les deux FGS IMMÉDIATEMENT dans la fenêtre d'exemption
-  // Android 12+ (~10 s après l'appui widget). L'ordre : GPS d'abord, puis notifee.
+  // CRITIQUE : démarrer le FGS IMMÉDIATEMENT dans la fenêtre d'exemption
+  // Android 12+ (~10 s après l'appui widget).
   try {
-    await startManualTracking();
+    await startManualTracking(mode);
   } catch (err) {
-    await widgetLog('trip:start:fgs_error', String(err));
+    await widgetLog('trip:select_mode:fgs_error', String(err));
   }
   setTripStatus(true);
   loadPlaylist().then(tracks => {
@@ -286,8 +343,7 @@ async function handleTripStart(
   await maybeSuggestBatteryOptimization();
   await renderWidget(doRender, 'active');
 
-  // Position de départ récupérée APRÈS coup — le service tourne déjà, le
-  // timing n'a plus d'importance. Patch de l'état si le trajet est toujours actif.
+  // Position de départ récupérée APRÈS coup
   const loc = await getCurrentPosition();
   if (loc) {
     const st = await getManualTripState();
@@ -376,9 +432,16 @@ async function handleTripEnd(
     );
   }
 
+  const savedMode = manualState.tripMode ?? null;
+
   await clearManualTripState();
   resetTripTracking();
   await renderWidget(doRender, 'idle');
+
+  // Ouvre la page trajets si balade
+  if (savedMode === 'balade') {
+    Linking.openURL('yoann2:///(tabs)/trips').catch(() => {});
+  }
 
   const endLoc = await getCurrentPosition();
   const endLat = endLoc?.coords.latitude  ?? manualState.startLat;
@@ -598,6 +661,30 @@ export async function widgetTaskHandler(props: WidgetTaskHandlerProps): Promise<
               break;
             }
             await handleTripStart(doRender);
+            break;
+          }
+          case 'SELECT_MODE_VOITURE': {
+            if (!await acquireLock('SELECT_MODE_VOITURE')) {
+              await renderWidget(doRender);
+              break;
+            }
+            await handleSelectMode('voiture', doRender);
+            break;
+          }
+          case 'SELECT_MODE_MOTO': {
+            if (!await acquireLock('SELECT_MODE_MOTO')) {
+              await renderWidget(doRender);
+              break;
+            }
+            await handleSelectMode('moto', doRender);
+            break;
+          }
+          case 'SELECT_MODE_BALADE': {
+            if (!await acquireLock('SELECT_MODE_BALADE')) {
+              await renderWidget(doRender);
+              break;
+            }
+            await handleSelectMode('balade', doRender);
             break;
           }
           case 'MANUAL_TRIP_PAUSE': {

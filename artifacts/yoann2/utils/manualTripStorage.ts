@@ -12,6 +12,10 @@ export interface TripSegment {
 export interface ManualTripState {
   active: boolean;
   paused: boolean;
+  /** Vrai quand l'utilisateur est en train de choisir le mode (entre idle et active). */
+  selecting?: boolean;
+  /** Mode de trajet choisi. */
+  tripMode?: 'voiture' | 'moto' | 'balade' | null;
   startTime: number;
   startLat: number;
   startLon: number;
@@ -24,11 +28,12 @@ export async function getManualTripState(): Promise<ManualTripState | null> {
     const raw = await AsyncStorage.getItem(KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<ManualTripState>;
-    if (!parsed.active) return null;
-    // Compatibilité ascendante : anciens états sans `paused`/`segments`
+    if (!parsed.active && !parsed.selecting) return null;
     return {
-      active: true,
+      active: parsed.active ?? false,
       paused: parsed.paused ?? false,
+      selecting: parsed.selecting ?? false,
+      tripMode: parsed.tripMode ?? null,
       startTime: parsed.startTime ?? Date.now(),
       startLat: parsed.startLat ?? 0,
       startLon: parsed.startLon ?? 0,
@@ -56,8 +61,9 @@ export async function isManualTripActive(): Promise<boolean> {
   return state !== null && state.active;
 }
 
-export async function getManualTripStatus(): Promise<'idle' | 'active' | 'paused'> {
+export async function getManualTripStatus(): Promise<'idle' | 'selecting' | 'active' | 'paused'> {
   const state = await getManualTripState();
   if (!state) return 'idle';
+  if (state.selecting) return 'selecting';
   return state.paused ? 'paused' : 'active';
 }
