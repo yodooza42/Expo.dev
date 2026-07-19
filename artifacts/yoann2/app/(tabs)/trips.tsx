@@ -3,6 +3,7 @@ import * as Haptics from 'expo-haptics';
 import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
   AppState,
   Image,
   Pressable,
@@ -24,6 +25,7 @@ import type { FuelEntry } from '@/types/fuel';
 import { computeOdometer, getTrips, getVehicleSettings } from '@/utils/tripStorage';
 import { getKnownPlaces, getPlaceCategories } from '@/utils/placesStorage';
 import type { KnownPlace, PlaceCategory } from '@/types/places';
+import { seedFakeTrip, deleteFakeTrip } from '@/utils/seedFakeTrip';
 
 // ── Vehicle images ────────────────────────────────────────────────────────────
 const DOBLO_IMG = require('@/assets/images/doblo-main.png');
@@ -474,6 +476,27 @@ export default function TripsScreen() {
             style={[pH.btn, { backgroundColor: colors.card, borderColor: colors.border }]}
           >
             <MaterialCommunityIcons name="music-note" size={18} color={colors.mutedForeground} />
+          </Pressable>
+          <Pressable
+            onPress={async () => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              Alert.alert('Trajet test', 'Créer ou supprimer le faux trajet Bron→Part-Dieu ?', [
+                { text: 'Annuler', style: 'cancel' },
+                { text: '🗑 Supprimer', style: 'destructive', onPress: async () => {
+                  await deleteFakeTrip();
+                  tripEvents.emitTripUpdated();
+                }},
+                { text: '✅ Créer & ouvrir', onPress: async () => {
+                  const id = await seedFakeTrip();
+                  tripEvents.emitTripUpdated();
+                  router.push({ pathname: '/trip-map', params: { id } } as any);
+                }},
+              ]);
+            }}
+            hitSlop={8}
+            style={[pH.btn, { backgroundColor: '#2196F310', borderColor: '#2196F340' }]}
+          >
+            <MaterialCommunityIcons name="flask-outline" size={18} color="#2196F3" />
           </Pressable>
         </View>
       </View>
