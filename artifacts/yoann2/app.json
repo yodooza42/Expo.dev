@@ -15,7 +15,7 @@
     "android": {
       "backgroundColor": "#121212",
       "package": "com.yoann2.app",
-      "versionCode": 92,
+      "versionCode": 93,
       "permissions": [
         "android.permission.RECORD_AUDIO",
         "android.permission.ACCESS_COARSE_LOCATION",
