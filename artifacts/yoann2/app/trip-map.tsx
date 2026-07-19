@@ -23,11 +23,11 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import WebView from 'react-native-webview';
 import Svg, {
+  Circle,
   Defs,
+  Line as SvgLine,
   LinearGradient,
-  Line,
-  Polygon,
-  Polyline,
+  Path,
   Stop,
   Text as SvgText,
 } from 'react-native-svg';
@@ -51,6 +51,7 @@ import { fmtDayLong, fmtHHMM } from '@/utils/date';
 import { haversineKm } from '@/utils/haversine';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { loadMultiDayPoints } from '@/utils/locationTracking';
+import type { LocationPoint } from '@/utils/locationTracking';
 import { buildStoryHtml } from '@/utils/storyGenerator';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
@@ -378,11 +379,9 @@ export default function TripMapScreen() {
   const [draftEnd, setDraftEnd] = useState<Date>(new Date());
 
   const [storyDuration, setStoryDuration] = useState<10 | 20 | 30 | 60>(20);
-  const [chartPts, setChartPts] = useState<Array<{ km: number; spd: number; alt: number | null }>>([]);
-  const [chartStats, setChartStats] = useState<{ avgSpd: number; maxSpd: number; minAlt: number; maxAlt: number; gainM: number } | null>(null);
+  const [tripLocPts, setTripLocPts] = useState<LocationPoint[]>([]);
   const [chartLoading, setChartLoading] = useState(false);
   const [chartRefreshKey, setChartRefreshKey] = useState(0);
-  const [chartAreaH, setChartAreaH] = useState(0);
 
   const [isGeneratingStory, setIsGeneratingStory] = useState(false);
   const [storyProgress, setStoryProgress]         = useState(0);
@@ -608,40 +607,15 @@ export default function TripMapScreen() {
   useEffect(() => {
     if (!trip) return;
     setChartLoading(true);
-    setChartPts([]);
-    setChartStats(null);
+    setTripLocPts([]);
     void (async () => {
       try {
         const gpsPoints = await loadMultiDayPoints(trip.startTime, trip.endTime);
         const tripPoints = gpsPoints.filter(p => p.timestamp >= trip.startTime && p.timestamp <= trip.endTime);
         if (tripPoints.length < 2) { setChartLoading(false); return; }
-
         const step = Math.max(1, Math.floor(tripPoints.length / 200));
         const sampled = tripPoints.filter((_, i) => i % step === 0 || i === tripPoints.length - 1);
-
-        let rawCumDist = 0;
-        const pts: Array<{ km: number; spd: number; alt: number | null }> = [];
-        for (let i = 0; i < sampled.length; i++) {
-          if (i > 0) rawCumDist += haversineKm(sampled[i - 1]!.lat, sampled[i - 1]!.lng, sampled[i]!.lat, sampled[i]!.lng);
-          pts.push({ km: rawCumDist, spd: sampled[i]!.speedKmh ?? 0, alt: sampled[i]!.altitudeM ?? null });
-        }
-        const distScale = rawCumDist > 0 ? trip.distanceKm / rawCumDist : 1;
-        const scaledPts = pts.map(p => ({ ...p, km: p.km * distScale }));
-
-        const speeds = tripPoints.map(p => p.speedKmh ?? 0);
-        const avgSpd = speeds.length > 0 ? speeds.reduce((a, b) => a + b, 0) / speeds.length : 0;
-        const maxSpd = Math.max(...speeds, 0);
-        const alts = tripPoints.map(p => p.altitudeM).filter((a): a is number => a != null);
-        const minAlt = alts.length > 0 ? Math.min(...alts) : 0;
-        const maxAlt = alts.length > 0 ? Math.max(...alts) : 0;
-        let gainM = 0;
-        for (let i = 1; i < tripPoints.length; i++) {
-          const a = tripPoints[i]!.altitudeM, b = tripPoints[i - 1]!.altitudeM;
-          if (a != null && b != null && a > b) gainM += a - b;
-        }
-
-        setChartPts(scaledPts);
-        setChartStats({ avgSpd: Math.round(avgSpd), maxSpd: Math.round(maxSpd), minAlt: Math.round(minAlt), maxAlt: Math.round(maxAlt), gainM: Math.round(gainM) });
+        setTripLocPts(sampled);
       } catch { /* no GPS data */ }
       setChartLoading(false);
     })();
@@ -824,12 +798,7 @@ export default function TripMapScreen() {
       : '#2196F3';
   })();
 
-  const hasAltData = chartPts.length >= 2 && chartPts.some(p => p.alt != null);
-  const numCharts  = chartPts.length >= 2 ? (hasAltData ? 2 : 1) : 0;
-  const CHART_STATS_H = 38;
-  const eachChartH = chartAreaH > 0 && numCharts > 0
-    ? Math.max(40, (chartAreaH - CHART_STATS_H * numCharts - (numCharts > 1 ? 6 : 0) - 4 * numCharts) / numCharts)
-    : 90;
+  const hasAltData = tripLocPts.some(p => p.altitudeM != null);
 
   return (
     <View ref={captureViewRef} collapsable={false} style={[styles.root, { backgroundColor: '#121212' }]}>
@@ -1017,54 +986,28 @@ export default function TripMapScreen() {
             </View>
           )}
 
-          {/* Charts area — fills all remaining space, no scroll */}
-          <View style={{ flex: 1 }} onLayout={e => setChartAreaH(e.nativeEvent.layout.height)}>
-            {chartLoading ? (
-              <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-                <ActivityIndicator size="small" color="#2196F3" />
-              </View>
-            ) : chartPts.length < 2 ? (
-              <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>Aucune donnée GPS</Text>
-                <Pressable
-                  onPress={handleInjectTestData}
-                  style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, backgroundColor: '#2196F315', borderWidth: 1, borderColor: '#2196F340' }}
-                >
-                  <MaterialCommunityIcons name="flask-outline" size={14} color="#2196F3" />
-                  <Text style={{ fontSize: 12, color: '#2196F3', fontFamily: 'Inter_500Medium' }}>Injecter données test</Text>
-                </Pressable>
-              </View>
-            ) : (
-              <>
-                {/* Speed chart */}
-                <View style={{ flex: 1, marginBottom: hasAltData ? 6 : 0 }}>
-                  <SpeedChart
-                    points={chartPts}
-                    avgSpeed={chartStats?.avgSpd ?? 0}
-                    maxSpeed={chartStats?.maxSpd ?? 0}
-                    width={SCREEN_W - 32}
-                    height={eachChartH}
-                  />
-                  <View style={[styles.chartStatsRow, { marginTop: 4 }]}>
-                    <ChartStat label="MOY" value={`${chartStats?.avgSpd ?? 0} km/h`} />
-                    <ChartStat label="MAX" value={`${chartStats?.maxSpd ?? 0} km/h`} />
-                    <ChartStat label="DURÉE" value={fmtDuration(trip.endTime - trip.startTime)} />
-                  </View>
-                </View>
-                {/* Altitude chart */}
-                {hasAltData && (
-                  <View style={{ flex: 1 }}>
-                    <AltChart points={chartPts} width={SCREEN_W - 32} height={eachChartH} />
-                    <View style={[styles.chartStatsRow, { marginTop: 4 }]}>
-                      <ChartStat label="MIN" value={`${chartStats?.minAlt ?? 0} m`} />
-                      <ChartStat label="MAX" value={`${chartStats?.maxAlt ?? 0} m`} />
-                      <ChartStat label="DÉNIVELÉ +" value={`+${chartStats?.gainM ?? 0} m`} />
-                    </View>
-                  </View>
-                )}
-              </>
-            )}
-          </View>
+          {/* Charts — extraits de map.native.tsx, hauteur fixe H=84, stats inclus */}
+          {chartLoading ? (
+            <View style={{ alignItems: 'center', paddingVertical: 16 }}>
+              <ActivityIndicator size="small" color="#2196F3" />
+            </View>
+          ) : tripLocPts.length < 2 ? (
+            <View style={{ alignItems: 'center', gap: 8, paddingVertical: 16 }}>
+              <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>Aucune donnée GPS</Text>
+              <Pressable
+                onPress={handleInjectTestData}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, backgroundColor: '#2196F315', borderWidth: 1, borderColor: '#2196F340' }}
+              >
+                <MaterialCommunityIcons name="flask-outline" size={14} color="#2196F3" />
+                <Text style={{ fontSize: 12, color: '#2196F3', fontFamily: 'Inter_500Medium' }}>Injecter données test</Text>
+              </Pressable>
+            </View>
+          ) : (
+            <>
+              <TripSpeedChart points={tripLocPts} color={vehColor} onScrub={() => {}} />
+              {hasAltData && <TripAltitudeChart points={tripLocPts} color={vehColor} onScrub={() => {}} />}
+            </>
+          )}
         </View>
       )}
 
@@ -1143,91 +1086,288 @@ function StatItem({ icon, value, color }: { icon: string; value: string; color: 
   );
 }
 
-function ChartStat({ label, value }: { label: string; value: string }) {
+function fmtChartDur(ms: number): string {
+  const s = Math.round(ms / 1000);
+  const m = Math.floor(s / 60);
+  const h = Math.floor(m / 60);
+  if (h > 0) return `${h}h${String(m % 60).padStart(2, '0')}`;
+  return `${m}min`;
+}
+
+function TripSpeedChart({
+  points,
+  color,
+  onScrub,
+}: {
+  points: LocationPoint[];
+  color: string;
+  onScrub: (pt: LocationPoint | null) => void;
+}) {
+  const colors = useColors();
+  const [scrubX, setScrubX] = useState<number | null>(null);
+
+  const chartData = useMemo(() => {
+    const pts = points.filter(p => p.speedKmh != null && (p.speedKmh as number) >= 0);
+    if (pts.length < 2) return null;
+    let cumDist = 0;
+    const data: Array<{ km: number; spd: number; lat: number; lng: number; ts: number }> = [];
+    data.push({ km: 0, spd: pts[0]!.speedKmh ?? 0, lat: pts[0]!.lat, lng: pts[0]!.lng, ts: pts[0]!.timestamp });
+    for (let i = 1; i < pts.length; i++) {
+      cumDist += haversineKm(pts[i - 1]!.lat, pts[i - 1]!.lng, pts[i]!.lat, pts[i]!.lng);
+      data.push({ km: cumDist, spd: pts[i]!.speedKmh ?? 0, lat: pts[i]!.lat, lng: pts[i]!.lng, ts: pts[i]!.timestamp });
+    }
+    const rawMax = Math.max(...data.map(d => d.spd), 1);
+    const maxSpd = Math.ceil(rawMax / 10) * 10;
+    const avgSpd = data.reduce((s, d) => s + d.spd, 0) / data.length;
+    const totalKm = Math.max(cumDist, 0.001);
+    const durationMs = pts[pts.length - 1]!.timestamp - pts[0]!.timestamp;
+    return { data, maxSpd, avgSpd, totalKm, durationMs };
+  }, [points]);
+
+  const findNearest = useCallback((x: number, cData: typeof chartData) => {
+    if (!cData) return null;
+    const { data, totalKm } = cData;
+    const W = Dimensions.get('window').width - 32;
+    const PL = 30; const PR = 8; const cW = W - PL - PR;
+    const frac = Math.max(0, Math.min(1, (x - PL) / cW));
+    const targetKm = frac * totalKm;
+    let best = data[0]!;
+    let bestD = Math.abs(best.km - targetKm);
+    for (const d of data) {
+      const dd = Math.abs(d.km - targetKm);
+      if (dd < bestD) { best = d; bestD = dd; }
+    }
+    return best;
+  }, []);
+
+  if (!chartData) return null;
+  const { data, maxSpd, avgSpd, totalKm, durationMs } = chartData;
+
+  const W = Dimensions.get('window').width - 32;
+  const H = 84;
+  const PL = 30; const PR = 8; const PT = 8; const PB = 16;
+  const cW = W - PL - PR;
+  const cH = H - PT - PB;
+
+  const mx = (km: number) => PL + (km / totalKm) * cW;
+  const my = (spd: number) => PT + (1 - spd / maxSpd) * cH;
+
+  const pts2 = data.map(d => `${mx(d.km).toFixed(1)},${my(d.spd).toFixed(1)}`);
+  const linePath = `M ${pts2.join(' L ')}`;
+  const areaPath = `${linePath} L ${mx(totalKm).toFixed(1)},${(PT + cH).toFixed(1)} L ${PL},${(PT + cH).toFixed(1)} Z`;
+
+  const scrubPt = scrubX !== null ? findNearest(scrubX, chartData) : null;
+
   return (
-    <View style={styles.chartStatItem}>
-      <Text style={styles.chartStatLabel}>{label}</Text>
-      <Text style={styles.chartStatValue}>{value}</Text>
+    <View style={{ borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, paddingTop: 6, paddingBottom: 4 }}>
+      <View
+        onStartShouldSetResponder={() => true}
+        onMoveShouldSetResponder={() => true}
+        onResponderGrant={e => {
+          const x = e.nativeEvent.locationX;
+          setScrubX(x);
+          const nearest = findNearest(x, chartData);
+          onScrub(nearest ? (points.find(p => p.timestamp === nearest.ts) ?? null) : null);
+        }}
+        onResponderMove={e => {
+          const x = e.nativeEvent.locationX;
+          setScrubX(x);
+          const nearest = findNearest(x, chartData);
+          onScrub(nearest ? (points.find(p => p.timestamp === nearest.ts) ?? null) : null);
+        }}
+        onResponderRelease={() => { setScrubX(null); onScrub(null); }}
+        onResponderTerminate={() => { setScrubX(null); onScrub(null); }}
+      >
+        <Svg width={W} height={H}>
+          <Defs>
+            <LinearGradient id="spd_grad" x1="0" y1="0" x2="0" y2="1">
+              <Stop offset="0" stopColor={color} stopOpacity="0.45" />
+              <Stop offset="1" stopColor={color} stopOpacity="0.04" />
+            </LinearGradient>
+          </Defs>
+          <Path d={areaPath} fill="url(#spd_grad)" />
+          <Path d={linePath} stroke={color} strokeWidth={2} fill="none" strokeLinejoin="round" />
+          <SvgLine x1={PL} y1={my(avgSpd)} x2={W - PR} y2={my(avgSpd)} stroke="#FFFFFF55" strokeWidth={1} strokeDasharray="3 4" />
+          {scrubPt !== null && scrubX !== null && (
+            <>
+              <SvgLine x1={mx(scrubPt.km)} y1={PT} x2={mx(scrubPt.km)} y2={PT + cH} stroke="#FFFFFFCC" strokeWidth={1.5} />
+              <Circle cx={mx(scrubPt.km)} cy={my(scrubPt.spd)} r={5} fill="#FFFFFF" stroke={color} strokeWidth={2} />
+            </>
+          )}
+          <SvgText x={PL - 3} y={PT + 5} textAnchor="end" fontSize={8} fill="#666">{maxSpd}</SvgText>
+          <SvgText x={PL - 3} y={PT + cH + 1} textAnchor="end" fontSize={8} fill="#666">0</SvgText>
+          <SvgText x={PL - 3} y={PT + cH / 2 + 3} textAnchor="end" fontSize={7} fill="#444">km/h</SvgText>
+          <SvgText x={PL + 1} y={H - 2} textAnchor="start" fontSize={8} fill="#666">0</SvgText>
+          <SvgText x={W - PR} y={H - 2} textAnchor="end" fontSize={8} fill="#666">{totalKm.toFixed(1)} km</SvgText>
+        </Svg>
+      </View>
+      {scrubPt ? (
+        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6, paddingHorizontal: 2, paddingTop: 2 }}>
+          <Text style={{ color, fontFamily: 'Inter_700Bold', fontSize: 18, lineHeight: 22 }}>
+            {Math.round(scrubPt.spd)} km/h
+          </Text>
+          <Text style={{ color: '#555', fontSize: 12 }}>·</Text>
+          <Text style={{ color: '#888', fontFamily: 'Inter_400Regular', fontSize: 12 }}>
+            {scrubPt.km.toFixed(2)} km
+          </Text>
+        </View>
+      ) : (
+        <View style={{ flexDirection: 'row', gap: 20, paddingHorizontal: 2, paddingTop: 2 }}>
+          <View>
+            <Text style={{ color: '#555', fontSize: 9, fontFamily: 'Inter_400Regular', textTransform: 'uppercase', letterSpacing: 0.8 }}>MOY</Text>
+            <Text style={{ color: colors.foreground, fontSize: 14, fontFamily: 'Inter_700Bold' }}>{Math.round(avgSpd)} km/h</Text>
+          </View>
+          <View>
+            <Text style={{ color: '#555', fontSize: 9, fontFamily: 'Inter_400Regular', textTransform: 'uppercase', letterSpacing: 0.8 }}>MAX</Text>
+            <Text style={{ color: colors.foreground, fontSize: 14, fontFamily: 'Inter_700Bold' }}>{Math.round(maxSpd)} km/h</Text>
+          </View>
+          <View>
+            <Text style={{ color: '#555', fontSize: 9, fontFamily: 'Inter_400Regular', textTransform: 'uppercase', letterSpacing: 0.8 }}>DURÉE</Text>
+            <Text style={{ color: colors.foreground, fontSize: 14, fontFamily: 'Inter_700Bold' }}>{fmtChartDur(durationMs)}</Text>
+          </View>
+        </View>
+      )}
     </View>
   );
 }
 
-function SpeedChart({ points, avgSpeed, maxSpeed, width, height = 90 }: {
-  points: Array<{ km: number; spd: number; alt: number | null }>;
-  avgSpeed: number;
-  maxSpeed: number;
-  width: number;
-  height?: number;
+function TripAltitudeChart({
+  points,
+  color,
+  onScrub,
+}: {
+  points: LocationPoint[];
+  color: string;
+  onScrub: (pt: LocationPoint | null) => void;
 }) {
-  const H = Math.max(40, height);
-  const PAD_TOP = 18;
-  const PAD_BOT = 10;
-  const chartH = H - PAD_TOP - PAD_BOT;
-  const maxKm = Math.max(points[points.length - 1]!.km, 0.001);
-  const maxSpd = Math.max(maxSpeed, 1);
+  const colors = useColors();
+  const [scrubX, setScrubX] = useState<number | null>(null);
 
-  const xs = points.map(p => (p.km / maxKm) * width);
-  const ys = points.map(p => PAD_TOP + chartH - (Math.min(p.spd, maxSpd) / maxSpd) * chartH);
+  const chartData = useMemo(() => {
+    const pts = points.filter(p => p.altitudeM != null);
+    if (pts.length < 2) return null;
+    let cumDist = 0;
+    const data: Array<{ km: number; alt: number; lat: number; lng: number; ts: number }> = [];
+    data.push({ km: 0, alt: pts[0]!.altitudeM!, lat: pts[0]!.lat, lng: pts[0]!.lng, ts: pts[0]!.timestamp });
+    for (let i = 1; i < pts.length; i++) {
+      cumDist += haversineKm(pts[i - 1]!.lat, pts[i - 1]!.lng, pts[i]!.lat, pts[i]!.lng);
+      data.push({ km: cumDist, alt: pts[i]!.altitudeM!, lat: pts[i]!.lat, lng: pts[i]!.lng, ts: pts[i]!.timestamp });
+    }
+    const alts = data.map(d => d.alt);
+    const minAlt = Math.min(...alts);
+    const maxAlt = Math.max(...alts);
+    const totalKm = Math.max(cumDist, 0.001);
+    let gainM = 0;
+    for (let i = 1; i < data.length; i++) {
+      const delta = data[i]!.alt - data[i - 1]!.alt;
+      if (delta > 0) gainM += delta;
+    }
+    return { data, minAlt, maxAlt, totalKm, gainM: Math.round(gainM) };
+  }, [points]);
 
-  const polyPts = points.map((_, i) => `${xs[i]},${ys[i]}`).join(' ');
-  const areaPts = `${xs[0]},${H} ` + points.map((_, i) => `${xs[i]},${ys[i]}`).join(' ') + ` ${xs[xs.length - 1]},${H}`;
-  const avgY = PAD_TOP + chartH - (Math.min(avgSpeed, maxSpd) / maxSpd) * chartH;
+  const findNearest = useCallback((x: number, cData: typeof chartData) => {
+    if (!cData) return null;
+    const { data, totalKm } = cData;
+    const W = Dimensions.get('window').width - 32;
+    const PL = 34; const PR = 8; const cW = W - PL - PR;
+    const frac = Math.max(0, Math.min(1, (x - PL) / cW));
+    const targetKm = frac * totalKm;
+    let best = data[0]!;
+    let bestD = Math.abs(best.km - targetKm);
+    for (const d of data) {
+      const dd = Math.abs(d.km - targetKm);
+      if (dd < bestD) { best = d; bestD = dd; }
+    }
+    return best;
+  }, []);
+
+  if (!chartData) return null;
+  const { data, minAlt, maxAlt, totalKm, gainM } = chartData;
+
+  const W = Dimensions.get('window').width - 32;
+  const H = 84;
+  const PL = 34; const PR = 8; const PT = 8; const PB = 16;
+  const cW = W - PL - PR;
+  const cH = H - PT - PB;
+
+  const span = Math.max(maxAlt - minAlt, 1);
+  const mx = (km: number) => PL + (km / totalKm) * cW;
+  const my = (alt: number) => PT + (1 - (alt - minAlt) / span) * cH;
+
+  const pts2 = data.map(d => `${mx(d.km).toFixed(1)},${my(d.alt).toFixed(1)}`);
+  const linePath = `M ${pts2.join(' L ')}`;
+  const areaPath = `${linePath} L ${mx(totalKm).toFixed(1)},${(PT + cH).toFixed(1)} L ${PL},${(PT + cH).toFixed(1)} Z`;
+
+  const scrubPt = scrubX !== null ? findNearest(scrubX, chartData) : null;
 
   return (
-    <Svg width={width} height={H}>
-      <Defs>
-        <LinearGradient id="spd" x1="0" y1="0" x2="0" y2="1">
-          <Stop offset="0" stopColor="#2196F3" stopOpacity={0.55} />
-          <Stop offset="1" stopColor="#2196F3" stopOpacity={0.04} />
-        </LinearGradient>
-      </Defs>
-      <Polygon points={areaPts} fill="url(#spd)" />
-      <Polyline points={polyPts} fill="none" stroke="#2196F3" strokeWidth={1.5} />
-      <Line x1={0} y1={avgY} x2={width} y2={avgY} stroke="#2196F3" strokeWidth={1} strokeDasharray="4 4" opacity={0.6} />
-      <SvgText x={4} y={PAD_TOP - 4} fontSize={9} fill="#2196F3" opacity={0.8}>{maxSpeed} km/h</SvgText>
-      <SvgText x={4} y={H - 2} fontSize={9} fill="#444">0</SvgText>
-      <SvgText x={width - 2} y={H - 2} fontSize={9} fill="#444" textAnchor="end">{maxKm.toFixed(1)} km</SvgText>
-    </Svg>
-  );
-}
-
-function AltChart({ points, width, height = 90 }: {
-  points: Array<{ km: number; spd: number; alt: number | null }>;
-  width: number;
-  height?: number;
-}) {
-  const altPts = points.filter((p): p is { km: number; spd: number; alt: number } => p.alt != null);
-  if (altPts.length < 2) return null;
-
-  const H = Math.max(40, height);
-  const PAD_TOP = 18;
-  const PAD_BOT = 10;
-  const chartH = H - PAD_TOP - PAD_BOT;
-  const maxKm = Math.max(altPts[altPts.length - 1]!.km, 0.001);
-  const minAlt = Math.min(...altPts.map(p => p.alt));
-  const maxAlt = Math.max(...altPts.map(p => p.alt));
-  const range = Math.max(maxAlt - minAlt, 1);
-
-  const xs = altPts.map(p => (p.km / maxKm) * width);
-  const ys = altPts.map(p => PAD_TOP + chartH - ((p.alt - minAlt) / range) * chartH);
-
-  const polyPts = altPts.map((_, i) => `${xs[i]},${ys[i]}`).join(' ');
-  const areaPts = `${xs[0]},${H} ` + altPts.map((_, i) => `${xs[i]},${ys[i]}`).join(' ') + ` ${xs[xs.length - 1]},${H}`;
-
-  return (
-    <Svg width={width} height={H}>
-      <Defs>
-        <LinearGradient id="alt" x1="0" y1="0" x2="0" y2="1">
-          <Stop offset="0" stopColor="#9E9E9E" stopOpacity={0.5} />
-          <Stop offset="1" stopColor="#9E9E9E" stopOpacity={0.04} />
-        </LinearGradient>
-      </Defs>
-      <Polygon points={areaPts} fill="url(#alt)" />
-      <Polyline points={polyPts} fill="none" stroke="#9E9E9E" strokeWidth={1.5} />
-      <SvgText x={4} y={PAD_TOP - 4} fontSize={9} fill="#777">{Math.round(maxAlt)} m</SvgText>
-      <SvgText x={4} y={H - 2} fontSize={9} fill="#444">{Math.round(minAlt)} m</SvgText>
-      <SvgText x={width - 2} y={H - 2} fontSize={9} fill="#444" textAnchor="end">{maxKm.toFixed(1)} km</SvgText>
-    </Svg>
+    <View style={{ borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, paddingTop: 6, paddingBottom: 4 }}>
+      <View
+        onStartShouldSetResponder={() => true}
+        onMoveShouldSetResponder={() => true}
+        onResponderGrant={e => {
+          const x = e.nativeEvent.locationX;
+          setScrubX(x);
+          const nearest = findNearest(x, chartData);
+          onScrub(nearest ? (points.find(p => p.timestamp === nearest.ts) ?? null) : null);
+        }}
+        onResponderMove={e => {
+          const x = e.nativeEvent.locationX;
+          setScrubX(x);
+          const nearest = findNearest(x, chartData);
+          onScrub(nearest ? (points.find(p => p.timestamp === nearest.ts) ?? null) : null);
+        }}
+        onResponderRelease={() => { setScrubX(null); onScrub(null); }}
+        onResponderTerminate={() => { setScrubX(null); onScrub(null); }}
+      >
+        <Svg width={W} height={H}>
+          <Defs>
+            <LinearGradient id="alt_grad" x1="0" y1="0" x2="0" y2="1">
+              <Stop offset="0" stopColor="#9E9E9E" stopOpacity="0.5" />
+              <Stop offset="1" stopColor="#9E9E9E" stopOpacity="0.06" />
+            </LinearGradient>
+          </Defs>
+          <Path d={areaPath} fill="url(#alt_grad)" />
+          <Path d={linePath} stroke="#AAAAAA" strokeWidth={2} fill="none" strokeLinejoin="round" />
+          {scrubPt !== null && scrubX !== null && (
+            <>
+              <SvgLine x1={mx(scrubPt.km)} y1={PT} x2={mx(scrubPt.km)} y2={PT + cH} stroke="#FFFFFFCC" strokeWidth={1.5} />
+              <Circle cx={mx(scrubPt.km)} cy={my(scrubPt.alt)} r={5} fill="#FFFFFF" stroke="#AAAAAA" strokeWidth={2} />
+            </>
+          )}
+          <SvgText x={PL - 3} y={PT + 5} textAnchor="end" fontSize={8} fill="#666">{maxAlt} m</SvgText>
+          <SvgText x={PL - 3} y={PT + cH + 1} textAnchor="end" fontSize={8} fill="#666">{minAlt} m</SvgText>
+          <SvgText x={PL + 1} y={H - 2} textAnchor="start" fontSize={8} fill="#666">0</SvgText>
+          <SvgText x={W - PR} y={H - 2} textAnchor="end" fontSize={8} fill="#666">{totalKm.toFixed(1)} km</SvgText>
+        </Svg>
+      </View>
+      {scrubPt ? (
+        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6, paddingHorizontal: 2, paddingTop: 2 }}>
+          <Text style={{ color: '#AAAAAA', fontFamily: 'Inter_700Bold', fontSize: 18, lineHeight: 22 }}>
+            {scrubPt.alt} m
+          </Text>
+          <Text style={{ color: '#555', fontSize: 12 }}>·</Text>
+          <Text style={{ color: '#888', fontFamily: 'Inter_400Regular', fontSize: 12 }}>
+            {scrubPt.km.toFixed(2)} km
+          </Text>
+        </View>
+      ) : (
+        <View style={{ flexDirection: 'row', gap: 20, paddingHorizontal: 2, paddingTop: 2 }}>
+          <View>
+            <Text style={{ color: '#555', fontSize: 9, fontFamily: 'Inter_400Regular', textTransform: 'uppercase', letterSpacing: 0.8 }}>MIN</Text>
+            <Text style={{ color: colors.foreground, fontSize: 14, fontFamily: 'Inter_700Bold' }}>{minAlt} m</Text>
+          </View>
+          <View>
+            <Text style={{ color: '#555', fontSize: 9, fontFamily: 'Inter_400Regular', textTransform: 'uppercase', letterSpacing: 0.8 }}>MAX</Text>
+            <Text style={{ color: colors.foreground, fontSize: 14, fontFamily: 'Inter_700Bold' }}>{maxAlt} m</Text>
+          </View>
+          <View>
+            <Text style={{ color: '#555', fontSize: 9, fontFamily: 'Inter_400Regular', textTransform: 'uppercase', letterSpacing: 0.8 }}>DÉNIVELÉ +</Text>
+            <Text style={{ color: colors.foreground, fontSize: 14, fontFamily: 'Inter_700Bold' }}>+{gainM} m</Text>
+          </View>
+        </View>
+      )}
+    </View>
   );
 }
 
@@ -1395,31 +1535,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 14,
     paddingBottom: 16,
-  },
-  chartPlaceholder: {
-    height: 90,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#1A1A1A',
-    borderRadius: 8,
-  },
-  chartStatsRow: {
-    flexDirection: 'row',
-    gap: 28,
-    marginTop: 12,
-  },
-  chartStatItem: { gap: 3 },
-  chartStatLabel: {
-    fontSize: 10,
-    fontFamily: 'Inter_400Regular',
-    color: '#555',
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-  },
-  chartStatValue: {
-    fontSize: 18,
-    fontFamily: 'Inter_700Bold',
-    color: '#fff',
   },
   bottomBar: {
     flexDirection: 'row',
