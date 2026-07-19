@@ -33,7 +33,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { reconfigureStorage, recoverAllPhotosFromExternal, SAF_ROOT_KEY } from '@/utils/photoStorage';
 import { CategoryConfig, DEFAULT_EXPENSE_CATEGORY_CONFIGS, getCategoryConfigs, saveCategoryConfigs } from '@/utils/bankStorage';
 import { genId } from '@/utils/ids';
-import { seedTestTrip, removeTestTrip, TEST_TRIP_ID } from '@/utils/seedTestTrip';
 
 function SettingRow({
   icon,
@@ -330,15 +329,6 @@ export default function SettingsScreen() {
     );
   }
 
-  async function handleOpenTestTrip() {
-    try {
-      await seedTestTrip();
-      router.push({ pathname: '/trip-map', params: { id: TEST_TRIP_ID } } as any);
-    } catch (e) {
-      Alert.alert('Erreur', String(e));
-    }
-  }
-
   function handleAddCategory() {
     if (newCatName.trim()) { addCategory(newCatName.trim()); setNewCatName(''); }
   }
@@ -561,17 +551,6 @@ export default function SettingsScreen() {
           <Text style={[styles.aboutSub, { color: colors.mutedForeground }]}>par et pour Gorge Yoann</Text>
           <Text style={[styles.aboutVersion, { color: colors.primary }]}>v2.10.0</Text>
         </View>
-
-        {/* ── DEBUG ── */}
-        <Text style={[styles.section, { color: colors.mutedForeground }]}>Debug</Text>
-        <SettingRow
-          icon="map-marker-path"
-          label="Trajet TEST"
-          sublabel="Ouvre un trajet fictif avec vitesse + altitude"
-          onPress={handleOpenTestTrip}
-          accent="#9C27B0"
-          colors={colors}
-        />
 
         {/* ── DANGER ── */}
         <Text style={[styles.section, { color: colors.mutedForeground }]}>Danger</Text>
