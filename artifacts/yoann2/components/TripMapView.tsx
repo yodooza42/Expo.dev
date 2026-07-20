@@ -76,9 +76,9 @@ export function TripMapView({ route, width, height, bgColor = '#1A1A1A', lineCol
 
     const totalWidthKm = lngMeters / 1000;
     const scale = pickScaleKm(totalWidthKm, drawW);
-    const scaleX2 = offX + drawW - 10;
+    const scaleX2 = width - 12;
     const scaleX1 = scaleX2 - scale.px;
-    const scaleBarY = offY + drawH - 10;
+    const scaleBarY = height - 14;
 
     return {
       pointsStr,

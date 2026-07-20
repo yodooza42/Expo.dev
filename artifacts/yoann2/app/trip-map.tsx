@@ -555,7 +555,7 @@ export default function TripMapScreen() {
         Alert.alert('Erreur', 'Impossible de générer la story.');
       }
     })();
-  }, [trip, vehicles, isGeneratingStory]);
+  }, [trip, vehicles, isGeneratingStory, storyDuration]);
 
   function handleOpenDtPicker() {
     if (!trip) return;
