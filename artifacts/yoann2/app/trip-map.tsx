@@ -469,93 +469,78 @@ export default function TripMapScreen() {
 
   const handleGenerateStory = useCallback(() => {
     if (!trip || isGeneratingStory) return;
+
+    // Route : tracé stocké ou tracé GPS déjà chargé dans tripLocPts
+    const route: Array<{ lat: number; lng: number }> =
+      trip.route && trip.route.length >= 2
+        ? trip.route
+        : tripLocPts.length >= 2
+          ? tripLocPts.map(p => ({ lat: p.lat, lng: p.lng }))
+          : [];
+
+    if (route.length < 2) {
+      Alert.alert('Story', 'Tracé GPS insuffisant pour générer une story.');
+      return;
+    }
+
     setIsGeneratingStory(true);
     setStoryProgress(0);
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    void (async () => {
-      try {
-        const gpsPoints = await loadMultiDayPoints(trip.startTime, trip.endTime);
-        const tripPoints = gpsPoints.filter(p => p.timestamp >= trip.startTime && p.timestamp <= trip.endTime);
 
-        const storedRoute = trip.route ?? [];
-        const route: Array<{ lat: number; lng: number }> =
-          storedRoute.length >= 2
-            ? storedRoute
-            : tripPoints.length >= 2
-              ? tripPoints
-                  .filter((_, i) => i % Math.max(1, Math.floor(tripPoints.length / 150)) === 0 || i === tripPoints.length - 1)
-                  .map(p => ({ lat: p.lat, lng: p.lng }))
-              : [];
+    // Réutilise tripLocPts (déjà filtré + samplé — mêmes données que les charts affichés)
+    let rawCumDist = 0;
+    const rawChartPts: Array<{ km: number; spd: number; alt: number | null }> = [];
+    for (let i = 0; i < tripLocPts.length; i++) {
+      if (i > 0) rawCumDist += haversineKm(tripLocPts[i - 1]!.lat, tripLocPts[i - 1]!.lng, tripLocPts[i]!.lat, tripLocPts[i]!.lng);
+      rawChartPts.push({ km: rawCumDist, spd: tripLocPts[i]!.speedKmh ?? 0, alt: tripLocPts[i]!.altitudeM ?? null });
+    }
+    const distScale = rawCumDist > 0 ? trip.distanceKm / rawCumDist : 1;
+    const chartPts = rawChartPts.map(p => ({ ...p, km: parseFloat((p.km * distScale).toFixed(3)) }));
 
-        if (route.length < 2) {
-          setIsGeneratingStory(false);
-          Alert.alert('Story', 'Tracé GPS insuffisant pour générer une story.');
-          return;
-        }
+    const maxSpeed = Math.max(...tripLocPts.map(p => p.speedKmh ?? 0), 1);
+    const alts = tripLocPts.map(p => p.altitudeM).filter((a): a is number => a != null);
+    const minAlt = alts.length > 0 ? Math.min(...alts) : 0;
+    const maxAlt = alts.length > 0 ? Math.max(...alts) : 0;
+    let gainM = 0;
+    for (let i = 1; i < tripLocPts.length; i++) {
+      const a = tripLocPts[i]!.altitudeM, b = tripLocPts[i - 1]!.altitudeM;
+      if (a != null && b != null && a - b >= ALT_GAIN_THRESHOLD_M) gainM += a - b;
+    }
 
-        const step = Math.max(1, Math.floor(tripPoints.length / 100));
-        const sampled = tripPoints.filter((_, i) => i % step === 0 || i === tripPoints.length - 1);
+    const durationSec = Math.round((trip.endTime - trip.startTime) / 1000);
+    const startDate = new Date(trip.startTime);
+    const DAYS   = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
+    const MONTHS = ['jan', 'fév', 'mar', 'avr', 'mai', 'juin', 'juil', 'août', 'sep', 'oct', 'nov', 'déc'];
+    const dateLabel = `${DAYS[startDate.getDay()]} ${startDate.getDate()} ${MONTHS[startDate.getMonth()]}`;
+    const fmtH = (d: Date) => `${String(d.getHours()).padStart(2, '0')}h${String(d.getMinutes()).padStart(2, '0')}`;
+    const timeLabel = `${fmtH(startDate)} → ${fmtH(new Date(trip.endTime))}`;
 
-        let rawCumDist = 0;
-        const rawChartPts: Array<{ km: number; spd: number; alt: number | null }> = [];
-        for (let i = 0; i < sampled.length; i++) {
-          if (i > 0) rawCumDist += haversineKm(sampled[i - 1]!.lat, sampled[i - 1]!.lng, sampled[i]!.lat, sampled[i]!.lng);
-          rawChartPts.push({ km: rawCumDist, spd: sampled[i]!.speedKmh ?? 0, alt: sampled[i]!.altitudeM ?? null });
-        }
-        const distScale = rawCumDist > 0 ? trip.distanceKm / rawCumDist : 1;
-        const chartPts = rawChartPts.map(p => ({ ...p, km: parseFloat((p.km * distScale).toFixed(3)) }));
+    const veh = vehicles.find(v => v.id === trip.vehicle);
+    const vehicleColor = veh?.type === 'walk' ? '#4CAF50'
+      : veh?.type === 'moto' || trip.vehicle === 'moto' ? '#FF9800'
+      : '#2196F3';
+    const vehicleEmoji = veh?.type === 'moto' || trip.vehicle === 'moto' ? '🏍'
+      : veh?.type === 'walk' ? '🚶' : '🚗';
 
-        const speeds = tripPoints.map(p => p.speedKmh ?? 0);
-        const maxSpeed = Math.max(...speeds, 1);
-        const alts = tripPoints.map(p => p.altitudeM).filter((a): a is number => a != null);
-        const minAlt = alts.length > 0 ? Math.min(...alts) : 0;
-        const maxAlt = alts.length > 0 ? Math.max(...alts) : 0;
-        let gainM = 0;
-        for (let i = 1; i < tripPoints.length; i++) {
-          const a = tripPoints[i]!.altitudeM, b = tripPoints[i - 1]!.altitudeM;
-          if (a != null && b != null && a - b >= ALT_GAIN_THRESHOLD_M) gainM += a - b;
-        }
+    const opts = {
+      color: vehicleColor,
+      vehicleEmoji,
+      dateLabel,
+      timeLabel,
+      distKm: parseFloat(trip.distanceKm.toFixed(1)),
+      durationSec,
+      maxSpeed,
+      gainM: Math.round(gainM),
+      minAlt,
+      maxAlt,
+      hasAlt: alts.length > 0,
+      points: chartPts,
+      route,
+      videoDurationSec: storyDuration,
+    };
 
-        const durationMs = trip.endTime - trip.startTime;
-        const durationSec = Math.round(durationMs / 1000);
-        const startDate = new Date(trip.startTime);
-        const DAYS   = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
-        const MONTHS = ['jan', 'fév', 'mar', 'avr', 'mai', 'juin', 'juil', 'août', 'sep', 'oct', 'nov', 'déc'];
-        const dateLabel = `${DAYS[startDate.getDay()]} ${startDate.getDate()} ${MONTHS[startDate.getMonth()]}`;
-        const fmtH = (d: Date) => `${String(d.getHours()).padStart(2, '0')}h${String(d.getMinutes()).padStart(2, '0')}`;
-        const timeLabel = `${fmtH(startDate)} → ${fmtH(new Date(trip.endTime))}`;
-
-        const veh = vehicles.find(v => v.id === trip.vehicle);
-        const vehicleColor = veh?.type === 'walk' ? '#4CAF50'
-          : veh?.type === 'moto' || trip.vehicle === 'moto' ? '#FF9800'
-          : '#2196F3';
-        const vehicleEmoji = veh?.type === 'moto' || trip.vehicle === 'moto' ? '🏍'
-          : veh?.type === 'walk' ? '🚶' : '🚗';
-
-        const opts = {
-          color: vehicleColor,
-          vehicleEmoji,
-          dateLabel,
-          timeLabel,
-          distKm: parseFloat(trip.distanceKm.toFixed(1)),
-          durationSec,
-          maxSpeed,
-          gainM: Math.round(gainM),
-          minAlt,
-          maxAlt,
-          hasAlt: alts.length > 0,
-          points: chartPts,
-          route,
-          videoDurationSec: storyDuration,
-        };
-
-        storyWebViewRef.current?.injectJavaScript(`(function(){window.generateStory(${JSON.stringify(opts)});})();true;`);
-      } catch {
-        setIsGeneratingStory(false);
-        Alert.alert('Erreur', 'Impossible de générer la story.');
-      }
-    })();
-  }, [trip, vehicles, isGeneratingStory, storyDuration]);
+    storyWebViewRef.current?.injectJavaScript(`(function(){window.generateStory(${JSON.stringify(opts)});})();true;`);
+  }, [trip, vehicles, isGeneratingStory, storyDuration, tripLocPts]);
 
   function handleOpenDtPicker() {
     if (!trip) return;
