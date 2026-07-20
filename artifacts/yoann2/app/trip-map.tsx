@@ -513,7 +513,7 @@ export default function TripMapScreen() {
         let gainM = 0;
         for (let i = 1; i < tripPoints.length; i++) {
           const a = tripPoints[i]!.altitudeM, b = tripPoints[i - 1]!.altitudeM;
-          if (a != null && b != null && a > b) gainM += a - b;
+          if (a != null && b != null && a - b >= ALT_GAIN_THRESHOLD_M) gainM += a - b;
         }
 
         const durationMs = trip.endTime - trip.startTime;
@@ -1077,6 +1077,23 @@ export default function TripMapScreen() {
   );
 }
 
+// Rejette les points GPS où la vitesse implicite dépasse 250 km/h (outlier téléportation)
+function filterGpsOutliers(pts: LocationPoint[]): LocationPoint[] {
+  if (pts.length === 0) return pts;
+  const result: LocationPoint[] = [pts[0]!];
+  for (let i = 1; i < pts.length; i++) {
+    const prev = result[result.length - 1]!;
+    const curr = pts[i]!;
+    const dtH = (curr.timestamp - prev.timestamp) / 3_600_000;
+    if (dtH <= 0) continue;
+    const dKm = haversineKm(prev.lat, prev.lng, curr.lat, curr.lng);
+    if (dKm / dtH < 250) result.push(curr);
+  }
+  return result;
+}
+
+const ALT_GAIN_THRESHOLD_M = 5; // ignorer les fluctuations GPS < 5m (bruit altitude)
+
 function StatItem({ icon, value, color }: { icon: string; value: string; color: string }) {
   return (
     <View style={styles.statItem}>
@@ -1107,7 +1124,7 @@ function TripSpeedChart({
   const [scrubX, setScrubX] = useState<number | null>(null);
 
   const chartData = useMemo(() => {
-    const pts = points.filter(p => p.speedKmh != null && (p.speedKmh as number) >= 0);
+    const pts = filterGpsOutliers(points.filter(p => p.speedKmh != null && (p.speedKmh as number) >= 0));
     if (pts.length < 2) return null;
     let cumDist = 0;
     const data: Array<{ km: number; spd: number; lat: number; lng: number; ts: number }> = [];
@@ -1244,7 +1261,7 @@ function TripAltitudeChart({
   const [scrubX, setScrubX] = useState<number | null>(null);
 
   const chartData = useMemo(() => {
-    const pts = points.filter(p => p.altitudeM != null);
+    const pts = filterGpsOutliers(points.filter(p => p.altitudeM != null));
     if (pts.length < 2) return null;
     let cumDist = 0;
     const data: Array<{ km: number; alt: number; lat: number; lng: number; ts: number }> = [];
@@ -1260,7 +1277,7 @@ function TripAltitudeChart({
     let gainM = 0;
     for (let i = 1; i < data.length; i++) {
       const delta = data[i]!.alt - data[i - 1]!.alt;
-      if (delta > 0) gainM += delta;
+      if (delta >= ALT_GAIN_THRESHOLD_M) gainM += delta;
     }
     return { data, minAlt, maxAlt, totalKm, gainM: Math.round(gainM) };
   }, [points]);
