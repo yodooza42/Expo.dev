@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Circle, Polyline, Rect, Svg } from 'react-native-svg';
+import { Circle, Line as SvgLine, Polyline, Rect, Svg, Text as SvgText } from 'react-native-svg';
 
 import type { RoutePoint } from '@/types/trips';
 
@@ -17,9 +17,23 @@ interface Props {
 
 const PAD = 0.12;
 
+/** Pick the largest "nice" km value that fits within maxFrac of drawW pixels */
+function pickScaleKm(totalWidthKm: number, drawW: number, maxFrac = 0.28): { km: number; px: number; label: string } {
+  const niceKm = [0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200];
+  const targetKm = totalWidthKm * maxFrac;
+  let chosen = niceKm[0]!;
+  for (const v of niceKm) {
+    if (v <= targetKm) chosen = v;
+    else break;
+  }
+  const px = (chosen / totalWidthKm) * drawW;
+  const label = chosen < 1 ? `${Math.round(chosen * 1000)} m` : `${chosen} km`;
+  return { km: chosen, px, label };
+}
+
 export function TripMapView({ route, width, height, bgColor = '#1A1A1A', lineColor = '#FFC107', waypoints }: Props) {
-  const { pointsStr, startX, startY, endX, endY, toX, toY } = useMemo(() => {
-    if (!route || route.length < 2) return { pointsStr: '', startX: 0, startY: 0, endX: 0, endY: 0, toX: () => 0, toY: () => 0 };
+  const { pointsStr, startX, startY, endX, endY, toX, toY, scale } = useMemo(() => {
+    if (!route || route.length < 2) return { pointsStr: '', startX: 0, startY: 0, endX: 0, endY: 0, toX: () => 0, toY: () => 0, scale: null };
 
     const lats = route.map(p => p.lat);
     const lngs = route.map(p => p.lng);
@@ -31,7 +45,6 @@ export function TripMapView({ route, width, height, bgColor = '#1A1A1A', lineCol
     const latRange = maxLat - minLat || 0.0001;
     const lngRange = maxLng - minLng || 0.0001;
 
-    // Preserve geographic aspect ratio
     const latMeters = latRange * 111_320;
     const lngMeters = lngRange * 111_320 * Math.cos((((minLat + maxLat) / 2) * Math.PI) / 180);
     const geoAspect = lngMeters / latMeters;
@@ -61,6 +74,12 @@ export function TripMapView({ route, width, height, bgColor = '#1A1A1A', lineCol
     const s = route[0]!;
     const e = route[route.length - 1]!;
 
+    const totalWidthKm = lngMeters / 1000;
+    const scale = pickScaleKm(totalWidthKm, drawW);
+    const scaleX2 = offX + drawW - 10;
+    const scaleX1 = scaleX2 - scale.px;
+    const scaleBarY = offY + drawH - 10;
+
     return {
       pointsStr,
       startX: toX(s.lng),
@@ -69,6 +88,7 @@ export function TripMapView({ route, width, height, bgColor = '#1A1A1A', lineCol
       endY: toY(e.lat),
       toX,
       toY,
+      scale: { x1: scaleX1, x2: scaleX2, y: scaleBarY, label: scale.label },
     };
   }, [route, width, height]);
 
@@ -86,7 +106,7 @@ export function TripMapView({ route, width, height, bgColor = '#1A1A1A', lineCol
         strokeLinecap="round"
         opacity={0.9}
       />
-      {/* Intermediate waypoints — yellow diamond-ish dots */}
+      {/* Intermediate waypoints */}
       {waypoints?.map((wp, i) => {
         const cx = toX(wp.lng);
         const cy = toY(wp.lat);
@@ -103,6 +123,28 @@ export function TripMapView({ route, width, height, bgColor = '#1A1A1A', lineCol
       {/* End — amber */}
       <Circle cx={endX} cy={endY} r={6} fill={lineColor} opacity={0.9} />
       <Circle cx={endX} cy={endY} r={3} fill="#121212" />
+      {/* Scale bar */}
+      {scale && (
+        <>
+          {/* Horizontal bar */}
+          <SvgLine x1={scale.x1} y1={scale.y} x2={scale.x2} y2={scale.y} stroke="#AAAAAA" strokeWidth={1.5} />
+          {/* Left tick */}
+          <SvgLine x1={scale.x1} y1={scale.y - 4} x2={scale.x1} y2={scale.y + 4} stroke="#AAAAAA" strokeWidth={1.5} />
+          {/* Right tick */}
+          <SvgLine x1={scale.x2} y1={scale.y - 4} x2={scale.x2} y2={scale.y + 4} stroke="#AAAAAA" strokeWidth={1.5} />
+          {/* Label centered above bar */}
+          <SvgText
+            x={(scale.x1 + scale.x2) / 2}
+            y={scale.y - 6}
+            textAnchor="middle"
+            fontSize={9}
+            fill="#AAAAAA"
+            fontFamily="Arial,sans-serif"
+          >
+            {scale.label}
+          </SvgText>
+        </>
+      )}
     </Svg>
   );
 }
