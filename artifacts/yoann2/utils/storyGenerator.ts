@@ -116,7 +116,7 @@ window.generateStory=function(opts){
     return lo+(tgt-routeTimeH[lo])/span;
   }
 
-  var DUR=18000,t0=null,lastRep=0;
+  var DUR=(opts.videoDurationSec||18)*1000,t0=null,lastRep=0;
   var maxSpd=opts.maxSpeed||1;
   var altSpan=Math.max(opts.maxAlt-opts.minAlt,1);
   var totalKm=opts.points.length>0?opts.points[opts.points.length-1].km:1;
