@@ -1041,7 +1041,7 @@ export default function MapScreen() {
       if (i > 0 && raw[i]!.timestamp - raw[i - 1]!.timestamp > GAP_MS) break;
       pts.push(raw[i]!);
     }
-    setTripPoints(pts);
+    setTripPoints(filterGpsOutliers(pts));
   }, [selectedTripId, dayTrips, dayStats.points]);
 
   const handleSearch = useCallback(() => {

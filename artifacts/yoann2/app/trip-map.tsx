@@ -596,7 +596,9 @@ export default function TripMapScreen() {
     void (async () => {
       try {
         const gpsPoints = await loadMultiDayPoints(trip.startTime, trip.endTime);
-        const tripPoints = gpsPoints.filter(p => p.timestamp >= trip.startTime && p.timestamp <= trip.endTime);
+        const tripPoints = filterGpsOutliers(
+          gpsPoints.filter(p => p.timestamp >= trip.startTime && p.timestamp <= trip.endTime)
+        );
         if (tripPoints.length < 2) { setChartLoading(false); return; }
         const step = Math.max(1, Math.floor(tripPoints.length / 200));
         const sampled = tripPoints.filter((_, i) => i % step === 0 || i === tripPoints.length - 1);
