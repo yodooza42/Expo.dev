@@ -380,6 +380,7 @@ export default function TripMapScreen() {
 
   const [storyDuration, setStoryDuration] = useState<10 | 20 | 30 | 60>(20);
   const [tripLocPts, setTripLocPts] = useState<LocationPoint[]>([]);
+  const [speedUnitPace, setSpeedUnitPace] = useState(false);
   const [chartLoading, setChartLoading] = useState(false);
   const [chartRefreshKey, setChartRefreshKey] = useState(0);
 
@@ -587,6 +588,17 @@ export default function TripMapScreen() {
     getKnownPlaces().then(setKnownPlaces).catch(() => {});
     getAddressUsage().then(setAddressUsage).catch(() => {});
     getWalkRoutes().then(setWalkRoutes).catch(() => {});
+    AsyncStorage.getItem('@yoann2_speed_unit_walk').then(v => {
+      if (v === 'pace') setSpeedUnitPace(true);
+    }).catch(() => {});
+  }, []);
+
+  const handleToggleSpeedUnit = useCallback(() => {
+    setSpeedUnitPace(prev => {
+      const next = !prev;
+      AsyncStorage.setItem('@yoann2_speed_unit_walk', next ? 'pace' : 'kmh').catch(() => {});
+      return next;
+    });
   }, []);
 
   useEffect(() => {
@@ -991,7 +1003,7 @@ export default function TripMapScreen() {
             </View>
           ) : (
             <>
-              <TripSpeedChart points={tripLocPts} color={vehColor} onScrub={() => {}} />
+              <TripSpeedChart points={tripLocPts} color={vehColor} onScrub={() => {}} isWalk={isWalkTrip} speedUnitPace={speedUnitPace} onToggleUnit={handleToggleSpeedUnit} />
               {hasAltData && <TripAltitudeChart points={tripLocPts} color={vehColor} onScrub={() => {}} />}
             </>
           )}
@@ -1081,6 +1093,25 @@ function filterGpsOutliers(pts: LocationPoint[]): LocationPoint[] {
 
 const ALT_GAIN_THRESHOLD_M = 5; // ignorer les fluctuations GPS < 5m (bruit altitude)
 
+/** Convertit une vitesse en km/h → allure formatée "m:ss /km" */
+function formatPace(speedKmh: number): string {
+  if (speedKmh < 0.1) return '--:--';
+  const totalSec = Math.round(3600 / speedKmh);
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+/** Formate une durée en ms → "mm:ss" ou "h:mm:ss" pour l'axe X */
+function fmtAxisTime(ms: number): string {
+  const totalSec = Math.floor(ms / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
 function StatItem({ icon, value, color }: { icon: string; value: string; color: string }) {
   return (
     <View style={styles.statItem}>
@@ -1102,50 +1133,94 @@ function TripSpeedChart({
   points,
   color,
   onScrub,
+  isWalk = false,
+  speedUnitPace = false,
+  onToggleUnit,
 }: {
   points: LocationPoint[];
   color: string;
   onScrub: (pt: LocationPoint | null) => void;
+  isWalk?: boolean;
+  speedUnitPace?: boolean;
+  onToggleUnit?: () => void;
 }) {
   const colors = useColors();
   const [scrubX, setScrubX] = useState<number | null>(null);
 
+  // En mode balade, l'unité allure n'a de sens que si isWalk est vrai
+  const showPace = isWalk && speedUnitPace;
+
   const chartData = useMemo(() => {
     const pts = filterGpsOutliers(points.filter(p => p.speedKmh != null && (p.speedKmh as number) >= 0));
     if (pts.length < 2) return null;
+
     let cumDist = 0;
-    const data: Array<{ km: number; spd: number; lat: number; lng: number; ts: number }> = [];
-    data.push({ km: 0, spd: pts[0]!.speedKmh ?? 0, lat: pts[0]!.lat, lng: pts[0]!.lng, ts: pts[0]!.timestamp });
+    const t0 = pts[0]!.timestamp;
+    const data: Array<{ km: number; ms: number; spd: number; lat: number; lng: number; ts: number }> = [];
+    data.push({ km: 0, ms: 0, spd: pts[0]!.speedKmh ?? 0, lat: pts[0]!.lat, lng: pts[0]!.lng, ts: pts[0]!.timestamp });
     for (let i = 1; i < pts.length; i++) {
       cumDist += haversineKm(pts[i - 1]!.lat, pts[i - 1]!.lng, pts[i]!.lat, pts[i]!.lng);
-      data.push({ km: cumDist, spd: pts[i]!.speedKmh ?? 0, lat: pts[i]!.lat, lng: pts[i]!.lng, ts: pts[i]!.timestamp });
+      data.push({
+        km: cumDist,
+        ms: pts[i]!.timestamp - t0,
+        spd: pts[i]!.speedKmh ?? 0,
+        lat: pts[i]!.lat, lng: pts[i]!.lng,
+        ts: pts[i]!.timestamp,
+      });
     }
-    const rawMax = Math.max(...data.map(d => d.spd), 1);
-    const maxSpd = Math.ceil(rawMax / 10) * 10;
-    const avgSpd = data.reduce((s, d) => s + d.spd, 0) / data.length;
+
+    const rawMaxSpd = Math.max(...data.map(d => d.spd), 0.1);
+    const spdScale = Math.ceil(rawMaxSpd / 10) * 10; // pour l'axe Y seulement
     const totalKm = Math.max(cumDist, 0.001);
-    const durationMs = pts[pts.length - 1]!.timestamp - pts[0]!.timestamp;
-    return { data, maxSpd, avgSpd, totalKm, durationMs };
+    const totalMs = Math.max(pts[pts.length - 1]!.timestamp - t0, 1);
+    const durationMs = totalMs;
+
+    // Moyenne vitesse sur les points en mouvement (> 0.5 km/h) — plus représentatif pour balades
+    const movingPts = data.filter(d => d.spd > 0.5);
+    const avgSpdMoving = movingPts.length > 0
+      ? movingPts.reduce((s, d) => s + d.spd, 0) / movingPts.length
+      : data.reduce((s, d) => s + d.spd, 0) / data.length;
+
+    // Allure : min/km — meilleure allure = vitesse la plus haute
+    const minPace = rawMaxSpd > 0.5 ? 60 / rawMaxSpd : 0;
+    const maxPaceVal = movingPts.length > 0 ? Math.max(...movingPts.map(d => 60 / d.spd)) : 30;
+    const avgPace = avgSpdMoving > 0.5 ? 60 / avgSpdMoving : 0;
+
+    return { data, spdScale, rawMaxSpd, avgSpdMoving, totalKm, totalMs, durationMs, minPace, maxPaceVal, avgPace };
   }, [points]);
 
-  const findNearest = useCallback((x: number, cData: typeof chartData) => {
+  const findNearest = useCallback((x: number, cData: typeof chartData, timeAxis: boolean) => {
     if (!cData) return null;
-    const { data, totalKm } = cData;
+    const { data, totalKm, totalMs } = cData;
     const W = Dimensions.get('window').width - 32;
     const PL = 30; const PR = 8; const cW = W - PL - PR;
     const frac = Math.max(0, Math.min(1, (x - PL) / cW));
-    const targetKm = frac * totalKm;
-    let best = data[0]!;
-    let bestD = Math.abs(best.km - targetKm);
-    for (const d of data) {
-      const dd = Math.abs(d.km - targetKm);
-      if (dd < bestD) { best = d; bestD = dd; }
+    if (timeAxis) {
+      const targetMs = frac * totalMs;
+      let best = data[0]!;
+      let bestD = Math.abs(best.ms - targetMs);
+      for (const d of data) {
+        const dd = Math.abs(d.ms - targetMs);
+        if (dd < bestD) { best = d; bestD = dd; }
+      }
+      return best;
+    } else {
+      const targetKm = frac * totalKm;
+      let best = data[0]!;
+      let bestD = Math.abs(best.km - targetKm);
+      for (const d of data) {
+        const dd = Math.abs(d.km - targetKm);
+        if (dd < bestD) { best = d; bestD = dd; }
+      }
+      return best;
     }
-    return best;
   }, []);
 
   if (!chartData) return null;
-  const { data, maxSpd, avgSpd, totalKm, durationMs } = chartData;
+  const { data, spdScale, rawMaxSpd, avgSpdMoving, totalKm, totalMs, durationMs, minPace, maxPaceVal, avgPace } = chartData;
+
+  // L'axe X est en temps pour les balades, en distance sinon
+  const timeAxis = isWalk;
 
   const W = Dimensions.get('window').width - 32;
   const H = 84;
@@ -1153,14 +1228,66 @@ function TripSpeedChart({
   const cW = W - PL - PR;
   const cH = H - PT - PB;
 
-  const mx = (km: number) => PL + (km / totalKm) * cW;
-  const my = (spd: number) => PT + (1 - spd / maxSpd) * cH;
+  // Position X selon l'axe choisi
+  const xOf = (d: { km: number; ms: number }) =>
+    PL + (timeAxis ? d.ms / totalMs : d.km / totalKm) * cW;
 
-  const pts2 = data.map(d => `${mx(d.km).toFixed(1)},${my(d.spd).toFixed(1)}`);
-  const linePath = `M ${pts2.join(' L ')}`;
-  const areaPath = `${linePath} L ${mx(totalKm).toFixed(1)},${(PT + cH).toFixed(1)} L ${PL},${(PT + cH).toFixed(1)} Z`;
+  // Position Y selon le mode d'unité
+  const yOfSpd = (spd: number) => PT + (1 - spd / spdScale) * cH;
+  const paceSpan = Math.max(maxPaceVal - minPace, 1);
+  const yOfPace = (pace: number) => PT + (pace - minPace) / paceSpan * cH;
 
-  const scrubPt = scrubX !== null ? findNearest(scrubX, chartData) : null;
+  // Construction du chemin SVG
+  let linePath = '';
+  let areaPath = '';
+  if (showPace) {
+    // Mode allure : on crée des segments avec gaps aux pauses (vitesse < 0.5)
+    let inSeg = false;
+    let segPts: string[] = [];
+    const flushSeg = () => {
+      if (segPts.length < 2) { segPts = []; inSeg = false; return; }
+      const first = segPts[0]!;
+      const last = segPts[segPts.length - 1]!;
+      linePath += (linePath ? ' ' : '') + `M ${first} ` + segPts.slice(1).map(p => `L ${p}`).join(' ');
+      // Aire sous la courbe pour ce segment
+      areaPath += (areaPath ? ' ' : '') + `M ${first} ` + segPts.slice(1).map(p => `L ${p}`).join(' ') +
+        ` L ${last.split(',')[0]},${(PT + cH).toFixed(1)} L ${first.split(',')[0]},${(PT + cH).toFixed(1)} Z`;
+      segPts = [];
+      inSeg = false;
+    };
+    for (const d of data) {
+      if (d.spd < 0.5) { flushSeg(); continue; }
+      const pace = 60 / d.spd;
+      const x = xOf(d).toFixed(1);
+      const y = yOfPace(pace).toFixed(1);
+      segPts.push(`${x},${y}`);
+      inSeg = true;
+    }
+    if (inSeg) flushSeg();
+  } else {
+    // Mode vitesse : chemin continu
+    const pts2 = data.map(d => `${xOf(d).toFixed(1)},${yOfSpd(d.spd).toFixed(1)}`);
+    linePath = `M ${pts2.join(' L ')}`;
+    const xEnd = xOf(data[data.length - 1]!).toFixed(1);
+    const xStart = xOf(data[0]!).toFixed(1);
+    areaPath = `${linePath} L ${xEnd},${(PT + cH).toFixed(1)} L ${xStart},${(PT + cH).toFixed(1)} Z`;
+  }
+
+  const scrubPt = scrubX !== null ? findNearest(scrubX, chartData, timeAxis) : null;
+  const scrubX2 = scrubPt ? xOf(scrubPt) : 0;
+  const scrubY2 = scrubPt
+    ? (showPace && scrubPt.spd >= 0.5 ? yOfPace(60 / scrubPt.spd) : yOfSpd(scrubPt.spd))
+    : 0;
+
+  // Ligne de moyenne
+  const avgY = showPace ? (avgPace > 0 ? yOfPace(avgPace) : -1) : yOfSpd(avgSpdMoving);
+
+  // Valeurs de l'axe Y pour les étiquettes
+  const yTopLabel = showPace ? formatPace(rawMaxSpd) : String(spdScale);
+  const yUnit = showPace ? '/km' : 'km/h';
+
+  // Étiquette axe X
+  const xEndLabel = timeAxis ? fmtAxisTime(totalMs) : `${totalKm.toFixed(1)} km`;
 
   return (
     <View style={{ borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, paddingTop: 6, paddingBottom: 4 }}>
@@ -1170,13 +1297,13 @@ function TripSpeedChart({
         onResponderGrant={e => {
           const x = e.nativeEvent.locationX;
           setScrubX(x);
-          const nearest = findNearest(x, chartData);
+          const nearest = findNearest(x, chartData, timeAxis);
           onScrub(nearest ? (points.find(p => p.timestamp === nearest.ts) ?? null) : null);
         }}
         onResponderMove={e => {
           const x = e.nativeEvent.locationX;
           setScrubX(x);
-          const nearest = findNearest(x, chartData);
+          const nearest = findNearest(x, chartData, timeAxis);
           onScrub(nearest ? (points.find(p => p.timestamp === nearest.ts) ?? null) : null);
         }}
         onResponderRelease={() => { setScrubX(null); onScrub(null); }}
@@ -1189,47 +1316,65 @@ function TripSpeedChart({
               <Stop offset="1" stopColor={color} stopOpacity="0.04" />
             </LinearGradient>
           </Defs>
-          <Path d={areaPath} fill="url(#spd_grad)" />
-          <Path d={linePath} stroke={color} strokeWidth={2} fill="none" strokeLinejoin="round" />
-          <SvgLine x1={PL} y1={my(avgSpd)} x2={W - PR} y2={my(avgSpd)} stroke="#FFFFFF55" strokeWidth={1} strokeDasharray="3 4" />
+          {!!areaPath && <Path d={areaPath} fill="url(#spd_grad)" />}
+          {!!linePath && <Path d={linePath} stroke={color} strokeWidth={2} fill="none" strokeLinejoin="round" />}
+          {avgY > 0 && <SvgLine x1={PL} y1={avgY} x2={W - PR} y2={avgY} stroke="#FFFFFF55" strokeWidth={1} strokeDasharray="3 4" />}
           {scrubPt !== null && scrubX !== null && (
             <>
-              <SvgLine x1={mx(scrubPt.km)} y1={PT} x2={mx(scrubPt.km)} y2={PT + cH} stroke="#FFFFFFCC" strokeWidth={1.5} />
-              <Circle cx={mx(scrubPt.km)} cy={my(scrubPt.spd)} r={5} fill="#FFFFFF" stroke={color} strokeWidth={2} />
+              <SvgLine x1={scrubX2} y1={PT} x2={scrubX2} y2={PT + cH} stroke="#FFFFFFCC" strokeWidth={1.5} />
+              <Circle cx={scrubX2} cy={scrubY2} r={5} fill="#FFFFFF" stroke={color} strokeWidth={2} />
             </>
           )}
-          <SvgText x={PL - 3} y={PT + 5} textAnchor="end" fontSize={8} fill="#666">{maxSpd}</SvgText>
-          <SvgText x={PL - 3} y={PT + cH + 1} textAnchor="end" fontSize={8} fill="#666">0</SvgText>
-          <SvgText x={PL - 3} y={PT + cH / 2 + 3} textAnchor="end" fontSize={7} fill="#444">km/h</SvgText>
+          <SvgText x={PL - 3} y={PT + 5} textAnchor="end" fontSize={8} fill="#666">{yTopLabel}</SvgText>
+          <SvgText x={PL - 3} y={PT + cH + 1} textAnchor="end" fontSize={8} fill="#666">{showPace ? formatPace(0.5) : '0'}</SvgText>
+          <SvgText x={PL - 3} y={PT + cH / 2 + 3} textAnchor="end" fontSize={7} fill="#444">{yUnit}</SvgText>
           <SvgText x={PL + 1} y={H - 2} textAnchor="start" fontSize={8} fill="#666">0</SvgText>
-          <SvgText x={W - PR} y={H - 2} textAnchor="end" fontSize={8} fill="#666">{totalKm.toFixed(1)} km</SvgText>
+          <SvgText x={W - PR} y={H - 2} textAnchor="end" fontSize={8} fill="#666">{xEndLabel}</SvgText>
         </Svg>
       </View>
       {scrubPt ? (
         <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6, paddingHorizontal: 2, paddingTop: 2 }}>
           <Text style={{ color, fontFamily: 'Inter_700Bold', fontSize: 18, lineHeight: 22 }}>
-            {Math.round(scrubPt.spd)} km/h
+            {showPace
+              ? (scrubPt.spd >= 0.5 ? `${formatPace(scrubPt.spd)} /km` : '—')
+              : `${scrubPt.spd.toFixed(1)} km/h`}
           </Text>
           <Text style={{ color: '#555', fontSize: 12 }}>·</Text>
           <Text style={{ color: '#888', fontFamily: 'Inter_400Regular', fontSize: 12 }}>
-            {scrubPt.km.toFixed(2)} km
+            {timeAxis ? fmtAxisTime(scrubPt.ms) : `${scrubPt.km.toFixed(2)} km`}
           </Text>
         </View>
       ) : (
-        <View style={{ flexDirection: 'row', gap: 20, paddingHorizontal: 2, paddingTop: 2 }}>
+        <Pressable
+          onPress={isWalk ? onToggleUnit : undefined}
+          style={{ flexDirection: 'row', gap: 20, paddingHorizontal: 2, paddingTop: 2 }}
+        >
           <View>
             <Text style={{ color: '#555', fontSize: 9, fontFamily: 'Inter_400Regular', textTransform: 'uppercase', letterSpacing: 0.8 }}>MOY</Text>
-            <Text style={{ color: colors.foreground, fontSize: 14, fontFamily: 'Inter_700Bold' }}>{Math.round(avgSpd)} km/h</Text>
+            <Text style={{ color: colors.foreground, fontSize: 14, fontFamily: 'Inter_700Bold' }}>
+              {showPace ? `${formatPace(avgSpdMoving)} /km` : `${avgSpdMoving.toFixed(1)} km/h`}
+            </Text>
           </View>
           <View>
-            <Text style={{ color: '#555', fontSize: 9, fontFamily: 'Inter_400Regular', textTransform: 'uppercase', letterSpacing: 0.8 }}>MAX</Text>
-            <Text style={{ color: colors.foreground, fontSize: 14, fontFamily: 'Inter_700Bold' }}>{Math.round(maxSpd)} km/h</Text>
+            <Text style={{ color: '#555', fontSize: 9, fontFamily: 'Inter_400Regular', textTransform: 'uppercase', letterSpacing: 0.8 }}>
+              {showPace ? 'MEILLEURE' : 'MAX'}
+            </Text>
+            <Text style={{ color: colors.foreground, fontSize: 14, fontFamily: 'Inter_700Bold' }}>
+              {showPace ? `${formatPace(rawMaxSpd)} /km` : `${rawMaxSpd.toFixed(1)} km/h`}
+            </Text>
           </View>
           <View>
             <Text style={{ color: '#555', fontSize: 9, fontFamily: 'Inter_400Regular', textTransform: 'uppercase', letterSpacing: 0.8 }}>DURÉE</Text>
             <Text style={{ color: colors.foreground, fontSize: 14, fontFamily: 'Inter_700Bold' }}>{fmtChartDur(durationMs)}</Text>
           </View>
-        </View>
+          {isWalk && (
+            <View style={{ marginLeft: 'auto', justifyContent: 'center' }}>
+              <Text style={{ color: '#555', fontSize: 10, fontFamily: 'Inter_400Regular', borderWidth: 1, borderColor: '#FFFFFF33', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 }}>
+                {showPace ? 'km/h' : 'min/km'}
+              </Text>
+            </View>
+          )}
+        </Pressable>
       )}
     </View>
   );
