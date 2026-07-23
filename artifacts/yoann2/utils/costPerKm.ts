@@ -16,6 +16,8 @@ const MS_12_MONTHS = 365 * 24 * 3_600_000;
 export interface CostBreakdown {
   fuelCostPerKm: number;
   fuelCostPer100km: number;
+  fuelTotalLiters: number;
+  fuelLPer100km: number;
   maintenanceCostPerKm: number;
   maintenanceCostPer100km: number;
   insuranceCostPerKm: number;
@@ -61,7 +63,8 @@ export async function computeAutoCostPerKm(vehicle: Vehicle): Promise<CostBreakd
 
   // Fuel cost in period
   const fuelInPeriod = vehicleFuel.filter(e => e.timestamp >= periodStartMs);
-  const fuelTotalEUR = fuelInPeriod.reduce((s, e) => s + e.totalCost, 0);
+  const fuelTotalEUR    = fuelInPeriod.reduce((s, e) => s + e.totalCost, 0);
+  const fuelTotalLiters = fuelInPeriod.reduce((s, e) => s + e.liters, 0);
 
   // Maintenance cost in period (items with a cost that were reset within the period)
   const maintInPeriod = vehicle.maintenanceItems.filter(
@@ -83,6 +86,8 @@ export async function computeAutoCostPerKm(vehicle: Vehicle): Promise<CostBreakd
   return {
     fuelCostPerKm,
     fuelCostPer100km:          fuelCostPerKm * 100,
+    fuelTotalLiters,
+    fuelLPer100km:             kmInPeriod > 0 ? (fuelTotalLiters / kmInPeriod) * 100 : 0,
     maintenanceCostPerKm,
     maintenanceCostPer100km:   maintenanceCostPerKm * 100,
     insuranceCostPerKm,

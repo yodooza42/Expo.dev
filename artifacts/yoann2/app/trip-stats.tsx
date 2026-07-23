@@ -293,9 +293,16 @@ export default function TripStatsScreen() {
                         <View style={[styles.c100BarFill, { width: `${barPct}%`, backgroundColor: vColor }]} />
                       </View>
                     </View>
-                    <Text style={[styles.c100Val, { color: vColor }]}>
-                      {bd.fuelCostPer100km.toFixed(2)} €
-                    </Text>
+                    <View style={{ alignItems: 'flex-end' }}>
+                      <Text style={[styles.c100Val, { color: vColor }]}>
+                        {bd.fuelCostPer100km.toFixed(2)} €
+                      </Text>
+                      {bd.fuelLPer100km > 0 && (
+                        <Text style={{ fontSize: 11, fontFamily: 'Inter_400Regular', color: colors.mutedForeground, marginTop: 1 }}>
+                          {bd.fuelLPer100km.toFixed(1)} L/100
+                        </Text>
+                      )}
+                    </View>
                   </View>
                 );
               })}
