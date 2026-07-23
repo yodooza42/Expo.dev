@@ -116,6 +116,33 @@ window.generateStory=function(opts){
     return lo+(tgt-routeTimeH[lo])/span;
   }
 
+  // ── Heart rate data ────────────────────────────────────────────────────────
+  var hrPts=opts.hrPts||[];
+  var hasHr=hrPts.length>1;
+  var hrMax=0,hrMin=999,hrSum=0;
+  for(var hi=0;hi<hrPts.length;hi++){var hb=hrPts[hi].bpm;if(hb>hrMax)hrMax=hb;if(hb<hrMin)hrMin=hb;hrSum+=hb;}
+  var hrAvg=hrPts.length>0?Math.round(hrSum/hrPts.length):0;
+  var hrTotalMs=hrPts.length>1?hrPts[hrPts.length-1].ms-hrPts[0].ms:1;
+  function getHrAtMs(ms){
+    if(!hasHr)return 0;
+    if(ms<=hrPts[0].ms)return hrPts[0].bpm;
+    for(var i2=1;i2<hrPts.length;i2++){
+      if(hrPts[i2].ms>=ms){
+        var t2=(ms-hrPts[i2-1].ms)/(hrPts[i2].ms-hrPts[i2-1].ms||1);
+        return Math.round(hrPts[i2-1].bpm+(hrPts[i2].bpm-hrPts[i2-1].bpm)*t2);
+      }
+    }
+    return hrPts[hrPts.length-1].bpm;
+  }
+  // Zone color from bpm
+  function hrZoneColor(bpm){
+    if(bpm<115)return'#64B5F6';
+    if(bpm<130)return'#66BB6A';
+    if(bpm<145)return'#FFF176';
+    if(bpm<160)return'#FFA726';
+    return'#EF5350';
+  }
+
   var DUR=(opts.videoDurationSec||18)*1000,t0=null,lastRep=0;
   var maxSpd=opts.maxSpeed||1;
   var altSpan=Math.max(opts.maxAlt-opts.minAlt,1);
@@ -203,20 +230,37 @@ window.generateStory=function(opts){
     // ── Stats / chart panel ───────────────────────────────────────────────
     var ci2=Math.min(Math.floor(opts.points.length*prog),opts.points.length-1);
     var curPt=opts.points[ci2]||opts.points[0];
-    ctx.fillStyle='#141414';ctx.fillRect(0,800,cW,115);
-    ctx.strokeStyle=opts.color+'22';ctx.lineWidth=1;
-    ctx.beginPath();ctx.moveTo(0,800);ctx.lineTo(cW,800);ctx.stroke();
-    ctx.beginPath();ctx.moveTo(0,915);ctx.lineTo(cW,915);ctx.stroke();
-    ctx.fillStyle=opts.color;ctx.font='bold 84px Arial,sans-serif';ctx.textAlign='center';
-    ctx.fillText((curPt.spd||0)+' km/h',cW/2,882);
     var elSec=Math.round(prog*opts.durationSec);
     var elMin=Math.floor(elSec/60);var elH=Math.floor(elMin/60);
     var elLabel=elH>0?elH+'h'+(elMin%60<10?'0':'')+(elMin%60):(elMin<1?'< 1':elMin)+' min';
-    ctx.fillStyle='#555';ctx.font='28px Arial,sans-serif';
-    ctx.fillText((curPt.km||0).toFixed(1)+' km \xB7 '+elLabel,cW/2,928);
+    var curMs=prog*opts.durationSec*1000;
+    var curHr=hasHr?getHrAtMs(curMs):0;
+    var hrColor=hasHr?hrZoneColor(curHr):opts.color;
+
+    // Panel hauteur variable selon données dispo
+    var panelTop=800;
+    ctx.fillStyle='#141414';ctx.fillRect(0,panelTop,cW,115);
+    ctx.strokeStyle=opts.color+'22';ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(0,panelTop);ctx.lineTo(cW,panelTop);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(0,panelTop+115);ctx.lineTo(cW,panelTop+115);ctx.stroke();
+
+    if(hasHr){
+      // Vitesse à gauche, FC à droite
+      ctx.fillStyle=opts.color;ctx.font='bold 64px Arial,sans-serif';ctx.textAlign='left';
+      ctx.fillText((curPt.spd||0).toFixed(0)+' km/h',50,panelTop+78);
+      ctx.fillStyle=hrColor;ctx.font='bold 64px Arial,sans-serif';ctx.textAlign='right';
+      ctx.fillText('\u2665 '+curHr+' bpm',cW-50,panelTop+78);
+      ctx.fillStyle='#555';ctx.font='26px Arial,sans-serif';ctx.textAlign='center';
+      ctx.fillText((curPt.km||0).toFixed(1)+' km \xB7 '+elLabel,cW/2,panelTop+106);
+    } else {
+      ctx.fillStyle=opts.color;ctx.font='bold 84px Arial,sans-serif';ctx.textAlign='center';
+      ctx.fillText((curPt.spd||0)+' km/h',cW/2,panelTop+82);
+      ctx.fillStyle='#555';ctx.font='28px Arial,sans-serif';
+      ctx.fillText((curPt.km||0).toFixed(1)+' km \xB7 '+elLabel,cW/2,panelTop+108);
+    }
 
     // Speed chart
-    var sL=50,sR=670,sTop=965,sH=85;
+    var sL=50,sR=670,sTop=965,sH=75;
     ctx.fillStyle='#161616';ctx.fillRect(sL-5,sTop-5,sR-sL+10,sH+10);
     ctx.fillStyle='#444';ctx.font='20px Arial,sans-serif';ctx.textAlign='left';
     ctx.fillText('VITESSE',sL,sTop-14);
@@ -231,18 +275,48 @@ window.generateStory=function(opts){
       ctx.strokeStyle=opts.color;ctx.lineWidth=2.5;ctx.lineJoin='round';ctx.stroke();
     }
 
+    // Heart rate chart (si données dispo)
+    var hrChartTop=sTop+sH+30;
+    if(hasHr){
+      var hrCH=65;
+      ctx.fillStyle='#161616';ctx.fillRect(sL-5,hrChartTop-5,sR-sL+10,hrCH+10);
+      ctx.fillStyle='#444';ctx.font='20px Arial,sans-serif';ctx.textAlign='left';
+      ctx.fillText('\u2665 FC',sL,hrChartTop-14);
+      var hrVisible=hrPts.filter(function(p){return p.ms<=curMs;});
+      if(hrVisible.length>1){
+        var hrVMin=hrMin,hrVMax=hrMax;
+        var hrSpan=Math.max(hrVMax-hrVMin,10);
+        ctx.beginPath();ctx.moveTo(sL,hrChartTop+hrCH);
+        for(var hi2=0;hi2<hrVisible.length;hi2++){
+          var hx=sL+(hrVisible[hi2].ms/hrTotalMs)*(sR-sL);
+          var hy=hrChartTop+hrCH-((hrVisible[hi2].bpm-hrVMin)/hrSpan)*hrCH;
+          ctx.lineTo(hx,hy);
+        }
+        ctx.lineTo(sL+(hrVisible[hrVisible.length-1].ms/hrTotalMs)*(sR-sL),hrChartTop+hrCH);
+        ctx.closePath();ctx.fillStyle='#EF535033';ctx.fill();
+        ctx.beginPath();
+        for(var hi3=0;hi3<hrVisible.length;hi3++){
+          var hx2=sL+(hrVisible[hi3].ms/hrTotalMs)*(sR-sL);
+          var hy2=hrChartTop+hrCH-((hrVisible[hi3].bpm-hrVMin)/hrSpan)*hrCH;
+          if(hi3===0)ctx.moveTo(hx2,hy2);else ctx.lineTo(hx2,hy2);
+        }
+        ctx.strokeStyle='#EF5350';ctx.lineWidth=2.5;ctx.lineJoin='round';ctx.stroke();
+      }
+      hrChartTop+=hrCH+20;
+    }
+
     // Altitude chart
     if(opts.hasAlt){
-      var aTop=1105,aH=80;
-      ctx.fillStyle='#161616';ctx.fillRect(sL-5,aTop-5,sR-sL+10,aH+10);
-      ctx.fillStyle='#444';ctx.font='20px Arial,sans-serif';ctx.textAlign='left';ctx.fillText('ALTITUDE',sL,aTop-14);
+      var aH=70;
+      ctx.fillStyle='#161616';ctx.fillRect(sL-5,hrChartTop-5,sR-sL+10,aH+10);
+      ctx.fillStyle='#444';ctx.font='20px Arial,sans-serif';ctx.textAlign='left';ctx.fillText('ALTITUDE',sL,hrChartTop-14);
       var pts3=opts.points.slice(0,ni).filter(function(p){return p.alt!=null;});
       if(pts3.length>1){
-        ctx.beginPath();ctx.moveTo(sL,aTop+aH);
-        for(var k=0;k<pts3.length;k++){var apx=sL+(pts3[k].km/totalKm)*(sR-sL),apy=aTop+aH-((pts3[k].alt-opts.minAlt)/altSpan)*aH;ctx.lineTo(apx,apy);}
-        ctx.lineTo(sL+(pts3[pts3.length-1].km/totalKm)*(sR-sL),aTop+aH);ctx.closePath();ctx.fillStyle='#AAAAAA22';ctx.fill();
+        ctx.beginPath();ctx.moveTo(sL,hrChartTop+aH);
+        for(var k=0;k<pts3.length;k++){var apx=sL+(pts3[k].km/totalKm)*(sR-sL),apy=hrChartTop+aH-((pts3[k].alt-opts.minAlt)/altSpan)*aH;ctx.lineTo(apx,apy);}
+        ctx.lineTo(sL+(pts3[pts3.length-1].km/totalKm)*(sR-sL),hrChartTop+aH);ctx.closePath();ctx.fillStyle='#AAAAAA22';ctx.fill();
         ctx.beginPath();
-        for(var k2=0;k2<pts3.length;k2++){var apx2=sL+(pts3[k2].km/totalKm)*(sR-sL),apy2=aTop+aH-((pts3[k2].alt-opts.minAlt)/altSpan)*aH;if(k2===0)ctx.moveTo(apx2,apy2);else ctx.lineTo(apx2,apy2);}
+        for(var k2=0;k2<pts3.length;k2++){var apx2=sL+(pts3[k2].km/totalKm)*(sR-sL),apy2=hrChartTop+aH-((pts3[k2].alt-opts.minAlt)/altSpan)*aH;if(k2===0)ctx.moveTo(apx2,apy2);else ctx.lineTo(apx2,apy2);}
         ctx.strokeStyle='#AAAAAA';ctx.lineWidth=2.5;ctx.stroke();
       }
     }
@@ -250,10 +324,11 @@ window.generateStory=function(opts){
     // End card fade-in
     if(prog>0.82){
       var fa=Math.min(1,(prog-0.82)/0.12);ctx.globalAlpha=fa;
-      var bY=opts.hasAlt?1235:1165;
+      var bY=1235;
       ctx.fillStyle='#111';ctx.fillRect(0,bY-52,cW,cH-bY+52);
       ctx.fillStyle='#E0E0E0';ctx.font='bold 32px Arial,sans-serif';ctx.textAlign='center';
       var stats='MAX '+opts.maxSpeed+' km/h';
+      if(hasHr)stats=('\u2665 '+hrAvg+' moy \xB7 '+hrMax+' max \xB7 ')+stats;
       if(opts.gainM>0)stats+=(' \xB7 +'+opts.gainM+' m');
       stats+=(' \xB7 '+opts.distKm+' km');
       ctx.fillText(stats,cW/2,bY+2);
