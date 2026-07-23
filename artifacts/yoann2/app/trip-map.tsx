@@ -529,6 +529,7 @@ export default function TripMapScreen() {
     const vehicleEmoji = veh?.type === 'moto' || trip.vehicle === 'moto' ? '🏍'
       : veh?.type === 'walk' ? '🚶' : '🚗';
 
+    const isWalk = veh?.type === 'walk';
     const opts = {
       color: vehicleColor,
       vehicleEmoji,
@@ -544,6 +545,7 @@ export default function TripMapScreen() {
       points: chartPts,
       route,
       videoDurationSec: storyDuration,
+      showPace: isWalk && speedUnitPace,
     };
 
     storyWebViewRef.current?.injectJavaScript(`(function(){window.generateStory(${JSON.stringify(opts)});})();true;`);

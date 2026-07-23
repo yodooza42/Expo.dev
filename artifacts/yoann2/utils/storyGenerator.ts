@@ -107,6 +107,16 @@ window.generateStory=function(opts){
     return best;
   }
 
+  // ── Pace helper (km/h → "min:sec/km") ────────────────────────────────────
+  function formatPace(spd){
+    if(!spd||spd<0.5)return '—';
+    var paceMin=60/spd;
+    var m=Math.floor(paceMin);
+    var s=Math.round((paceMin-m)*60);
+    if(s===60){m++;s=0;}
+    return m+':'+(s<10?'0':'')+s+'/km';
+  }
+
   var DUR=(opts.videoDurationSec||18)*1000,t0=null,lastRep=0;
   var maxSpd=opts.maxSpeed||1;
   var altSpan=Math.max(opts.maxAlt-opts.minAlt,1);
@@ -201,7 +211,8 @@ window.generateStory=function(opts){
     ctx.beginPath();ctx.moveTo(0,800);ctx.lineTo(cW,800);ctx.stroke();
     ctx.beginPath();ctx.moveTo(0,915);ctx.lineTo(cW,915);ctx.stroke();
     ctx.fillStyle=opts.color;ctx.font='bold 84px Arial,sans-serif';ctx.textAlign='center';
-    ctx.fillText((curPt.spd||0).toFixed(1)+' km/h',cW/2,882);
+    var spdLabel=opts.showPace?formatPace(curPt.spd):(curPt.spd||0).toFixed(1)+' km/h';
+    ctx.fillText(spdLabel,cW/2,882);
     var elSec=Math.round(currentMs/1000);
     var elMin=Math.floor(elSec/60);var elH=Math.floor(elMin/60);
     var elLabel=elH>0?elH+'h'+(elMin%60<10?'0':'')+(elMin%60):(elMin<1?'< 1':elMin)+' min';
@@ -212,7 +223,7 @@ window.generateStory=function(opts){
     var sL=50,sR=670,sTop=965,sH=85;
     ctx.fillStyle='#161616';ctx.fillRect(sL-5,sTop-5,sR-sL+10,sH+10);
     ctx.fillStyle='#444';ctx.font='20px Arial,sans-serif';ctx.textAlign='left';
-    ctx.fillText('VITESSE',sL,sTop-14);
+    ctx.fillText(opts.showPace?'ALLURE':'VITESSE',sL,sTop-14);
     var visPts=[];
     for(var vi=0;vi<pts.length;vi++){if(pts[vi].ms<=currentMs)visPts.push(pts[vi]);else break;}
     if(visPts.length>1){
@@ -267,7 +278,8 @@ window.generateStory=function(opts){
       var bY=opts.hasAlt?1235:1165;
       ctx.fillStyle='#111';ctx.fillRect(0,bY-52,cW,cH-bY+52);
       ctx.fillStyle='#E0E0E0';ctx.font='bold 32px Arial,sans-serif';ctx.textAlign='center';
-      var stats='MAX '+opts.maxSpeed.toFixed(1)+' km/h';
+      var bestLabel=opts.showPace?('MEILLEURE '+formatPace(opts.maxSpeed)):('MAX '+opts.maxSpeed.toFixed(1)+' km/h');
+      var stats=bestLabel;
       if(opts.gainM>0)stats+=(' \xB7 +'+opts.gainM+' m');
       stats+=(' \xB7 '+opts.distKm+' km');
       ctx.fillText(stats,cW/2,bY+2);
