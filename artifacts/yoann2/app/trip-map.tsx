@@ -490,10 +490,16 @@ export default function TripMapScreen() {
 
     // Réutilise tripLocPts (déjà filtré + samplé — mêmes données que les charts affichés)
     let rawCumDist = 0;
-    const rawChartPts: Array<{ km: number; spd: number; alt: number | null }> = [];
+    const t0ms = tripLocPts.length > 0 ? tripLocPts[0]!.timestamp : 0;
+    const rawChartPts: Array<{ km: number; ms: number; spd: number; alt: number | null }> = [];
     for (let i = 0; i < tripLocPts.length; i++) {
       if (i > 0) rawCumDist += haversineKm(tripLocPts[i - 1]!.lat, tripLocPts[i - 1]!.lng, tripLocPts[i]!.lat, tripLocPts[i]!.lng);
-      rawChartPts.push({ km: rawCumDist, spd: tripLocPts[i]!.speedKmh ?? 0, alt: tripLocPts[i]!.altitudeM ?? null });
+      rawChartPts.push({
+        km: rawCumDist,
+        ms: tripLocPts[i]!.timestamp - t0ms,
+        spd: tripLocPts[i]!.speedKmh ?? 0,
+        alt: tripLocPts[i]!.altitudeM ?? null,
+      });
     }
     const distScale = rawCumDist > 0 ? trip.distanceKm / rawCumDist : 1;
     const chartPts = rawChartPts.map(p => ({ ...p, km: parseFloat((p.km * distScale).toFixed(3)) }));

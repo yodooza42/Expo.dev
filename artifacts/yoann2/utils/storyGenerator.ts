@@ -1,21 +1,12 @@
 /**
  * window.generateStory JS function — MediaRecorder-based story video.
  *
- * Improvements over the previous version:
- *  - Speed-proportional drawing: fast segments are drawn faster on screen,
- *    matching the real travel dynamics (e.g. 100 km/h covers 2× more map
- *    distance per animation-second than 50 km/h).
- *  - Smooth sub-pixel interpolation between route points: no more visible
- *    jumps between discrete GPS points.
- *
- * Algorithm:
- *  1. Build routeCumKm[]: cumulative Haversine distance to each route point.
- *  2. Build routeTimeH[]: real elapsed hours to reach each route point,
- *     computed from segment distance ÷ speed (looked up from opts.points).
- *  3. getExactIdx(prog): binary-search in routeTimeH to find the fractional
- *     route index at animation progress `prog` (0–1).
- *  4. Draw the animated line up to that fractional index with lerp for the
- *     partial last segment.
+ * v2 — time-proportional animation:
+ *  - Chart points now carry a `ms` field (elapsed milliseconds from trip start).
+ *  - X-axis of speed/altitude charts = real elapsed time → pauses appear as gaps.
+ *  - Moving dot position: getKmAtMs(currentMs) → getRouteIdxAtKm(km)
+ *    → dot stalls on the map during pauses exactly as in real life.
+ *  - Speed display: reads from chart point at current elapsed time.
  */
 export const STORY_GENERATE_JS = `
 window.generateStory=function(opts){
@@ -50,7 +41,7 @@ window.generateStory=function(opts){
 
   var route=opts.route;
 
-  // ── Map projection ────────────────────────────────────────────────────────
+  // ── Map projection ─────────────────────────────────────────────────────────
   var lats=route.map(function(p){return p.lat;}),lngs=route.map(function(p){return p.lng;});
   var minLat=Math.min.apply(null,lats),maxLat=Math.max.apply(null,lats);
   var minLng=Math.min.apply(null,lngs),maxLng=Math.max.apply(null,lngs);
@@ -64,64 +55,63 @@ window.generateStory=function(opts){
   function projX(lng){return mL+(lng-minLng)/lngSpan*mW;}
   function projY(lat){return mB-(lat-minLat)/latSpan*mH;}
 
-  // ── Haversine distance (km) ───────────────────────────────────────────────
+  // ── Haversine ──────────────────────────────────────────────────────────────
   function hav(p1,p2){
-    var R=6371;
-    var dLat=(p2.lat-p1.lat)*Math.PI/180;
-    var dLng=(p2.lng-p1.lng)*Math.PI/180;
-    var a=Math.sin(dLat/2)*Math.sin(dLat/2)
-        +Math.cos(p1.lat*Math.PI/180)*Math.cos(p2.lat*Math.PI/180)
-        *Math.sin(dLng/2)*Math.sin(dLng/2);
+    var R=6371,dLat=(p2.lat-p1.lat)*Math.PI/180,dLng=(p2.lng-p1.lng)*Math.PI/180;
+    var a=Math.sin(dLat/2)*Math.sin(dLat/2)+Math.cos(p1.lat*Math.PI/180)*Math.cos(p2.lat*Math.PI/180)*Math.sin(dLng/2)*Math.sin(dLng/2);
     return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
   }
 
-  // ── Speed interpolation from chart points ─────────────────────────────────
-  function getSpdAtKm(km){
-    var pts=opts.points;
-    if(!pts||pts.length===0)return 30;
-    if(km<=pts[0].km)return pts[0].spd||30;
+  // ── Build route cumulative km ──────────────────────────────────────────────
+  var routeCumKm=[0];
+  for(var si=1;si<route.length;si++){routeCumKm.push(routeCumKm[si-1]+hav(route[si-1],route[si]));}
+  var rawDist=routeCumKm[route.length-1]||0.001;
+  var dScale=opts.distKm/rawDist;  // scale route distances → actual trip km
+
+  // ── Time axis from chart point timestamps ──────────────────────────────────
+  var pts=opts.points;
+  var totalMs=pts.length>0?(pts[pts.length-1].ms||0):0;
+  if(!totalMs)totalMs=opts.durationSec*1000;
+  var totalKm=pts.length>0?pts[pts.length-1].km:opts.distKm;
+
+  // km position at elapsed time (interpolated, pauses = km stays flat)
+  function getKmAtMs(timeMs){
+    if(!pts||!pts.length)return 0;
+    if(timeMs<=pts[0].ms)return pts[0].km;
     for(var ii=1;ii<pts.length;ii++){
-      if(pts[ii].km>=km){
-        var tt=(km-pts[ii-1].km)/(pts[ii].km-pts[ii-1].km||0.0001);
-        return(pts[ii-1].spd+(pts[ii].spd-pts[ii-1].spd)*tt)||30;
+      if(pts[ii].ms>=timeMs){
+        var span=pts[ii].ms-pts[ii-1].ms||1;
+        var t=(timeMs-pts[ii-1].ms)/span;
+        return pts[ii-1].km+(pts[ii].km-pts[ii-1].km)*t;
       }
     }
-    return pts[pts.length-1].spd||30;
+    return pts[pts.length-1].km;
   }
 
-  // ── Build time-map: routeTimeH[i] = real hours elapsed to route[i] ────────
-  var routeCumKm=[0];
-  for(var si=1;si<route.length;si++){
-    routeCumKm.push(routeCumKm[si-1]+hav(route[si-1],route[si]));
+  // Fractional route index at km (binary search in routeCumKm)
+  function getRouteIdxAtKm(km){
+    var scaledKm=km/dScale;
+    if(scaledKm<=0)return 0;
+    if(scaledKm>=routeCumKm[route.length-1])return route.length-1;
+    var lo=0,hi=routeCumKm.length-1;
+    while(lo<hi-1){var mid=Math.floor((lo+hi)/2);if(routeCumKm[mid]<=scaledKm)lo=mid;else hi=mid;}
+    var span=routeCumKm[hi]-routeCumKm[lo]||0.0001;
+    return lo+(scaledKm-routeCumKm[lo])/span;
   }
-  var rawDist=routeCumKm[route.length-1]||0.001;
-  var dScale=opts.distKm/rawDist;
-  var routeTimeH=[0];
-  for(var si2=1;si2<route.length;si2++){
-    var segKm=(routeCumKm[si2]-routeCumKm[si2-1])*dScale;
-    var midKm=(routeCumKm[si2-1]+routeCumKm[si2])/2*dScale;
-    var spd=getSpdAtKm(midKm)||30;
-    routeTimeH.push(routeTimeH[si2-1]+segKm/spd);
-  }
-  var totalH=routeTimeH[route.length-1]||1;
 
-  // ── Binary search: fractional route index at animation progress ───────────
-  function getExactIdx(prog){
-    var tgt=prog*totalH;
-    if(tgt<=0)return 0;
-    if(tgt>=totalH)return route.length-1;
-    var lo=0,hi=routeTimeH.length-1;
-    while(lo<hi-1){var mid=Math.floor((lo+hi)/2);if(routeTimeH[mid]<=tgt)lo=mid;else hi=mid;}
-    var span=routeTimeH[hi]-routeTimeH[lo]||0.0001;
-    return lo+(tgt-routeTimeH[lo])/span;
+  // Last chart point index at or before timeMs
+  function getChartIdxAtMs(timeMs){
+    if(!pts||!pts.length)return 0;
+    var best=0;
+    for(var ii=0;ii<pts.length;ii++){if(pts[ii].ms<=timeMs)best=ii;else break;}
+    return best;
   }
 
   var DUR=(opts.videoDurationSec||18)*1000,t0=null,lastRep=0;
   var maxSpd=opts.maxSpeed||1;
   var altSpan=Math.max(opts.maxAlt-opts.minAlt,1);
-  var totalKm=opts.points.length>0?opts.points[opts.points.length-1].km:1;
 
-  // ── Scale bar (computed once, static) ────────────────────────────────────
+  // ── Scale bar ──────────────────────────────────────────────────────────────
   var midLatRad=((minLat+maxLat)/2)*Math.PI/180;
   var lngWidthKm=lngSpan*111.32*Math.cos(midLatRad);
   var niceKmVals=[0.05,0.1,0.2,0.5,1,2,5,10,20,50,100];
@@ -129,9 +119,7 @@ window.generateStory=function(opts){
   var scaleKm=niceKmVals[0];
   for(var nki=0;nki<niceKmVals.length;nki++){if(niceKmVals[nki]<=targetKm)scaleKm=niceKmVals[nki];}
   var scalePx=(scaleKm/lngWidthKm)*(mR-mL);
-  var scBarX2=mR-18;
-  var scBarX1=scBarX2-scalePx;
-  var scBarY=mB-22;
+  var scBarX2=mR-18,scBarX1=scBarX2-scalePx,scBarY=mB-22;
   var scLabel=scaleKm<1?Math.round(scaleKm*1000)+' m':scaleKm+' km';
 
   rec.start();
@@ -139,6 +127,7 @@ window.generateStory=function(opts){
   function frame(ts){
     if(!t0)t0=ts;
     var el=ts-t0,prog=Math.min(1,el/DUR);
+    var currentMs=prog*totalMs;
 
     // Background + grid
     ctx.fillStyle='#0E0E0E';ctx.fillRect(0,0,cW,cH);
@@ -155,7 +144,7 @@ window.generateStory=function(opts){
     ctx.strokeStyle=opts.color+'33';ctx.lineWidth=1;
     ctx.beginPath();ctx.moveTo(0,180);ctx.lineTo(cW,180);ctx.stroke();
 
-    // Ghost route (full, dim)
+    // Ghost route
     if(route.length>1){
       ctx.beginPath();ctx.moveTo(projX(route[0].lng),projY(route[0].lat));
       for(var ri=1;ri<route.length;ri++)ctx.lineTo(projX(route[ri].lng),projY(route[ri].lat));
@@ -170,8 +159,9 @@ window.generateStory=function(opts){
     ctx.fillStyle='#999999';ctx.font='22px Arial,sans-serif';ctx.textAlign='center';
     ctx.fillText(scLabel,(scBarX1+scBarX2)/2,scBarY-11);
 
-    // ── Speed-proportional smooth animated route ──────────────────────────
-    var exactIdx=getExactIdx(prog);
+    // ── Animated route — time-proportional, dot stalls during pauses ─────────
+    var curKm=getKmAtMs(currentMs);
+    var exactIdx=getRouteIdxAtKm(curKm);
     var fullPts=Math.floor(exactIdx);
     var frac=exactIdx-fullPts;
     if(exactIdx>0){
@@ -180,7 +170,6 @@ window.generateStory=function(opts){
       for(var ri2=1;ri2<=fullPts&&ri2<route.length;ri2++){
         ctx.lineTo(projX(route[ri2].lng),projY(route[ri2].lat));
       }
-      // Smooth sub-pixel interpolation for the partial last segment
       if(frac>0&&fullPts+1<route.length){
         var pa=route[fullPts],pb=route[fullPts+1];
         ctx.lineTo(projX(pa.lng+(pb.lng-pa.lng)*frac),projY(pa.lat+(pb.lat-pa.lat)*frac));
@@ -191,58 +180,83 @@ window.generateStory=function(opts){
     // Start dot
     ctx.beginPath();ctx.arc(projX(route[0].lng),projY(route[0].lat),9,0,Math.PI*2);ctx.fillStyle='#4CAF50';ctx.fill();
 
-    // Moving dot at interpolated position
-    var cpI=Math.min(fullPts,route.length-2);
-    var cpF=Math.min(exactIdx-cpI,1);
-    var cpA=route[cpI],cpB=route[Math.min(cpI+1,route.length-1)];
-    var cpLng=cpA.lng+(cpB.lng-cpA.lng)*cpF;
-    var cpLat=cpA.lat+(cpB.lat-cpA.lat)*cpF;
-    ctx.beginPath();ctx.arc(projX(cpLng),projY(cpLat),14,0,Math.PI*2);ctx.fillStyle='#FFFFFF22';ctx.fill();
-    ctx.beginPath();ctx.arc(projX(cpLng),projY(cpLat),9,0,Math.PI*2);ctx.fillStyle=opts.color;ctx.fill();
+    // Moving dot — position derived from km, which stalls during pauses
+    var dotLng,dotLat;
+    if(exactIdx<=0){dotLng=route[0].lng;dotLat=route[0].lat;}
+    else{
+      var cpI=Math.min(fullPts,route.length-2);
+      var cpF=Math.min(exactIdx-cpI,1);
+      var cpA=route[cpI],cpB=route[Math.min(cpI+1,route.length-1)];
+      dotLng=cpA.lng+(cpB.lng-cpA.lng)*cpF;
+      dotLat=cpA.lat+(cpB.lat-cpA.lat)*cpF;
+    }
+    ctx.beginPath();ctx.arc(projX(dotLng),projY(dotLat),14,0,Math.PI*2);ctx.fillStyle='#FFFFFF22';ctx.fill();
+    ctx.beginPath();ctx.arc(projX(dotLng),projY(dotLat),9,0,Math.PI*2);ctx.fillStyle=opts.color;ctx.fill();
 
-    // ── Stats / chart panel ───────────────────────────────────────────────
-    var ci2=Math.min(Math.floor(opts.points.length*prog),opts.points.length-1);
-    var curPt=opts.points[ci2]||opts.points[0];
+    // ── Stats panel ───────────────────────────────────────────────────────────
+    var ci2=getChartIdxAtMs(currentMs);
+    var curPt=pts[ci2]||pts[0];
     ctx.fillStyle='#141414';ctx.fillRect(0,800,cW,115);
     ctx.strokeStyle=opts.color+'22';ctx.lineWidth=1;
     ctx.beginPath();ctx.moveTo(0,800);ctx.lineTo(cW,800);ctx.stroke();
     ctx.beginPath();ctx.moveTo(0,915);ctx.lineTo(cW,915);ctx.stroke();
     ctx.fillStyle=opts.color;ctx.font='bold 84px Arial,sans-serif';ctx.textAlign='center';
-    ctx.fillText((curPt.spd||0)+' km/h',cW/2,882);
-    var elSec=Math.round(prog*opts.durationSec);
+    ctx.fillText((curPt.spd||0).toFixed(1)+' km/h',cW/2,882);
+    var elSec=Math.round(currentMs/1000);
     var elMin=Math.floor(elSec/60);var elH=Math.floor(elMin/60);
     var elLabel=elH>0?elH+'h'+(elMin%60<10?'0':'')+(elMin%60):(elMin<1?'< 1':elMin)+' min';
     ctx.fillStyle='#555';ctx.font='28px Arial,sans-serif';
-    ctx.fillText((curPt.km||0).toFixed(1)+' km \xB7 '+elLabel,cW/2,928);
+    ctx.fillText((curKm||0).toFixed(2)+' km \xB7 '+elLabel,cW/2,928);
 
-    // Speed chart
+    // ── Speed chart — time axis, pause gaps in line ───────────────────────────
     var sL=50,sR=670,sTop=965,sH=85;
     ctx.fillStyle='#161616';ctx.fillRect(sL-5,sTop-5,sR-sL+10,sH+10);
     ctx.fillStyle='#444';ctx.font='20px Arial,sans-serif';ctx.textAlign='left';
     ctx.fillText('VITESSE',sL,sTop-14);
-    var ni=Math.max(2,Math.floor(opts.points.length*prog));
-    if(ni>1){
-      var pts2=opts.points.slice(0,ni);
-      ctx.beginPath();ctx.moveTo(sL,sTop+sH);
-      for(var j=0;j<pts2.length;j++){var spx=sL+(pts2[j].km/totalKm)*(sR-sL),spy=sTop+sH-(pts2[j].spd/maxSpd)*sH;ctx.lineTo(spx,spy);}
-      ctx.lineTo(sL+(pts2[pts2.length-1].km/totalKm)*(sR-sL),sTop+sH);ctx.closePath();ctx.fillStyle=opts.color+'33';ctx.fill();
+    var visPts=[];
+    for(var vi=0;vi<pts.length;vi++){if(pts[vi].ms<=currentMs)visPts.push(pts[vi]);else break;}
+    if(visPts.length>1){
+      // Area fill (continuous background)
       ctx.beginPath();
-      for(var j2=0;j2<pts2.length;j2++){var spx2=sL+(pts2[j2].km/totalKm)*(sR-sL),spy2=sTop+sH-(pts2[j2].spd/maxSpd)*sH;if(j2===0)ctx.moveTo(spx2,spy2);else ctx.lineTo(spx2,spy2);}
+      ctx.moveTo(sL+(visPts[0].ms/totalMs)*(sR-sL),sTop+sH);
+      for(var j=0;j<visPts.length;j++){
+        ctx.lineTo(sL+(visPts[j].ms/totalMs)*(sR-sL),sTop+sH-(visPts[j].spd/maxSpd)*sH);
+      }
+      ctx.lineTo(sL+(visPts[visPts.length-1].ms/totalMs)*(sR-sL),sTop+sH);
+      ctx.closePath();ctx.fillStyle=opts.color+'33';ctx.fill();
+      // Line with gaps where speed < 0.5 km/h (pauses)
+      var inSeg=false;
+      ctx.beginPath();
+      for(var j2=0;j2<visPts.length;j2++){
+        var vp=visPts[j2];
+        if(vp.spd<0.5){inSeg=false;continue;}
+        var spx2=sL+(vp.ms/totalMs)*(sR-sL);
+        var spy2=sTop+sH-(vp.spd/maxSpd)*sH;
+        if(!inSeg){ctx.moveTo(spx2,spy2);inSeg=true;}else ctx.lineTo(spx2,spy2);
+      }
       ctx.strokeStyle=opts.color;ctx.lineWidth=2.5;ctx.lineJoin='round';ctx.stroke();
     }
 
-    // Altitude chart
+    // ── Altitude chart — time axis ────────────────────────────────────────────
     if(opts.hasAlt){
       var aTop=1105,aH=80;
       ctx.fillStyle='#161616';ctx.fillRect(sL-5,aTop-5,sR-sL+10,aH+10);
       ctx.fillStyle='#444';ctx.font='20px Arial,sans-serif';ctx.textAlign='left';ctx.fillText('ALTITUDE',sL,aTop-14);
-      var pts3=opts.points.slice(0,ni).filter(function(p){return p.alt!=null;});
+      var pts3=visPts.filter(function(p){return p.alt!=null;});
       if(pts3.length>1){
-        ctx.beginPath();ctx.moveTo(sL,aTop+aH);
-        for(var k=0;k<pts3.length;k++){var apx=sL+(pts3[k].km/totalKm)*(sR-sL),apy=aTop+aH-((pts3[k].alt-opts.minAlt)/altSpan)*aH;ctx.lineTo(apx,apy);}
-        ctx.lineTo(sL+(pts3[pts3.length-1].km/totalKm)*(sR-sL),aTop+aH);ctx.closePath();ctx.fillStyle='#AAAAAA22';ctx.fill();
         ctx.beginPath();
-        for(var k2=0;k2<pts3.length;k2++){var apx2=sL+(pts3[k2].km/totalKm)*(sR-sL),apy2=aTop+aH-((pts3[k2].alt-opts.minAlt)/altSpan)*aH;if(k2===0)ctx.moveTo(apx2,apy2);else ctx.lineTo(apx2,apy2);}
+        ctx.moveTo(sL+(pts3[0].ms/totalMs)*(sR-sL),aTop+aH);
+        for(var k=0;k<pts3.length;k++){
+          ctx.lineTo(sL+(pts3[k].ms/totalMs)*(sR-sL),aTop+aH-((pts3[k].alt-opts.minAlt)/altSpan)*aH);
+        }
+        ctx.lineTo(sL+(pts3[pts3.length-1].ms/totalMs)*(sR-sL),aTop+aH);
+        ctx.closePath();ctx.fillStyle='#AAAAAA22';ctx.fill();
+        ctx.beginPath();
+        for(var k2=0;k2<pts3.length;k2++){
+          var apx2=sL+(pts3[k2].ms/totalMs)*(sR-sL);
+          var apy2=aTop+aH-((pts3[k2].alt-opts.minAlt)/altSpan)*aH;
+          if(k2===0)ctx.moveTo(apx2,apy2);else ctx.lineTo(apx2,apy2);
+        }
         ctx.strokeStyle='#AAAAAA';ctx.lineWidth=2.5;ctx.stroke();
       }
     }
@@ -253,7 +267,7 @@ window.generateStory=function(opts){
       var bY=opts.hasAlt?1235:1165;
       ctx.fillStyle='#111';ctx.fillRect(0,bY-52,cW,cH-bY+52);
       ctx.fillStyle='#E0E0E0';ctx.font='bold 32px Arial,sans-serif';ctx.textAlign='center';
-      var stats='MAX '+opts.maxSpeed+' km/h';
+      var stats='MAX '+opts.maxSpeed.toFixed(1)+' km/h';
       if(opts.gainM>0)stats+=(' \xB7 +'+opts.gainM+' m');
       stats+=(' \xB7 '+opts.distKm+' km');
       ctx.fillText(stats,cW/2,bY+2);
