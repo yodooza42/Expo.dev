@@ -457,9 +457,6 @@ importers:
       react-native-android-widget:
         specifier: ^0.20.3
         version: 0.20.3(patch_hash=88e18d000766c212d22199219a4811ada393352039aeb1d2a249ae7a3ea31e90)(expo@54.0.35)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
-      react-native-health-connect:
-        specifier: ^3.5.3
-        version: 3.5.3(@expo/config-plugins@54.0.4)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
       react-native-maps:
         specifier: ^1.20.1
         version: 1.20.1(react-native-web@0.21.2(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
@@ -5047,14 +5044,6 @@ packages:
   react-native-gesture-handler@2.28.0:
     resolution: {integrity: sha512-0msfJ1vRxXKVgTgvL+1ZOoYw3/0z1R+Ked0+udoJhyplC2jbVKIJ8Z1bzWdpQRCV3QcQ87Op0zJVE5DhKK2A0A==}
     peerDependencies:
-      react: '*'
-      react-native: '*'
-
-  react-native-health-connect@3.5.3:
-    resolution: {integrity: sha512-lco68RbMaWpvElED3/obXTJSzoWopo9k5loN/+1zSdr3iT4STp7BaoziyPx0DIyW1a6DF/lvMesXIubWKE1Srw==}
-    engines: {node: '>= 16.0.0'}
-    peerDependencies:
-      '@expo/config-plugins': '>= 6.0.2'
       react: '*'
       react-native: '*'
 
@@ -11465,12 +11454,6 @@ snapshots:
       '@egjs/hammerjs': 2.0.17
       hoist-non-react-statics: 3.3.2
       invariant: 2.2.4
-      react: 19.1.0
-      react-native: 0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0)
-
-  react-native-health-connect@3.5.3(@expo/config-plugins@54.0.4)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0):
-    dependencies:
-      '@expo/config-plugins': 54.0.4
       react: 19.1.0
       react-native: 0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0)
 

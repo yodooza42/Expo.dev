@@ -1,4 +1,4 @@
-modules = ["nodejs-24", "python-3.11", "postgresql-16"]
+modules = ["nodejs-24", "python-3.11"]
 
 [deployment]
 router = "application"
@@ -41,7 +41,5 @@ externalPort = 3001
 [userenv]
 
 [userenv.shared]
-EAS_ACCOUNT = "yoluran2307s-team"
 
 [nix]
-channel = "stable-25_05"

@@ -380,7 +380,6 @@ export default function TripMapScreen() {
 
   const [storyDuration, setStoryDuration] = useState<10 | 20 | 30 | 60>(20);
   const [tripLocPts, setTripLocPts] = useState<LocationPoint[]>([]);
-  const [heartRatePts, setHeartRatePts] = useState<import('../utils/healthConnect').HrPoint[]>([]);
   const [speedUnitPace, setSpeedUnitPace] = useState(false);
   const [chartLoading, setChartLoading] = useState(false);
   const [chartRefreshKey, setChartRefreshKey] = useState(0);
@@ -524,11 +523,6 @@ export default function TripMapScreen() {
     const vehicleEmoji = veh?.type === 'moto' || trip.vehicle === 'moto' ? '🏍'
       : veh?.type === 'walk' ? '🚶' : '🚗';
 
-    // Prépare les points FC pour la story (ms relatif depuis le début du trajet)
-    const hrPtsForStory = heartRatePts.length > 0
-      ? heartRatePts.map(p => ({ ms: p.ts - trip.startTime, bpm: p.bpm }))
-      : [];
-
     const opts = {
       color: vehicleColor,
       vehicleEmoji,
@@ -544,7 +538,6 @@ export default function TripMapScreen() {
       points: chartPts,
       route,
       videoDurationSec: storyDuration,
-      hrPts: hrPtsForStory,
     };
 
     storyWebViewRef.current?.injectJavaScript(`(function(){window.generateStory(${JSON.stringify(opts)});})();true;`);
@@ -612,7 +605,6 @@ export default function TripMapScreen() {
     if (!trip) return;
     setChartLoading(true);
     setTripLocPts([]);
-    setHeartRatePts([]);
     void (async () => {
       try {
         const gpsPoints = await loadMultiDayPoints(trip.startTime, trip.endTime);
@@ -625,12 +617,6 @@ export default function TripMapScreen() {
         setTripLocPts(sampled);
       } catch { /* no GPS data */ }
       setChartLoading(false);
-      // Lecture FC Health Connect en parallèle (silencieuse si refus/indisponible)
-      try {
-        const { fetchHeartRateForTrip } = await import('../utils/healthConnect');
-        const hrPts = await fetchHeartRateForTrip(trip.startTime, trip.endTime);
-        if (hrPts.length > 0) setHeartRatePts(hrPts);
-      } catch { /* Health Connect non disponible */ }
     })();
   }, [trip?.id, chartRefreshKey]);
 
@@ -1019,7 +1005,6 @@ export default function TripMapScreen() {
             <>
               <TripSpeedChart points={tripLocPts} color={vehColor} onScrub={() => {}} isWalk={isWalkTrip} speedUnitPace={speedUnitPace} onToggleUnit={handleToggleSpeedUnit} />
               {hasAltData && <TripAltitudeChart points={tripLocPts} color={vehColor} onScrub={() => {}} />}
-              {heartRatePts.length > 0 && <TripHeartRateChart pts={heartRatePts} tripStartMs={trip!.startTime} />}
             </>
           )}
         </View>
@@ -1528,150 +1513,6 @@ function TripAltitudeChart({
           <View>
             <Text style={{ color: '#555', fontSize: 9, fontFamily: 'Inter_400Regular', textTransform: 'uppercase', letterSpacing: 0.8 }}>DÉNIVELÉ +</Text>
             <Text style={{ color: colors.foreground, fontSize: 14, fontFamily: 'Inter_700Bold' }}>+{gainM} m</Text>
-          </View>
-        </View>
-      )}
-    </View>
-  );
-}
-
-function TripHeartRateChart({
-  pts,
-  tripStartMs,
-}: {
-  pts: import('../utils/healthConnect').HrPoint[];
-  tripStartMs: number;
-}) {
-  const colors = useColors();
-  const [scrubIdx, setScrubIdx] = useState<number | null>(null);
-
-  const { HR_ZONES, hrZoneIndex, computeHrSummary } = require('../utils/healthConnect') as typeof import('../utils/healthConnect');
-
-  const summary = useMemo(() => computeHrSummary(pts, tripStartMs), [pts, tripStartMs]);
-  const { avgBpm, maxBpm, minBpm, zones } = summary;
-
-  const totalMs = pts[pts.length - 1]!.ts - pts[0]!.ts || 1;
-
-  const W = Dimensions.get('window').width - 32;
-  const H = 84;
-  const PL = 30; const PR = 8; const PT = 8; const PB = 16;
-  const cW = W - PL - PR;
-  const cH = H - PT - PB;
-
-  const bpmSpan = Math.max(maxBpm - minBpm, 10);
-  const bpmScale = Math.ceil(maxBpm / 10) * 10;
-  const bpmFloor = Math.max(0, Math.floor(minBpm / 10) * 10 - 10);
-
-  const xOf = (ts: number) => PL + ((ts - pts[0]!.ts) / totalMs) * cW;
-  const yOf = (bpm: number) => PT + (1 - (bpm - bpmFloor) / (bpmScale - bpmFloor)) * cH;
-
-  const avgY = yOf(avgBpm);
-
-  // Chemin principal
-  const linePts = pts.map(p => `${xOf(p.ts).toFixed(1)},${yOf(p.bpm).toFixed(1)}`);
-  const linePath = `M ${linePts.join(' L ')}`;
-  const areaPath = `${linePath} L ${xOf(pts[pts.length - 1]!.ts).toFixed(1)},${(PT + cH).toFixed(1)} L ${PL},${(PT + cH).toFixed(1)} Z`;
-
-  // Zones : durée totale pour la barre
-  const totalZoneMs = zones.reduce((s, v) => s + v, 0) || 1;
-
-  const findNearest = (x: number): number => {
-    const frac = Math.max(0, Math.min(1, (x - PL) / cW));
-    const targetTs = pts[0]!.ts + frac * totalMs;
-    let best = 0, bestD = Math.abs(pts[0]!.ts - targetTs);
-    for (let i = 1; i < pts.length; i++) {
-      const d = Math.abs(pts[i]!.ts - targetTs);
-      if (d < bestD) { best = i; bestD = d; }
-    }
-    return best;
-  };
-
-  const scrubPt = scrubIdx !== null ? pts[scrubIdx] : null;
-
-  return (
-    <View style={{ borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, paddingTop: 6, paddingBottom: 4 }}>
-      {/* Barre de zones */}
-      <View style={{ flexDirection: 'row', height: 4, marginHorizontal: PL, marginBottom: 4, borderRadius: 2, overflow: 'hidden' }}>
-        {HR_ZONES.map((z, i) => (
-          zones[i]! > 0 ? (
-            <View key={z.label} style={{ flex: zones[i]! / totalZoneMs, backgroundColor: z.color }} />
-          ) : null
-        ))}
-      </View>
-      {/* Graphique */}
-      <View
-        onStartShouldSetResponder={() => true}
-        onMoveShouldSetResponder={() => true}
-        onResponderGrant={e => setScrubIdx(findNearest(e.nativeEvent.locationX))}
-        onResponderMove={e => setScrubIdx(findNearest(e.nativeEvent.locationX))}
-        onResponderRelease={() => setScrubIdx(null)}
-        onResponderTerminate={() => setScrubIdx(null)}
-      >
-        <Svg width={W} height={H}>
-          <Defs>
-            <LinearGradient id="hr_grad" x1="0" y1="0" x2="0" y2="1">
-              <Stop offset="0" stopColor="#EF5350" stopOpacity="0.4" />
-              <Stop offset="1" stopColor="#EF5350" stopOpacity="0.04" />
-            </LinearGradient>
-          </Defs>
-          <Path d={areaPath} fill="url(#hr_grad)" />
-          <Path d={linePath} stroke="#EF5350" strokeWidth={2} fill="none" strokeLinejoin="round" />
-          <SvgLine x1={PL} y1={avgY} x2={W - PR} y2={avgY} stroke="#FFFFFF44" strokeWidth={1} strokeDasharray="3 4" />
-          {scrubPt && scrubIdx !== null && (
-            <>
-              <SvgLine x1={xOf(scrubPt.ts)} y1={PT} x2={xOf(scrubPt.ts)} y2={PT + cH} stroke="#FFFFFFCC" strokeWidth={1.5} />
-              <Circle
-                cx={xOf(scrubPt.ts)}
-                cy={yOf(scrubPt.bpm)}
-                r={5} fill="#FFFFFF" stroke={HR_ZONES[hrZoneIndex(scrubPt.bpm)]!.color} strokeWidth={2}
-              />
-            </>
-          )}
-          <SvgText x={PL - 3} y={PT + 5} textAnchor="end" fontSize={8} fill="#666">{bpmScale}</SvgText>
-          <SvgText x={PL - 3} y={PT + cH + 1} textAnchor="end" fontSize={8} fill="#666">{bpmFloor}</SvgText>
-          <SvgText x={PL - 3} y={PT + cH / 2 + 3} textAnchor="end" fontSize={7} fill="#444">bpm</SvgText>
-          <SvgText x={PL + 1} y={H - 2} textAnchor="start" fontSize={8} fill="#666">0</SvgText>
-          <SvgText x={W - PR} y={H - 2} textAnchor="end" fontSize={8} fill="#666">{fmtAxisTime(totalMs)}</SvgText>
-        </Svg>
-      </View>
-      {/* Stats */}
-      {scrubPt ? (
-        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6, paddingHorizontal: 2, paddingTop: 2 }}>
-          <Text style={{ color: HR_ZONES[hrZoneIndex(scrubPt.bpm)]!.color, fontFamily: 'Inter_700Bold', fontSize: 18, lineHeight: 22 }}>
-            {scrubPt.bpm} bpm
-          </Text>
-          <Text style={{ color: '#555', fontSize: 12 }}>·</Text>
-          <Text style={{ color: '#888', fontFamily: 'Inter_400Regular', fontSize: 12 }}>
-            {HR_ZONES[hrZoneIndex(scrubPt.bpm)]!.label}
-          </Text>
-        </View>
-      ) : (
-        <View style={{ flexDirection: 'row', gap: 20, paddingHorizontal: 2, paddingTop: 2 }}>
-          <View>
-            <Text style={{ color: '#555', fontSize: 9, fontFamily: 'Inter_400Regular', textTransform: 'uppercase', letterSpacing: 0.8 }}>❤️ MOY</Text>
-            <Text style={{ color: HR_ZONES[hrZoneIndex(avgBpm)]!.color, fontSize: 14, fontFamily: 'Inter_700Bold' }}>{avgBpm} bpm</Text>
-          </View>
-          <View>
-            <Text style={{ color: '#555', fontSize: 9, fontFamily: 'Inter_400Regular', textTransform: 'uppercase', letterSpacing: 0.8 }}>MAX</Text>
-            <Text style={{ color: '#EF5350', fontSize: 14, fontFamily: 'Inter_700Bold' }}>{maxBpm} bpm</Text>
-          </View>
-          <View>
-            <Text style={{ color: '#555', fontSize: 9, fontFamily: 'Inter_400Regular', textTransform: 'uppercase', letterSpacing: 0.8 }}>MIN</Text>
-            <Text style={{ color: colors.foreground, fontSize: 14, fontFamily: 'Inter_700Bold' }}>{minBpm} bpm</Text>
-          </View>
-          {/* Zones miniature */}
-          <View style={{ flex: 1, justifyContent: 'center' }}>
-            <View style={{ flexDirection: 'row', gap: 4 }}>
-              {HR_ZONES.map((z, i) => {
-                const pct = Math.round(zones[i]! / totalZoneMs * 100);
-                return pct >= 5 ? (
-                  <View key={z.label} style={{ alignItems: 'center' }}>
-                    <Text style={{ color: z.color, fontSize: 8, fontFamily: 'Inter_700Bold' }}>{pct}%</Text>
-                    <Text style={{ color: '#444', fontSize: 7, fontFamily: 'Inter_400Regular' }}>{z.label}</Text>
-                  </View>
-                ) : null;
-              })}
-            </View>
           </View>
         </View>
       )}
