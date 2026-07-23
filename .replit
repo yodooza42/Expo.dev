@@ -41,6 +41,7 @@ externalPort = 3001
 [userenv]
 
 [userenv.shared]
+EAS_ACCOUNT = "yoluran2307s-team"
 
 [nix]
 channel = "stable-25_05"
