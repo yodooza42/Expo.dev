@@ -344,7 +344,7 @@ function RenameLabelModal({
 
 // ── LabelCard ─────────────────────────────────────────────────────────────────
 function LabelCard({
-  label, allTrips, colors, onUpdate, onDelete, onRename, vehicles, onRemoveTripFromLabel, onDeleteTrip,
+  label, allTrips, colors, onUpdate, onDelete, onRename, vehicles, onUngroupTrip,
 }: {
   label: TripLabel;
   allTrips: Trip[];
@@ -353,8 +353,7 @@ function LabelCard({
   onDelete: () => void;
   onRename: () => void;
   vehicles?: Vehicle[];
-  onRemoveTripFromLabel: (tripId: string) => void;
-  onDeleteTrip?: (id: string) => void;
+  onUngroupTrip?: (id: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
 
@@ -410,16 +409,7 @@ function LabelCard({
       {expanded && (
         <View style={styles.catTrips}>
           {labelTrips.map(t => (
-            <View key={t.id}>
-              <TripRow trip={t} colors={colors} onUpdate={onUpdate} compact vehicles={vehicles} onDelete={onDeleteTrip ? () => onDeleteTrip(t.id) : undefined} />
-              <Pressable
-                onPress={() => onRemoveTripFromLabel(t.id)}
-                style={[styles.removeLabelBtn, { borderColor: colors.border }]}
-              >
-                <MaterialCommunityIcons name="tag-remove-outline" size={12} color={colors.mutedForeground} />
-                <Text style={[styles.removeLabelText, { color: colors.mutedForeground }]}>Retirer du groupe</Text>
-              </Pressable>
-            </View>
+            <TripRow key={t.id} trip={t} colors={colors} onUpdate={onUpdate} compact vehicles={vehicles} onUngroup={onUngroupTrip ? () => onUngroupTrip(t.id) : undefined} />
           ))}
           <Pressable onPress={onDelete} style={[styles.deleteCatBtn, { borderColor: colors.border }]}>
             <MaterialCommunityIcons name="trash-can-outline" size={14} color={colors.mutedForeground} />
@@ -433,7 +423,7 @@ function LabelCard({
 
 // ── CategoryCard ──────────────────────────────────────────────────────────────
 function CategoryCard({
-  category, allTrips, colors, onUpdate, onDelete, onRename, vehicles, onDeleteTrip,
+  category, allTrips, colors, onUpdate, onDelete, onRename, vehicles, onUngroupTrip,
 }: {
   category: TripCategory;
   allTrips: Trip[];
@@ -442,7 +432,7 @@ function CategoryCard({
   onDelete: () => void;
   onRename: () => void;
   vehicles?: Vehicle[];
-  onDeleteTrip?: (id: string) => void;
+  onUngroupTrip?: (id: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const stats = computeCategoryStats(category.id, allTrips);
@@ -518,7 +508,7 @@ function CategoryCard({
       {expanded && (
         <View style={styles.catTrips}>
           {stats.trips.map(t => (
-            <TripRow key={t.id} trip={t} colors={colors} onUpdate={onUpdate} compact vehicles={vehicles} onDelete={onDeleteTrip ? () => onDeleteTrip(t.id) : undefined} />
+            <TripRow key={t.id} trip={t} colors={colors} onUpdate={onUpdate} compact vehicles={vehicles} onUngroup={onUngroupTrip ? () => onUngroupTrip(t.id) : undefined} />
           ))}
           <Pressable onPress={onDelete} style={[styles.deleteCatBtn, { borderColor: colors.border }]}>
             <MaterialCommunityIcons name="trash-can-outline" size={14} color={colors.mutedForeground} />
@@ -532,7 +522,7 @@ function CategoryCard({
 
 // ── TripRow ───────────────────────────────────────────────────────────────────
 function TripRow({
-  trip, colors, onUpdate, compact, onGroup, onDelete, vehicles, walkRouteMap,
+  trip, colors, onUpdate, compact, onGroup, onDelete, onUngroup, vehicles, walkRouteMap,
 }: {
   trip: Trip;
   colors: ReturnType<typeof useColors>;
@@ -540,6 +530,7 @@ function TripRow({
   compact?: boolean;
   onGroup?: (t: Trip) => void;
   onDelete?: () => void;
+  onUngroup?: () => void;
   vehicles?: Vehicle[];
   walkRouteMap?: Map<string, string>;
 }) {
@@ -600,19 +591,29 @@ function TripRow({
           <Text style={[styles.tripDist, { color: colors.foreground }]}>{trip.distanceKm.toFixed(1)} km</Text>
           <Text style={[styles.tripDur, { color: colors.mutedForeground }]}>{fmtDuration(trip.endTime - trip.startTime)}</Text>
         </View>
-        {onDelete && (
+        {(onUngroup || onDelete) && (
           <Pressable
-            onPress={() => Alert.alert(
-              'Supprimer ce trajet ?',
-              `${trip.distanceKm.toFixed(1)} km · ${fmtWeekdayShort(trip.startTime)}`,
-              [
-                { text: 'Annuler', style: 'cancel' },
-                { text: 'Supprimer', style: 'destructive', onPress: async () => { await deleteTrip(trip.id); onDelete(); } },
-              ]
-            )}
+            onPress={onUngroup
+              ? () => Alert.alert(
+                  'Dégrouper ce trajet ?',
+                  `${trip.distanceKm.toFixed(1)} km · ${fmtWeekdayShort(trip.startTime)}`,
+                  [
+                    { text: 'Annuler', style: 'cancel' },
+                    { text: 'Dégrouper', onPress: () => onUngroup() },
+                  ]
+                )
+              : () => Alert.alert(
+                  'Supprimer ce trajet ?',
+                  `${trip.distanceKm.toFixed(1)} km · ${fmtWeekdayShort(trip.startTime)}`,
+                  [
+                    { text: 'Annuler', style: 'cancel' },
+                    { text: 'Supprimer', style: 'destructive', onPress: async () => { await deleteTrip(trip.id); onDelete!(); } },
+                  ]
+                )
+            }
             hitSlop={8} style={styles.tripDeleteBtn}
           >
-            <MaterialCommunityIcons name="trash-can-outline" size={16} color={colors.mutedForeground} />
+            <MaterialCommunityIcons name={onUngroup ? 'link-off' : 'trash-can-outline'} size={16} color={colors.mutedForeground} />
           </Pressable>
         )}
       </View>
@@ -730,7 +731,7 @@ function TripRow({
 
 // ── WalkRouteCard ─────────────────────────────────────────────────────────────
 function WalkRouteCard({
-  route, allTrips, walkVehicleIds, colors, onUpdate, vehicles,
+  route, allTrips, walkVehicleIds, colors, onUpdate, vehicles, onUngroupTrip,
 }: {
   route: WalkRoute;
   allTrips: Trip[];
@@ -738,6 +739,7 @@ function WalkRouteCard({
   colors: ReturnType<typeof useColors>;
   onUpdate: () => void;
   vehicles?: Vehicle[];
+  onUngroupTrip?: (id: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const walkColor = '#4CAF50';
@@ -806,7 +808,7 @@ function WalkRouteCard({
       {expanded && (
         <View style={styles.catTrips}>
           {routeTrips.map(t => (
-            <TripRow key={t.id} trip={t} colors={colors} onUpdate={onUpdate} compact vehicles={vehicles} />
+            <TripRow key={t.id} trip={t} colors={colors} onUpdate={onUpdate} compact vehicles={vehicles} onUngroup={onUngroupTrip ? () => onUngroupTrip(t.id) : undefined} />
           ))}
         </View>
       )}
@@ -877,6 +879,10 @@ export default function TripListScreen() {
   }
 
   async function handleDeleteTrip(id: string) { await deleteTrip(id); await load(); }
+
+  async function handleUngroupFromCategory(id: string) { await updateTrip(id, { categoryId: undefined }); await load(); }
+  async function handleUngroupFromLabel(id: string) { await updateTrip(id, { labelId: undefined }); await load(); }
+  async function handleUngroupFromWalkRoute(id: string) { await updateTrip(id, { walkRouteId: undefined }); await load(); }
 
   async function handleLabelAssign(labelId: string | undefined) {
     if (!groupingTrip) return;
@@ -1004,7 +1010,7 @@ export default function TripListScreen() {
             <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Trajets</Text>
             {activeCats.map(cat => (
               <CategoryCard key={cat.id} category={cat} allTrips={trips} colors={colors} vehicles={settings}
-                onUpdate={load} onDelete={() => handleDeleteCategory(cat.id)} onRename={() => setRenameTarget(cat)} onDeleteTrip={handleDeleteTrip} />
+                onUpdate={load} onDelete={() => handleDeleteCategory(cat.id)} onRename={() => setRenameTarget(cat)} onUngroupTrip={handleUngroupFromCategory} />
             ))}
             {activeLabels.map(label => (
               <LabelCard
@@ -1016,8 +1022,7 @@ export default function TripListScreen() {
                 onUpdate={load}
                 onDelete={() => handleDeleteLabel(label.id)}
                 onRename={() => setRenameLabelTarget(label)}
-                onRemoveTripFromLabel={handleRemoveTripFromLabel}
-                onDeleteTrip={handleDeleteTrip}
+                onUngroupTrip={handleUngroupFromLabel}
               />
             ))}
           </View>
@@ -1028,7 +1033,7 @@ export default function TripListScreen() {
             <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Balades</Text>
             {activeWalkRoutes.map(wr => (
               <WalkRouteCard key={wr.id} route={wr} allTrips={trips} walkVehicleIds={walkVehicleIds}
-                colors={colors} onUpdate={load} vehicles={settings} />
+                colors={colors} onUpdate={load} vehicles={settings} onUngroupTrip={handleUngroupFromWalkRoute} />
             ))}
           </View>
         )}
