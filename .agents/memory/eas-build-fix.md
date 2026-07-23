@@ -35,9 +35,10 @@ Run `eas whoami` first to confirm the EXPO_TOKEN matches the `owner` in app.json
 | yo13juills-team | yo13juill | 0e087e7f… | exhausted Jul 2026 |
 | yoann42s-teami | yoann-20 | 206fa3d3… | exhausted Jul 2026 |
 | stpyoann202027rbfifs-team | yoann-20 | 2bfd24b3… | exhausted Jul 2026 |
-| **yo1907cjeicjebfs-team** | **yoann-20** | **80f5b084-24ba-42e5-8377-5c6b055e4538** | **ACTIVE — build v96 soumis 19 Jul 2026** |
+| yo1907cjeicjebfs-team | yoann-20 | 80f5b084-24ba-42e5-8377-5c6b055e4538 | exhausted Jul 2026 |
+| **yoluran2307s-team** | **yoann-20** | **6b473886-5625-4512-aad4-c933c55218ef** | **ACTIVE — build soumis 23 Jul 2026** |
 
-**app.json currently points to: yo1907cjeicjebfs-team / yoann-20 / 80f5b084-24ba-42e5-8377-5c6b055e4538**
+**app.json currently points to: yoluran2307s-team / yoann-20 / 6b473886-5625-4512-aad4-c933c55218ef**
 
 When user provides new token: update `EXPO_TOKEN` secret AND `app.json` → `expo.owner` + `expo.extra.eas.projectId`.
 Then run `eas whoami` to confirm account name, then check owner in app.json matches before running build.
