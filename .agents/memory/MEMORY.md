@@ -10,3 +10,5 @@
 - [Expo config plugin — expo/config-plugins](expo-config-plugin-import.md) — utiliser require('expo/config-plugins') pas require('@expo/config-plugins') dans les plugins du projet yoann2.
 - [EAS build command — global eas binary](eas-build-global-binary.md) — npx eas-cli timeout (424MB archive). Utiliser le binaire global directement : `/home/runner/workspace/.config/npm/node_global/bin/eas build ... 2>&1 | grep -m1 "See logs"`.
 - [EAS build — NE JAMAIS lancer sans autorisation explicite](eas-build-no-auto.md) — ne JAMAIS déclencher un build EAS sans que l'utilisateur le demande explicitement. Les quotas sont limités et précieux.
+- [Walk route — skip OSRM, use GPS fine epsilon](walk-route-osrm-skip.md) — OSRM snape sur les routes voiture; pour les balades utiliser GPS + EPSILON_DEG_WALK (~4 m) depuis routeSimplification.ts.
+- [Widget trip live refresh](widget-trip-refresh.md) — appeler updateTodoWidget() throttlé (30 s) depuis la tâche GPS locationTracking.ts pour que km/durée se mettent à jour pendant un trajet.
