@@ -4,6 +4,7 @@ import * as TaskManager from 'expo-task-manager';
 
 import { autoBackup } from '@/utils/locationBackup';
 import { haversineKm } from '@/utils/haversine';
+import { updateTodoWidget } from '@/widgets/updateWidget';
 
 export { haversineKm };
 
@@ -15,6 +16,10 @@ const MAX_DAYS = 7;
 // à chaque point GPS (~3s en trajet actif).
 let _lastAutoBackupTs = 0;
 const AUTO_BACKUP_THROTTLE_MS = 60_000;
+
+// Throttle rafraîchissement widget pendant un trajet actif (max 1×/30 s).
+let _lastWidgetUpdateMs = 0;
+const WIDGET_UPDATE_THROTTLE_MS = 30_000;
 
 // ── Distance de trajet (persistée pour survivre aux redémarrages JS) ─────────
 
@@ -480,6 +485,14 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
 
       // Persiste la distance pour survivre à un redémarrage du process JS
       AsyncStorage.setItem(TRIP_DIST_KEY, String(_tripDistKm)).catch(() => {});
+
+      // Rafraîchit le widget Android (km + durée) — throttlé à 1×/30 s pour
+      // ne pas saturer le renderer natif à chaque point GPS.
+      const nowMs = Date.now();
+      if (nowMs - _lastWidgetUpdateMs >= WIDGET_UPDATE_THROTTLE_MS) {
+        _lastWidgetUpdateMs = nowMs;
+        updateTodoWidget().catch(() => {});
+      }
     }
 
     lastValid = point;
