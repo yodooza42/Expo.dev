@@ -40,10 +40,13 @@ function rdpRecursive(points: RoutePoint[], epsilon: number): RoutePoint[] {
 }
 
 // ~15m tolerance in degree space (1° lat ≈ 111 km → 15m ≈ 0.000135°).
-// Keeps one point per ~15m of path deviation — enough for a map polyline.
+// Keeps one point per ~15m of path deviation — enough for a car/moto map polyline.
 const EPSILON_DEG = 0.000135;
 
-export function simplifyRoute(points: RoutePoint[]): RoutePoint[] {
+// ~4m tolerance for walks — preserves fine path detail (winding park trails, etc.)
+export const EPSILON_DEG_WALK = 0.000036;
+
+export function simplifyRoute(points: RoutePoint[], epsilon = EPSILON_DEG): RoutePoint[] {
   if (points.length <= 2) return [...points];
-  return rdpRecursive(points, EPSILON_DEG);
+  return rdpRecursive(points, epsilon);
 }

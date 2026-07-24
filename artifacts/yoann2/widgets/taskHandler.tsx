@@ -56,7 +56,7 @@ import { addConsumption } from '@/utils/consumptionStorage';
 import { getNavShortcuts } from '@/utils/navigationShortcuts';
 import { matchRouteOSRM, computeRouteDistanceKm } from '@/utils/osrmMatching';
 import { findNearestPlace, getKnownPlaces } from '@/utils/placesStorage';
-import { simplifyRoute } from '@/utils/routeSimplification';
+import { simplifyRoute, EPSILON_DEG_WALK } from '@/utils/routeSimplification';
 import { getVehicleSettings, saveTrip } from '@/utils/tripStorage';
 import { AllInOneWidget } from './AllInOneWidget';
 import { getWidgetDataFromStorage } from './data';
@@ -470,10 +470,14 @@ async function handleTripEnd(
     routePoints = [...routePoints, { lat: endLat, lng: endLon }];
   }
 
+  // Balades : OSRM est un routeur voiture — il snaperait le tracé sur des routes
+  // bitumées et ignorerait les sentiers. On utilise les points GPS directement.
+  const isWalkMode = savedMode === 'balade';
+
   let osrmRoute: RoutePoint[] | null = null;
   let distanceKm: number;
   try {
-    if (routePoints.length >= 2) {
+    if (!isWalkMode && routePoints.length >= 2) {
       osrmRoute = await matchRouteOSRM(routePoints);
     }
   } catch {}
@@ -487,7 +491,11 @@ async function handleTripEnd(
         : haversineKm(manualState.startLat, manualState.startLon, endLat, endLon);
   }
 
-  const finalRoute = simplifyRoute(osrmRoute ?? routePoints);
+  // Balades : epsilon fin (~4 m) pour conserver les courbes des sentiers.
+  // Voiture/moto : epsilon standard (~15 m), OSRM en priorité.
+  const finalRoute = isWalkMode
+    ? simplifyRoute(routePoints, EPSILON_DEG_WALK)
+    : simplifyRoute(osrmRoute ?? routePoints);
 
   const trip: Trip = {
     id: genId(),
