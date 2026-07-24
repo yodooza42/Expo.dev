@@ -29,9 +29,9 @@ export interface HourlyWeather {
 
 // ── Constantes ────────────────────────────────────────────────────────────────
 
-const WINDOW_START = 12 * 60;  // 720  → 12h00
+const WINDOW_START = 10 * 60;  // 600  → 10h00
 const WINDOW_END   = 24 * 60;  // 1440 → 00h00 (minuit)
-const MIN_DURATION = 4 * 60;   // 240  → 4 heures minimum
+const MIN_DURATION = 3 * 60;   // 180  → 3 heures minimum
 
 const DAYS_FR   = ['dim', 'lun', 'mar', 'mer', 'jeu', 'ven', 'sam'];
 const MONTHS_FR = ['jan', 'fév', 'mar', 'avr', 'mai', 'juin', 'juil', 'août', 'sep', 'oct', 'nov', 'déc'];
