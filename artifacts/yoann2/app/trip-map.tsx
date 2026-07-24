@@ -36,7 +36,7 @@ import { TripMapView } from '@/components/TripMapView';
 import { useColors } from '@/hooks/useColors';
 import type { KnownPlace, PlaceCategory, WalkRoute } from '@/types/places';
 import type { RoutePoint, Trip, Vehicle, WalkParticipant } from '@/types/trips';
-import { simplifyRoute } from '@/utils/routeSimplification';
+import { simplifyRoute, EPSILON_DEG_WALK } from '@/utils/routeSimplification';
 import {
   getAddressUsage,
   getKnownPlaces,
@@ -383,6 +383,8 @@ export default function TripMapScreen() {
   const [speedUnitPace, setSpeedUnitPace] = useState(false);
   const [chartLoading, setChartLoading] = useState(false);
   const [chartRefreshKey, setChartRefreshKey] = useState(0);
+
+  const [regenGpsLoading, setRegenGpsLoading] = useState(false);
 
   const [isGeneratingStory, setIsGeneratingStory] = useState(false);
   const [storyProgress, setStoryProgress]         = useState(0);
@@ -750,6 +752,34 @@ export default function TripMapScreen() {
     setAddressUsage(prev => ({ ...prev, [name]: (prev[name] ?? 0) + 1 }));
   }
 
+  const handleRegenGpsRoute = useCallback(async () => {
+    if (!trip || regenGpsLoading) return;
+    setRegenGpsLoading(true);
+    try {
+      const gpsPoints = await loadMultiDayPoints(trip.startTime, trip.endTime);
+      const filtered = filterGpsOutliers(
+        gpsPoints.filter(p => p.timestamp >= trip.startTime && p.timestamp <= trip.endTime)
+      );
+      if (filtered.length < 2) {
+        Alert.alert('Tracé GPS', 'Pas assez de points GPS pour ce trajet.');
+        return;
+      }
+      const newRoute: RoutePoint[] = simplifyRoute(
+        filtered.map(p => ({ lat: p.lat, lng: p.lng })),
+        EPSILON_DEG_WALK,
+      );
+      const patch: Partial<Trip> = { route: newRoute, routeSource: 'gps' };
+      setTrip(prev => prev ? { ...prev, ...patch } : prev);
+      await updateTrip(trip.id, patch);
+      tripEvents.emitTripUpdated();
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch {
+      Alert.alert('Erreur', 'Impossible de régénérer le tracé.');
+    } finally {
+      setRegenGpsLoading(false);
+    }
+  }, [trip, regenGpsLoading]);
+
   async function handlePickWalkRoute(routeId: string | undefined) {
     if (!trip) return;
     setPickingRoute(false);
@@ -985,6 +1015,35 @@ export default function TripMapScreen() {
               />
             )}
           </View>
+
+          {/* Regen GPS route — walk trips only, when GPS data is available */}
+          {isWalkTrip && tripLocPts.length >= 2 && !screenshotMode && (
+            <Pressable
+              onPress={handleRegenGpsRoute}
+              disabled={regenGpsLoading}
+              style={({ pressed }) => [{
+                flexDirection: 'row' as const,
+                alignItems: 'center' as const,
+                gap: 5,
+                alignSelf: 'flex-start' as const,
+                backgroundColor: regenGpsLoading ? '#2196F310' : '#2196F318',
+                borderWidth: 1,
+                borderColor: '#2196F360',
+                borderRadius: 8,
+                paddingHorizontal: 10,
+                paddingVertical: 5,
+                marginBottom: 4,
+                opacity: pressed || regenGpsLoading ? 0.6 : 1,
+              }]}
+            >
+              {regenGpsLoading
+                ? <ActivityIndicator size={12} color="#2196F3" />
+                : <MaterialCommunityIcons name="map-marker-path" size={13} color="#2196F3" />}
+              <Text style={{ color: '#2196F3', fontSize: 12, fontFamily: 'Inter_500Medium' }}>
+                {regenGpsLoading ? 'Régénération…' : 'Recalculer tracé GPS'}
+              </Text>
+            </Pressable>
+          )}
 
           {!!participantName && (
             <View style={[styles.participantChip, { marginBottom: 4 }]}>
