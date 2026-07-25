@@ -25,7 +25,7 @@ import { getWidgetSettings } from '@/widgets/widgetSettings';
 const HOME_LAT = 45.1563;
 const HOME_LON = -0.0135;
 
-const WEATHER_API = `https://api.open-meteo.com/v1/forecast?latitude=${HOME_LAT}&longitude=${HOME_LON}&hourly=weathercode,temperature_2m,precipitation_probability&timezone=Europe%2FParis&forecast_days=8`;
+const WEATHER_API = `https://api.open-meteo.com/v1/forecast?latitude=${HOME_LAT}&longitude=${HOME_LON}&hourly=weathercode,temperature_2m,precipitation_probability&timezone=Europe%2FParis&forecast_days=15`;
 
 function scoreColor(score: number | undefined): string {
   if (score === undefined) return '#9E9E9E';
@@ -56,7 +56,7 @@ export function WalkSlotsCard() {
           loadMariePlanning(),
         ]);
 
-        let computed = computeWalkSlots(settings.workSchedule, planning, 7);
+        let computed = computeWalkSlots(settings.workSchedule, planning, 14);
         if (active) setSlots(computed);
 
         // Fetch météo Open-Meteo
@@ -91,15 +91,10 @@ export function WalkSlotsCard() {
         {loading && <ActivityIndicator size="small" color={colors.primary} />}
       </View>
 
-      {/* ── Critères ── */}
-      <Text style={[styles.criteria, { color: colors.mutedForeground }]}>
-        Yoann + Marie · 12h→00h · min 4h · 7 jours
-      </Text>
-
       {/* ── Aucun créneau ── */}
       {!loading && slots.length === 0 && (
         <Text style={[styles.empty, { color: colors.mutedForeground }]}>
-          Aucun créneau trouvé sur 7 jours
+          Aucun créneau trouvé sur 14 jours
         </Text>
       )}
 
@@ -192,7 +187,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 14,
-    marginBottom: 2,
+    marginBottom: 12,
   },
   headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   title:  { fontSize: 14, fontFamily: 'Inter_600SemiBold' },
