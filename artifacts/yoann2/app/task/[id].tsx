@@ -332,6 +332,36 @@ export default function TaskDetailScreen() {
             </View>
           </View>
 
+          {/* ── Récurrence ── */}
+          <View>
+            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Récurrence</Text>
+            <View style={styles.statusRow}>
+              {([null, 'daily', 'weekly', 'monthly'] as const).map(r => {
+                const label = r === null ? 'Aucune' : r === 'daily' ? 'Quotidien' : r === 'weekly' ? 'Hebdomadaire' : 'Mensuel';
+                const active = (task.recurrence ?? null) === r;
+                return (
+                  <Pressable
+                    key={String(r)}
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      updateTask(task.id, { recurrence: r });
+                    }}
+                    style={[
+                      styles.statusChip,
+                      active
+                        ? { backgroundColor: '#9C27B0' }
+                        : { backgroundColor: '#9C27B020', borderColor: '#9C27B0', borderWidth: 1 },
+                    ]}
+                  >
+                    <Text style={[styles.statusChipTxt, { color: active ? '#fff' : '#9C27B0' }]}>
+                      {label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+
           {task.description.length > 0 && (
             <View>
               <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Description</Text>

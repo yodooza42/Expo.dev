@@ -78,6 +78,7 @@ export default function NewTaskScreen() {
     return '';
   });
   const [photos, setPhotos] = useState<string[]>(existing?.photos ?? []);
+  const [recurrence, setRecurrence] = useState<RecurrenceType>(existing?.recurrence ?? null);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const topPad = Platform.OS === 'web' ? 67 : insets.top;
@@ -120,6 +121,7 @@ export default function NewTaskScreen() {
       importance: scaledImportance,
       urgency: scaledUrgency,
       status,
+      recurrence,
     };
     if (isEditing && existing) {
       updateTask(existing.id, data);
@@ -309,6 +311,32 @@ export default function NewTaskScreen() {
                 </Text>
               </Pressable>
             ))}
+          </View>
+        </View>
+
+        <View>
+          <Text style={[styles.label, { color: colors.mutedForeground }]}>Récurrence</Text>
+          <View style={styles.row}>
+            {([null, 'daily', 'weekly', 'monthly'] as RecurrenceType[]).map(r => {
+              const label = r === null ? 'Aucune' : r === 'daily' ? 'Quotidien' : r === 'weekly' ? 'Hebdo' : 'Mensuel';
+              const active = recurrence === r;
+              return (
+                <Pressable
+                  key={String(r)}
+                  onPress={() => { setRecurrence(r); }}
+                  style={[
+                    styles.priorityChip,
+                    active
+                      ? { backgroundColor: '#9C27B0' }
+                      : { backgroundColor: '#9C27B020', borderColor: '#9C27B0', borderWidth: 1 },
+                  ]}
+                >
+                  <Text style={[styles.chipTxt, { color: active ? '#fff' : '#9C27B0' }]}>
+                    {label}
+                  </Text>
+                </Pressable>
+              );
+            })}
           </View>
         </View>
 
