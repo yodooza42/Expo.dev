@@ -803,7 +803,7 @@ export default function TripMapScreen() {
   }
 
   const USABLE_H = SCREEN_H - insets.top - insets.bottom;
-  const MAP_H = insets.top + Math.round(USABLE_H * 0.40);
+  const MAP_H = insets.top + Math.round(USABLE_H * 0.32);
   const MAP_W = SCREEN_W;
 
   const editingLabel = editingField === 'start' ? 'Lieu de départ' : "Lieu d'arrivée";
