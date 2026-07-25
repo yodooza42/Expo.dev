@@ -386,6 +386,9 @@ export default function TripMapScreen() {
 
   const [regenGpsLoading, setRegenGpsLoading] = useState(false);
 
+  const [scrubTs, setScrubTs] = useState<number | null>(null);
+  const [storyModalVisible, setStoryModalVisible] = useState(false);
+
   const [isGeneratingStory, setIsGeneratingStory] = useState(false);
   const [storyProgress, setStoryProgress]         = useState(0);
   const storyChunksRef = useRef<{ mime: string; chunks: string[]; total: number }>({ mime: 'video/mp4', chunks: [], total: 0 });
@@ -470,7 +473,22 @@ export default function TripMapScreen() {
     }
   }, [isCapturing]);
 
-  const handleGenerateStory = useCallback(() => {
+  const handleChartScrub = useCallback((pt: LocationPoint | null) => {
+    setScrubTs(pt ? pt.timestamp : null);
+  }, []);
+
+  const scrubMapPoint = useMemo(() => {
+    if (!scrubTs || tripLocPts.length === 0) return undefined;
+    let best = tripLocPts[0]!;
+    let bestD = Math.abs(best.timestamp - scrubTs);
+    for (const p of tripLocPts) {
+      const d = Math.abs(p.timestamp - scrubTs);
+      if (d < bestD) { best = p; bestD = d; }
+    }
+    return { lat: best.lat, lng: best.lng };
+  }, [scrubTs, tripLocPts]);
+
+  const handleGenerateStory = useCallback((durationOverride?: number) => {
     if (!trip || isGeneratingStory) return;
 
     // Route : tracé stocké ou tracé GPS déjà chargé dans tripLocPts
@@ -546,7 +564,7 @@ export default function TripMapScreen() {
       hasAlt: alts.length > 0,
       points: chartPts,
       route,
-      videoDurationSec: storyDuration,
+      videoDurationSec: durationOverride ?? storyDuration,
       showPace: isWalk && speedUnitPace,
     };
 
@@ -876,6 +894,7 @@ export default function TripMapScreen() {
               height={MAP_H}
               lineColor={trip?.source === 'manual' ? '#2196F3' : '#FFC107'}
               waypoints={intermediateWaypoints.length > 0 ? intermediateWaypoints : undefined}
+              scrubPoint={scrubMapPoint}
             />
           );
         })()}
@@ -910,54 +929,73 @@ export default function TripMapScreen() {
                       : `${trip.route?.length ?? 0} pts (tracé GPS simplifié)`}
                 </Text>
               )}
+              {/* Story + Screenshot — mêmes dimensions que la ligne légende */}
+              {!screenshotMode && tripLocPts.length >= 2 && (
+                <View style={{ flexDirection: 'row', marginLeft: 'auto', gap: 5, alignItems: 'center' }}>
+                  <Pressable
+                    onPress={handleScreenshot}
+                    disabled={isCapturing}
+                    style={[styles.legendActionBtn, { backgroundColor: '#2196F3' }, isCapturing && { opacity: 0.5 }]}
+                  >
+                    <MaterialCommunityIcons name="camera-outline" size={14} color="#fff" />
+                  </Pressable>
+                  <Pressable
+                    onPress={() => { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setStoryModalVisible(true); }}
+                    disabled={isGeneratingStory}
+                    style={[styles.legendActionBtn, { borderWidth: 1, borderColor: vehColor + '80' }, isGeneratingStory && { opacity: 0.5 }]}
+                  >
+                    <MaterialCommunityIcons name="instagram" size={14} color={vehColor} />
+                  </Pressable>
+                </View>
+              )}
             </View>
           )}
 
           {/* Address banner */}
           {isWalkTrip ? (
             <View style={[styles.addrBannerCol, { borderBottomColor: colors.border }]}>
-              <View style={styles.walkTopRow}>
-                {/* Left column: route chip + participant names */}
-                <View style={{ flex: 1, gap: 4 }}>
-                  <Pressable
-                    onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setPickingRoute(true); }}
-                    style={({ pressed }) => [styles.walkRoutePressable, { opacity: pressed ? 0.65 : 1 }]}
-                  >
-                    {walkRouteName ? (
-                      <View style={styles.walkRouteChip}>
-                        <MaterialCommunityIcons name="walk" size={14} color="#4CAF50" />
-                        <Text style={[styles.walkRouteChipText, { color: '#4CAF50' }]}>{walkRouteName}</Text>
-                      </View>
-                    ) : (
-                      <View style={[styles.walkRouteChip, { backgroundColor: colors.muted }]}>
-                        <MaterialCommunityIcons name="walk" size={14} color={colors.mutedForeground} />
-                        <Text style={[styles.walkRouteChipText, { color: colors.mutedForeground }]}>Aucun parcours</Text>
-                      </View>
-                    )}
-                    {!screenshotMode && (
-                      <MaterialCommunityIcons name="pencil-outline" size={13} color={colors.mutedForeground} />
-                    )}
-                  </Pressable>
-                  {walkParticipantIds.length > 0 && (
-                    <Text style={[styles.walkParticipantsLabel, { color: colors.mutedForeground }]}>
-                      {walkParticipantIds.map(pid => allWalkParticipants.find(p => p.id === pid)?.name).filter((n): n is string => !!n).join(' · ')}
-                    </Text>
-                  )}
-                </View>
-                {/* Participants button — hidden in screenshot mode */}
+              <View style={[styles.walkTopRow, { alignItems: 'flex-start' }]}>
+                {/* LEFT: Participants button + noms en dessous */}
                 {allWalkParticipants.length > 0 && !screenshotMode && (
-                  <Pressable
-                    onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setPickingParticipants(true); }}
-                    style={[styles.walkRouteChip, {
-                      backgroundColor: walkParticipantIds.length > 0 ? '#2196F318' : colors.muted,
-                      borderWidth: 1,
-                      borderColor: walkParticipantIds.length > 0 ? '#2196F360' : colors.border,
-                    }]}
-                  >
-                    <MaterialCommunityIcons name="account-group-outline" size={14} color={walkParticipantIds.length > 0 ? '#2196F3' : colors.mutedForeground} />
-                    <Text style={[styles.walkRouteChipText, { color: walkParticipantIds.length > 0 ? '#2196F3' : colors.mutedForeground }]}>Participants</Text>
-                  </Pressable>
+                  <View style={{ gap: 3 }}>
+                    <Pressable
+                      onPress={() => { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setPickingParticipants(true); }}
+                      style={[styles.walkRouteChip, {
+                        backgroundColor: walkParticipantIds.length > 0 ? '#2196F318' : colors.muted,
+                        borderWidth: 1,
+                        borderColor: walkParticipantIds.length > 0 ? '#2196F360' : colors.border,
+                      }]}
+                    >
+                      <MaterialCommunityIcons name="account-group-outline" size={14} color={walkParticipantIds.length > 0 ? '#2196F3' : colors.mutedForeground} />
+                      <Text style={[styles.walkRouteChipText, { color: walkParticipantIds.length > 0 ? '#2196F3' : colors.mutedForeground }]}>Participants</Text>
+                    </Pressable>
+                    {walkParticipantIds.length > 0 && (
+                      <Text style={[styles.walkParticipantsLabel, { color: colors.mutedForeground, marginLeft: 2 }]}>
+                        {walkParticipantIds.map(pid => allWalkParticipants.find(p => p.id === pid)?.name).filter((n): n is string => !!n).join(' · ')}
+                      </Text>
+                    )}
+                  </View>
                 )}
+                {/* RIGHT: Route chip + pencil */}
+                <Pressable
+                  onPress={() => { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setPickingRoute(true); }}
+                  style={({ pressed }) => [styles.walkRoutePressable, { flex: 1, justifyContent: 'flex-end', opacity: pressed ? 0.65 : 1 }]}
+                >
+                  {walkRouteName ? (
+                    <View style={styles.walkRouteChip}>
+                      <MaterialCommunityIcons name="walk" size={14} color="#4CAF50" />
+                      <Text style={[styles.walkRouteChipText, { color: '#4CAF50' }]}>{walkRouteName}</Text>
+                    </View>
+                  ) : (
+                    <View style={[styles.walkRouteChip, { backgroundColor: colors.muted }]}>
+                      <MaterialCommunityIcons name="walk" size={14} color={colors.mutedForeground} />
+                      <Text style={[styles.walkRouteChipText, { color: colors.mutedForeground }]}>Aucun parcours</Text>
+                    </View>
+                  )}
+                  {!screenshotMode && (
+                    <MaterialCommunityIcons name="pencil-outline" size={13} color={colors.mutedForeground} />
+                  )}
+                </Pressable>
               </View>
             </View>
           ) : (
@@ -980,6 +1018,19 @@ export default function TripMapScreen() {
 
           {/* Date + vehicle row */}
           <View style={[styles.dtRow, { marginTop: 4, marginBottom: 0 }]}>
+            {/* Regen GPS — icône seule, avant la date (balades uniquement) */}
+            {isWalkTrip && tripLocPts.length >= 2 && !screenshotMode && (
+              <Pressable
+                onPress={handleRegenGpsRoute}
+                disabled={regenGpsLoading}
+                hitSlop={8}
+                style={({ pressed }) => [{ opacity: pressed || regenGpsLoading ? 0.5 : 1 }]}
+              >
+                {regenGpsLoading
+                  ? <ActivityIndicator size={14} color="#2196F3" />
+                  : <MaterialCommunityIcons name="map-marker-path" size={18} color="#2196F3" />}
+              </Pressable>
+            )}
             <Pressable onPress={handleOpenDtPicker} style={({ pressed }) => [{ flex: 1, opacity: pressed ? 0.65 : 1 }]} hitSlop={6}>
               <Text style={[styles.dateText, { color: colors.foreground }]}>{fmtDayLong(trip.startTime)}</Text>
               <Text style={[styles.timeText, { color: colors.mutedForeground }]}>{fmtHHMM(trip.startTime)} → {fmtHHMM(trip.endTime)}</Text>
@@ -1016,35 +1067,6 @@ export default function TripMapScreen() {
             )}
           </View>
 
-          {/* Regen GPS route — walk trips only, when GPS data is available */}
-          {isWalkTrip && tripLocPts.length >= 2 && !screenshotMode && (
-            <Pressable
-              onPress={handleRegenGpsRoute}
-              disabled={regenGpsLoading}
-              style={({ pressed }) => [{
-                flexDirection: 'row' as const,
-                alignItems: 'center' as const,
-                gap: 5,
-                alignSelf: 'flex-start' as const,
-                backgroundColor: regenGpsLoading ? '#2196F310' : '#2196F318',
-                borderWidth: 1,
-                borderColor: '#2196F360',
-                borderRadius: 8,
-                paddingHorizontal: 10,
-                paddingVertical: 5,
-                marginBottom: 4,
-                opacity: pressed || regenGpsLoading ? 0.6 : 1,
-              }]}
-            >
-              {regenGpsLoading
-                ? <ActivityIndicator size={12} color="#2196F3" />
-                : <MaterialCommunityIcons name="map-marker-path" size={13} color="#2196F3" />}
-              <Text style={{ color: '#2196F3', fontSize: 12, fontFamily: 'Inter_500Medium' }}>
-                {regenGpsLoading ? 'Régénération…' : 'Recalculer tracé GPS'}
-              </Text>
-            </Pressable>
-          )}
-
           {!!participantName && (
             <View style={[styles.participantChip, { marginBottom: 4 }]}>
               <MaterialCommunityIcons name="account-outline" size={13} color="#4CAF50" />
@@ -1070,8 +1092,8 @@ export default function TripMapScreen() {
             </View>
           ) : (
             <>
-              <TripSpeedChart points={tripLocPts} color={vehColor} onScrub={() => {}} isWalk={isWalkTrip} speedUnitPace={speedUnitPace} onToggleUnit={handleToggleSpeedUnit} />
-              {hasAltData && <TripAltitudeChart points={tripLocPts} color={vehColor} onScrub={() => {}} />}
+              <TripSpeedChart points={tripLocPts} color={vehColor} onScrub={handleChartScrub} externalScrubTs={scrubTs} isWalk={isWalkTrip} speedUnitPace={speedUnitPace} onToggleUnit={handleToggleSpeedUnit} />
+              {hasAltData && <TripAltitudeChart points={tripLocPts} color={vehColor} onScrub={handleChartScrub} externalScrubTs={scrubTs} />}
             </>
           )}
         </View>
@@ -1087,43 +1109,52 @@ export default function TripMapScreen() {
         </View>
       )}
 
-      {/* Story/screenshot bar — sibling at root level so touches aren't clipped by overflow:hidden */}
-      {!screenshotMode && trip && tripLocPts.length >= 2 && (
-        <View style={[styles.bottomBar, { backgroundColor: colors.card, borderTopColor: colors.border, paddingBottom: insets.bottom }]}>
-          <View style={styles.bottomBarLeft}>
-            {([10, 20, 30, 60] as const).map(s => (
-              <Pressable
-                key={s}
-                onPress={() => { Haptics.selectionAsync(); setStoryDuration(s); }}
-                style={[styles.speedChip, storyDuration === s && styles.speedChipActive]}
-              >
-                <Text style={[styles.speedChipText, storyDuration === s && styles.speedChipTextActive]}>{s === 60 ? '1min' : `${s}s`}</Text>
-              </Pressable>
-            ))}
-          </View>
-          <View style={styles.bottomBarRight}>
-            <Pressable
-              style={[styles.screenshotBtn, isCapturing && { opacity: 0.5 }]}
-              onPress={handleScreenshot}
-              disabled={isCapturing}
-            >
-              <MaterialCommunityIcons name="camera-outline" size={18} color="#fff" />
-            </Pressable>
-            <Pressable
-              onPress={handleGenerateStory}
-              disabled={isGeneratingStory}
-              style={[styles.storyBtn, { borderColor: vehColor, opacity: isGeneratingStory ? 0.5 : 1 }]}
-            >
-              <MaterialCommunityIcons name="instagram" size={18} color={vehColor} />
-            </Pressable>
-          </View>
-        </View>
-      )}
 
       {/* Date / time pickers */}
       {dtPickerStep === 'date' && <DateTimePicker value={draftStart} mode="date" display="calendar" maximumDate={new Date()} onChange={handleDateChange} />}
       {dtPickerStep === 'startTime' && <DateTimePicker value={draftStart} mode="time" display="clock" is24Hour onChange={handleStartTimeChange} />}
       {dtPickerStep === 'endTime' && <DateTimePicker value={draftEnd} mode="time" display="clock" is24Hour onChange={handleEndTimeChange} />}
+
+      {/* Modal durée story */}
+      <Modal visible={storyModalVisible} transparent animationType="fade">
+        <Pressable
+          style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'center', alignItems: 'center' }]}
+          onPress={() => setStoryModalVisible(false)}
+        >
+          <View style={{ backgroundColor: colors.card, borderRadius: 16, padding: 20, width: 260 }} onStartShouldSetResponder={() => true}>
+            <Text style={{ color: colors.foreground, fontSize: 16, fontFamily: 'Inter_700Bold', marginBottom: 14, textAlign: 'center' }}>
+              Durée de la story
+            </Text>
+            {([10, 20, 30, 60] as const).map(s => (
+              <Pressable
+                key={s}
+                onPress={() => {
+                  void Haptics.selectionAsync();
+                  setStoryModalVisible(false);
+                  setStoryDuration(s);
+                  handleGenerateStory(s);
+                }}
+                style={({ pressed }) => [{
+                  flexDirection: 'row' as const,
+                  alignItems: 'center' as const,
+                  justifyContent: 'space-between' as const,
+                  paddingVertical: 12,
+                  paddingHorizontal: 16,
+                  borderRadius: 10,
+                  marginBottom: 4,
+                  backgroundColor: storyDuration === s ? vehColor + '22' : colors.muted,
+                  opacity: pressed ? 0.7 : 1,
+                }]}
+              >
+                <Text style={{ color: storyDuration === s ? vehColor : colors.foreground, fontFamily: 'Inter_500Medium', fontSize: 15 }}>
+                  {s === 60 ? '1 min' : `${s} s`}
+                </Text>
+                {storyDuration === s && <MaterialCommunityIcons name="check" size={16} color={vehColor} />}
+              </Pressable>
+            ))}
+          </View>
+        </Pressable>
+      </Modal>
 
       <WalkRoutePickerModal visible={pickingRoute} routes={walkRoutes} currentId={trip?.walkRouteId} colors={colors} onClose={() => setPickingRoute(false)} onPick={handlePickWalkRoute} />
       <WalkParticipantPickerModal visible={pickingParticipants} allParticipants={allWalkParticipants} selectedIds={walkParticipantIds} colors={colors} onClose={() => setPickingParticipants(false)} onToggle={handleToggleParticipant} />
@@ -1200,6 +1231,7 @@ function TripSpeedChart({
   points,
   color,
   onScrub,
+  externalScrubTs,
   isWalk = false,
   speedUnitPace = false,
   onToggleUnit,
@@ -1207,6 +1239,7 @@ function TripSpeedChart({
   points: LocationPoint[];
   color: string;
   onScrub: (pt: LocationPoint | null) => void;
+  externalScrubTs?: number | null;
   isWalk?: boolean;
   speedUnitPace?: boolean;
   onToggleUnit?: () => void;
@@ -1341,9 +1374,21 @@ function TripSpeedChart({
   }
 
   const scrubPt = scrubX !== null ? findNearest(scrubX, chartData, timeAxis) : null;
-  const scrubX2 = scrubPt ? xOf(scrubPt) : 0;
-  const scrubY2 = scrubPt
-    ? (showPace && scrubPt.spd >= 0.5 ? yOfPace(60 / scrubPt.spd) : yOfSpd(scrubPt.spd))
+  const externalScrubPt = externalScrubTs != null && scrubX === null
+    ? (() => {
+        let best = data[0]!;
+        let bestD = Math.abs(best.ts - externalScrubTs);
+        for (const d of data) {
+          const dd = Math.abs(d.ts - externalScrubTs);
+          if (dd < bestD) { best = d; bestD = dd; }
+        }
+        return best;
+      })()
+    : null;
+  const activeScrubPt = scrubPt ?? externalScrubPt;
+  const activeScrubX2 = activeScrubPt ? xOf(activeScrubPt) : 0;
+  const activeScrubY2 = activeScrubPt
+    ? (showPace && activeScrubPt.spd >= 0.5 ? yOfPace(60 / activeScrubPt.spd) : yOfSpd(activeScrubPt.spd))
     : 0;
 
   // Ligne de moyenne
@@ -1386,10 +1431,10 @@ function TripSpeedChart({
           {!!areaPath && <Path d={areaPath} fill="url(#spd_grad)" />}
           {!!linePath && <Path d={linePath} stroke={color} strokeWidth={2} fill="none" strokeLinejoin="round" />}
           {avgY > 0 && <SvgLine x1={PL} y1={avgY} x2={W - PR} y2={avgY} stroke="#FFFFFF55" strokeWidth={1} strokeDasharray="3 4" />}
-          {scrubPt !== null && scrubX !== null && (
+          {activeScrubPt !== null && (
             <>
-              <SvgLine x1={scrubX2} y1={PT} x2={scrubX2} y2={PT + cH} stroke="#FFFFFFCC" strokeWidth={1.5} />
-              <Circle cx={scrubX2} cy={scrubY2} r={5} fill="#FFFFFF" stroke={color} strokeWidth={2} />
+              <SvgLine x1={activeScrubX2} y1={PT} x2={activeScrubX2} y2={PT + cH} stroke="#FFFFFFCC" strokeWidth={1.5} />
+              <Circle cx={activeScrubX2} cy={activeScrubY2} r={5} fill="#FFFFFF" stroke={color} strokeWidth={2} />
             </>
           )}
           <SvgText x={PL - 3} y={PT + 5} textAnchor="end" fontSize={8} fill="#666">{yTopLabel}</SvgText>
@@ -1399,16 +1444,16 @@ function TripSpeedChart({
           <SvgText x={W - PR} y={H - 2} textAnchor="end" fontSize={8} fill="#666">{xEndLabel}</SvgText>
         </Svg>
       </View>
-      {scrubPt ? (
+      {activeScrubPt ? (
         <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6, paddingHorizontal: 2, paddingTop: 2 }}>
           <Text style={{ color, fontFamily: 'Inter_700Bold', fontSize: 18, lineHeight: 22 }}>
             {showPace
-              ? (scrubPt.spd >= 0.5 ? `${formatPace(scrubPt.spd)} /km` : '—')
-              : `${scrubPt.spd.toFixed(1)} km/h`}
+              ? (activeScrubPt.spd >= 0.5 ? `${formatPace(activeScrubPt.spd)} /km` : '—')
+              : `${activeScrubPt.spd.toFixed(1)} km/h`}
           </Text>
           <Text style={{ color: '#555', fontSize: 12 }}>·</Text>
           <Text style={{ color: '#888', fontFamily: 'Inter_400Regular', fontSize: 12 }}>
-            {timeAxis ? fmtAxisTime(scrubPt.ms) : `${scrubPt.km.toFixed(2)} km`}
+            {timeAxis ? fmtAxisTime(activeScrubPt.ms) : `${activeScrubPt.km.toFixed(2)} km`}
           </Text>
         </View>
       ) : (
@@ -1451,10 +1496,12 @@ function TripAltitudeChart({
   points,
   color,
   onScrub,
+  externalScrubTs,
 }: {
   points: LocationPoint[];
   color: string;
   onScrub: (pt: LocationPoint | null) => void;
+  externalScrubTs?: number | null;
 }) {
   const colors = useColors();
   const [scrubX, setScrubX] = useState<number | null>(null);
@@ -1515,6 +1562,18 @@ function TripAltitudeChart({
   const areaPath = `${linePath} L ${mx(totalKm).toFixed(1)},${(PT + cH).toFixed(1)} L ${PL},${(PT + cH).toFixed(1)} Z`;
 
   const scrubPt = scrubX !== null ? findNearest(scrubX, chartData) : null;
+  const externalScrubPt = externalScrubTs != null && scrubX === null
+    ? (() => {
+        let best = data[0]!;
+        let bestD = Math.abs(best.ts - externalScrubTs);
+        for (const d of data) {
+          const dd = Math.abs(d.ts - externalScrubTs);
+          if (dd < bestD) { best = d; bestD = dd; }
+        }
+        return best;
+      })()
+    : null;
+  const activeScrubPt = scrubPt ?? externalScrubPt;
 
   return (
     <View style={{ borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, paddingTop: 6, paddingBottom: 4 }}>
@@ -1545,10 +1604,10 @@ function TripAltitudeChart({
           </Defs>
           <Path d={areaPath} fill="url(#alt_grad)" />
           <Path d={linePath} stroke="#AAAAAA" strokeWidth={2} fill="none" strokeLinejoin="round" />
-          {scrubPt !== null && scrubX !== null && (
+          {activeScrubPt !== null && (
             <>
-              <SvgLine x1={mx(scrubPt.km)} y1={PT} x2={mx(scrubPt.km)} y2={PT + cH} stroke="#FFFFFFCC" strokeWidth={1.5} />
-              <Circle cx={mx(scrubPt.km)} cy={my(scrubPt.alt)} r={5} fill="#FFFFFF" stroke="#AAAAAA" strokeWidth={2} />
+              <SvgLine x1={mx(activeScrubPt.km)} y1={PT} x2={mx(activeScrubPt.km)} y2={PT + cH} stroke="#FFFFFFCC" strokeWidth={1.5} />
+              <Circle cx={mx(activeScrubPt.km)} cy={my(activeScrubPt.alt)} r={5} fill="#FFFFFF" stroke="#AAAAAA" strokeWidth={2} />
             </>
           )}
           <SvgText x={PL - 3} y={PT + 5} textAnchor="end" fontSize={8} fill="#666">{maxAlt} m</SvgText>
@@ -1557,14 +1616,14 @@ function TripAltitudeChart({
           <SvgText x={W - PR} y={H - 2} textAnchor="end" fontSize={8} fill="#666">{totalKm.toFixed(1)} km</SvgText>
         </Svg>
       </View>
-      {scrubPt ? (
+      {activeScrubPt ? (
         <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6, paddingHorizontal: 2, paddingTop: 2 }}>
           <Text style={{ color: '#AAAAAA', fontFamily: 'Inter_700Bold', fontSize: 18, lineHeight: 22 }}>
-            {scrubPt.alt} m
+            {activeScrubPt.alt} m
           </Text>
           <Text style={{ color: '#555', fontSize: 12 }}>·</Text>
           <Text style={{ color: '#888', fontFamily: 'Inter_400Regular', fontSize: 12 }}>
-            {scrubPt.km.toFixed(2)} km
+            {activeScrubPt.km.toFixed(2)} km
           </Text>
         </View>
       ) : (
@@ -1701,6 +1760,13 @@ const styles = StyleSheet.create({
   walkRouteChip: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#4CAF5018', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 5 },
   walkRouteChipText: { fontSize: 13, fontFamily: 'Inter_500Medium' },
   walkRoutePressable: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  legendActionBtn: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   vehicleChip: {
     flexDirection: 'row', alignItems: 'center', gap: 5,
     borderRadius: 20, borderWidth: 1,

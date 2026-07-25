@@ -13,6 +13,8 @@ interface Props {
   lineColor?: string;
   /** Intermediate stop positions — rendered as yellow waypoint dots */
   waypoints?: Array<{ lat: number; lng: number }>;
+  /** Scrub position — rendered as an orange circle on the route */
+  scrubPoint?: { lat: number; lng: number };
 }
 
 const PAD = 0.12;
@@ -31,7 +33,7 @@ function pickScaleKm(totalWidthKm: number, drawW: number, maxFrac = 0.28): { km:
   return { km: chosen, px, label };
 }
 
-export function TripMapView({ route, width, height, bgColor = '#1A1A1A', lineColor = '#FFC107', waypoints }: Props) {
+export function TripMapView({ route, width, height, bgColor = '#1A1A1A', lineColor = '#FFC107', waypoints, scrubPoint }: Props) {
   const { pointsStr, startX, startY, endX, endY, toX, toY, scale } = useMemo(() => {
     if (!route || route.length < 2) return { pointsStr: '', startX: 0, startY: 0, endX: 0, endY: 0, toX: () => 0, toY: () => 0, scale: null };
 
@@ -117,6 +119,14 @@ export function TripMapView({ route, width, height, bgColor = '#1A1A1A', lineCol
           </React.Fragment>
         );
       })}
+      {/* Scrub position — orange circle */}
+      {scrubPoint && (
+        <>
+          <Circle cx={toX(scrubPoint.lng)} cy={toY(scrubPoint.lat)} r={9} fill="#FF980055" />
+          <Circle cx={toX(scrubPoint.lng)} cy={toY(scrubPoint.lat)} r={6} fill="#FF9800" opacity={0.95} />
+          <Circle cx={toX(scrubPoint.lng)} cy={toY(scrubPoint.lat)} r={3} fill="#fff" />
+        </>
+      )}
       {/* Start — green */}
       <Circle cx={startX} cy={startY} r={6} fill="#4CAF50" opacity={0.9} />
       <Circle cx={startX} cy={startY} r={3} fill="#fff" />
