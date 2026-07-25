@@ -889,7 +889,7 @@ export default function TripMapScreen() {
   const hasAltData = tripLocPts.some(p => p.altitudeM != null);
 
   return (
-    <View ref={captureViewRef} collapsable={false} style={[styles.root, { backgroundColor: colors.background }]} {...swipePan.panHandlers}>
+    <View ref={captureViewRef} collapsable={false} style={[styles.root, { backgroundColor: colors.background }]}>
       {/* Back button */}
       {!screenshotMode && (
         <Pressable
@@ -942,8 +942,8 @@ export default function TripMapScreen() {
         );
       })()}
 
-      {/* Map — 40% fixed height */}
-      <View style={{ width: MAP_W, height: MAP_H, overflow: 'hidden' }}>
+      {/* Map — 40% fixed height — swipe horizontal pour naviguer entre trajets */}
+      <View style={{ width: MAP_W, height: MAP_H, overflow: 'hidden' }} {...swipePan.panHandlers}>
         {loading ? (
           <View style={styles.center}><ActivityIndicator color="#FFC107" /></View>
         ) : (() => {
