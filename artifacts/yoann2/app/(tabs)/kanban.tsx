@@ -16,6 +16,7 @@ import { PriorityBadge } from '@/components/PriorityBadge';
 import { useApp } from '@/contexts/AppContext';
 import { useColors } from '@/hooks/useColors';
 import type { Task, TaskStatus } from '@/types';
+import { computeStreak } from '@/utils/streakUtils';
 
 const COLUMNS: { id: TaskStatus; label: string; icon: string }[] = [
   { id: 'inprogress', label: 'En cours', icon: 'progress-clock' },
@@ -45,7 +46,9 @@ function KanbanCard({
   onOpen: (task: Task) => void;
 }) {
   const colors = useColors();
+  const { tasks: allTasks } = useApp();
   const isDone = task.status === 'done';
+  const streak = computeStreak(task, allTasks);
 
   return (
     <Pressable
@@ -71,6 +74,12 @@ function KanbanCard({
       </Text>
       <View style={styles.kanbanFooter}>
         <PriorityBadge priority={task.priority} small />
+        {streak && streak.current > 1 && (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+            <Text style={{ fontSize: 11 }}>🔥</Text>
+            <Text style={{ fontSize: 11, color: '#FF9800', fontFamily: 'Inter_500Medium' }}>{streak.current}</Text>
+          </View>
+        )}
         <Text style={[styles.kanbanDate, { color: colors.mutedForeground }]}>
           {new Date(task.dueDate).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
         </Text>

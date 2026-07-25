@@ -22,6 +22,7 @@ import { ThemeProvider } from '@/contexts/ThemeContext';
 import type { Trip, Vehicle } from '@/types/trips';
 import { rebuildBackupListFromSAF, runDailyBackupIfNeeded } from '@/utils/backup';
 import { purgeOldData, requestLocationPermissions, startManualTracking, LOCATION_TASK_NAME } from '@/utils/locationTracking';
+import '@/utils/geoReminderManager'; // enregistre la tâche background geo-reminder
 import { isManualTripActive } from '@/utils/manualTripStorage';
 import { runMaintenanceScheduler } from '@/utils/maintenanceScheduler';
 import { updateTodoWidget } from '@/widgets/updateWidget';

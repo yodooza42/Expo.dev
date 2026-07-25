@@ -1,10 +1,12 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Haptics from 'expo-haptics';
+import * as Location from 'expo-location';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   Dimensions,
   Modal,
@@ -22,6 +24,8 @@ import { useApp } from '@/contexts/AppContext';
 import { useColors } from '@/hooks/useColors';
 import { SubPageHeader } from '@/components/SubPageHeader';
 import type { TaskStatus } from '@/types';
+import { syncGeofences } from '@/utils/geoReminderManager';
+import { computeStreak, recurrenceLabel } from '@/utils/streakUtils';
 
 const { width } = Dimensions.get('window');
 
@@ -66,6 +70,7 @@ export default function TaskDetailScreen() {
     ]);
   }
   const [addExpVisible, setAddExpVisible] = useState(false);
+  const [settingGeo, setSettingGeo] = useState(false);
   const [expName, setExpName] = useState('');
   const [expAmount, setExpAmount] = useState('');
   const [expDetails, setExpDetails] = useState('');
@@ -84,6 +89,57 @@ export default function TaskDetailScreen() {
     );
   }
   const task = taskMaybe;
+  const streak = computeStreak(task, tasks);
+
+  async function handleSetGeoReminder() {
+    setSettingGeo(true);
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission refusée', 'L\'accès à la localisation est requis pour les rappels de lieu.');
+        return;
+      }
+      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      let address: string | undefined;
+      try {
+        const [geo] = await Location.reverseGeocodeAsync({
+          latitude: loc.coords.latitude,
+          longitude: loc.coords.longitude,
+        });
+        if (geo) address = [geo.street, geo.city].filter(Boolean).join(', ');
+      } catch {}
+      const patch = {
+        reminderLat: loc.coords.latitude,
+        reminderLng: loc.coords.longitude,
+        reminderRadius: 100,
+        reminderAddress: address,
+      };
+      updateTask(task.id, patch);
+      await syncGeofences(tasks.map(t => (t.id === task.id ? { ...task, ...patch } : t)));
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch {
+      Alert.alert('Erreur', 'Impossible de récupérer la position actuelle.');
+    } finally {
+      setSettingGeo(false);
+    }
+  }
+
+  function handleRemoveGeoReminder() {
+    const patch = {
+      reminderLat: undefined,
+      reminderLng: undefined,
+      reminderRadius: undefined,
+      reminderAddress: undefined,
+    };
+    updateTask(task.id, patch);
+    syncGeofences(tasks.map(t => (t.id === task.id ? { ...task, ...patch } : t))).catch(() => {});
+    Haptics.selectionAsync();
+  }
+
+  async function handleSetGeoRadius(r: number) {
+    updateTask(task.id, { reminderRadius: r });
+    await syncGeofences(tasks.map(t => (t.id === task.id ? { ...task, reminderRadius: r } : t)));
+  }
 
   const dueDate = new Date(task.dueDate);
   const isOverdue = dueDate < new Date() && task.status !== 'done';
@@ -232,6 +288,30 @@ export default function TaskDetailScreen() {
             </View>
           </View>
 
+          {streak && streak.current > 0 && (
+            <View style={{
+              flexDirection: 'row', alignItems: 'center', gap: 10,
+              backgroundColor: '#FF980015', borderRadius: 12,
+              borderWidth: 1, borderColor: '#FF980040',
+              paddingHorizontal: 14, paddingVertical: 10,
+            }}>
+              <Text style={{ fontSize: 22 }}>🔥</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: '#FF9800', fontFamily: 'Inter_700Bold', fontSize: 15 }}>
+                  {streak.current} {recurrenceLabel(streak.recurrence)}{streak.current > 1 ? 's' : ''} de suite
+                </Text>
+                {streak.record > streak.current && (
+                  <Text style={{ color: '#FF980099', fontFamily: 'Inter_400Regular', fontSize: 12, marginTop: 1 }}>
+                    Record : {streak.record} {recurrenceLabel(streak.recurrence)}{streak.record > 1 ? 's' : ''}
+                  </Text>
+                )}
+              </View>
+              {streak.current >= streak.record && streak.record > 1 && (
+                <Text style={{ fontSize: 18 }}>🏆</Text>
+              )}
+            </View>
+          )}
+
           <View>
             <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Statut</Text>
             <View style={styles.statusRow}>
@@ -289,6 +369,69 @@ export default function TaskDetailScreen() {
               </View>
             </View>
           )}
+
+          {/* ── Rappel de lieu ── */}
+          <View>
+            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Rappel de lieu</Text>
+            {task.reminderLat != null ? (
+              <View>
+                <View style={{
+                  flexDirection: 'row', alignItems: 'center', gap: 10,
+                  backgroundColor: '#4CAF5015', borderRadius: 12,
+                  borderWidth: 1, borderColor: '#4CAF5040',
+                  paddingHorizontal: 14, paddingVertical: 10,
+                }}>
+                  <MaterialCommunityIcons name="map-marker-check" size={20} color="#4CAF50" />
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: colors.foreground, fontSize: 14, fontFamily: 'Inter_500Medium' }}>
+                      {task.reminderAddress ?? `${task.reminderLat.toFixed(5)}, ${task.reminderLng!.toFixed(5)}`}
+                    </Text>
+                    <Text style={{ color: colors.mutedForeground, fontSize: 12, marginTop: 2 }}>
+                      Rayon : {task.reminderRadius ?? 100} m
+                    </Text>
+                  </View>
+                  <Pressable onPress={handleRemoveGeoReminder} hitSlop={8}>
+                    <MaterialCommunityIcons name="close-circle-outline" size={22} color={colors.mutedForeground} />
+                  </Pressable>
+                </View>
+                <View style={{ flexDirection: 'row', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+                  {[50, 100, 200, 500].map(r => {
+                    const active = (task.reminderRadius ?? 100) === r;
+                    return (
+                      <Pressable
+                        key={r}
+                        onPress={() => { void handleSetGeoRadius(r); }}
+                        style={{
+                          paddingHorizontal: 12, paddingVertical: 5, borderRadius: 20,
+                          backgroundColor: active ? '#4CAF50' : colors.secondary,
+                          borderWidth: 1,
+                          borderColor: active ? '#4CAF50' : colors.border,
+                        }}
+                      >
+                        <Text style={{ fontSize: 12, fontFamily: 'Inter_500Medium', color: active ? '#fff' : colors.mutedForeground }}>
+                          {r} m
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
+            ) : (
+              <Pressable
+                onPress={() => { void handleSetGeoReminder(); }}
+                disabled={settingGeo}
+                style={[styles.addExpBtn, { backgroundColor: '#4CAF5015', borderColor: '#4CAF5040' }]}
+              >
+                {settingGeo
+                  ? <ActivityIndicator size="small" color="#4CAF50" />
+                  : <MaterialCommunityIcons name="map-marker-plus-outline" size={16} color="#4CAF50" />
+                }
+                <Text style={[styles.addExpLabel, { color: '#4CAF50' }]}>
+                  {settingGeo ? 'Localisation en cours…' : 'Ajouter un rappel de lieu'}
+                </Text>
+              </Pressable>
+            )}
+          </View>
 
           <View>
             <View style={styles.sectionHeader}>

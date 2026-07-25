@@ -13,6 +13,7 @@ import {
   Dimensions,
   Keyboard,
   Modal,
+  PanResponder,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -388,6 +389,38 @@ export default function TripMapScreen() {
 
   const [scrubTs, setScrubTs] = useState<number | null>(null);
   const [storyModalVisible, setStoryModalVisible] = useState(false);
+
+  // ── Swipe entre trajets ────────────────────────────────────────────────────
+  const [sortedTripIds, setSortedTripIds] = useState<string[]>([]);
+  const swipeStateRef = useRef({ ids: [] as string[], idx: -1 });
+
+  useEffect(() => {
+    getTrips().then(trips => {
+      const ids = [...trips]
+        .sort((a, b) => b.startTime - a.startTime)
+        .map(t => t.id);
+      setSortedTripIds(ids);
+      swipeStateRef.current = { ids, idx: ids.indexOf(id ?? '') };
+    });
+  }, [id]);
+
+  const swipePan = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gs) =>
+        Math.abs(gs.dx) > 15 && Math.abs(gs.dx) > Math.abs(gs.dy) * 2,
+      onPanResponderRelease: (_, gs) => {
+        const { ids, idx } = swipeStateRef.current;
+        const THRESHOLD = 60;
+        if (gs.dx < -THRESHOLD && idx < ids.length - 1) {
+          void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          router.replace(`/trip-map?id=${ids[idx + 1]}&backLabel=${encodeURIComponent(backLabel ?? 'Retour')}`);
+        } else if (gs.dx > THRESHOLD && idx > 0) {
+          void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          router.replace(`/trip-map?id=${ids[idx - 1]}&backLabel=${encodeURIComponent(backLabel ?? 'Retour')}`);
+        }
+      },
+    })
+  ).current;
 
   const [isGeneratingStory, setIsGeneratingStory] = useState(false);
   const [storyProgress, setStoryProgress]         = useState(0);
@@ -856,7 +889,7 @@ export default function TripMapScreen() {
   const hasAltData = tripLocPts.some(p => p.altitudeM != null);
 
   return (
-    <View ref={captureViewRef} collapsable={false} style={[styles.root, { backgroundColor: '#121212' }]}>
+    <View ref={captureViewRef} collapsable={false} style={[styles.root, { backgroundColor: colors.background }]} {...swipePan.panHandlers}>
       {/* Back button */}
       {!screenshotMode && (
         <Pressable
@@ -867,6 +900,47 @@ export default function TripMapScreen() {
           {backLabel ? <Text style={styles.backBtnLabel}>{backLabel}</Text> : null}
         </Pressable>
       )}
+
+      {/* Chevrons de navigation entre trajets */}
+      {!screenshotMode && (() => {
+        const { ids, idx } = swipeStateRef.current;
+        const hasPrev = idx > 0;
+        const hasNext = idx < ids.length - 1;
+        return (
+          <>
+            {hasPrev && (
+              <Pressable
+                onPress={() => {
+                  void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  router.replace(`/trip-map?id=${ids[idx - 1]}&backLabel=${encodeURIComponent(backLabel ?? 'Retour')}`);
+                }}
+                style={{
+                  position: 'absolute', left: 8, top: insets.top + 60, zIndex: 20,
+                  backgroundColor: 'rgba(0,0,0,0.45)', borderRadius: 20,
+                  width: 34, height: 34, alignItems: 'center', justifyContent: 'center',
+                }}
+              >
+                <MaterialCommunityIcons name="chevron-left" size={22} color="#fff" />
+              </Pressable>
+            )}
+            {hasNext && (
+              <Pressable
+                onPress={() => {
+                  void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  router.replace(`/trip-map?id=${ids[idx + 1]}&backLabel=${encodeURIComponent(backLabel ?? 'Retour')}`);
+                }}
+                style={{
+                  position: 'absolute', right: 8, top: insets.top + 60, zIndex: 20,
+                  backgroundColor: 'rgba(0,0,0,0.45)', borderRadius: 20,
+                  width: 34, height: 34, alignItems: 'center', justifyContent: 'center',
+                }}
+              >
+                <MaterialCommunityIcons name="chevron-right" size={22} color="#fff" />
+              </Pressable>
+            )}
+          </>
+        );
+      })()}
 
       {/* Map — 40% fixed height */}
       <View style={{ width: MAP_W, height: MAP_H, overflow: 'hidden' }}>

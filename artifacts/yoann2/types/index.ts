@@ -39,6 +39,11 @@ export interface Task {
   eisenhower: EisenhowerQuadrant;
   recurrence?: RecurrenceType;
   recurrenceFromId?: string; // id of the original task this was spawned from
+  // Rappel géolocalisé
+  reminderLat?: number;
+  reminderLng?: number;
+  reminderRadius?: number; // mètres, défaut 100
+  reminderAddress?: string;
 }
 
 export interface Expense {

@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useApp } from '@/contexts/AppContext';
 import { useColors } from '@/hooks/useColors';
+import { useTheme } from '@/contexts/ThemeContext';
 import {
   cancelAppointmentReminders,
   cancelMonthlyReport,
@@ -73,6 +74,7 @@ function SettingRow({
 
 export default function SettingsScreen() {
   const colors = useColors();
+  const { baseTheme, setBaseTheme } = useTheme();
   const insets = useSafeAreaInsets();
   const { resetData, projects, tasks, categories, addCategory, deleteCategory, updateProject, updateTask } = useApp();
   const router = useRouter();
@@ -370,6 +372,38 @@ export default function SettingsScreen() {
           onPress={() => setExpCatModalVisible(true)}
           colors={colors}
         />
+
+        {/* ── APPARENCE ── */}
+        <Text style={[styles.section, { color: colors.mutedForeground }]}>Apparence</Text>
+        <View style={[styles.row, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <View style={[styles.rowIcon, { backgroundColor: '#9C27B020' }]}>
+            <MaterialCommunityIcons name="theme-light-dark" size={20} color="#9C27B0" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.rowLabel, { color: colors.foreground }]}>Thème d'affichage</Text>
+            <Text style={[styles.rowSub, { color: colors.mutedForeground }]}>
+              {baseTheme === 'amoled' ? 'AMOLED — noir pur, économise la batterie OLED' : 'Dark — gris anthracite standard'}
+            </Text>
+          </View>
+          <View style={{ flexDirection: 'row', gap: 6 }}>
+            {(['dark', 'amoled'] as const).map(t => (
+              <Pressable
+                key={t}
+                onPress={() => { void Haptics.selectionAsync(); setBaseTheme(t); }}
+                style={{
+                  paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8,
+                  backgroundColor: baseTheme === t ? '#9C27B0' : colors.secondary,
+                  borderWidth: 1,
+                  borderColor: baseTheme === t ? '#9C27B0' : colors.border,
+                }}
+              >
+                <Text style={{ fontSize: 12, fontFamily: 'Inter_500Medium', color: baseTheme === t ? '#fff' : colors.mutedForeground }}>
+                  {t === 'dark' ? 'Dark' : 'AMOLED'}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
 
         {/* ── NOTIFICATIONS ── */}
         <Text style={[styles.section, { color: colors.mutedForeground }]}>Notifications</Text>
