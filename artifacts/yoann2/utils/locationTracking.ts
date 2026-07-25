@@ -19,7 +19,7 @@ const AUTO_BACKUP_THROTTLE_MS = 60_000;
 
 // Throttle rafraîchissement widget pendant un trajet actif (max 1×/30 s).
 let _lastWidgetUpdateMs = 0;
-const WIDGET_UPDATE_THROTTLE_MS = 30_000;
+const WIDGET_UPDATE_THROTTLE_MS = 5_000;
 
 // ── Distance de trajet (persistée pour survivre aux redémarrages JS) ─────────
 
