@@ -151,9 +151,12 @@ export default function NewAppointmentScreen() {
       const hh = String(dep.getHours()).padStart(2, '0');
       const mm = String(dep.getMinutes()).padStart(2, '0');
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      const routesSuffix = result.routeCount > 1
+        ? ` (le plus long des ${result.routeCount} itinéraires)`
+        : '';
       Alert.alert(
         '⏰ Alerte programmée',
-        `Départ conseillé à ${hh}:${mm} (trajet ~${result.travelMin} min + 10 min)`,
+        `Départ conseillé à ${hh}:${mm} — trajet ~${result.travelMin} min${routesSuffix} + 10 min tampon.\n\nL'heure sera recalculée automatiquement à 6h, 7h, 8h, 9h et 10h le jour J.`,
       );
     } else {
       Alert.alert('Impossible de programmer l\'alerte', result.reason);

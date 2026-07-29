@@ -23,6 +23,7 @@ import type { RoutePoint, Vehicle } from '@/types/trips';
 import { findNearestPlace, getKnownPlaces, getWalkRoutes } from '@/utils/placesStorage';
 import { simplifyRoute } from '@/utils/routeSimplification';
 import { getVehicleSettings, saveTrip, updateTrip } from '@/utils/tripStorage';
+import { checkDepartureAlertAfterTrip } from '@/utils/departureAlert';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -489,6 +490,9 @@ export default function NewTripScreen() {
       if (geometry) {
         await updateTrip(tripId, { route: geometry }).catch(() => {});
       }
+
+      // Recalculate departure alert if a RDV is scheduled today
+      checkDepartureAlertAfterTrip(endLat, endLon, dateMs + durationMs).catch(() => {});
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       router.back();

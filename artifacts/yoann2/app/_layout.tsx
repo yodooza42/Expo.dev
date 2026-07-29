@@ -23,6 +23,7 @@ import type { Trip, Vehicle } from '@/types/trips';
 import { rebuildBackupListFromSAF, runDailyBackupIfNeeded } from '@/utils/backup';
 import { purgeOldData, requestLocationPermissions, startManualTracking, LOCATION_TASK_NAME } from '@/utils/locationTracking';
 import '@/utils/geoReminderManager'; // enregistre la tâche background geo-reminder
+import { DEPARTURE_CHECK_PREFIX, rescheduleIfNeeded } from '@/utils/departureAlert';
 import { isManualTripActive } from '@/utils/manualTripStorage';
 import { runMaintenanceScheduler } from '@/utils/maintenanceScheduler';
 import { updateTodoWidget } from '@/widgets/updateWidget';
@@ -40,6 +41,15 @@ if (Platform.OS === 'android') {
   Notifications.setNotificationChannelAsync('trip', {
     name: 'Trajet en cours',
     importance: Notifications.AndroidImportance.HIGH,
+    sound: null,
+    vibrationPattern: [],
+    enableVibrate: false,
+    showBadge: false,
+  }).catch(() => {});
+  // Canal silencieux pour les recalculs d'itinéraire RDV le matin
+  Notifications.setNotificationChannelAsync('departure_check', {
+    name: 'Vérification itinéraire RDV',
+    importance: Notifications.AndroidImportance.LOW,
     sound: null,
     vibrationPattern: [],
     enableVibrate: false,
@@ -127,9 +137,28 @@ function RootLayoutNav() {
   }, [checkPendingTrips]);
 
   useEffect(() => {
+    // Foreground: notification received while app is open → recalculate silently
+    const fgSub = Notifications.addNotificationReceivedListener(notification => {
+      const data = notification.request.content.data;
+      const action = data?.action as string | undefined;
+      if (action === 'departure_check') {
+        const apptId = data?.apptId as string | undefined;
+        if (apptId) rescheduleIfNeeded(apptId).catch(() => {});
+      }
+    });
+    return () => fgSub.remove();
+  }, []);
+
+  useEffect(() => {
+    // User taps a notification (background/killed state)
     const sub = Notifications.addNotificationResponseReceivedListener(response => {
       const data = response.notification.request.content.data;
       const action = data?.action as string | undefined;
+      if (action === 'departure_check') {
+        const apptId = data?.apptId as string | undefined;
+        if (apptId) rescheduleIfNeeded(apptId).catch(() => {});
+        return;
+      }
       if (action === 'battery_optimization' && Platform.OS === 'android') {
         // Open the system dialog / app battery settings so the user can exempt
         // Yoann2.0 from battery optimisation (prevents One UI killing the GPS).
