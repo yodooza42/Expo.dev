@@ -967,6 +967,13 @@ export default function TripListScreen() {
         </Pressable>
         <Text style={[styles.pageHeaderTitle, { color: colors.foreground }]}>Mes Trajets</Text>
         <Pressable
+          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/story-period' as any); }}
+          hitSlop={8}
+          style={[pH.btn, { backgroundColor: colors.card, borderColor: colors.border }]}
+        >
+          <MaterialCommunityIcons name="movie-play-outline" size={18} color={colors.mutedForeground} />
+        </Pressable>
+        <Pressable
           onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); router.push('/trip/new' as any); }}
           hitSlop={8}
           style={[pH.btn, { backgroundColor: colors.card, borderColor: colors.border }]}
