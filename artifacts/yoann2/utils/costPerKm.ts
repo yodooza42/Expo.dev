@@ -78,6 +78,26 @@ export async function computeAutoCostPerKm(vehicle: Vehicle): Promise<CostBreakd
     ? vehicle.insurance.annualCost * (periodDays / 365)
     : 0;
 
+  // ── Consommation L/100 — méthode des pleins (dernier intervalle valide) ───
+  // On cherche le dernier couple de pleins consécutifs avec km > 5 entre eux.
+  // Fallback sur total_litres / total_km si un seul plein enregistré.
+  const vehicleFuelSorted = [...vehicleFuel].sort((a, b) => a.timestamp - b.timestamp);
+  let fuelLPer100km = 0;
+  for (let i = vehicleFuelSorted.length - 1; i >= 1; i--) {
+    const fNew  = vehicleFuelSorted[i]!;
+    const fPrev = vehicleFuelSorted[i - 1]!;
+    const kmBetween = vehicleTrips
+      .filter(t => t.startTime >= fPrev.timestamp && t.startTime < fNew.timestamp)
+      .reduce((s, t) => s + t.distanceKm, 0);
+    if (kmBetween > 5) {
+      fuelLPer100km = (fNew.liters / kmBetween) * 100;
+      break;
+    }
+  }
+  if (fuelLPer100km === 0 && kmInPeriod > 0) {
+    fuelLPer100km = (fuelTotalLiters / kmInPeriod) * 100; // fallback 1 seul plein
+  }
+
   const fuelCostPerKm        = fuelTotalEUR / kmInPeriod;
   const maintenanceCostPerKm = maintenanceTotalEUR / kmInPeriod;
   const insuranceCostPerKm   = insuranceTotalEUR / kmInPeriod;
@@ -87,7 +107,7 @@ export async function computeAutoCostPerKm(vehicle: Vehicle): Promise<CostBreakd
     fuelCostPerKm,
     fuelCostPer100km:          fuelCostPerKm * 100,
     fuelTotalLiters,
-    fuelLPer100km:             kmInPeriod > 0 ? (fuelTotalLiters / kmInPeriod) * 100 : 0,
+    fuelLPer100km,
     maintenanceCostPerKm,
     maintenanceCostPer100km:   maintenanceCostPerKm * 100,
     insuranceCostPerKm,

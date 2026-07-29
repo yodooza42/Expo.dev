@@ -384,13 +384,24 @@ export default function TripStatsScreen() {
         {/* Consommation L/100km par véhicule */}
         {vehicles.length > 0 && fuelEntries.length > 0 && (() => {
           const rows = vehicles.map(v => {
-            const liters = fuelEntries
+            const vFuel = fuelEntries
               .filter(e => e.vehicleId === v.id && !e.isExternal)
-              .reduce((s, e) => s + e.liters, 0);
+              .sort((a, b) => a.timestamp - b.timestamp);
+            const liters = vFuel.reduce((s, e) => s + e.liters, 0);
             const km = trips
               .filter(t => t.vehicle === v.id && t.vehicle !== 'ignored')
               .reduce((s, t) => s + t.distanceKm, 0);
-            const l100 = km > 0 ? (liters / km) * 100 : null;
+            // Méthode des pleins : dernier intervalle consécutif avec km > 5
+            let l100: number | null = null;
+            for (let i = vFuel.length - 1; i >= 1; i--) {
+              const fNew  = vFuel[i]!;
+              const fPrev = vFuel[i - 1]!;
+              const kmBetween = trips
+                .filter(t => t.vehicle === v.id && t.startTime >= fPrev.timestamp && t.startTime < fNew.timestamp)
+                .reduce((s, t) => s + t.distanceKm, 0);
+              if (kmBetween > 5) { l100 = (fNew.liters / kmBetween) * 100; break; }
+            }
+            if (l100 === null && km > 0) l100 = (liters / km) * 100; // fallback 1 seul plein
             return { v, liters, km, l100 };
           }).filter(r => r.liters > 0);
           if (rows.length === 0) return null;
