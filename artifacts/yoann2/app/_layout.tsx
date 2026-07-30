@@ -23,7 +23,9 @@ import type { Trip, Vehicle } from '@/types/trips';
 import { rebuildBackupListFromSAF, runDailyBackupIfNeeded } from '@/utils/backup';
 import { purgeOldData, requestLocationPermissions, startManualTracking, LOCATION_TASK_NAME } from '@/utils/locationTracking';
 import '@/utils/geoReminderManager'; // enregistre la tâche background geo-reminder
+import '@/utils/departureAlertBackground'; // enregistre la tâche BackgroundFetch itinéraire RDV
 import { DEPARTURE_CHECK_PREFIX, rescheduleIfNeeded } from '@/utils/departureAlert';
+import { registerDepartureBackgroundFetch } from '@/utils/departureAlertBackground';
 import { isManualTripActive } from '@/utils/manualTripStorage';
 import { runMaintenanceScheduler } from '@/utils/maintenanceScheduler';
 import { updateTodoWidget } from '@/widgets/updateWidget';
@@ -113,6 +115,7 @@ function RootLayoutNav() {
     runDailyBackupIfNeeded().catch(() => {});
     getVehicleSettings().then(setVehicles).catch(() => {});
     migrateCleanGhostRoutes().catch(() => {});
+    registerDepartureBackgroundFetch().catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [checkPendingTrips]);
 

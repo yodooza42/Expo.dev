@@ -375,6 +375,66 @@ export async function getDepartureAlertInfo(
 }
 
 /**
+ * Recalculate all departure alerts whose appointment is today (or within the
+ * next 24 h), using the device's last-known GPS position.
+ *
+ * Designed to be called from a BackgroundFetch task where:
+ *  - there is no UI (foreground permission request may silently return 'denied')
+ *  - `getCurrentPositionAsync` is unreliable → we use `getLastKnownPositionAsync`
+ *
+ * Returns the number of alerts that were successfully recalculated.
+ */
+export async function rescheduleAllTodayAlerts(): Promise<number> {
+  try {
+    const index = await getAlertIndex();
+    if (index.length === 0) return 0;
+
+    const now = Date.now();
+    const in24h = now + 24 * 60 * 60 * 1000;
+
+    // Filter alerts whose appointment falls within the next 24 hours
+    const todayAlerts: AlertStore[] = [];
+    for (const apptId of index) {
+      const raw = await AsyncStorage.getItem(`${ALERT_KEY_PREFIX}${apptId}`);
+      if (!raw) continue;
+      const store: AlertStore = JSON.parse(raw);
+      if (store.apptDateMs > now && store.apptDateMs <= in24h) {
+        todayAlerts.push(store);
+      }
+    }
+    if (todayAlerts.length === 0) return 0;
+
+    // Try to get position without any permission prompt (background-safe)
+    let fromLat: number | undefined;
+    let fromLng: number | undefined;
+    try {
+      const { status } = await Location.getBackgroundPermissionsAsync();
+      if (status === 'granted') {
+        const loc = await Location.getLastKnownPositionAsync({
+          maxAge: 30 * 60 * 1000,   // accept up to 30 min old
+          requiredAccuracy: 500,     // within 500 m is fine for routing
+        });
+        if (loc) {
+          fromLat = loc.coords.latitude;
+          fromLng = loc.coords.longitude;
+        }
+      }
+    } catch {
+      // GPS unavailable — fall through, rescheduleIfNeeded will try on its own
+    }
+
+    let count = 0;
+    for (const store of todayAlerts) {
+      await rescheduleIfNeeded(store.apptId, fromLat, fromLng);
+      count++;
+    }
+    return count;
+  } catch {
+    return 0;
+  }
+}
+
+/**
  * Cancel all notifications (main + morning checks) and remove AsyncStorage entry.
  */
 export async function cancelDepartureAlert(apptId: string): Promise<void> {
