@@ -35,13 +35,12 @@ Run `eas whoami` first to confirm the EXPO_TOKEN matches the `owner` in app.json
 | yo13juills-team | yo13juill | 0e087e7f… | exhausted Jul 2026 |
 | yoann42s-teami | yoann-20 | 206fa3d3… | exhausted Jul 2026 |
 | stpyoann202027rbfifs-team | yoann-20 | 2bfd24b3… | exhausted Jul 2026 |
-| yo1907cjeicjebfs-team | yoann-20 | 80f5b084-24ba-42e5-8377-5c6b055e4538 | exhausted Jul 2026 |
-| **yoluran2307s-team** | **yoann-20** | **6b473886-5625-4512-aad4-c933c55218ef** | **ACTIVE — dernier build 29 Jul 2026** |
+| **yo3007s-team** | **yoann-20** | **123f87a4-0fe7-4f38-9f47-659eb26fd300** | confirmed owner via dashboard screenshot; token/build still unresolved as of 30 Jul 2026 |
 
-**app.json currently points to: owner "yo1907cjeicjebfs-team" / slug "yoann-20" / projectId "790dd0d2-f0d3-4ee9-8b04-ebfe381c5d64" — confirmed via `eas build` owner/slug mismatch errors (the authoritative source of truth, not user screenshots of the Expo dashboard). This account's Android quota is exhausted (resets Aug 1 2026, ~30/month reset).**
+**app.json currently points to: owner "yo3007s-team" / slug "yoann-20" / projectId "123f87a4-0fe7-4f38-9f47-659eb26fd300".**
 
-## Account renamed — dashboard display name ≠ API slug
-The Expo dashboard showed "Owner: yoluran2307s-team" for this same project, but `eas whoami`/`eas build` always resolve it to slug "yo1907cjeicjebfs-team". When app.json owner/slug and a user screenshot disagree, trust the `eas build` error messages ("owner field does not match", "slug does not match") — they state the actual resolved value.
+## Verify EXPO_TOKEN account before trusting app.json or screenshots
+Always run `eas whoami` right after any EXPO_TOKEN update — it is the ONLY authoritative source for which account a token authenticates as. Do not assume a fresh/private-browser token submission changed the resolved account; re-check every time. If `eas build` returns "Entity not authorized: AppEntity[...]" (not just an owner/slug text-mismatch warning), the authenticated account genuinely lacks READ access to that project — no app.json edit fixes this; it needs either the correct token or the project owner adding that account as a collaborator.
 
 When user provides new token: update `EXPO_TOKEN` secret AND `app.json` → `expo.owner` + `expo.extra.eas.projectId`.
 Then run `eas whoami` to confirm account name, then check owner in app.json matches before running build.
