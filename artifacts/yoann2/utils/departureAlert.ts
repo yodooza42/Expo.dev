@@ -37,6 +37,11 @@ interface AlertStore {
   routeCount: number;
   /** Timestamp of last morning recalculation (undefined = initial scheduling only) */
   lastRecalcAt?: number;
+  /**
+   * Number of consecutive OSRM failures since the last success.
+   * Used to fire exactly one warning notification per failure streak.
+   */
+  consecutiveFailures?: number;
 }
 
 // ── Public read type ──────────────────────────────────────────────────────────
@@ -227,6 +232,7 @@ export async function scheduleDepartureAlert(
     departureMs,
     travelMin:  Math.round(maxSecs / 60),
     routeCount: count,
+    consecutiveFailures: 0,
   };
 
   await AsyncStorage.setItem(`${ALERT_KEY_PREFIX}${appt.id}`, JSON.stringify(store));
@@ -278,7 +284,40 @@ export async function rescheduleIfNeeded(
     }
 
     const { maxSecs, count } = await queryOsrm(fromLat, fromLng, store.destLat, store.destLng);
-    if (maxSecs === 0) return;
+    if (maxSecs === 0) {
+      // OSRM failed — increment consecutive failure counter
+      const prevFailures = store.consecutiveFailures ?? 0;
+      const updatedFailed: AlertStore = {
+        ...store,
+        consecutiveFailures: prevFailures + 1,
+      };
+      await AsyncStorage.setItem(`${ALERT_KEY_PREFIX}${apptId}`, JSON.stringify(updatedFailed));
+
+      // Fire a warning notification only on the first failure of the streak
+      // to avoid spamming the user on every morning-check trigger.
+      if (prevFailures === 0) {
+        const rdvTime = new Date(store.apptDateMs).toLocaleTimeString('fr-FR', {
+          hour: '2-digit', minute: '2-digit',
+        });
+        const identifier = `departure_recalc_fail_${apptId}`;
+        await Notifications.cancelScheduledNotificationAsync(identifier).catch(() => {});
+        await Notifications.scheduleNotificationAsync({
+          identifier,
+          content: {
+            title: `⚠️ Itinéraire non recalculé`,
+            body:
+              `Impossible de mettre à jour l'itinéraire pour « ${store.apptTitle} » (RDV à ${rdvTime}). ` +
+              `Vérifiez votre connexion — l'heure de départ précédente est conservée.`,
+            sound: true,
+            ...(Notifications.AndroidNotificationPriority
+              ? { priority: Notifications.AndroidNotificationPriority.HIGH }
+              : {}),
+          } as Notifications.NotificationContentInput,
+          trigger: null,
+        });
+      }
+      return;
+    }
 
     const newDepartureMs = store.apptDateMs - (maxSecs + BUFFER_SECS) * 1000;
     if (newDepartureMs <= Date.now()) return;
@@ -289,10 +328,13 @@ export async function rescheduleIfNeeded(
       travelMin:   Math.round(maxSecs / 60),
       routeCount:  count,
       lastRecalcAt: Date.now(),
+      consecutiveFailures: 0,
     };
 
     await AsyncStorage.setItem(`${ALERT_KEY_PREFIX}${apptId}`, JSON.stringify(updated));
     await writeMainNotification(updated);
+    // Clear any pending failure notification now that recalc succeeded
+    await Notifications.cancelScheduledNotificationAsync(`departure_recalc_fail_${apptId}`).catch(() => {});
   } catch {
     // Non-fatal
   }
@@ -439,6 +481,7 @@ export async function rescheduleAllTodayAlerts(): Promise<number> {
  */
 export async function cancelDepartureAlert(apptId: string): Promise<void> {
   await Notifications.cancelScheduledNotificationAsync(`departure_${apptId}`).catch(() => {});
+  await Notifications.cancelScheduledNotificationAsync(`departure_recalc_fail_${apptId}`).catch(() => {});
   for (const hour of MORNING_HOURS) {
     await Notifications.cancelScheduledNotificationAsync(
       `${DEPARTURE_CHECK_PREFIX}${apptId}_${hour}`,
