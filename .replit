@@ -41,6 +41,5 @@ externalPort = 3001
 [userenv]
 
 [userenv.shared]
-EXPO_TOKEN = ""
 
 [nix]
