@@ -1,9 +1,11 @@
 /**
- * Story Période — génère une vidéo de TOUS les trajets d'une période donnée.
+ * Story Période v2 — génère une vidéo de TOUS les trajets d'une période donnée.
  *
  * Animation :
  *  - Phase 1 (0 → vidéoDur-5s) : dot se déplace sur chaque trajet dans l'ordre chrono.
- *    La carte zoome automatiquement sur le trajet actif (lerp caméra).
+ *    Caméra pré-calculée par trajet : vol fluide (ease in/out, zoom log) vers un cadrage
+ *    SERRÉ du trajet actif — même une balade à pied de 500 m remplit l'écran.
+ *  - Temps d'écran par trajet ∝ √km : les petits trajets restent visibles.
  *  - Phase 2 (dernières 5s) : dézoome sur la vue globale + récapitulatif stats.
  *
  * opts = {
@@ -34,7 +36,7 @@ window.generatePeriodStory=function(opts){
   for(var mi=0;mi<mimes.length;mi++){if(MediaRecorder.isTypeSupported(mimes[mi])){mime=mimes[mi];break;}}
   var chunks=[];
   var stream=cv.captureStream(30);
-  var rec=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:3200000});
+  var rec=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:3600000});
   rec.ondataavailable=function(e){if(e.data&&e.data.size>0)chunks.push(e.data);};
   rec.onstop=function(){
     document.body.removeChild(cv);
@@ -51,6 +53,7 @@ window.generatePeriodStory=function(opts){
 
   var trips=opts.trips;
   var VCL={car:'#2196F3',moto:'#FF9800',walk:'#4CAF50'};
+  var VEMO={car:'\\uD83D\\uDE97',moto:'\\uD83C\\uDFCD',walk:'\\uD83D\\uDEB6'};
 
   /* ── Bounding box globale ─────────────────────────────────────────────── */
   var gLats=[],gLngs=[];
@@ -75,27 +78,37 @@ window.generatePeriodStory=function(opts){
   function pX(lng){return mL+(lng-minLng)/lngSp*mW;}
   function pY(lat){return mB-(lat-minLat)/latSp*mH;}
 
-  /* ── Caméra par trajet ────────────────────────────────────────────────── */
+  /* ── Caméra par trajet — cadrage serré, zoom quasi illimité ──────────── */
   function camForTrip(t){
     var rr=t.route;
     var x0=pX(rr[0].lng),x1=x0,y0=pY(rr[0].lat),y1=y0;
     for(var k=1;k<rr.length;k++){var xx=pX(rr[k].lng),yy=pY(rr[k].lat);if(xx<x0)x0=xx;if(xx>x1)x1=xx;if(yy<y0)y0=yy;if(yy>y1)y1=yy;}
     var cx=(x0+x1)/2,cy=(y0+y1)/2;
-    var pw=(x1-x0)*1.7||30,ph=(y1-y0)*1.7||30;
+    var pw=(x1-x0)*1.45||8,ph=(y1-y0)*1.45||8;
     var z=Math.min(mW/pw,mH/ph);
-    return{cx:cx,cy:cy,zoom:Math.max(1.1,Math.min(z,14))};
+    return{cx:cx,cy:cy,zoom:Math.max(1.08,Math.min(z,600))};
   }
+  var cams=[];
+  for(var ti=0;ti<trips.length;ti++)cams.push(camForTrip(trips[ti]));
   var fullCam={cx:mCX,cy:mCY,zoom:1};
-  var cam={cx:mCX,cy:mCY,zoom:1};
 
-  /* ── Allocation du temps par trajet (proportionnel aux km) ───────────── */
+  function easeIO(t){return t<0.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;}
+  function lerpCam(a,b,t){
+    return{cx:a.cx+(b.cx-a.cx)*t,cy:a.cy+(b.cy-a.cy)*t,
+      zoom:Math.exp(Math.log(a.zoom)+(Math.log(b.zoom)-Math.log(a.zoom))*t)};
+  }
+
+  /* ── Allocation du temps par trajet (∝ √km → petits trajets visibles) ── */
   var DUR=(opts.videoDurationSec||20)*1000;
   var END_MS=5000;
   var animMs=DUR-END_MS;
+  var wts=[],totW=0;
+  for(var ti=0;ti<trips.length;ti++){wts.push(Math.sqrt((trips[ti].distKm||0.2)+0.4));totW+=wts[ti];}
+  var tStart=[0];
+  for(var ti=1;ti<trips.length;ti++)tStart.push(tStart[ti-1]+(wts[ti-1]/totW)*animMs);
+  function tDurOf(ti){return(wts[ti]/totW)*animMs;}
   var totKm=0;
   for(var ti=0;ti<trips.length;ti++)totKm+=trips[ti].distKm||0.5;
-  var tStart=[0];
-  for(var ti=1;ti<trips.length;ti++)tStart.push(tStart[ti-1]+((trips[ti-1].distKm||0.5)/totKm)*animMs);
 
   /* ── Km cumulés par route (pour positionner le dot) ──────────────────── */
   var cumKm=[];
@@ -144,32 +157,39 @@ window.generatePeriodStory=function(opts){
     var ci=trips.length-1;
     for(var ti=0;ti<trips.length-1;ti++){if(aEl<tStart[ti+1]){ci=ti;break;}}
     var tEl=aEl-tStart[ci];
-    var tDur=((trips[ci].distKm||0.5)/totKm)*animMs;
+    var tDur=tDurOf(ci);
     var tProg=isEnd?1:Math.min(1,tEl/(tDur||1));
 
-    /* Lerp caméra */
-    var tgt=isEnd?fullCam:camForTrip(trips[ci]);
-    var lf=isEnd?0.055:0.038;
-    cam.cx+=(tgt.cx-cam.cx)*lf;
-    cam.cy+=(tgt.cy-cam.cy)*lf;
-    cam.zoom+=(tgt.zoom-cam.zoom)*lf;
+    /* Caméra : vol eased entre cams pré-calculées (converge TOUJOURS) */
+    var cam;
+    if(isEnd){
+      var eT=Math.min(1,(el-animMs)/1400);
+      cam=lerpCam(cams[trips.length-1]||fullCam,fullCam,easeIO(eT));
+    }else{
+      var transMs=Math.min(750,tDur*0.38);
+      var prevCam=ci>0?cams[ci-1]:fullCam;
+      if(tEl<transMs)cam=lerpCam(prevCam,cams[ci],easeIO(tEl/transMs));
+      else cam=cams[ci];
+    }
 
-    /* Background + grille */
-    ctx.fillStyle='#0E0E0E';ctx.fillRect(0,0,cW,cH);
-    ctx.strokeStyle='#161616';ctx.lineWidth=1;
+    /* Background : dégradé radial sombre + grille subtile */
+    var bg=ctx.createRadialGradient(cW/2,cH*0.38,80,cW/2,cH*0.38,900);
+    bg.addColorStop(0,'#151820');bg.addColorStop(1,'#0A0B0E');
+    ctx.fillStyle=bg;ctx.fillRect(0,0,cW,cH);
+    ctx.strokeStyle='#FFFFFF06';ctx.lineWidth=1;
     for(var gx=0;gx<cW;gx+=60){ctx.beginPath();ctx.moveTo(gx,0);ctx.lineTo(gx,cH);ctx.stroke();}
     for(var gy=0;gy<cH;gy+=60){ctx.beginPath();ctx.moveTo(0,gy);ctx.lineTo(cW,gy);ctx.stroke();}
 
     /* Header */
-    ctx.fillStyle='#141414';ctx.fillRect(0,0,cW,180);
+    ctx.fillStyle='#12141Acc';ctx.fillRect(0,0,cW,180);
     ctx.fillStyle='#FFFFFF';ctx.font='bold 42px Arial,sans-serif';ctx.textAlign='center';
-    ctx.fillText('\uD83D\uDDFA\uFE0F  '+opts.periodLabel,cW/2,65);
-    ctx.fillStyle='#666';ctx.font='26px Arial,sans-serif';
+    ctx.fillText('\\uD83D\\uDDFA\\uFE0F  '+opts.periodLabel,cW/2,65);
+    ctx.fillStyle='#8A8F99';ctx.font='26px Arial,sans-serif';
     var dispKm=(isEnd?totKm:(accKm[ci]+(trips[ci].distKm||0)*tProg)).toFixed(1);
-    ctx.fillText(opts.tripCountLabel+'  \xB7  '+dispKm+' km',cW/2,105);
-    ctx.fillStyle='#333';ctx.font='22px Arial,sans-serif';
-    ctx.fillText(isEnd?'R\xE9capitulatif':trips[ci].dateLabel,cW/2,142);
-    ctx.strokeStyle='#222';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(0,180);ctx.lineTo(cW,180);ctx.stroke();
+    ctx.fillText(opts.tripCountLabel+'  \\xB7  '+dispKm+' km',cW/2,105);
+    ctx.fillStyle='#565B66';ctx.font='22px Arial,sans-serif';
+    ctx.fillText(isEnd?'R\\xE9capitulatif':(VEMO[trips[ci].vehicleType]||'')+'  '+trips[ci].dateLabel,cW/2,142);
+    ctx.strokeStyle='#FFFFFF12';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(0,180);ctx.lineTo(cW,180);ctx.stroke();
 
     /* Zone carte avec clip + transform caméra */
     ctx.save();
@@ -181,7 +201,7 @@ window.generatePeriodStory=function(opts){
       var rr=trips[ti].route;if(rr.length<2)continue;
       ctx.beginPath();ctx.moveTo(pX(rr[0].lng),pY(rr[0].lat));
       for(var ri=1;ri<rr.length;ri++)ctx.lineTo(pX(rr[ri].lng),pY(rr[ri].lat));
-      ctx.strokeStyle='#FFFFFF08';ctx.lineWidth=3/cam.zoom;ctx.lineJoin='round';ctx.lineCap='round';ctx.stroke();
+      ctx.strokeStyle='#FFFFFF0C';ctx.lineWidth=2.5/cam.zoom;ctx.lineJoin='round';ctx.lineCap='round';ctx.stroke();
     }
 
     /* Trajets terminés */
@@ -191,26 +211,41 @@ window.generatePeriodStory=function(opts){
       var col=VCL[trips[ti].vehicleType]||'#2196F3';
       ctx.beginPath();ctx.moveTo(pX(rr[0].lng),pY(rr[0].lat));
       for(var ri=1;ri<rr.length;ri++)ctx.lineTo(pX(rr[ri].lng),pY(rr[ri].lat));
-      ctx.strokeStyle=col+(isEnd?'BB':'55');ctx.lineWidth=(isEnd?5:3)/cam.zoom;ctx.lineJoin='round';ctx.lineCap='round';
-      ctx.globalAlpha=isEnd?0.82:0.42;ctx.stroke();ctx.globalAlpha=1;
-      ctx.beginPath();ctx.arc(pX(rr[0].lng),pY(rr[0].lat),6/cam.zoom,0,Math.PI*2);ctx.fillStyle=col+'99';ctx.fill();
+      ctx.strokeStyle=col;ctx.lineWidth=(isEnd?5:3.5)/cam.zoom;ctx.lineJoin='round';ctx.lineCap='round';
+      ctx.globalAlpha=isEnd?0.85:0.5;ctx.stroke();ctx.globalAlpha=1;
+      ctx.beginPath();ctx.arc(pX(rr[0].lng),pY(rr[0].lat),5/cam.zoom,0,Math.PI*2);ctx.fillStyle=col+'99';ctx.fill();
     }
 
-    /* Trajet actif — révélé progressivement */
+    /* Trajet actif */
     if(!isEnd){
       var rr=trips[ci].route;
       var col=VCL[trips[ci].vehicleType]||'#2196F3';
+
+      /* Aperçu du parcours complet (fantôme coloré) */
+      if(rr.length>=2){
+        ctx.beginPath();ctx.moveTo(pX(rr[0].lng),pY(rr[0].lat));
+        for(var ri=1;ri<rr.length;ri++)ctx.lineTo(pX(rr[ri].lng),pY(rr[ri].lat));
+        ctx.strokeStyle=col+'38';ctx.lineWidth=4/cam.zoom;ctx.lineJoin='round';ctx.lineCap='round';ctx.stroke();
+        /* Marqueur destination */
+        var rl=rr[rr.length-1];
+        ctx.beginPath();ctx.arc(pX(rl.lng),pY(rl.lat),6/cam.zoom,0,Math.PI*2);
+        ctx.strokeStyle=col+'AA';ctx.lineWidth=2/cam.zoom;ctx.stroke();
+      }
+
+      /* Tracé révélé progressivement — avec glow */
       var exI=idxAtFrac(ci,tProg);
       var flI=Math.floor(exI),frI=exI-flI;
       if(exI>0){
         ctx.beginPath();ctx.moveTo(pX(rr[0].lng),pY(rr[0].lat));
         for(var ri=1;ri<=flI&&ri<rr.length;ri++)ctx.lineTo(pX(rr[ri].lng),pY(rr[ri].lat));
         if(frI>0&&flI+1<rr.length){var pa=rr[flI],pb=rr[flI+1];ctx.lineTo(pX(pa.lng+(pb.lng-pa.lng)*frI),pY(pa.lat+(pb.lat-pa.lat)*frI));}
-        ctx.strokeStyle=col;ctx.lineWidth=7/cam.zoom;ctx.lineJoin='round';ctx.lineCap='round';ctx.globalAlpha=0.95;ctx.stroke();ctx.globalAlpha=1;
+        ctx.shadowColor=col;ctx.shadowBlur=14;
+        ctx.strokeStyle=col;ctx.lineWidth=6.5/cam.zoom;ctx.lineJoin='round';ctx.lineCap='round';ctx.globalAlpha=0.95;ctx.stroke();ctx.globalAlpha=1;
+        ctx.shadowBlur=0;
       }
       /* Dot départ */
-      ctx.beginPath();ctx.arc(pX(rr[0].lng),pY(rr[0].lat),9/cam.zoom,0,Math.PI*2);ctx.fillStyle='#4CAF50';ctx.fill();
-      /* Dot mobile */
+      ctx.beginPath();ctx.arc(pX(rr[0].lng),pY(rr[0].lat),7/cam.zoom,0,Math.PI*2);ctx.fillStyle='#4CAF50';ctx.fill();
+      /* Dot mobile pulsant */
       var dLn,dLa;
       if(exI<=0){dLn=rr[0].lng;dLa=rr[0].lat;}
       else{
@@ -218,29 +253,45 @@ window.generatePeriodStory=function(opts){
         var cpA=rr[cpI],cpB=rr[Math.min(cpI+1,rr.length-1)];
         dLn=cpA.lng+(cpB.lng-cpA.lng)*cpF;dLa=cpA.lat+(cpB.lat-cpA.lat)*cpF;
       }
-      ctx.beginPath();ctx.arc(pX(dLn),pY(dLa),18/cam.zoom,0,Math.PI*2);ctx.fillStyle='#FFFFFF22';ctx.fill();
-      ctx.beginPath();ctx.arc(pX(dLn),pY(dLa),11/cam.zoom,0,Math.PI*2);ctx.fillStyle=col;ctx.fill();
+      var pulse=1+0.22*Math.sin(el/150);
+      ctx.beginPath();ctx.arc(pX(dLn),pY(dLa),20*pulse/cam.zoom,0,Math.PI*2);ctx.fillStyle=col+'26';ctx.fill();
+      ctx.beginPath();ctx.arc(pX(dLn),pY(dLa),11/cam.zoom,0,Math.PI*2);
+      ctx.shadowColor=col;ctx.shadowBlur=16;ctx.fillStyle=col;ctx.fill();ctx.shadowBlur=0;
+      ctx.beginPath();ctx.arc(pX(dLn),pY(dLa),4/cam.zoom,0,Math.PI*2);ctx.fillStyle='#FFFFFF';ctx.fill();
     }
 
     ctx.restore(); /* fin clip + caméra */
 
     /* ── Panneau stats bas ────────────────────────────────────────────── */
-    ctx.fillStyle='#111111';ctx.fillRect(0,800,cW,cH-800);
-    ctx.strokeStyle='#1E1E1E';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(0,800);ctx.lineTo(cW,800);ctx.stroke();
+    ctx.fillStyle='#101218';ctx.fillRect(0,800,cW,cH-800);
+    ctx.strokeStyle='#FFFFFF14';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(0,800);ctx.lineTo(cW,800);ctx.stroke();
 
     if(!isEnd){
       /* Phase animation : km courant + infos trajet */
       var col=VCL[trips[ci].vehicleType]||'#2196F3';
       ctx.fillStyle=col;ctx.font='bold 80px Arial,sans-serif';ctx.textAlign='center';
-      ctx.fillText((accKm[ci]+(trips[ci].distKm||0)*tProg).toFixed(1)+' km',cW/2,882);
-      ctx.fillStyle='#444';ctx.font='26px Arial,sans-serif';
-      ctx.fillText('trajet '+(ci+1)+' / '+trips.length+'  \xB7  '+trips[ci].dateLabel,cW/2,926);
+      ctx.fillText((accKm[ci]+(trips[ci].distKm||0)*tProg).toFixed(1)+' km',cW/2,884);
+      ctx.fillStyle='#565B66';ctx.font='26px Arial,sans-serif';
+      ctx.fillText('trajet '+(ci+1)+' / '+trips.length+'  \\xB7  '+trips[ci].dateLabel,cW/2,928);
+
+      /* Barre de progression segmentée (1 segment par trajet) */
+      var barL=60,barR=660,barY=966,barH=10,barW=barR-barL;
+      var bx=barL;
+      for(var si=0;si<trips.length;si++){
+        var segW=(wts[si]/totW)*barW;
+        var sCol=VCL[trips[si].vehicleType]||'#2196F3';
+        ctx.fillStyle='#22252E';
+        ctx.fillRect(bx,barY,Math.max(segW-2,1),barH);
+        if(si<ci){ctx.fillStyle=sCol;ctx.fillRect(bx,barY,Math.max(segW-2,1),barH);}
+        else if(si===ci){ctx.fillStyle=sCol;ctx.fillRect(bx,barY,Math.max((segW-2)*tProg,0),barH);}
+        bx+=segW;
+      }
 
       /* Légende par véhicule */
-      var lIt=[],lY=990;
-      if(cKm>0)lIt.push({t:'\uD83D\uDE97 '+cKm.toFixed(0)+' km',c:'#2196F3'});
-      if(mKm>0)lIt.push({t:'\uD83C\uDFCD '+mKm.toFixed(0)+' km',c:'#FF9800'});
-      if(wKm>0)lIt.push({t:'\uD83D\uDEB6 '+wKm.toFixed(0)+' km',c:'#4CAF50'});
+      var lIt=[],lY=1030;
+      if(cKm>0)lIt.push({t:'\\uD83D\\uDE97 '+cKm.toFixed(0)+' km',c:'#2196F3'});
+      if(mKm>0)lIt.push({t:'\\uD83C\\uDFCD '+mKm.toFixed(0)+' km',c:'#FF9800'});
+      if(wKm>0)lIt.push({t:'\\uD83D\\uDEB6 '+wKm.toFixed(0)+' km',c:'#4CAF50'});
       var iW=cW/(lIt.length||1);
       for(var si=0;si<lIt.length;si++){ctx.fillStyle=lIt[si].c;ctx.font='24px Arial,sans-serif';ctx.fillText(lIt[si].t,iW*(si+0.5),lY);}
     } else {
@@ -250,20 +301,25 @@ window.generatePeriodStory=function(opts){
       ctx.fillText(opts.periodLabel,cW/2,856);
       ctx.fillStyle='#FFC107';ctx.font='bold 100px Arial,sans-serif';
       ctx.fillText(totKm.toFixed(0)+' km',cW/2,968);
-      ctx.fillStyle='#555';ctx.font='28px Arial,sans-serif';
+      ctx.fillStyle='#8A8F99';ctx.font='28px Arial,sans-serif';
       ctx.fillText(opts.tripCountLabel,cW/2,1012);
 
-      /* Détail par véhicule */
+      /* Détail par véhicule — apparition décalée */
       var eIt=[],eY=1082;
-      if(cKm>0)eIt.push({t:'\uD83D\uDE97 '+cKm.toFixed(0)+' km',c:'#2196F3'});
-      if(mKm>0)eIt.push({t:'\uD83C\uDFCD '+mKm.toFixed(0)+' km',c:'#FF9800'});
-      if(wKm>0)eIt.push({t:'\uD83D\uDEB6 '+wKm.toFixed(0)+' km',c:'#4CAF50'});
+      if(cKm>0)eIt.push({t:'\\uD83D\\uDE97 '+cKm.toFixed(0)+' km',c:'#2196F3'});
+      if(mKm>0)eIt.push({t:'\\uD83C\\uDFCD '+mKm.toFixed(0)+' km',c:'#FF9800'});
+      if(wKm>0)eIt.push({t:'\\uD83D\\uDEB6 '+wKm.toFixed(0)+' km',c:'#4CAF50'});
       var eW=cW/(eIt.length||1);
-      for(var si=0;si<eIt.length;si++){ctx.fillStyle=eIt[si].c;ctx.font='bold 30px Arial,sans-serif';ctx.fillText(eIt[si].t,eW*(si+0.5),eY);}
+      for(var si=0;si<eIt.length;si++){
+        var sf=Math.max(0,Math.min(1,(endProg-0.12-si*0.1)*3));
+        ctx.globalAlpha=fa*sf;
+        ctx.fillStyle=eIt[si].c;ctx.font='bold 30px Arial,sans-serif';ctx.fillText(eIt[si].t,eW*(si+0.5),eY);
+      }
+      ctx.globalAlpha=fa;
 
       /* Durées */
       var durLine=(opts.driveDurLabel||'')+(opts.walkDurLabel||'');
-      if(durLine){ctx.fillStyle='#444';ctx.font='24px Arial,sans-serif';ctx.fillText(durLine,cW/2,1142);}
+      if(durLine){ctx.fillStyle='#565B66';ctx.font='24px Arial,sans-serif';ctx.fillText(durLine,cW/2,1142);}
 
       ctx.globalAlpha=1;
     }

@@ -1,6 +1,12 @@
 /**
  * window.generateStory JS function — MediaRecorder-based story video.
  *
+ * v3 — caméra cinématique :
+ *  - Intro (0→~8%) : zoom serré sur le point de départ.
+ *  - Milieu : follow-cam fluide qui suit le dot à zoom ~1.8.
+ *  - Fin (85%→100%) : dézoome sur la vue complète + end card.
+ *  - Effet "comète" lumineux derrière le dot, glow sur le tracé, dot pulsant.
+ *
  * v2 — time-proportional animation:
  *  - Chart points now carry a `ms` field (elapsed milliseconds from trip start).
  *  - X-axis of speed/altitude charts = real elapsed time → pauses appear as gaps.
@@ -21,7 +27,7 @@ window.generateStory=function(opts){
   for(var mi=0;mi<mimes.length;mi++){if(MediaRecorder.isTypeSupported(mimes[mi])){mime=mimes[mi];break;}}
   var chunks=[];
   var stream=cv.captureStream(30);
-  var rec=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:2500000});
+  var rec=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:3200000});
   rec.ondataavailable=function(e){if(e.data&&e.data.size>0)chunks.push(e.data);};
   rec.onstop=function(){
     document.body.removeChild(cv);
@@ -54,6 +60,7 @@ window.generateStory=function(opts){
   else{var nW=mH*rAsp;mL=mL+(mW-nW)/2;mR=mL+nW;mW=nW;}
   function projX(lng){return mL+(lng-minLng)/lngSpan*mW;}
   function projY(lat){return mB-(lat-minLat)/latSpan*mH;}
+  var mCX=(mL+mR)/2,mCY=(mT+mB)/2;
 
   // ── Haversine ──────────────────────────────────────────────────────────────
   function hav(p1,p2){
@@ -66,7 +73,7 @@ window.generateStory=function(opts){
   var routeCumKm=[0];
   for(var si=1;si<route.length;si++){routeCumKm.push(routeCumKm[si-1]+hav(route[si-1],route[si]));}
   var rawDist=routeCumKm[route.length-1]||0.001;
-  var dScale=opts.distKm/rawDist;  // scale route distances → actual trip km
+  var dScale=Math.max(opts.distKm,0.01)/rawDist;  // scale route distances → actual trip km (clamp: distKm=0 → pas de division par zéro)
 
   // ── Time axis from chart point timestamps ──────────────────────────────────
   var pts=opts.points;
@@ -99,6 +106,15 @@ window.generateStory=function(opts){
     return lo+(scaledKm-routeCumKm[lo])/span;
   }
 
+  // Position (lng,lat) at fractional route index
+  function posAtIdx(idx){
+    if(!isFinite(idx)||idx<=0)return{lng:route[0].lng,lat:route[0].lat};
+    var fi=Math.min(Math.floor(idx),route.length-2);
+    var fr=Math.min(idx-fi,1);
+    var a=route[fi],b=route[Math.min(fi+1,route.length-1)];
+    return{lng:a.lng+(b.lng-a.lng)*fr,lat:a.lat+(b.lat-a.lat)*fr};
+  }
+
   // Last chart point index at or before timeMs
   function getChartIdxAtMs(timeMs){
     if(!pts||!pts.length)return 0;
@@ -121,6 +137,13 @@ window.generateStory=function(opts){
   var maxSpd=opts.maxSpeed||1;
   var altSpan=Math.max(opts.maxAlt-opts.minAlt,1);
 
+  // ── Caméra ────────────────────────────────────────────────────────────────
+  var startPos={x:projX(route[0].lng),y:projY(route[0].lat)};
+  var cam={cx:startPos.x,cy:startPos.y,zoom:2.4};
+  var fullCam={cx:mCX,cy:mCY,zoom:1};
+  // Follow zoom : plus la route est petite à l'écran, moins on zoome (elle remplit déjà)
+  var FOLLOW_Z=1.8;
+
   // ── Scale bar ──────────────────────────────────────────────────────────────
   var midLatRad=((minLat+maxLat)/2)*Math.PI/180;
   var lngWidthKm=lngSpan*111.32*Math.cos(midLatRad);
@@ -139,39 +162,57 @@ window.generateStory=function(opts){
     var el=ts-t0,prog=Math.min(1,el/DUR);
     var currentMs=prog*totalMs;
 
-    // Background + grid
-    ctx.fillStyle='#0E0E0E';ctx.fillRect(0,0,cW,cH);
-    ctx.strokeStyle='#161616';ctx.lineWidth=1;
+    // ── Position du dot (avant caméra) ───────────────────────────────────────
+    var curKm=getKmAtMs(currentMs);
+    var exactIdx=getRouteIdxAtKm(curKm);
+    var dotP=posAtIdx(exactIdx);
+    var dotX=projX(dotP.lng),dotY=projY(dotP.lat);
+
+    // ── Update caméra (lerp doux, zoom en log) ───────────────────────────────
+    var tgt,lf;
+    if(prog>=0.84){tgt=fullCam;lf=0.085;}
+    else{
+      var z=prog<0.05?2.4:FOLLOW_Z;
+      tgt={cx:dotX,cy:dotY,zoom:z};lf=0.065;
+    }
+    cam.cx+=(tgt.cx-cam.cx)*lf;
+    cam.cy+=(tgt.cy-cam.cy)*lf;
+    cam.zoom=Math.exp(Math.log(cam.zoom)+(Math.log(tgt.zoom)-Math.log(cam.zoom))*lf);
+
+    // Background : dégradé radial + grille subtile
+    var bg=ctx.createRadialGradient(cW/2,cH*0.38,80,cW/2,cH*0.38,900);
+    bg.addColorStop(0,'#151820');bg.addColorStop(1,'#0A0B0E');
+    ctx.fillStyle=bg;ctx.fillRect(0,0,cW,cH);
+    ctx.strokeStyle='#FFFFFF06';ctx.lineWidth=1;
     for(var gx=0;gx<cW;gx+=60){ctx.beginPath();ctx.moveTo(gx,0);ctx.lineTo(gx,cH);ctx.stroke();}
     for(var gy=0;gy<cH;gy+=60){ctx.beginPath();ctx.moveTo(0,gy);ctx.lineTo(cW,gy);ctx.stroke();}
 
     // Header
-    ctx.fillStyle='#141414';ctx.fillRect(0,0,cW,180);
+    ctx.fillStyle='#12141Acc';ctx.fillRect(0,0,cW,180);
     ctx.fillStyle=opts.color;ctx.font='bold 50px Arial,sans-serif';ctx.textAlign='center';
     ctx.fillText(opts.vehicleEmoji+'  '+opts.dateLabel,cW/2,72);
-    ctx.fillStyle='#777';ctx.font='32px Arial,sans-serif';
+    ctx.fillStyle='#8A8F99';ctx.font='32px Arial,sans-serif';
     ctx.fillText(opts.timeLabel,cW/2,122);
     ctx.strokeStyle=opts.color+'33';ctx.lineWidth=1;
     ctx.beginPath();ctx.moveTo(0,180);ctx.lineTo(cW,180);ctx.stroke();
 
-    // Ghost route
+    // ── Zone carte : clip + transform caméra ─────────────────────────────────
+    ctx.save();
+    ctx.beginPath();ctx.rect(30,183,660,614);ctx.clip();
+    ctx.translate(mCX,mCY);ctx.scale(cam.zoom,cam.zoom);ctx.translate(-cam.cx,-cam.cy);
+
+    // Aperçu du parcours complet (fantôme coloré, on voit où on va)
     if(route.length>1){
       ctx.beginPath();ctx.moveTo(projX(route[0].lng),projY(route[0].lat));
       for(var ri=1;ri<route.length;ri++)ctx.lineTo(projX(route[ri].lng),projY(route[ri].lat));
-      ctx.strokeStyle='#FFFFFF0A';ctx.lineWidth=4;ctx.lineJoin='round';ctx.lineCap='round';ctx.stroke();
+      ctx.strokeStyle=opts.color+'2E';ctx.lineWidth=4/cam.zoom;ctx.lineJoin='round';ctx.lineCap='round';ctx.stroke();
+      // Marqueur destination
+      var rl=route[route.length-1];
+      ctx.beginPath();ctx.arc(projX(rl.lng),projY(rl.lat),6/cam.zoom,0,Math.PI*2);
+      ctx.strokeStyle=opts.color+'AA';ctx.lineWidth=2/cam.zoom;ctx.stroke();
     }
 
-    // Scale bar
-    ctx.strokeStyle='#999999';ctx.lineWidth=2.5;ctx.lineCap='butt';
-    ctx.beginPath();ctx.moveTo(scBarX1,scBarY);ctx.lineTo(scBarX2,scBarY);ctx.stroke();
-    ctx.beginPath();ctx.moveTo(scBarX1,scBarY-7);ctx.lineTo(scBarX1,scBarY+7);ctx.stroke();
-    ctx.beginPath();ctx.moveTo(scBarX2,scBarY-7);ctx.lineTo(scBarX2,scBarY+7);ctx.stroke();
-    ctx.fillStyle='#999999';ctx.font='22px Arial,sans-serif';ctx.textAlign='center';
-    ctx.fillText(scLabel,(scBarX1+scBarX2)/2,scBarY-11);
-
-    // ── Animated route — time-proportional, dot stalls during pauses ─────────
-    var curKm=getKmAtMs(currentMs);
-    var exactIdx=getRouteIdxAtKm(curKm);
+    // ── Tracé parcouru — glow ────────────────────────────────────────────────
     var fullPts=Math.floor(exactIdx);
     var frac=exactIdx-fullPts;
     if(exactIdx>0){
@@ -184,29 +225,51 @@ window.generateStory=function(opts){
         var pa=route[fullPts],pb=route[fullPts+1];
         ctx.lineTo(projX(pa.lng+(pb.lng-pa.lng)*frac),projY(pa.lat+(pb.lat-pa.lat)*frac));
       }
-      ctx.strokeStyle=opts.color;ctx.lineWidth=6;ctx.lineJoin='round';ctx.lineCap='round';ctx.globalAlpha=0.95;ctx.stroke();ctx.globalAlpha=1;
+      ctx.shadowColor=opts.color;ctx.shadowBlur=14;
+      ctx.strokeStyle=opts.color;ctx.lineWidth=6/cam.zoom;ctx.lineJoin='round';ctx.lineCap='round';ctx.globalAlpha=0.95;ctx.stroke();ctx.globalAlpha=1;
+      ctx.shadowBlur=0;
+
+      // Effet comète : les derniers ~6% parcourus en surbrillance blanche
+      var cometStartIdx=getRouteIdxAtKm(Math.max(0,curKm-Math.max(opts.distKm*0.06,0.02)));
+      if(exactIdx-cometStartIdx>0.01){
+        var csF=Math.floor(cometStartIdx),csR=cometStartIdx-csF;
+        var cp0=posAtIdx(cometStartIdx);
+        ctx.beginPath();
+        ctx.moveTo(projX(cp0.lng),projY(cp0.lat));
+        for(var ri3=csF+1;ri3<=fullPts&&ri3<route.length;ri3++){
+          ctx.lineTo(projX(route[ri3].lng),projY(route[ri3].lat));
+        }
+        ctx.lineTo(projX(dotP.lng),projY(dotP.lat));
+        ctx.strokeStyle='rgba(255,255,255,0.55)';ctx.lineWidth=2.5/cam.zoom;ctx.lineJoin='round';ctx.lineCap='round';ctx.stroke();
+      }
     }
 
     // Start dot
-    ctx.beginPath();ctx.arc(projX(route[0].lng),projY(route[0].lat),9,0,Math.PI*2);ctx.fillStyle='#4CAF50';ctx.fill();
+    ctx.beginPath();ctx.arc(projX(route[0].lng),projY(route[0].lat),8/cam.zoom,0,Math.PI*2);ctx.fillStyle='#4CAF50';ctx.fill();
 
-    // Moving dot — position derived from km, which stalls during pauses
-    var dotLng,dotLat;
-    if(exactIdx<=0){dotLng=route[0].lng;dotLat=route[0].lat;}
-    else{
-      var cpI=Math.min(fullPts,route.length-2);
-      var cpF=Math.min(exactIdx-cpI,1);
-      var cpA=route[cpI],cpB=route[Math.min(cpI+1,route.length-1)];
-      dotLng=cpA.lng+(cpB.lng-cpA.lng)*cpF;
-      dotLat=cpA.lat+(cpB.lat-cpA.lat)*cpF;
+    // Moving dot — pulsant + glow
+    var pulse=1+0.22*Math.sin(el/150);
+    ctx.beginPath();ctx.arc(dotX,dotY,20*pulse/cam.zoom,0,Math.PI*2);ctx.fillStyle=opts.color+'26';ctx.fill();
+    ctx.beginPath();ctx.arc(dotX,dotY,10/cam.zoom,0,Math.PI*2);
+    ctx.shadowColor=opts.color;ctx.shadowBlur=16;ctx.fillStyle=opts.color;ctx.fill();ctx.shadowBlur=0;
+    ctx.beginPath();ctx.arc(dotX,dotY,4/cam.zoom,0,Math.PI*2);ctx.fillStyle='#FFFFFF';ctx.fill();
+
+    ctx.restore(); // fin clip + caméra
+
+    // Scale bar — seulement quand la vue est dézoomée (sinon échelle fausse)
+    if(cam.zoom<1.15){
+      ctx.strokeStyle='#999999';ctx.lineWidth=2.5;ctx.lineCap='butt';
+      ctx.beginPath();ctx.moveTo(scBarX1,scBarY);ctx.lineTo(scBarX2,scBarY);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(scBarX1,scBarY-7);ctx.lineTo(scBarX1,scBarY+7);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(scBarX2,scBarY-7);ctx.lineTo(scBarX2,scBarY+7);ctx.stroke();
+      ctx.fillStyle='#999999';ctx.font='22px Arial,sans-serif';ctx.textAlign='center';
+      ctx.fillText(scLabel,(scBarX1+scBarX2)/2,scBarY-11);
     }
-    ctx.beginPath();ctx.arc(projX(dotLng),projY(dotLat),14,0,Math.PI*2);ctx.fillStyle='#FFFFFF22';ctx.fill();
-    ctx.beginPath();ctx.arc(projX(dotLng),projY(dotLat),9,0,Math.PI*2);ctx.fillStyle=opts.color;ctx.fill();
 
     // ── Stats panel ───────────────────────────────────────────────────────────
     var ci2=getChartIdxAtMs(currentMs);
     var curPt=pts[ci2]||pts[0];
-    ctx.fillStyle='#141414';ctx.fillRect(0,800,cW,115);
+    ctx.fillStyle='#12141A';ctx.fillRect(0,800,cW,115);
     ctx.strokeStyle=opts.color+'22';ctx.lineWidth=1;
     ctx.beginPath();ctx.moveTo(0,800);ctx.lineTo(cW,800);ctx.stroke();
     ctx.beginPath();ctx.moveTo(0,915);ctx.lineTo(cW,915);ctx.stroke();
@@ -216,13 +279,13 @@ window.generateStory=function(opts){
     var elSec=Math.round(currentMs/1000);
     var elMin=Math.floor(elSec/60);var elH=Math.floor(elMin/60);
     var elLabel=elH>0?elH+'h'+(elMin%60<10?'0':'')+(elMin%60):(elMin<1?'< 1':elMin)+' min';
-    ctx.fillStyle='#555';ctx.font='28px Arial,sans-serif';
-    ctx.fillText((curKm||0).toFixed(2)+' km \xB7 '+elLabel,cW/2,928);
+    ctx.fillStyle='#565B66';ctx.font='28px Arial,sans-serif';
+    ctx.fillText((curKm||0).toFixed(2)+' km \\xB7 '+elLabel,cW/2,928);
 
     // ── Speed chart — time axis, pause gaps in line ───────────────────────────
     var sL=50,sR=670,sTop=965,sH=85;
-    ctx.fillStyle='#161616';ctx.fillRect(sL-5,sTop-5,sR-sL+10,sH+10);
-    ctx.fillStyle='#444';ctx.font='20px Arial,sans-serif';ctx.textAlign='left';
+    ctx.fillStyle='#161920';ctx.fillRect(sL-5,sTop-5,sR-sL+10,sH+10);
+    ctx.fillStyle='#565B66';ctx.font='20px Arial,sans-serif';ctx.textAlign='left';
     ctx.fillText(opts.showPace?'ALLURE':'VITESSE',sL,sTop-14);
     var visPts=[];
     for(var vi=0;vi<pts.length;vi++){if(pts[vi].ms<=currentMs)visPts.push(pts[vi]);else break;}
@@ -251,8 +314,8 @@ window.generateStory=function(opts){
     // ── Altitude chart — time axis ────────────────────────────────────────────
     if(opts.hasAlt){
       var aTop=1105,aH=80;
-      ctx.fillStyle='#161616';ctx.fillRect(sL-5,aTop-5,sR-sL+10,aH+10);
-      ctx.fillStyle='#444';ctx.font='20px Arial,sans-serif';ctx.textAlign='left';ctx.fillText('ALTITUDE',sL,aTop-14);
+      ctx.fillStyle='#161920';ctx.fillRect(sL-5,aTop-5,sR-sL+10,aH+10);
+      ctx.fillStyle='#565B66';ctx.font='20px Arial,sans-serif';ctx.textAlign='left';ctx.fillText('ALTITUDE',sL,aTop-14);
       var pts3=visPts.filter(function(p){return p.alt!=null;});
       if(pts3.length>1){
         ctx.beginPath();
@@ -276,14 +339,14 @@ window.generateStory=function(opts){
     if(prog>0.82){
       var fa=Math.min(1,(prog-0.82)/0.12);ctx.globalAlpha=fa;
       var bY=opts.hasAlt?1235:1165;
-      ctx.fillStyle='#111';ctx.fillRect(0,bY-52,cW,cH-bY+52);
+      ctx.fillStyle='#101218';ctx.fillRect(0,bY-52,cW,cH-bY+52);
       ctx.fillStyle='#E0E0E0';ctx.font='bold 32px Arial,sans-serif';ctx.textAlign='center';
       var bestLabel=opts.showPace?('MEILLEURE '+formatPace(opts.maxSpeed)):('MAX '+opts.maxSpeed.toFixed(1)+' km/h');
       var stats=bestLabel;
-      if(opts.gainM>0)stats+=(' \xB7 +'+opts.gainM+' m');
-      stats+=(' \xB7 '+opts.distKm+' km');
+      if(opts.gainM>0)stats+=(' \\xB7 +'+opts.gainM+' m');
+      stats+=(' \\xB7 '+opts.distKm+' km');
       ctx.fillText(stats,cW/2,bY+2);
-      ctx.fillStyle='#555';ctx.font='26px Arial,sans-serif';ctx.fillText(opts.timeLabel,cW/2,bY+42);
+      ctx.fillStyle='#565B66';ctx.font='26px Arial,sans-serif';ctx.fillText(opts.timeLabel,cW/2,bY+42);
       ctx.globalAlpha=1;
     }
 
