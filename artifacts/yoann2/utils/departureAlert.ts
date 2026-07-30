@@ -35,6 +35,18 @@ interface AlertStore {
   departureMs: number;
   travelMin: number;
   routeCount: number;
+  /** Timestamp of last morning recalculation (undefined = initial scheduling only) */
+  lastRecalcAt?: number;
+}
+
+// ── Public read type ──────────────────────────────────────────────────────────
+
+export interface DepartureAlertInfo {
+  departureMs: number;
+  travelMin: number;
+  routeCount: number;
+  /** Whether a morning recalculation happened today */
+  recalcToday: boolean;
 }
 
 // ── OSRM helper ───────────────────────────────────────────────────────────────
@@ -276,6 +288,7 @@ export async function rescheduleIfNeeded(
       departureMs: newDepartureMs,
       travelMin:   Math.round(maxSecs / 60),
       routeCount:  count,
+      lastRecalcAt: Date.now(),
     };
 
     await AsyncStorage.setItem(`${ALERT_KEY_PREFIX}${apptId}`, JSON.stringify(updated));
@@ -324,6 +337,40 @@ export async function checkDepartureAlertAfterTrip(
     }
   } catch {
     // Non-fatal
+  }
+}
+
+/**
+ * Read the stored departure alert info for a given appointment.
+ * Returns null if no alert is saved.
+ * `recalcToday` is true when a morning recalculation occurred today.
+ */
+export async function getDepartureAlertInfo(
+  apptId: string,
+): Promise<DepartureAlertInfo | null> {
+  try {
+    const raw = await AsyncStorage.getItem(`${ALERT_KEY_PREFIX}${apptId}`);
+    if (!raw) return null;
+    const store: AlertStore = JSON.parse(raw);
+
+    const today = new Date();
+    let recalcToday = false;
+    if (store.lastRecalcAt !== undefined) {
+      const d = new Date(store.lastRecalcAt);
+      recalcToday =
+        d.getFullYear() === today.getFullYear() &&
+        d.getMonth()    === today.getMonth()    &&
+        d.getDate()     === today.getDate();
+    }
+
+    return {
+      departureMs: store.departureMs,
+      travelMin:   store.travelMin,
+      routeCount:  store.routeCount,
+      recalcToday,
+    };
+  } catch {
+    return null;
   }
 }
 

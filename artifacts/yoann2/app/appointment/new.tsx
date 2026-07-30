@@ -1,7 +1,7 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import React, { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -18,7 +18,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '@/contexts/AppContext';
 import { useColors } from '@/hooks/useColors';
 import { SubPageHeader } from '@/components/SubPageHeader';
-import { cancelDepartureAlert, scheduleDepartureAlert } from '@/utils/departureAlert';
+import {
+  cancelDepartureAlert,
+  DepartureAlertInfo,
+  getDepartureAlertInfo,
+  scheduleDepartureAlert,
+} from '@/utils/departureAlert';
 import { updateTodoWidget } from '@/widgets/updateWidget';
 
 async function geocodeAddress(query: string): Promise<{ lat: number; lng: number; display: string } | null> {
@@ -66,6 +71,16 @@ export default function NewAppointmentScreen() {
   const [time, setTime] = useState(existing?.time ?? '');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [alertScheduling, setAlertScheduling] = useState(false);
+  const [alertInfo, setAlertInfo] = useState<DepartureAlertInfo | null>(null);
+
+  // Reload stored departure info every time the screen comes into focus
+  // (covers the case where a morning recalculation ran while the user was away)
+  useFocusEffect(
+    useCallback(() => {
+      if (!existing) return;
+      getDepartureAlertInfo(existing.id).then(setAlertInfo);
+    }, [existing?.id]),
+  );
 
   const topPad = Platform.OS === 'web' ? 67 : insets.top;
 
@@ -154,6 +169,8 @@ export default function NewAppointmentScreen() {
       const routesSuffix = result.routeCount > 1
         ? ` (le plus long des ${result.routeCount} itinéraires)`
         : '';
+      // Refresh the displayed departure info immediately
+      if (existing) getDepartureAlertInfo(existing.id).then(setAlertInfo);
       Alert.alert(
         '⏰ Alerte programmée',
         `Départ conseillé à ${hh}:${mm} — trajet ~${result.travelMin} min${routesSuffix} + 10 min tampon.\n\nL'heure sera recalculée automatiquement à 6h, 7h, 8h, 9h et 10h le jour J.`,
@@ -166,6 +183,7 @@ export default function NewAppointmentScreen() {
   async function handleCancelAlert() {
     if (!existing) return;
     await cancelDepartureAlert(existing.id);
+    setAlertInfo(null);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     Alert.alert('Alerte annulée', 'L\'alerte départ a été supprimée.');
   }
@@ -313,6 +331,33 @@ export default function NewAppointmentScreen() {
               </Pressable>
             </View>
           )}
+
+          {/* Stored departure info — shown whenever an alert is saved in AsyncStorage */}
+          {isEditing && alertInfo && (() => {
+            const dep = new Date(alertInfo.departureMs);
+            const hh = String(dep.getHours()).padStart(2, '0');
+            const mm = String(dep.getMinutes()).padStart(2, '0');
+            const routesTxt = alertInfo.routeCount > 1
+              ? `, ${alertInfo.routeCount} itinéraires`
+              : '';
+            const badgeColor   = alertInfo.recalcToday ? '#2196F3' : '#9E9E9E';
+            const badgeLabel   = alertInfo.recalcToday ? '↺ Recalculé ce matin' : '📍 Calculé à la programmation';
+            return (
+              <View style={[styles.departureInfoBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <View style={styles.departureInfoRow}>
+                  <MaterialCommunityIcons name="clock-fast" size={16} color="#FF9800" />
+                  <Text style={[styles.departureInfoText, { color: colors.foreground }]}>
+                    Départ prévu à{' '}
+                    <Text style={{ fontFamily: 'Inter_700Bold' }}>{hh}:{mm}</Text>
+                    {' '}(trajet ~{alertInfo.travelMin} min{routesTxt})
+                  </Text>
+                </View>
+                <View style={[styles.departureBadge, { backgroundColor: `${badgeColor}18`, borderColor: `${badgeColor}44` }]}>
+                  <Text style={[styles.departureBadgeTxt, { color: badgeColor }]}>{badgeLabel}</Text>
+                </View>
+              </View>
+            );
+          })()}
         </View>
 
         <View>
@@ -386,4 +431,33 @@ const styles = StyleSheet.create({
     gap: 6, borderWidth: 1, borderRadius: 10, paddingVertical: 9,
   },
   alertBtnTxt: { fontSize: 13, fontFamily: 'Inter_600SemiBold' },
+  departureInfoBox: {
+    marginTop: 10,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 6,
+  },
+  departureInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  departureInfoText: {
+    fontSize: 13,
+    fontFamily: 'Inter_400Regular',
+    flexShrink: 1,
+  },
+  departureBadge: {
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderRadius: 20,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  departureBadgeTxt: {
+    fontSize: 11,
+    fontFamily: 'Inter_500Medium',
+  },
 });
