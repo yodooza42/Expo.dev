@@ -38,7 +38,10 @@ Run `eas whoami` first to confirm the EXPO_TOKEN matches the `owner` in app.json
 | yo1907cjeicjebfs-team | yoann-20 | 80f5b084-24ba-42e5-8377-5c6b055e4538 | exhausted Jul 2026 |
 | **yoluran2307s-team** | **yoann-20** | **6b473886-5625-4512-aad4-c933c55218ef** | **ACTIVE — dernier build 29 Jul 2026** |
 
-**app.json currently points to: yo1907cjeicjebfs-team / yoann-20 / 80f5b084-24ba-42e5-8377-5c6b055e4538 — but this account's Android quota is ALSO exhausted (resets Aug 1 2026). yoluran2307s-team account's own token is inaccessible/lost; the token provided always authenticates as yo1907cjeicjebfs-team regardless.**
+**app.json currently points to: owner "yo1907cjeicjebfs-team" / slug "yoann-20" / projectId "790dd0d2-f0d3-4ee9-8b04-ebfe381c5d64" — confirmed via `eas build` owner/slug mismatch errors (the authoritative source of truth, not user screenshots of the Expo dashboard). This account's Android quota is exhausted (resets Aug 1 2026, ~30/month reset).**
+
+## Account renamed — dashboard display name ≠ API slug
+The Expo dashboard showed "Owner: yoluran2307s-team" for this same project, but `eas whoami`/`eas build` always resolve it to slug "yo1907cjeicjebfs-team". When app.json owner/slug and a user screenshot disagree, trust the `eas build` error messages ("owner field does not match", "slug does not match") — they state the actual resolved value.
 
 When user provides new token: update `EXPO_TOKEN` secret AND `app.json` → `expo.owner` + `expo.extra.eas.projectId`.
 Then run `eas whoami` to confirm account name, then check owner in app.json matches before running build.

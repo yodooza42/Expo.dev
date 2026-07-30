@@ -122,6 +122,9 @@
       "reactCompiler": false
     },
     "extra": {
+      "eas": {
+        "projectId": "790dd0d2-f0d3-4ee9-8b04-ebfe381c5d64"
+      },
       "router": {
         "origin": "https://replit.com/"
       },
