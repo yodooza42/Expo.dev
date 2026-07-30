@@ -38,7 +38,7 @@ Run `eas whoami` first to confirm the EXPO_TOKEN matches the `owner` in app.json
 | yo1907cjeicjebfs-team | yoann-20 | 80f5b084-24ba-42e5-8377-5c6b055e4538 | exhausted Jul 2026 |
 | **yoluran2307s-team** | **yoann-20** | **6b473886-5625-4512-aad4-c933c55218ef** | **ACTIVE — dernier build 29 Jul 2026** |
 
-**app.json currently points to: yoluran2307s-team / yoann-20 / 6b473886-5625-4512-aad4-c933c55218ef**
+**app.json currently points to: yo1907cjeicjebfs-team / yoann-20 / 80f5b084-24ba-42e5-8377-5c6b055e4538 — but this account's Android quota is ALSO exhausted (resets Aug 1 2026). yoluran2307s-team account's own token is inaccessible/lost; the token provided always authenticates as yo1907cjeicjebfs-team regardless.**
 
 When user provides new token: update `EXPO_TOKEN` secret AND `app.json` → `expo.owner` + `expo.extra.eas.projectId`.
 Then run `eas whoami` to confirm account name, then check owner in app.json matches before running build.
