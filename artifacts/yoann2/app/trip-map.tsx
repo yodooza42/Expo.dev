@@ -947,7 +947,12 @@ export default function TripMapScreen() {
         {loading ? (
           <View style={styles.center}><ActivityIndicator color="#FFC107" /></View>
         ) : (() => {
-          const displayRoute = trip?.route && trip.route.length >= 2 ? trip.route : osrmRoute;
+          // Priorité : tracé stocké → OSRM (>2 pts) → GPS bruts → droite départ/arrivée
+          const displayRoute =
+            trip?.route && trip.route.length >= 2 ? trip.route :
+            osrmRoute && osrmRoute.length > 2 ? osrmRoute :
+            tripLocPts.length >= 2 ? tripLocPts.map(p => ({ lat: p.lat, lng: p.lng })) :
+            osrmRoute;
           if (!displayRoute || displayRoute.length < 2) {
             return loadingRoute ? (
               <View style={styles.center}>
