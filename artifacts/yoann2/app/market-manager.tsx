@@ -6,9 +6,6 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -18,6 +15,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { BottomSheet } from '@/components/BottomSheet';
 import { useColors } from '@/hooks/useColors';
 import { SubPageHeader } from '@/components/SubPageHeader';
 import { addTransaction } from '@/utils/bankStorage';
@@ -476,10 +474,7 @@ export default function MarketManagerScreen() {
       </ScrollView>
 
       {/* ── Modal ── */}
-      <Modal visible={modalMode !== null} transparent animationType="slide">
-        <Pressable style={styles.modalOverlay} onPress={closeModal} />
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-          <View style={[styles.modalSheet, { backgroundColor: colors.card, borderColor: colors.border, paddingBottom: insets.bottom + 16 }]}>
+      <BottomSheet visible={modalMode !== null} onClose={closeModal} avoidKeyboard>
             {/* Add / Edit asset */}
             {(modalMode === 'add_asset' || modalMode === 'edit_asset') && (
               <>
@@ -636,9 +631,7 @@ export default function MarketManagerScreen() {
                 </Pressable>
               </>
             )}
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+      </BottomSheet>
     </View>
   );
 }
@@ -729,15 +722,6 @@ const styles = StyleSheet.create({
   opRowDate:   { fontSize: 10, fontFamily: 'Inter_400Regular', marginTop: 1 },
   opRowAmount: { fontSize: 13, fontFamily: 'Inter_700Bold' },
 
-  modalOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.55)' },
-  modalSheet: {
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderBottomWidth: 0,
-    padding: 20,
-    gap: 12,
-  },
   modalTitle: { fontSize: 16, fontFamily: 'Inter_600SemiBold', marginBottom: 4 },
 
   row: { flexDirection: 'row', gap: 10 },

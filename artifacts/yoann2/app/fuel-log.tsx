@@ -5,9 +5,6 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -18,6 +15,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { BottomSheet } from '@/components/BottomSheet';
 import { useColors } from '@/hooks/useColors';
 import { SubPageHeader } from '@/components/SubPageHeader';
 import type { FuelEntry } from '@/types/fuel';
@@ -333,13 +331,7 @@ export default function FuelLogScreen() {
       </ScrollView>
 
       {/* ── Fuel modal ── */}
-      <Modal visible={fuelOpen} transparent animationType="slide" onRequestClose={() => setFuelOpen(false)}>
-        <KeyboardAvoidingView
-          style={styles.modalOverlay}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        >
-          <View style={[styles.modalSheet, { backgroundColor: colors.card, borderColor: colors.border, paddingBottom: insets.bottom + 20 }]}>
-
+      <BottomSheet visible={fuelOpen} onClose={() => setFuelOpen(false)} avoidKeyboard>
             {/* Header + date */}
             <View style={styles.fuelHeaderRow}>
               <Text style={[styles.modalTitle, { color: colors.foreground, marginBottom: 0 }]}>⛽ Passage à la pompe</Text>
@@ -488,9 +480,7 @@ export default function FuelLogScreen() {
                 <Text style={[styles.modalBtnText, { color: '#121212', fontFamily: 'Inter_600SemiBold' }]}>Enregistrer</Text>
               </Pressable>
             </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+      </BottomSheet>
 
       {fuelShowDatePicker && (
         <DateTimePicker

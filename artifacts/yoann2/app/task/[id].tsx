@@ -17,8 +17,8 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { BottomSheet } from '@/components/BottomSheet';
 import { PriorityBadge } from '@/components/PriorityBadge';
 import { useApp } from '@/contexts/AppContext';
 import { useColors } from '@/hooks/useColors';
@@ -43,7 +43,6 @@ const EISENHOWER_COLORS: Record<string, string> = {
 export default function TaskDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const colors = useColors();
-  const insets = useSafeAreaInsets();
   const router = useRouter();
   const { tasks, projects, updateTask, deleteTask, addTransactionCtx, deleteTransactionCtx, getTaskExpenses } = useApp();
 
@@ -527,11 +526,7 @@ export default function TaskDetailScreen() {
         </View>
       </Modal>
 
-      <Modal visible={addExpVisible} animationType="slide" transparent>
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.7)' }]}>
-          <Pressable style={{ flex: 1 }} onPress={() => setAddExpVisible(false)} />
-          <View style={[styles.sheet, { backgroundColor: colors.card, borderColor: colors.border, paddingBottom: insets.bottom + 20 }]}>
-            <Text style={[styles.sheetTitle, { color: colors.foreground }]}>Nouvelle dépense</Text>
+      <BottomSheet visible={addExpVisible} onClose={() => setAddExpVisible(false)} title="Nouvelle dépense" avoidKeyboard>
             <Text style={[styles.sheetSub, { color: colors.mutedForeground }]}>
               Sera automatiquement ajoutée au projet « {project?.name ?? '...'} »
             </Text>
@@ -588,9 +583,7 @@ export default function TaskDetailScreen() {
                 <Text style={[styles.saveBtnLabel, { color: colors.primaryForeground }]}>Ajouter</Text>
               </Pressable>
             </View>
-          </View>
-        </View>
-      </Modal>
+      </BottomSheet>
     </View>
   );
 }
@@ -644,8 +637,6 @@ const styles = StyleSheet.create({
   addExpBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, padding: 12, borderRadius: 12, borderWidth: 1, justifyContent: 'center', marginBottom: 8 },
   addExpLabel: { fontSize: 14, fontFamily: 'Inter_600SemiBold' },
   viewProjectLink: { fontSize: 12, fontFamily: 'Inter_400Regular', textAlign: 'center', marginTop: 4 },
-  sheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, borderWidth: 1, padding: 24, gap: 10 },
-  sheetTitle: { fontSize: 18, fontFamily: 'Inter_700Bold' },
   sheetSub: { fontSize: 13, fontFamily: 'Inter_400Regular', marginTop: -4, marginBottom: 4 },
   inputLabel: { fontSize: 12, fontFamily: 'Inter_500Medium' },
   input: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, fontSize: 14, fontFamily: 'Inter_400Regular' },

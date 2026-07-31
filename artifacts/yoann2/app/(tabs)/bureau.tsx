@@ -17,6 +17,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { BottomSheet } from '@/components/BottomSheet';
 import { useApp } from '@/contexts/AppContext';
 import { useSplash } from '@/contexts/SplashContext';
 import { useColors } from '@/hooks/useColors';
@@ -738,25 +739,13 @@ export default function DashboardScreen() {
       </ScrollView>
 
       {/* ── BOTTOM SHEET ── */}
-      <Modal
-        visible={selectedTask !== null}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setSelectedTask(null)}
-      >
-        <Pressable style={styles.overlay} onPress={() => setSelectedTask(null)}>
-          <Pressable
-            style={[styles.sheet, { backgroundColor: colors.card, borderColor: colors.border }]}
-            onPress={() => { /* prevent close */ }}
-          >
+      <BottomSheet visible={selectedTask !== null} onClose={() => setSelectedTask(null)}>
             {selectedTask && (() => {
               const pColor    = selectedProject ? projectColor(selectedProject.id) : colors.primary;
               const prioColor = PRIORITY_COLORS[selectedTask.priority] ?? colors.primary;
               const dueParsed = parseFrDate(selectedTask.dueDate);
               return (
                 <>
-                  <View style={[styles.sheetHandle, { backgroundColor: colors.border }]} />
-
                   {/* Title + project */}
                   <View style={styles.sheetTitleRow}>
                     <View style={[styles.sheetAccent, { backgroundColor: pColor }]} />
@@ -817,9 +806,7 @@ export default function DashboardScreen() {
                 </>
               );
             })()}
-          </Pressable>
-        </Pressable>
-      </Modal>
+      </BottomSheet>
 
       {/* ── PHOTO VIEWER ── */}
       <Modal
@@ -935,9 +922,6 @@ const styles = StyleSheet.create({
   emptySub:   { fontSize: 13, fontFamily: 'Inter_400Regular', textAlign: 'center' },
 
   // Bottom sheet
-  overlay:     { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 16 },
-  sheet:       { borderRadius: 24, borderWidth: 1, padding: 20, gap: 14, width: '100%', maxWidth: 420 },
-  sheetHandle: { width: 40, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: 4 },
   sheetTitleRow:{ flexDirection: 'row', gap: 12, alignItems: 'flex-start' },
   sheetAccent: { width: 4, borderRadius: 2, alignSelf: 'stretch', minHeight: 42 },
   sheetTitle:  { fontSize: 18, fontFamily: 'Inter_700Bold', lineHeight: 24 },

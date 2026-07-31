@@ -19,6 +19,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import DateTimePicker from '@react-native-community/datetimepicker';
 
+import { BottomSheet } from '@/components/BottomSheet';
 import { useApp } from '@/contexts/AppContext';
 import { useColors } from '@/hooks/useColors';
 import type { MaintenanceItem, Trip, Vehicle, VehicleInsurance, WalkParticipant } from '@/types/trips';
@@ -1151,10 +1152,7 @@ export default function VehicleSettingsScreen() {
       </Modal>
 
       {/* Project picker modal */}
-      <Modal visible={projectPickerVisible} transparent animationType="slide">
-        <Pressable style={styles.modalBackdrop} onPress={() => setProjectPickerVisible(false)}>
-          <View style={[styles.pickerSheet, { backgroundColor: colors.card, borderColor: colors.border, paddingBottom: insets.bottom + 16 }]}>
-            <Text style={[styles.modalTitle, { color: colors.foreground, marginBottom: 8 }]}>Projet entretien</Text>
+      <BottomSheet visible={projectPickerVisible} onClose={() => setProjectPickerVisible(false)} title="Projet entretien" maxHeight="70%">
             <Pressable
               onPress={() => { updateSelected({ maintenanceProjectId: undefined }); setProjectPickerVisible(false); }}
               style={[styles.projectRow, { borderBottomColor: colors.border }]}
@@ -1178,9 +1176,7 @@ export default function VehicleSettingsScreen() {
                 </Pressable>
               )}
             />
-          </View>
-        </Pressable>
-      </Modal>
+      </BottomSheet>
 
       {/* Recalibration modal */}
       <Modal visible={recalModalVisible} transparent animationType="fade">

@@ -33,6 +33,7 @@ import Svg, {
   Text as SvgText,
 } from 'react-native-svg';
 
+import { BottomSheet } from '@/components/BottomSheet';
 import { TripMapView } from '@/components/TripMapView';
 import { useColors } from '@/hooks/useColors';
 import type { KnownPlace, PlaceCategory, WalkRoute } from '@/types/places';
@@ -237,14 +238,10 @@ function WalkParticipantPickerModal({
   onClose: () => void;
   onToggle: (id: string) => void;
 }) {
-  const insets = useSafeAreaInsets();
   const humans = allParticipants.filter(p => p.type === 'human');
   const dogs   = allParticipants.filter(p => p.type === 'dog');
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={editStyles.overlay} onPress={onClose}>
-        <Pressable style={[routePickerStyles.sheet, { backgroundColor: colors.card, paddingBottom: insets.bottom + 20 }]}>
-          <Text style={[routePickerStyles.title, { color: colors.foreground }]}>Participants</Text>
+    <BottomSheet visible={visible} onClose={onClose} title="Participants">
           {allParticipants.length === 0 ? (
             <Text style={[routePickerStyles.empty, { color: colors.mutedForeground }]}>
               Aucun participant — ajoute-en dans Véhicules & entretien.
@@ -282,9 +279,7 @@ function WalkParticipantPickerModal({
           <Pressable onPress={onClose} style={[routePickerStyles.cancelBtn, { backgroundColor: colors.muted }]}>
             <Text style={[routePickerStyles.cancelText, { color: colors.mutedForeground }]}>Fermer</Text>
           </Pressable>
-        </Pressable>
-      </Pressable>
-    </Modal>
+    </BottomSheet>
   );
 }
 
@@ -299,14 +294,8 @@ function WalkRoutePickerModal({
   onClose: () => void;
   onPick: (id: string | undefined) => void;
 }) {
-  const insets = useSafeAreaInsets();
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={editStyles.overlay} onPress={onClose}>
-        <Pressable
-          style={[routePickerStyles.sheet, { backgroundColor: colors.card, paddingBottom: insets.bottom + 20 }]}
-        >
-          <Text style={[routePickerStyles.title, { color: colors.foreground }]}>Parcours</Text>
+    <BottomSheet visible={visible} onClose={onClose} title="Parcours">
           {routes.length === 0 ? (
             <Text style={[routePickerStyles.empty, { color: colors.mutedForeground }]}>
               Aucun parcours — ajoute-en dans Lieux connus.
@@ -334,9 +323,7 @@ function WalkRoutePickerModal({
           <Pressable onPress={onClose} style={[routePickerStyles.cancelBtn, { backgroundColor: colors.muted }]}>
             <Text style={[routePickerStyles.cancelText, { color: colors.mutedForeground }]}>Fermer</Text>
           </Pressable>
-        </Pressable>
-      </Pressable>
-    </Modal>
+    </BottomSheet>
   );
 }
 

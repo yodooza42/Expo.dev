@@ -5,7 +5,6 @@ import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Dimensions,
-  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -21,6 +20,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { useApp } from '@/contexts/AppContext';
 import { useColors } from '@/hooks/useColors';
+import { BottomSheet } from '@/components/BottomSheet';
 import { SubPageHeader } from '@/components/SubPageHeader';
 import { exportExpensesCSV, exportExpensesPDF } from '@/utils/expenseExport';
 import { fmtDateSlash } from '@/utils/date';
@@ -791,10 +791,7 @@ export default function ExpensesScreen() {
       </ScrollView>
 
       {/* Modal détail catégorie */}
-      <Modal visible={!!selectedExpenseCat} animationType="slide" transparent>
-        <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.6)' }}>
-          <Pressable style={{ flex: 1 }} onPress={() => setSelectedExpenseCat(null)} />
-          <View style={[styles.catSheet, { backgroundColor: colors.card, borderColor: colors.border }]}>
+      <BottomSheet visible={!!selectedExpenseCat} onClose={() => setSelectedExpenseCat(null)} maxHeight="85%">
             <View style={styles.catSheetHeader}>
               <MaterialCommunityIcons name="tag-outline" size={18} color={colors.primary} />
               <Text style={[styles.catSheetTitle, { color: colors.foreground }]} numberOfLines={1}>
@@ -880,9 +877,7 @@ export default function ExpensesScreen() {
                 );
               })}
             </ScrollView>
-          </View>
-        </View>
-      </Modal>
+      </BottomSheet>
     </View>
   );
 }
@@ -1065,14 +1060,6 @@ const styles = StyleSheet.create({
   emptyTxt: { fontSize: 15, fontFamily: 'Inter_400Regular' },
 
   // ── Sheet catégorie ───────────────────────────────────────────────────────────
-  catSheet: {
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    borderWidth: 1,
-    padding: 20,
-    gap: 14,
-    maxHeight: '85%',
-  },
   catSheetHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   catSheetTitle: { flex: 1, fontSize: 17, fontFamily: 'Inter_700Bold' },
   catSheetCount: { fontSize: 12, fontFamily: 'Inter_400Regular' },

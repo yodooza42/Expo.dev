@@ -7,7 +7,6 @@ import {
   Alert,
   Animated,
   FlatList,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -19,6 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import { BottomSheet } from '@/components/BottomSheet';
 import { CameraOcrIcon } from '@/components/CameraOcrIcon';
 import { OcrScanModal } from '@/components/OcrScanModal';
 import { useApp } from '@/contexts/AppContext';
@@ -849,13 +849,7 @@ export default function FinanceScreen() {
       </ScrollView>
 
       {/* ── Add transaction modal ── */}
-      <Modal visible={showForm} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <Pressable style={{ flex: 1 }} onPress={closeForm} />
-          <View style={[styles.formSheet, { backgroundColor: colors.card, borderColor: colors.border, paddingBottom: insets.bottom + 20 }]}>
-            {/* Handle */}
-            <View style={[styles.handle, { backgroundColor: colors.border }]} />
-
+      <BottomSheet visible={showForm} onClose={closeForm} avoidKeyboard>
             {/* Form header: title + delete button */}
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
               <Text style={[styles.formTitle, { color: colors.foreground }]}>
@@ -1157,17 +1151,15 @@ export default function FinanceScreen() {
                 <Text style={[styles.btnTxt, { color: colors.primaryForeground }]}>{editId ? 'Modifier' : 'Enregistrer'}</Text>
               </Pressable>
             </View>
-          </View>
-        </View>
-      </Modal>
+      </BottomSheet>
 
       {/* ── Transfer modal ── */}
-      <Modal visible={showTransfer} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <Pressable style={{ flex: 1 }} onPress={() => { setShowTransfer(false); setIsRecurring(false); }} />
-          <View style={[styles.formSheet, { backgroundColor: colors.card, borderColor: colors.border, paddingBottom: insets.bottom + 20 }]}>
-            <View style={[styles.handle, { backgroundColor: colors.border }]} />
-            <Text style={[styles.transferTitle, { color: colors.foreground }]}>Virement épargne</Text>
+      <BottomSheet
+        visible={showTransfer}
+        onClose={() => { setShowTransfer(false); setIsRecurring(false); }}
+        title="Virement épargne"
+        avoidKeyboard
+      >
 
             {/* Direction */}
             <View style={styles.transferDirRow}>
@@ -1320,9 +1312,7 @@ export default function FinanceScreen() {
                 ))}
               </View>
             )}
-          </View>
-        </View>
-      </Modal>
+      </BottomSheet>
 
       <OcrScanModal visible={showOcr} onClose={() => setShowOcr(false)} />
     </View>
@@ -1465,15 +1455,6 @@ const styles = StyleSheet.create({
   emptyTxt: { fontSize: 16, fontFamily: 'Inter_500Medium' },
   emptyHint: { fontSize: 13, fontFamily: 'Inter_400Regular', textAlign: 'center', paddingHorizontal: 40 },
 
-  modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.6)' },
-  formSheet: {
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    borderWidth: 1,
-    padding: 20,
-    gap: 14,
-  },
-  handle: { width: 40, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: 4 },
   formTitle: { fontSize: 16, fontFamily: 'Inter_600SemiBold' },
   projPickerLabel: { fontSize: 11, fontFamily: 'Inter_500Medium', textTransform: 'uppercase', letterSpacing: 0.6 },
 

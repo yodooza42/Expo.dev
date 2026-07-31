@@ -21,6 +21,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { BottomSheet } from '@/components/BottomSheet';
 import { PriorityBadge } from '@/components/PriorityBadge';
 import { ProgressBar } from '@/components/ProgressBar';
 import { TaskCard } from '@/components/TaskCard';
@@ -847,14 +848,12 @@ export default function ProjectDetailScreen() {
       </ScrollView>
 
       {/* Expense modal */}
-      <Modal visible={addExpenseVisible} animationType="slide" transparent>
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.7)' }]}>
-          <Pressable style={{ flex: 1 }} onPress={() => { setAddExpenseVisible(false); resetExpenseForm(); }} />
-          <View style={[styles.sheet, { backgroundColor: colors.card, borderColor: colors.border, paddingBottom: insets.bottom + 20 }]}>
-            <Text style={[styles.sheetTitle, { color: colors.foreground }]}>
-              {editingExpense ? 'Modifier la dépense' : 'Nouvelle dépense'}
-            </Text>
-
+      <BottomSheet
+        visible={addExpenseVisible}
+        onClose={() => { setAddExpenseVisible(false); resetExpenseForm(); }}
+        title={editingExpense ? 'Modifier la dépense' : 'Nouvelle dépense'}
+        avoidKeyboard
+      >
             <Text style={[styles.inputLabel, { color: colors.mutedForeground }]}>Nom</Text>
             <TextInput
               value={expName}
@@ -928,9 +927,7 @@ export default function ProjectDetailScreen() {
                 </Text>
               </Pressable>
             </View>
-          </View>
-        </View>
-      </Modal>
+      </BottomSheet>
 
       {/* Photo swipe modal */}
       <Modal visible={photoViewIdx !== null} animationType="fade" transparent onRequestClose={() => setPhotoViewIdx(null)}>
@@ -1084,8 +1081,6 @@ const styles = StyleSheet.create({
     width: 18, height: 18, borderRadius: 9,
     alignItems: 'center', justifyContent: 'center',
   },
-  sheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, borderWidth: 1, padding: 24, gap: 12 },
-  sheetTitle: { fontSize: 18, fontFamily: 'Inter_700Bold' },
   inputLabel: { fontSize: 12, fontFamily: 'Inter_500Medium', marginBottom: 4 },
   input: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, fontSize: 14, fontFamily: 'Inter_400Regular' },
   inputMultiline: { height: 72, textAlignVertical: 'top' },

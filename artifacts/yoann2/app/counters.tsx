@@ -4,9 +4,6 @@ import { useFocusEffect } from 'expo-router';
 import React, { useCallback, useState } from 'react';
 import {
   Alert,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -15,8 +12,8 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { BottomSheet } from '@/components/BottomSheet';
 import { SubPageHeader } from '@/components/SubPageHeader';
 import { useColors } from '@/hooks/useColors';
 import {
@@ -122,17 +119,11 @@ function AddModal({
     onClose();
   }
 
-  const insets = useSafeAreaInsets();
   const dayLabels: Record<number, string> = { 0: "Aujourd'hui", '-1': 'Hier', '-2': 'Avant-hier' };
   const dayLabel = dayLabels[dayOffset] ?? `J${dayOffset}`;
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={handleClose}>
-      <KeyboardAvoidingView style={styles.overlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={handleClose} />
-        <View style={[styles.sheet, { backgroundColor: colors.card, paddingBottom: insets.bottom + 20 }]}>
-          <Text style={[styles.sheetTitle, { color: colors.foreground }]}>Ajouter manuellement</Text>
-
+    <BottomSheet visible={visible} onClose={handleClose} title="Ajouter manuellement" avoidKeyboard>
           {/* Type selector */}
           <View style={styles.typeRow}>
             <Pressable
@@ -207,9 +198,7 @@ function AddModal({
               </Text>
             </Pressable>
           </View>
-        </View>
-      </KeyboardAvoidingView>
-    </Modal>
+    </BottomSheet>
   );
 }
 
@@ -467,9 +456,6 @@ const styles = StyleSheet.create({
 
   headerAddBtn:    { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
   headerAddText:   { fontSize: 22, fontFamily: 'Inter_400Regular' },
-  overlay:         { flex: 1, backgroundColor: '#00000066', justifyContent: 'flex-end' },
-  sheet:           { borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, gap: 16 },
-  sheetTitle:      { fontSize: 17, fontFamily: 'Inter_700Bold' },
   typeRow:         { flexDirection: 'row', gap: 10 },
   typeBtn:         { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 12, borderWidth: 1, paddingVertical: 14 },
   typeBtnEmoji:    { fontSize: 20 },

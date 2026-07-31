@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { BottomSheet } from '@/components/BottomSheet';
 import { PriorityBadge } from '@/components/PriorityBadge';
 import { useApp } from '@/contexts/AppContext';
 import { useColors } from '@/hooks/useColors';
@@ -99,12 +100,8 @@ function MoveModal({
   onMove: (status: TaskStatus) => void;
   colors: ReturnType<typeof useColors>;
 }) {
-  const insets = useSafeAreaInsets();
   return (
-    <View style={[StyleSheet.absoluteFill, styles.modalOverlay]}>
-      <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
-      <View style={[styles.modalSheet, { backgroundColor: colors.card, borderColor: colors.border, paddingBottom: insets.bottom + 24 }]}>
-        <Text style={[styles.modalTitle, { color: colors.foreground }]}>Déplacer vers…</Text>
+    <BottomSheet visible onClose={onClose} title="Déplacer vers…">
         <Text style={[styles.modalTask, { color: colors.mutedForeground }]} numberOfLines={2}>
           {task.title}
         </Text>
@@ -127,8 +124,7 @@ function MoveModal({
         <Pressable onPress={onClose} style={[styles.cancelBtn, { borderColor: colors.border }]}>
           <Text style={[styles.cancelLabel, { color: colors.mutedForeground }]}>Annuler</Text>
         </Pressable>
-      </View>
-    </View>
+    </BottomSheet>
   );
 }
 
@@ -442,22 +438,6 @@ const styles = StyleSheet.create({
   emptyColText: {
     fontSize: 12,
     fontFamily: 'Inter_400Regular',
-  },
-  modalOverlay: {
-    zIndex: 99,
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    justifyContent: 'flex-end',
-  },
-  modalSheet: {
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    borderWidth: 1,
-    padding: 24,
-    gap: 16,
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontFamily: 'Inter_700Bold',
   },
   modalTask: {
     fontSize: 14,

@@ -5,7 +5,6 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   AppState,
-  Modal,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -16,6 +15,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { BottomSheet } from '@/components/BottomSheet';
 import { useColors } from '@/hooks/useColors';
 import type { WalkRoute } from '@/types/places';
 import type { Trip, TripCategory, TripLabel, Vehicle, VehicleType } from '@/types/trips';
@@ -129,7 +129,6 @@ function GroupModal({
   const [name, setName] = useState('');
   const [labelName, setLabelName] = useState('');
   const [showLabelInput, setShowLabelInput] = useState(false);
-  const insets = useSafeAreaInsets();
 
   const forwardMatches = useMemo(() => {
     if (!trip) return [];
@@ -165,11 +164,7 @@ function GroupModal({
   }
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={handleClose}>
-      <Pressable style={styles.overlay} onPress={handleClose}>
-        <Pressable style={[styles.sheet, { backgroundColor: colors.card, paddingBottom: insets.bottom + 20 }]}>
-          <Text style={[styles.sheetTitle, { color: colors.foreground }]}>Grouper ce trajet</Text>
-
+    <BottomSheet visible={visible} onClose={handleClose} title="Grouper ce trajet" avoidKeyboard>
           {/* ── Groupes personnalisés ── */}
           <Text style={[styles.sheetSub, { color: colors.mutedForeground }]}>Groupes personnalisés :</Text>
           <View style={styles.labelChipRow}>
@@ -256,9 +251,7 @@ function GroupModal({
               <Text style={[styles.sheetBtnText, { color: '#000' }]}>Créer catégorie</Text>
             </Pressable>
           </View>
-        </Pressable>
-      </Pressable>
-    </Modal>
+    </BottomSheet>
   );
 }
 
@@ -273,14 +266,10 @@ function RenameModal({
   onRename: (name: string) => void;
 }) {
   const [name, setName] = useState('');
-  const insets = useSafeAreaInsets();
   useEffect(() => { if (category) setName(category.name); }, [category]);
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable style={styles.overlay} onPress={onClose}>
-        <Pressable style={[styles.sheet, { backgroundColor: colors.card, paddingBottom: insets.bottom + 20 }]}>
-          <Text style={[styles.sheetTitle, { color: colors.foreground }]}>Renommer la catégorie</Text>
+    <BottomSheet visible={visible} onClose={onClose} title="Renommer la catégorie" avoidKeyboard>
           <TextInput
             value={name} onChangeText={setName}
             style={[styles.nameInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]}
@@ -296,9 +285,7 @@ function RenameModal({
               <Text style={[styles.sheetBtnText, { color: '#000' }]}>OK</Text>
             </Pressable>
           </View>
-        </Pressable>
-      </Pressable>
-    </Modal>
+    </BottomSheet>
   );
 }
 
@@ -313,14 +300,10 @@ function RenameLabelModal({
   onRename: (name: string) => void;
 }) {
   const [name, setName] = useState('');
-  const insets = useSafeAreaInsets();
   useEffect(() => { if (label) setName(label.name); }, [label]);
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable style={styles.overlay} onPress={onClose}>
-        <Pressable style={[styles.sheet, { backgroundColor: colors.card, paddingBottom: insets.bottom + 20 }]}>
-          <Text style={[styles.sheetTitle, { color: colors.foreground }]}>Renommer le groupe</Text>
+    <BottomSheet visible={visible} onClose={onClose} title="Renommer le groupe" avoidKeyboard>
           <TextInput
             value={name} onChangeText={setName}
             style={[styles.nameInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]}
@@ -336,9 +319,7 @@ function RenameLabelModal({
               <Text style={[styles.sheetBtnText, { color: '#000' }]}>OK</Text>
             </Pressable>
           </View>
-        </Pressable>
-      </Pressable>
-    </Modal>
+    </BottomSheet>
   );
 }
 
@@ -1281,9 +1262,6 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
 
-  overlay: { flex: 1, backgroundColor: '#00000066', justifyContent: 'flex-end' },
-  sheet: { borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, gap: 14 },
-  sheetTitle: { fontSize: 17, fontFamily: 'Inter_700Bold' },
   sheetSub: { fontSize: 13, fontFamily: 'Inter_400Regular' },
   matchBtn: { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 12, borderWidth: 1, padding: 12 },
   matchBtnText: { fontSize: 14, fontFamily: 'Inter_500Medium', flex: 1 },

@@ -5,7 +5,6 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
@@ -19,6 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import WebView, { type WebViewMessageEvent } from 'react-native-webview';
 
+import { BottomSheet } from '@/components/BottomSheet';
 import { useColors } from '@/hooks/useColors';
 import {
   DEFAULT_PLACE_CATEGORIES,
@@ -214,7 +214,6 @@ function PlaceModal({
   onSave: (p: KnownPlace) => void;
   onClose: () => void;
 }) {
-  const insets = useSafeAreaInsets();
   const [name, setName]               = useState('');
   const [catId, setCatId]             = useState('');
   const [radius, setRadius]           = useState('200');
@@ -279,17 +278,7 @@ function PlaceModal({
   }
 
   return (
-    <Modal visible={visible} animationType="slide" transparent>
-      <KeyboardAvoidingView
-        style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.65)' }]}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
-        <Pressable style={{ flex: 1 }} onPress={onClose} />
-        <View style={[styles.sheet, { backgroundColor: colors.card, borderColor: colors.border, paddingBottom: insets.bottom + 20 }]}>
-          <Text style={[styles.sheetTitle, { color: colors.foreground }]}>
-            {initial?.id ? 'Modifier le lieu' : 'Nouveau lieu'}
-          </Text>
-
+    <BottomSheet visible={visible} onClose={onClose} title={initial?.id ? 'Modifier le lieu' : 'Nouveau lieu'} avoidKeyboard>
           <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Nom</Text>
           <TextInput
             value={name}
@@ -394,9 +383,7 @@ function PlaceModal({
               <Text style={[styles.saveTxt, { color: colors.primaryForeground }]}>Enregistrer</Text>
             </Pressable>
           </View>
-        </View>
-      </KeyboardAvoidingView>
-    </Modal>
+    </BottomSheet>
   );
 }
 
@@ -413,7 +400,6 @@ function CategoryModal({
   onSave: (c: PlaceCategory) => void;
   onClose: () => void;
 }) {
-  const insets = useSafeAreaInsets();
   const [name, setName]   = useState('');
   const [icon, setIcon]   = useState('map-marker');
   const [color, setColor] = useState('#FFC107');
@@ -438,17 +424,7 @@ function CategoryModal({
   }
 
   return (
-    <Modal visible={visible} animationType="slide" transparent>
-      <KeyboardAvoidingView
-        style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.65)' }]}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
-        <Pressable style={{ flex: 1 }} onPress={onClose} />
-        <View style={[styles.sheet, { backgroundColor: colors.card, borderColor: colors.border, paddingBottom: insets.bottom + 20 }]}>
-          <Text style={[styles.sheetTitle, { color: colors.foreground }]}>
-            {initial?.id ? 'Modifier la catégorie' : 'Nouvelle catégorie'}
-          </Text>
-
+    <BottomSheet visible={visible} onClose={onClose} title={initial?.id ? 'Modifier la catégorie' : 'Nouvelle catégorie'} avoidKeyboard>
           <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Nom</Text>
           <TextInput
             value={name}
@@ -510,9 +486,7 @@ function CategoryModal({
               <Text style={[styles.saveTxt, { color: colors.primaryForeground }]}>Enregistrer</Text>
             </Pressable>
           </View>
-        </View>
-      </KeyboardAvoidingView>
-    </Modal>
+    </BottomSheet>
   );
 }
 
@@ -841,13 +815,12 @@ export default function KnownPlacesScreen() {
       />
 
       {/* ── Route add/edit modal ─────────────────────────────────────────── */}
-      <Modal visible={routeModal} transparent animationType="fade" onRequestClose={() => setRouteModal(false)}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
-          <Pressable style={{ flex: 1, backgroundColor: '#00000066' }} onPress={() => setRouteModal(false)} />
-          <View style={[styles.sheet, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Text style={[styles.sheetTitle, { color: colors.foreground }]}>
-              {editRouteId ? 'Modifier le parcours' : 'Nouveau parcours'}
-            </Text>
+      <BottomSheet
+        visible={routeModal}
+        onClose={() => setRouteModal(false)}
+        title={editRouteId ? 'Modifier le parcours' : 'Nouveau parcours'}
+        avoidKeyboard
+      >
             <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>NOM DU PARCOURS</Text>
             <TextInput
               style={[styles.input, { backgroundColor: colors.input, borderColor: colors.border, color: colors.foreground }]}
@@ -867,9 +840,7 @@ export default function KnownPlacesScreen() {
                 <Text style={[styles.saveTxt, { color: '#fff' }]}>Sauvegarder</Text>
               </Pressable>
             </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+      </BottomSheet>
     </View>
   );
 }
@@ -1014,19 +985,6 @@ const styles = StyleSheet.create({
   },
   fabTxt: { fontSize: 15, fontFamily: 'Inter_600SemiBold' },
 
-  // ── Sheet ────────────────────────────────────────────────────────────────────
-  sheet: {
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    borderWidth: StyleSheet.hairlineWidth,
-    padding: 20,
-    gap: 4,
-  },
-  sheetTitle: {
-    fontSize: 17,
-    fontFamily: 'Inter_700Bold',
-    marginBottom: 12,
-  },
   fieldLabel: {
     fontSize: 11,
     fontFamily: 'Inter_500Medium',
