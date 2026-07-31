@@ -145,6 +145,30 @@ async function widgetLog(tag: string, data: unknown): Promise<void> {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+/** Calcule les champs de trajet en cours (mode/distance/durée) pour un statut donné. */
+async function computeTripFields(
+  status: 'idle' | 'selecting' | 'active' | 'paused',
+): Promise<{ tripMode: 'voiture' | 'moto' | 'balade' | null; tripDistKm: number; tripElapsedMs: number }> {
+  let tripMode: 'voiture' | 'moto' | 'balade' | null = null;
+  let tripDistKm = 0;
+  let tripElapsedMs = 0;
+
+  if (status === 'active' || status === 'paused') {
+    const tripState = await getManualTripState();
+    if (tripState) {
+      tripMode = tripState.tripMode ?? null;
+      const distRaw = await AsyncStorage.getItem('@yoann2_trip_dist_km').catch(() => null);
+      tripDistKm = distRaw ? (parseFloat(distRaw) || 0) : getTripDistKm();
+      const now = Date.now();
+      for (const seg of tripState.segments) {
+        tripElapsedMs += (seg.end ?? now) - seg.start;
+      }
+    }
+  }
+
+  return { tripMode, tripDistKm, tripElapsedMs };
+}
+
 /** Rend le widget AllInOne avec l'état courant du trajet. */
 async function renderWidget(
   doRender: WidgetTaskHandlerProps['renderWidget'],
@@ -158,22 +182,7 @@ async function renderWidget(
       tripStatus !== undefined ? Promise.resolve(tripStatus) : getManualTripStatus(),
     ]);
 
-    let tripMode: 'voiture' | 'moto' | 'balade' | null = null;
-    let tripDistKm = 0;
-    let tripElapsedMs = 0;
-
-    if (status === 'active' || status === 'paused') {
-      const tripState = await getManualTripState();
-      if (tripState) {
-        tripMode = tripState.tripMode ?? null;
-        const distRaw = await AsyncStorage.getItem('@yoann2_trip_dist_km').catch(() => null);
-        tripDistKm = distRaw ? (parseFloat(distRaw) || 0) : getTripDistKm();
-        const now = Date.now();
-        for (const seg of tripState.segments) {
-          tripElapsedMs += (seg.end ?? now) - seg.start;
-        }
-      }
-    }
+    const { tripMode, tripDistKm, tripElapsedMs } = await computeTripFields(status);
 
     await widgetLog('renderWidget:data', `tasks=${data.tasks.length} shortcuts=${shortcuts.length} status=${status}`);
     doRender(
@@ -575,11 +584,20 @@ async function handleRefresh(
     getNavShortcuts(),
     getManualTripStatus(),
   ]);
+  const { tripMode, tripDistKm, tripElapsedMs } = await computeTripFields(tripStatus);
 
   const shortcutsMapped = shortcuts.map(s => ({ name: s.name, lat: s.lat, lng: s.lng }));
 
   doRender(
-    <AllInOneWidget {...data} shortcuts={shortcutsMapped} tripStatus={tripStatus} spinAngle={0} />,
+    <AllInOneWidget
+      {...data}
+      shortcuts={shortcutsMapped}
+      tripStatus={tripStatus}
+      tripMode={tripMode}
+      tripDistKm={tripDistKm}
+      tripElapsedMs={tripElapsedMs}
+      spinAngle={0}
+    />,
   );
 
   for (let i = 1; i <= SPIN_FRAMES; i++) {
@@ -588,7 +606,15 @@ async function handleRefresh(
     await requestWidgetUpdate({
       widgetName: WIDGET_NAME,
       renderWidget: () => (
-        <AllInOneWidget {...data} shortcuts={shortcutsMapped} tripStatus={tripStatus} spinAngle={angle} />
+        <AllInOneWidget
+          {...data}
+          shortcuts={shortcutsMapped}
+          tripStatus={tripStatus}
+          tripMode={tripMode}
+          tripDistKm={tripDistKm}
+          tripElapsedMs={tripElapsedMs}
+          spinAngle={angle}
+        />
       ),
       widgetNotFound: () => {},
     });
@@ -599,11 +625,20 @@ async function handleRefresh(
     getNavShortcuts(),
     getManualTripStatus(),
   ]);
+  const freshTrip = await computeTripFields(freshStatus);
   const freshMapped = freshShortcuts.map(s => ({ name: s.name, lat: s.lat, lng: s.lng }));
   await requestWidgetUpdate({
     widgetName: WIDGET_NAME,
     renderWidget: () => (
-      <AllInOneWidget {...freshData} shortcuts={freshMapped} tripStatus={freshStatus} spinAngle={0} />
+      <AllInOneWidget
+        {...freshData}
+        shortcuts={freshMapped}
+        tripStatus={freshStatus}
+        tripMode={freshTrip.tripMode}
+        tripDistKm={freshTrip.tripDistKm}
+        tripElapsedMs={freshTrip.tripElapsedMs}
+        spinAngle={0}
+      />
     ),
     widgetNotFound: () => {},
   });
