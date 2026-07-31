@@ -54,8 +54,8 @@ function periodLabel(from: Date, to: Date): string {
 }
 
 // ── Durée courante sélectionnée ────────────────────────────────────────────────
-type StoryDur = 10 | 20 | 30 | 60;
-const DURATIONS: StoryDur[] = [10, 20, 30, 60];
+type StoryDur = 10 | 20 | 30 | 60 | 120;
+const DURATIONS: StoryDur[] = [10, 20, 30, 60, 120];
 
 export default function StoryPeriodScreen() {
   const colors  = useColors();
@@ -350,7 +350,7 @@ export default function StoryPeriodScreen() {
               ]}
             >
               <Text style={[styles.durChipText, { color: duration === s ? '#2196F3' : colors.foreground }]}>
-                {s === 60 ? '1 min' : `${s} s`}
+                {s === 120 ? '2 min' : s === 60 ? '1 min' : `${s} s`}
               </Text>
               {duration === s && (
                 <MaterialCommunityIcons name="check" size={13} color="#2196F3" />

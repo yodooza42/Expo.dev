@@ -929,6 +929,56 @@ export default function TripListScreen() {
     [walkRoutes, trips, walkVehicleIds],
   );
 
+  // ── Réorganisation automatique par usage du mois en cours ──────────────────
+  // Les catégories/groupes/balades sans trajet ce mois-ci sont masqués (mais
+  // restent sélectionnables via GroupModal, qui utilise la liste complète) et
+  // réapparaissent dès qu'ils comptent 1 trajet dans le mois.
+  const monthStartTs = useMemo(() => {
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth(), 1).getTime();
+  }, []);
+
+  const catMonthCount = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const c of activeCats) m.set(c.id, trips.filter(t => t.categoryId === c.id && t.endTime >= monthStartTs).length);
+    return m;
+  }, [activeCats, trips, monthStartTs]);
+
+  const labelMonthCount = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const l of activeLabels) m.set(l.id, trips.filter(t => t.labelId === l.id && t.endTime >= monthStartTs).length);
+    return m;
+  }, [activeLabels, trips, monthStartTs]);
+
+  const walkRouteMonthCount = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const wr of activeWalkRoutes) {
+      m.set(wr.id, trips.filter(t => t.walkRouteId === wr.id && walkVehicleIds.has(t.vehicle ?? '') && t.endTime >= monthStartTs).length);
+    }
+    return m;
+  }, [activeWalkRoutes, trips, walkVehicleIds, monthStartTs]);
+
+  const visibleCats = useMemo(() =>
+    activeCats
+      .filter(c => (catMonthCount.get(c.id) ?? 0) > 0)
+      .sort((a, b) => (catMonthCount.get(b.id) ?? 0) - (catMonthCount.get(a.id) ?? 0)),
+    [activeCats, catMonthCount],
+  );
+
+  const visibleLabels = useMemo(() =>
+    activeLabels
+      .filter(l => (labelMonthCount.get(l.id) ?? 0) > 0)
+      .sort((a, b) => (labelMonthCount.get(b.id) ?? 0) - (labelMonthCount.get(a.id) ?? 0)),
+    [activeLabels, labelMonthCount],
+  );
+
+  const visibleWalkRoutes = useMemo(() =>
+    activeWalkRoutes
+      .filter(wr => (walkRouteMonthCount.get(wr.id) ?? 0) > 0)
+      .sort((a, b) => (walkRouteMonthCount.get(b.id) ?? 0) - (walkRouteMonthCount.get(a.id) ?? 0)),
+    [activeWalkRoutes, walkRouteMonthCount],
+  );
+
   const uncategorized = useMemo(() =>
     trips.filter(t =>
       (!t.labelId || !activeLabelIds.has(t.labelId)) &&
@@ -1012,14 +1062,39 @@ export default function TripListScreen() {
           })}
         </View>
 
-        {(activeLabels.length > 0 || activeCats.length > 0) && (
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
+            {uncategorized.length > 0 ? `Trajets récents (${uncategorized.length})` : 'Trajets récents'}
+          </Text>
+          {uncategorized.length === 0 && trips.length === 0 ? (
+            <View style={[styles.emptyCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <MaterialCommunityIcons name="road-variant" size={36} color={colors.mutedForeground} />
+              <Text style={[styles.emptyTitle, { color: colors.foreground }]}>Aucun trajet enregistré</Text>
+              <Text style={[styles.emptySub, { color: colors.mutedForeground }]}>
+                Les trajets sont détectés automatiquement à partir de 15 km/h.
+              </Text>
+            </View>
+          ) : uncategorized.length === 0 ? (
+            <View style={[styles.allGroupedCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <MaterialCommunityIcons name="check-circle-outline" size={24} color={colors.primary} />
+              <Text style={[styles.allGroupedText, { color: colors.mutedForeground }]}>Tous les trajets sont groupés en catégories.</Text>
+            </View>
+          ) : (
+            uncategorized.map(trip => (
+              <TripRow key={trip.id} trip={trip} colors={colors} onUpdate={load} vehicles={settings}
+                walkRouteMap={walkRouteMap} onGroup={setGroupingTrip} onDelete={() => handleDeleteTrip(trip.id)} />
+            ))
+          )}
+        </View>
+
+        {(visibleLabels.length > 0 || visibleCats.length > 0) && (
           <View style={styles.section}>
             <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Trajets</Text>
-            {activeCats.map(cat => (
+            {visibleCats.map(cat => (
               <CategoryCard key={cat.id} category={cat} allTrips={trips} colors={colors} vehicles={settings}
                 onUpdate={load} onDelete={() => handleDeleteCategory(cat.id)} onRename={() => setRenameTarget(cat)} onUngroupTrip={handleUngroupFromCategory} />
             ))}
-            {activeLabels.map(label => (
+            {visibleLabels.map(label => (
               <LabelCard
                 key={label.id}
                 label={label}
@@ -1035,10 +1110,10 @@ export default function TripListScreen() {
           </View>
         )}
 
-        {activeWalkRoutes.length > 0 && (
+        {visibleWalkRoutes.length > 0 && (
           <View style={styles.section}>
             <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Balades</Text>
-            {activeWalkRoutes.map(wr => (
+            {visibleWalkRoutes.map(wr => (
               <WalkRouteCard key={wr.id} route={wr} allTrips={trips} walkVehicleIds={walkVehicleIds}
                 colors={colors} onUpdate={load} vehicles={settings} onUngroupTrip={handleUngroupFromWalkRoute} />
             ))}

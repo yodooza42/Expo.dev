@@ -52,6 +52,7 @@ window.generatePeriodStory=function(opts){
   };
 
   var trips=opts.trips;
+  var CAM_SLOWDOWN=50; /* facteur de ralenti du curseur pendant le vol de caméra */
   var VCL={car:'#2196F3',moto:'#FF9800',walk:'#4CAF50'};
   var VEMO={car:'\\uD83D\\uDE97',moto:'\\uD83C\\uDFCD',walk:'\\uD83D\\uDEB6'};
 
@@ -158,7 +159,21 @@ window.generatePeriodStory=function(opts){
     for(var ti=0;ti<trips.length-1;ti++){if(aEl<tStart[ti+1]){ci=ti;break;}}
     var tEl=aEl-tStart[ci];
     var tDur=tDurOf(ci);
-    var tProg=isEnd?1:Math.min(1,tEl/(tDur||1));
+    var transMs=Math.min(750,tDur*0.38);
+
+    /* Curseur ralenti pendant le vol de caméra (CAM_SLOWDOWN×) : le trajet
+       n'avance quasi pas tant que la caméra converge, puis rattrape le
+       temps restant à vitesse normale sur le reste du segment. */
+    var pEndSlow=(transMs/CAM_SLOWDOWN)/(tDur||1);
+    var tProg;
+    if(isEnd){
+      tProg=1;
+    }else if(tEl<=transMs){
+      tProg=Math.min(pEndSlow,(tEl/CAM_SLOWDOWN)/(tDur||1));
+    }else{
+      var remainMs=(tDur-transMs)||1;
+      tProg=Math.min(1,pEndSlow+((tEl-transMs)/remainMs)*(1-pEndSlow));
+    }
 
     /* Caméra : vol eased entre cams pré-calculées (converge TOUJOURS) */
     var cam;
@@ -166,7 +181,6 @@ window.generatePeriodStory=function(opts){
       var eT=Math.min(1,(el-animMs)/1400);
       cam=lerpCam(cams[trips.length-1]||fullCam,fullCam,easeIO(eT));
     }else{
-      var transMs=Math.min(750,tDur*0.38);
       var prevCam=ci>0?cams[ci-1]:fullCam;
       if(tEl<transMs)cam=lerpCam(prevCam,cams[ci],easeIO(tEl/transMs));
       else cam=cams[ci];
