@@ -98,6 +98,12 @@ export function TaskCard({ task, projectName, onLongPress }: Props) {
           </View>
           <View style={styles.footer}>
             <PriorityBadge priority={task.priority} small />
+            {(task.subTasks?.length ?? 0) > 0 && (
+              <Text style={[styles.date, { color: colors.mutedForeground }]}>
+                <MaterialCommunityIcons name="format-list-checks" size={11} color={colors.mutedForeground} />
+                {' '}{task.subTasks!.filter(s => s.done).length}/{task.subTasks!.length}
+              </Text>
+            )}
             <Text
               style={[
                 styles.date,

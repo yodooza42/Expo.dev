@@ -22,6 +22,12 @@ export interface Project {
 
 export type RecurrenceType = 'daily' | 'weekly' | 'monthly' | null;
 
+export interface SubTask {
+  id: string;
+  title: string;
+  done: boolean;
+}
+
 export interface Task {
   id: string;
   projectId: string;
@@ -39,6 +45,7 @@ export interface Task {
   eisenhower: EisenhowerQuadrant;
   recurrence?: RecurrenceType;
   recurrenceFromId?: string; // id of the original task this was spawned from
+  subTasks?: SubTask[];
   // Rappel géolocalisé
   reminderLat?: number;
   reminderLng?: number;

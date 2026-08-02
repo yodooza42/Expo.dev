@@ -68,6 +68,7 @@ export default function TaskDetailScreen() {
       },
     ]);
   }
+  const [newSubTaskTitle, setNewSubTaskTitle] = useState('');
   const [addExpVisible, setAddExpVisible] = useState(false);
   const [settingGeo, setSettingGeo] = useState(false);
   const [expName, setExpName] = useState('');
@@ -159,6 +160,34 @@ export default function TaskDetailScreen() {
   function toggleDone() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     updateTask(task.id, { status: task.status === 'done' ? 'todo' : 'done' });
+  }
+
+  function handleAddSubTask() {
+    const title = newSubTaskTitle.trim();
+    if (!title) return;
+    const subTask = { id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, title, done: false };
+    updateTask(task.id, { subTasks: [...(task.subTasks ?? []), subTask] });
+    setNewSubTaskTitle('');
+    Haptics.selectionAsync();
+  }
+
+  function toggleSubTask(id: string) {
+    Haptics.selectionAsync();
+    const next = (task.subTasks ?? []).map(st => (st.id === id ? { ...st, done: !st.done } : st));
+    updateTask(task.id, { subTasks: next });
+  }
+
+  function handleDeleteSubTask(id: string) {
+    Alert.alert('Supprimer', 'Supprimer cette sous-tâche ?', [
+      { text: 'Annuler', style: 'cancel' },
+      {
+        text: 'Supprimer',
+        style: 'destructive',
+        onPress: () => {
+          updateTask(task.id, { subTasks: (task.subTasks ?? []).filter(st => st.id !== id) });
+        },
+      },
+    ]);
   }
 
   function parseFrDate(s: string): string {
@@ -376,6 +405,58 @@ export default function TaskDetailScreen() {
               </View>
             </View>
           )}
+
+          {/* ── Sous-tâches ── */}
+          <View>
+            <View style={styles.sectionHeader}>
+              <Text style={[styles.sectionTitle, { color: colors.foreground, marginBottom: 0 }]}>
+                Sous-tâches {(task.subTasks?.length ?? 0) > 0 ? `(${task.subTasks!.filter(s => s.done).length}/${task.subTasks!.length})` : ''}
+              </Text>
+            </View>
+
+            {(task.subTasks ?? []).map(st => (
+              <Pressable
+                key={st.id}
+                onPress={() => toggleSubTask(st.id)}
+                onLongPress={() => handleDeleteSubTask(st.id)}
+                style={[styles.subTaskRow, { backgroundColor: colors.card, borderColor: colors.border }]}
+              >
+                <MaterialCommunityIcons
+                  name={st.done ? 'checkbox-marked-circle' : 'checkbox-blank-circle-outline'}
+                  size={22}
+                  color={st.done ? colors.primary : colors.mutedForeground}
+                />
+                <Text
+                  style={[
+                    styles.subTaskLabel,
+                    { color: st.done ? colors.mutedForeground : colors.foreground },
+                    st.done && { textDecorationLine: 'line-through' },
+                  ]}
+                >
+                  {st.title}
+                </Text>
+              </Pressable>
+            ))}
+
+            <View style={styles.subTaskAddRow}>
+              <TextInput
+                value={newSubTaskTitle}
+                onChangeText={setNewSubTaskTitle}
+                placeholder="Ajouter une sous-tâche…"
+                placeholderTextColor={colors.mutedForeground}
+                style={[styles.input, { flex: 1, backgroundColor: colors.background, color: colors.foreground, borderColor: colors.border }]}
+                onSubmitEditing={handleAddSubTask}
+                returnKeyType="done"
+              />
+              <Pressable
+                onPress={handleAddSubTask}
+                disabled={!newSubTaskTitle.trim()}
+                style={[styles.subTaskAddBtn, { backgroundColor: colors.primary, opacity: newSubTaskTitle.trim() ? 1 : 0.4 }]}
+              >
+                <MaterialCommunityIcons name="plus" size={20} color={colors.primaryForeground} />
+              </Pressable>
+            </View>
+          </View>
 
           {task.photos.length > 0 && (
             <View>
@@ -636,6 +717,10 @@ const styles = StyleSheet.create({
   expAmount: { fontSize: 16, fontFamily: 'Inter_700Bold' },
   addExpBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, padding: 12, borderRadius: 12, borderWidth: 1, justifyContent: 'center', marginBottom: 8 },
   addExpLabel: { fontSize: 14, fontFamily: 'Inter_600SemiBold' },
+  subTaskRow: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 12, borderWidth: 1, marginBottom: 8 },
+  subTaskLabel: { flex: 1, fontSize: 14, fontFamily: 'Inter_500Medium' },
+  subTaskAddRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 2 },
+  subTaskAddBtn: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   viewProjectLink: { fontSize: 12, fontFamily: 'Inter_400Regular', textAlign: 'center', marginTop: 4 },
   sheetSub: { fontSize: 13, fontFamily: 'Inter_400Regular', marginTop: -4, marginBottom: 4 },
   inputLabel: { fontSize: 12, fontFamily: 'Inter_500Medium' },
