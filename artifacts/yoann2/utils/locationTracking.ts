@@ -205,7 +205,7 @@ const MAX_SPEED_MS = 55.56; // 200 km/h
 
 // Mode balade (piéton) — précision et seuils réduits
 const WALKING_MAX_ACCURACY_METERS = 20;
-const WALKING_MIN_DISTANCE_METERS = 3;
+const WALKING_MIN_DISTANCE_METERS = 1.5;
 const WALKING_MAX_SPEED_MS = 6; // ~22 km/h max pour un piéton / jogger
 
 export type GpsInterval = {

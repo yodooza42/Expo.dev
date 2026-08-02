@@ -233,6 +233,12 @@ export default function SettingsScreen() {
     }
   }
 
+  /** Filtre les URIs dont le nom de fichier existe déjà parmi les photos déjà attachées. */
+  function dedupeByFilename(existingUris: string[], incomingUris: string[]): string[] {
+    const existingNames = new Set(existingUris.map(u => u.split('/').pop()));
+    return incomingUris.filter(u => !existingNames.has(u.split('/').pop()));
+  }
+
   async function handleRecoverAllPhotos() {
     if (!folderConfigured) {
       Alert.alert('Dossier non configur\u00e9', 'Configurez d\u2019abord le dossier Yoann2.0 ci-dessus.');
@@ -251,8 +257,11 @@ export default function SettingsScreen() {
 
       // Project photos (root folder)
       if (r.projectUris.length > 0) {
-        updateProject(proj.id, { photos: [...proj.photos, ...r.projectUris] });
-        totalProject += r.projectUris.length;
+        const newUris = dedupeByFilename(proj.photos, r.projectUris);
+        if (newUris.length > 0) {
+          updateProject(proj.id, { photos: [...proj.photos, ...newUris] });
+        }
+        totalProject += newUris.length;
       }
 
       // Task photos — match by embedded ID (_tache_<id>), fallback to sanitized name
@@ -268,12 +277,19 @@ export default function SettingsScreen() {
                 === folder.folderName.toLowerCase(),
             );
           if (matched) {
-            updateTask(matched.id, { photos: [...matched.photos, ...folder.uris] });
+            const newUris = dedupeByFilename(matched.photos, folder.uris);
+            if (newUris.length > 0) {
+              updateTask(matched.id, { photos: [...matched.photos, ...newUris] });
+            }
+            totalTask += newUris.length;
           } else {
             // Aucune tâche trouvée → photos du projet en fallback
-            updateProject(proj.id, { photos: [...proj.photos, ...folder.uris] });
+            const newUris = dedupeByFilename(proj.photos, folder.uris);
+            if (newUris.length > 0) {
+              updateProject(proj.id, { photos: [...proj.photos, ...newUris] });
+            }
+            totalTask += newUris.length;
           }
-          totalTask += folder.uris.length;
         }
       }
     }
