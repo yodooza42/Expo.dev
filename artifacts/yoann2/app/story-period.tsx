@@ -12,6 +12,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -24,7 +25,32 @@ import { getTrips, getVehicleSettings } from '@/utils/tripStorage';
 import { buildStoryPeriodHtml } from '@/utils/storyGeneratorPeriod';
 
 const MONTHS_FR = ['jan','fév','mar','avr','mai','juin','juil','août','sep','oct','nov','déc'];
+const MONTHS_FULL_FR = [
+  'Janvier','Février','Mars','Avril','Mai','Juin',
+  'Juillet','Août','Septembre','Octobre','Novembre','Décembre',
+];
 const DAYS_FR   = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
+
+function pad2(n: number): string {
+  return String(n).padStart(2, '0');
+}
+
+/** Formatte une plage de dates façon "du 13 au 15 Août 2026". */
+function dateRangeLabelFr(from: Date, to: Date): string {
+  const sameDay   = from.toDateString() === to.toDateString();
+  const sameMonth = from.getMonth() === to.getMonth() && from.getFullYear() === to.getFullYear();
+  const sameYear  = from.getFullYear() === to.getFullYear();
+  if (sameDay) {
+    return `le ${from.getDate()} ${MONTHS_FULL_FR[from.getMonth()]} ${from.getFullYear()}`;
+  }
+  if (sameMonth) {
+    return `du ${from.getDate()} au ${to.getDate()} ${MONTHS_FULL_FR[from.getMonth()]} ${from.getFullYear()}`;
+  }
+  if (sameYear) {
+    return `du ${from.getDate()} ${MONTHS_FULL_FR[from.getMonth()]} au ${to.getDate()} ${MONTHS_FULL_FR[to.getMonth()]} ${to.getFullYear()}`;
+  }
+  return `du ${from.getDate()} ${MONTHS_FULL_FR[from.getMonth()]} ${from.getFullYear()} au ${to.getDate()} ${MONTHS_FULL_FR[to.getMonth()]} ${to.getFullYear()}`;
+}
 
 function fmtDur(ms: number): string {
   const m = Math.round(ms / 60_000);
@@ -73,6 +99,7 @@ export default function StoryPeriodScreen() {
   const [allTrips,  setAllTrips]  = useState<Trip[]>([]);
   const [vehicles,  setVehicles]  = useState<Vehicle[]>([]);
   const [duration,  setDuration]  = useState<StoryDur>(20);
+  const [storyName, setStoryName] = useState('');
 
   const [isGenerating, setIsGenerating] = useState(false);
   const [progress,     setProgress]     = useState(0);
@@ -180,12 +207,14 @@ export default function StoryPeriodScreen() {
         distKm:      t.distanceKm,
         durationMs:  t.endTime - t.startTime,
         vehicleType: getVType(t),
-        dateLabel:   `${DAYS_FR[d.getDay()]} ${d.getDate()} ${MONTHS_FR[d.getMonth()]}`,
+        dateLabel:   `${DAYS_FR[d.getDay()]} ${d.getDate()} ${MONTHS_FR[d.getMonth()]} · ${pad2(d.getHours())}:${pad2(d.getMinutes())}`,
       };
     });
 
     const driveDurTxt = stats.driveMs > 0 ? `🚗 ${fmtDur(stats.driveMs)}` : '';
     const walkDurTxt  = stats.walkMs  > 0 ? `${driveDurTxt ? '  ·  ' : ''}🚶 ${fmtDur(stats.walkMs)}` : '';
+
+    const trimmedName = storyName.trim();
 
     const opts = {
       trips:         tripsOpts,
@@ -194,6 +223,8 @@ export default function StoryPeriodScreen() {
       driveDurLabel: driveDurTxt,
       walkDurLabel:  walkDurTxt,
       videoDurationSec: duration,
+      customName:    trimmedName || undefined,
+      dateRangeLabel: trimmedName ? dateRangeLabelFr(dateFrom, dateTo) : undefined,
     };
 
     setIsGenerating(true);
@@ -334,6 +365,24 @@ export default function StoryPeriodScreen() {
           )}
         </View>
 
+        {/* ── Nom personnalisé de la story ─────────────────────────────── */}
+        <Text style={[styles.sectionLabel, { color: colors.mutedForeground, marginTop: 20 }]}>NOM (OPTIONNEL)</Text>
+        <View style={[styles.nameBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <MaterialCommunityIcons name="pencil-outline" size={16} color={colors.mutedForeground} />
+          <TextInput
+            value={storyName}
+            onChangeText={setStoryName}
+            placeholder="Nom : Road trip La Rochelle"
+            placeholderTextColor={colors.mutedForeground}
+            style={[styles.nameInput, { color: colors.foreground }]}
+          />
+        </View>
+        {storyName.trim().length > 0 && (
+          <Text style={[styles.namePreview, { color: colors.mutedForeground }]}>
+            {`${storyName.trim()}\n${dateRangeLabelFr(dateFrom, dateTo)}`}
+          </Text>
+        )}
+
         {/* ── Durée de la vidéo ────────────────────────────────────────── */}
         <Text style={[styles.sectionLabel, { color: colors.mutedForeground, marginTop: 20 }]}>DURÉE DE LA VIDÉO</Text>
         <View style={styles.durationRow}>
@@ -430,6 +479,10 @@ const styles = StyleSheet.create({
 
   scroll:          { padding: 16, gap: 10 },
   sectionLabel:    { fontSize: 11, fontFamily: 'Inter_600SemiBold', textTransform: 'uppercase', letterSpacing: 0.6 },
+
+  nameBox:         { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: 14, paddingVertical: 4 },
+  nameInput:       { flex: 1, fontSize: 14, fontFamily: 'Inter_500Medium', paddingVertical: 10 },
+  namePreview:     { fontSize: 12, fontFamily: 'Inter_400Regular', marginTop: 6, lineHeight: 17 },
 
   dateRow:         { flexDirection: 'row', alignItems: 'center', gap: 10 },
   dateBtn:         { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, padding: 14 },

@@ -21,6 +21,8 @@
  *   driveDurLabel: string,        // e.g. "🚗 12h30"
  *   walkDurLabel: string,         // e.g. "  ·  🚶 3h15"
  *   videoDurationSec: number,
+ *   customName?: string,         // e.g. "Road trip La Rochelle" — remplace periodLabel si fourni
+ *   dateRangeLabel?: string,     // e.g. "du 13 au 15 Août 2026" — affiché sous customName
  * }
  */
 export const STORY_PERIOD_JS = `
@@ -69,7 +71,8 @@ window.generatePeriodStory=function(opts){
   var latSp=maxLat-minLat,lngSp=maxLng-minLng;
 
   /* ── Projection map (zone centrale) ──────────────────────────────────── */
-  var mT=185,mB=800,mL=40,mR=680;
+  var headerH=opts.customName?214:180;
+  var mT=headerH+5,mB=800,mL=40,mR=680;
   var mW=mR-mL,mH=mB-mT;
   var midLR=((minLat+maxLat)/2)*Math.PI/180;
   var rAsp=(lngSp/latSp)*Math.cos(midLR),mapAsp=mW/mH;
@@ -195,19 +198,30 @@ window.generatePeriodStory=function(opts){
     for(var gy=0;gy<cH;gy+=60){ctx.beginPath();ctx.moveTo(0,gy);ctx.lineTo(cW,gy);ctx.stroke();}
 
     /* Header */
-    ctx.fillStyle='#12141Acc';ctx.fillRect(0,0,cW,180);
-    ctx.fillStyle='#FFFFFF';ctx.font='bold 42px Arial,sans-serif';ctx.textAlign='center';
-    ctx.fillText('\\uD83D\\uDDFA\\uFE0F  '+opts.periodLabel,cW/2,65);
-    ctx.fillStyle='#8A8F99';ctx.font='26px Arial,sans-serif';
+    ctx.fillStyle='#12141Acc';ctx.fillRect(0,0,cW,headerH);
     var dispKm=(isEnd?totKm:(accKm[ci]+(trips[ci].distKm||0)*tProg)).toFixed(1);
-    ctx.fillText(opts.tripCountLabel+'  \\xB7  '+dispKm+' km',cW/2,105);
-    ctx.fillStyle='#565B66';ctx.font='22px Arial,sans-serif';
-    ctx.fillText(isEnd?'R\\xE9capitulatif':(VEMO[trips[ci].vehicleType]||'')+'  '+trips[ci].dateLabel,cW/2,142);
-    ctx.strokeStyle='#FFFFFF12';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(0,180);ctx.lineTo(cW,180);ctx.stroke();
+    if(opts.customName){
+      ctx.fillStyle='#FFFFFF';ctx.font='bold 40px Arial,sans-serif';ctx.textAlign='center';
+      ctx.fillText(opts.customName,cW/2,58);
+      ctx.fillStyle='#8A8F99';ctx.font='26px Arial,sans-serif';
+      ctx.fillText(opts.dateRangeLabel||'',cW/2,96);
+      ctx.fillStyle='#8A8F99';ctx.font='24px Arial,sans-serif';
+      ctx.fillText(opts.tripCountLabel+'  \\xB7  '+dispKm+' km',cW/2,132);
+      ctx.fillStyle='#565B66';ctx.font='20px Arial,sans-serif';
+      ctx.fillText(isEnd?'R\\xE9capitulatif':(VEMO[trips[ci].vehicleType]||'')+'  '+trips[ci].dateLabel,cW/2,170);
+    } else {
+      ctx.fillStyle='#FFFFFF';ctx.font='bold 42px Arial,sans-serif';ctx.textAlign='center';
+      ctx.fillText('\\uD83D\\uDDFA\\uFE0F  '+opts.periodLabel,cW/2,65);
+      ctx.fillStyle='#8A8F99';ctx.font='26px Arial,sans-serif';
+      ctx.fillText(opts.tripCountLabel+'  \\xB7  '+dispKm+' km',cW/2,105);
+      ctx.fillStyle='#565B66';ctx.font='22px Arial,sans-serif';
+      ctx.fillText(isEnd?'R\\xE9capitulatif':(VEMO[trips[ci].vehicleType]||'')+'  '+trips[ci].dateLabel,cW/2,142);
+    }
+    ctx.strokeStyle='#FFFFFF12';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(0,headerH);ctx.lineTo(cW,headerH);ctx.stroke();
 
     /* Zone carte avec clip + transform caméra */
     ctx.save();
-    ctx.beginPath();ctx.rect(38,183,684,622);ctx.clip();
+    ctx.beginPath();ctx.rect(38,mT-2,684,mB-mT+7);ctx.clip();
     ctx.translate(mCX,mCY);ctx.scale(cam.zoom,cam.zoom);ctx.translate(-cam.cx,-cam.cy);
 
     /* Ghost (tous les tracés, très transparent) */
