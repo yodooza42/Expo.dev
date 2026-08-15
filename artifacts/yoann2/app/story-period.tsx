@@ -206,8 +206,9 @@ export default function StoryPeriodScreen() {
         route:       t.route!,
         distKm:      t.distanceKm,
         durationMs:  t.endTime - t.startTime,
+        startTimeMs: t.startTime,
         vehicleType: getVType(t),
-        dateLabel:   `${DAYS_FR[d.getDay()]} ${d.getDate()} ${MONTHS_FR[d.getMonth()]} · ${pad2(d.getHours())}:${pad2(d.getMinutes())}`,
+        dateLabel:   `${DAYS_FR[d.getDay()]} ${d.getDate()} ${MONTHS_FR[d.getMonth()]}`,
       };
     });
 

@@ -200,22 +200,31 @@ window.generatePeriodStory=function(opts){
     /* Header */
     ctx.fillStyle='#12141Acc';ctx.fillRect(0,0,cW,headerH);
     var dispKm=(isEnd?totKm:(accKm[ci]+(trips[ci].distKm||0)*tProg)).toFixed(1);
+    /* Heure temps réel : interpole entre départ et arrivée du trajet actif selon tProg */
+    var liveTimeStr='';
+    if(!isEnd&&trips[ci].startTimeMs){
+      var curMs=trips[ci].startTimeMs+(trips[ci].durationMs||0)*tProg;
+      var cd=new Date(curMs);
+      var hh=cd.getHours(),mm=cd.getMinutes();
+      liveTimeStr=(hh<10?'0':'')+hh+':'+(mm<10?'0':'')+mm;
+    }
+    var captionTxt=isEnd?'R\\xE9capitulatif':(VEMO[trips[ci].vehicleType]||'')+'  '+trips[ci].dateLabel+(liveTimeStr?'  \\xB7  '+liveTimeStr:'');
     if(opts.customName){
       ctx.fillStyle='#FFFFFF';ctx.font='bold 40px Arial,sans-serif';ctx.textAlign='center';
       ctx.fillText(opts.customName,cW/2,58);
       ctx.fillStyle='#8A8F99';ctx.font='26px Arial,sans-serif';
       ctx.fillText(opts.dateRangeLabel||'',cW/2,96);
       ctx.fillStyle='#8A8F99';ctx.font='24px Arial,sans-serif';
-      ctx.fillText(opts.tripCountLabel+'  \\xB7  '+dispKm+' km',cW/2,132);
+      ctx.fillText(opts.tripCountLabel+'  \\xB7  '+totKm.toFixed(1)+' km',cW/2,132);
       ctx.fillStyle='#565B66';ctx.font='20px Arial,sans-serif';
-      ctx.fillText(isEnd?'R\\xE9capitulatif':(VEMO[trips[ci].vehicleType]||'')+'  '+trips[ci].dateLabel,cW/2,170);
+      ctx.fillText(captionTxt,cW/2,170);
     } else {
       ctx.fillStyle='#FFFFFF';ctx.font='bold 42px Arial,sans-serif';ctx.textAlign='center';
       ctx.fillText('\\uD83D\\uDDFA\\uFE0F  '+opts.periodLabel,cW/2,65);
       ctx.fillStyle='#8A8F99';ctx.font='26px Arial,sans-serif';
       ctx.fillText(opts.tripCountLabel+'  \\xB7  '+dispKm+' km',cW/2,105);
       ctx.fillStyle='#565B66';ctx.font='22px Arial,sans-serif';
-      ctx.fillText(isEnd?'R\\xE9capitulatif':(VEMO[trips[ci].vehicleType]||'')+'  '+trips[ci].dateLabel,cW/2,142);
+      ctx.fillText(captionTxt,cW/2,142);
     }
     ctx.strokeStyle='#FFFFFF12';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(0,headerH);ctx.lineTo(cW,headerH);ctx.stroke();
 
