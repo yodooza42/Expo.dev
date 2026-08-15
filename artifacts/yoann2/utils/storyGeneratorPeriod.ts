@@ -189,6 +189,14 @@ window.generatePeriodStory=function(opts){
       else cam=cams[ci];
     }
 
+    /* Position exacte sur le tracé actif (réutilisée pour l'heure temps réel + le dessin) */
+    var activeRoute=trips[ci].route;
+    var exI=0,flI=0,frI=0;
+    if(!isEnd&&activeRoute&&activeRoute.length>1){
+      exI=idxAtFrac(ci,tProg);flI=Math.floor(exI);frI=exI-flI;
+      if(flI>=activeRoute.length-1){flI=activeRoute.length-2;frI=1;}
+    }
+
     /* Background : dégradé radial sombre + grille subtile */
     var bg=ctx.createRadialGradient(cW/2,cH*0.38,80,cW/2,cH*0.38,900);
     bg.addColorStop(0,'#151820');bg.addColorStop(1,'#0A0B0E');
@@ -200,13 +208,23 @@ window.generatePeriodStory=function(opts){
     /* Header */
     ctx.fillStyle='#12141Acc';ctx.fillRect(0,0,cW,headerH);
     var dispKm=(isEnd?totKm:(accKm[ci]+(trips[ci].distKm||0)*tProg)).toFixed(1);
-    /* Heure temps réel : interpole entre départ et arrivée du trajet actif selon tProg */
+    /* Heure temps réel : timestamp GPS exact du point où se trouve le curseur si
+       disponible (trace GPS brute), sinon interpolation uniforme sur la durée
+       du trajet (tracé OSRM synthétique, sans horodatage par point). */
     var liveTimeStr='';
-    if(!isEnd&&trips[ci].startTimeMs){
-      var curMs=trips[ci].startTimeMs+(trips[ci].durationMs||0)*tProg;
-      var cd=new Date(curMs);
-      var hh=cd.getHours(),mm=cd.getMinutes();
-      liveTimeStr=(hh<10?'0':'')+hh+':'+(mm<10?'0':'')+mm;
+    if(!isEnd){
+      var curMs=null;
+      if(activeRoute&&activeRoute.length>1&&activeRoute[flI]&&activeRoute[flI].t!=null&&activeRoute[Math.min(flI+1,activeRoute.length-1)].t!=null){
+        var ptA=activeRoute[flI],ptB=activeRoute[Math.min(flI+1,activeRoute.length-1)];
+        curMs=ptA.t+(ptB.t-ptA.t)*frI;
+      }else if(trips[ci].startTimeMs){
+        curMs=trips[ci].startTimeMs+(trips[ci].durationMs||0)*tProg;
+      }
+      if(curMs!=null){
+        var cd=new Date(curMs);
+        var hh=cd.getHours(),mm=cd.getMinutes();
+        liveTimeStr=(hh<10?'0':'')+hh+':'+(mm<10?'0':'')+mm;
+      }
     }
     var captionTxt=isEnd?'R\\xE9capitulatif':(VEMO[trips[ci].vehicleType]||'')+'  '+trips[ci].dateLabel+(liveTimeStr?'  \\xB7  '+liveTimeStr:'');
     if(opts.customName){
@@ -269,9 +287,7 @@ window.generatePeriodStory=function(opts){
         ctx.strokeStyle=col+'AA';ctx.lineWidth=2/cam.zoom;ctx.stroke();
       }
 
-      /* Tracé révélé progressivement — avec glow */
-      var exI=idxAtFrac(ci,tProg);
-      var flI=Math.floor(exI),frI=exI-flI;
+      /* Tracé révélé progressivement — avec glow (exI/flI/frI déjà calculés ci-dessus) */
       if(exI>0){
         ctx.beginPath();ctx.moveTo(pX(rr[0].lng),pY(rr[0].lat));
         for(var ri=1;ri<=flI&&ri<rr.length;ri++)ctx.lineTo(pX(rr[ri].lng),pY(rr[ri].lat));

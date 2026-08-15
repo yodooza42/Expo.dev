@@ -3,6 +3,8 @@ export type VehicleType = 'car' | 'moto' | 'ignored';
 export interface RoutePoint {
   lat: number;
   lng: number;
+  /** Real GPS timestamp (ms epoch) of this point, when known (raw GPS trace only — absent on OSRM-matched/synthetic points). */
+  t?: number;
 }
 
 export interface RouteSegment {

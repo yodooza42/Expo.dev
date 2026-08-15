@@ -468,15 +468,15 @@ async function handleTripEnd(
     );
   });
 
-  let routePoints: RoutePoint[] = rawPts.map(p => ({ lat: p.lat, lng: p.lng }));
+  let routePoints: RoutePoint[] = rawPts.map(p => ({ lat: p.lat, lng: p.lng, t: p.timestamp }));
   // Ne préfixer le point de départ que si on a des coordonnées valides
   // (évite d'injecter (0,0) quand le GPS a timeout au démarrage du trajet).
   const hasValidStart = manualState.startLat !== 0 || manualState.startLon !== 0;
   if (hasValidStart && (routePoints.length === 0 || routePoints[0]!.lat !== manualState.startLat)) {
-    routePoints = [{ lat: manualState.startLat, lng: manualState.startLon }, ...routePoints];
+    routePoints = [{ lat: manualState.startLat, lng: manualState.startLon, t: manualState.startTime }, ...routePoints];
   }
   if (routePoints.length <= 1 || routePoints[routePoints.length - 1]!.lat !== endLat) {
-    routePoints = [...routePoints, { lat: endLat, lng: endLon }];
+    routePoints = [...routePoints, { lat: endLat, lng: endLon, t: endTime }];
   }
 
   // Balades : OSRM est un routeur voiture — il snaperait le tracé sur des routes
