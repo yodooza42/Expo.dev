@@ -71,6 +71,14 @@ function fmtDuration(ms: number): string {
 
 const DEFAULT_SUGGESTIONS = ['Maison', 'Travail', 'Chez les parents', 'Gym', 'École'];
 
+// ── Thème visuel de la carte (Story) ───────────────────────────────────────────
+type StoryTheme = 'dark' | 'light' | 'satellite';
+const STORY_THEMES: { key: StoryTheme; label: string; icon: React.ComponentProps<typeof MaterialCommunityIcons>['name'] }[] = [
+  { key: 'dark',      label: 'Sombre',    icon: 'weather-night' },
+  { key: 'light',     label: 'Clair',     icon: 'weather-sunny' },
+  { key: 'satellite', label: 'Satellite', icon: 'satellite-variant' },
+];
+
 function EditAddressModal({
   visible,
   label,
@@ -369,6 +377,7 @@ export default function TripMapScreen() {
   const [draftEnd, setDraftEnd] = useState<Date>(new Date());
 
   const [storyDuration, setStoryDuration] = useState<10 | 20 | 30 | 60>(20);
+  const [storyTheme, setStoryTheme] = useState<StoryTheme>('dark');
   const [tripLocPts, setTripLocPts] = useState<LocationPoint[]>([]);
   const [speedUnitPace, setSpeedUnitPace] = useState(false);
   const [chartLoading, setChartLoading] = useState(false);
@@ -438,6 +447,13 @@ export default function TripMapScreen() {
     try { msg = JSON.parse(event.nativeEvent.data) as Record<string, unknown>; } catch { return; }
     if (msg.type === 'story_progress') {
       setStoryProgress(msg.p as number ?? 0);
+      return;
+    }
+    if (msg.type === 'story_theme_fallback') {
+      Alert.alert(
+        'Thème satellite indisponible',
+        "Impossible de récupérer l'imagerie satellite (réseau ou délai dépassé). La story a été générée avec le thème Sombre à la place.",
+      );
       return;
     }
     if (msg.type === 'story_chunk') {
@@ -817,10 +833,11 @@ export default function TripMapScreen() {
       videoDurationSec: durationOverride ?? storyDuration,
       showPace: isWalk && speedUnitPace,
       photos,
+      theme: storyTheme,
     };
 
     storyWebViewRef.current?.injectJavaScript(`(function(){window.generateStory(${JSON.stringify(opts)});})();true;`);
-  }, [trip, vehicles, isGeneratingStory, storyDuration, tripLocPts, photoToDataUri]);
+  }, [trip, vehicles, isGeneratingStory, storyDuration, storyTheme, tripLocPts, photoToDataUri]);
 
   function handleOpenDtPicker() {
     if (!trip) return;
@@ -1617,7 +1634,40 @@ export default function TripMapScreen() {
           style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'center', alignItems: 'center' }]}
           onPress={() => setStoryModalVisible(false)}
         >
-          <View style={{ backgroundColor: colors.card, borderRadius: 16, padding: 20, width: 260 }} onStartShouldSetResponder={() => true}>
+          <View style={{ backgroundColor: colors.card, borderRadius: 16, padding: 20, width: 280 }} onStartShouldSetResponder={() => true}>
+            <Text style={{ color: colors.mutedForeground, fontSize: 11, fontFamily: 'Inter_600SemiBold', marginBottom: 8, letterSpacing: 0.5 }}>
+              THÈME DE LA CARTE
+            </Text>
+            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
+              {STORY_THEMES.map(th => (
+                <Pressable
+                  key={th.key}
+                  onPress={() => { void Haptics.selectionAsync(); setStoryTheme(th.key); }}
+                  style={{
+                    flex: 1,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 4,
+                    paddingVertical: 8,
+                    borderRadius: 10,
+                    borderWidth: 1,
+                    backgroundColor: storyTheme === th.key ? vehColor + '22' : colors.muted,
+                    borderColor: storyTheme === th.key ? vehColor : colors.border,
+                  }}
+                >
+                  <MaterialCommunityIcons name={th.icon} size={13} color={storyTheme === th.key ? vehColor : colors.mutedForeground} />
+                  <Text style={{ color: storyTheme === th.key ? vehColor : colors.foreground, fontFamily: 'Inter_500Medium', fontSize: 12 }}>
+                    {th.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+            {storyTheme === 'satellite' && (
+              <Text style={{ color: colors.mutedForeground, fontSize: 11, fontFamily: 'Inter_400Regular', marginBottom: 14, fontStyle: 'italic' }}>
+                Nécessite une connexion internet. En cas d'échec, repli automatique sur Sombre.
+              </Text>
+            )}
             <Text style={{ color: colors.foreground, fontSize: 16, fontFamily: 'Inter_700Bold', marginBottom: 14, textAlign: 'center' }}>
               Durée de la story
             </Text>

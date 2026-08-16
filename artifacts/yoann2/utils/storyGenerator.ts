@@ -47,20 +47,102 @@ window.generateStory=function(opts){
 
   var route=opts.route;
 
-  // ── Map projection ─────────────────────────────────────────────────────────
+  // ── Thème ─────────────────────────────────────────────────────────────
+  // 'dark'/'light' ne changent que la palette. 'satellite' télécharge et assemble de
+  // vraies tuiles satellite (Esri World Imagery, gratuit, sans clé API) en fond de la
+  // zone carte avant l'enregistrement ; en cas d'échec (réseau/timeout) on retombe sur
+  // 'dark' et on prévient React Native via un message 'story_theme_fallback' —
+  // exactement le même comportement que storyGeneratorPeriod.ts.
+  var requestedTheme=opts.theme||'dark';
+  var effTheme=requestedTheme;
+  var PALETTES={
+    dark:{
+      bgGrad0:'#151820',bgGrad1:'#0A0B0E',gridStroke:'#FFFFFF06',
+      headerBg:'#12141Acc',headerSep:'#FFFFFF33',
+      titleColor:'#FFFFFF',subColor:'#8A8F99',captionColor:'#565B66',
+      ghostStroke:'#FFFFFF2E',footerBg:'#12141A',footerSep:'#FFFFFF22',
+      panelBg:'#161920',endBg:'#101218',
+    },
+    light:{
+      bgGrad0:'#F4F5F8',bgGrad1:'#E2E5EB',gridStroke:'#00000008',
+      headerBg:'#FFFFFFcc',headerSep:'#00000022',
+      titleColor:'#161A20',subColor:'#5B616C',captionColor:'#9198A4',
+      ghostStroke:'#0000002E',footerBg:'#FFFFFF',footerSep:'#00000022',
+      panelBg:'#E9EBEF',endBg:'#FFFFFF',
+    },
+  };
+  function palette(){return PALETTES[effTheme==='light'?'light':'dark'];}
+
+  // ── Map projection — Web Mercator (aligné avec les tuiles satellite) ────────
   var lats=route.map(function(p){return p.lat;}),lngs=route.map(function(p){return p.lng;});
   var minLat=Math.min.apply(null,lats),maxLat=Math.max.apply(null,lats);
   var minLng=Math.min.apply(null,lngs),maxLng=Math.max.apply(null,lngs);
-  var latSpan=maxLat-minLat||0.001,lngSpan=maxLng-minLng||0.001;
+  var padLa=(maxLat-minLat)*0.1||0.001,padLn=(maxLng-minLng)*0.1||0.001;
+  minLat-=padLa;maxLat+=padLa;minLng-=padLn;maxLng+=padLn;
+  var lngSpan=maxLng-minLng||0.001;
+  function mercY(lat){return Math.log(Math.tan(Math.PI/4+(lat*Math.PI/180)/2));}
+  var minMerc=mercY(minLat),maxMerc=mercY(maxLat),mercSpan=(maxMerc-minMerc)||0.0001;
   var mT=195,mB=780,mL=60,mR=660;
   var mW=mR-mL,mH=mB-mT;
-  var rAsp=(lngSpan/latSpan)*Math.cos((minLat+maxLat)/2*Math.PI/180);
+  var rAsp=lngSpan/mercSpan;
   var mapAsp=mW/mH;
   if(rAsp>mapAsp){var nH=mW/rAsp;mT=mT+(mH-nH)/2;mB=mT+nH;mH=nH;}
   else{var nW=mH*rAsp;mL=mL+(mW-nW)/2;mR=mL+nW;mW=nW;}
   function projX(lng){return mL+(lng-minLng)/lngSpan*mW;}
-  function projY(lat){return mB-(lat-minLat)/latSpan*mH;}
+  function projY(lat){return mB-(mercY(lat)-minMerc)/mercSpan*mH;}
   var mCX=(mL+mR)/2,mCY=(mT+mB)/2;
+
+  // ── Imagerie satellite (thème 'satellite') — une seule mosaïque pour tout le trajet ──
+  var SAT_TILE_URL='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/';
+  var SAT_MAX_TILES=48;
+  var SAT_MOSAIC_TIMEOUT=9000;
+  function lngToTileX(lng,z){return (lng+180)/360*Math.pow(2,z);}
+  function latToTileY(lat,z){var r=lat*Math.PI/180;return (1-Math.log(Math.tan(r)+1/Math.cos(r))/Math.PI)/2*Math.pow(2,z);}
+  function tileXToLng(x,z){return x/Math.pow(2,z)*360-180;}
+  function tileYToLat(y,z){var n=Math.PI-2*Math.PI*y/Math.pow(2,z);return 180/Math.PI*Math.atan(0.5*(Math.exp(n)-Math.exp(-n)));}
+  function buildSatMosaic(bbox,targetWpx,targetHpx){
+    return new Promise(function(resolve){
+      var z=19,xMin,xMax,yMin,yMax,cols=1,rows=1;
+      while(z>1){
+        xMin=Math.floor(lngToTileX(bbox.lngMin,z));
+        xMax=Math.floor(lngToTileX(bbox.lngMax,z));
+        yMin=Math.floor(latToTileY(bbox.latMax,z));
+        yMax=Math.floor(latToTileY(bbox.latMin,z));
+        cols=xMax-xMin+1;rows=yMax-yMin+1;
+        var tilePx=Math.min(cols,rows)*256,targetPx=Math.max(targetWpx,targetHpx);
+        if(cols*rows<=SAT_MAX_TILES&&tilePx>=targetPx*0.85)break;
+        z--;
+      }
+      if(cols*rows>SAT_MAX_TILES||cols<1||rows<1){resolve(null);return;}
+      var canvas=document.createElement('canvas');
+      canvas.width=cols*256;canvas.height=rows*256;
+      var cctx=canvas.getContext('2d');
+      var total=cols*rows,done=0,failed=false,settled=false;
+      var to=setTimeout(function(){if(!settled){settled=true;resolve(null);}},SAT_MOSAIC_TIMEOUT);
+      function checkDone(){
+        done++;
+        if(done>=total&&!settled){
+          settled=true;clearTimeout(to);
+          if(failed){resolve(null);return;}
+          resolve({canvas:canvas,
+            lngLeft:tileXToLng(xMin,z),lngRight:tileXToLng(xMax+1,z),
+            latTop:tileYToLat(yMin,z),latBottom:tileYToLat(yMax+1,z)});
+        }
+      }
+      for(var xx=xMin;xx<=xMax;xx++){
+        for(var yy=yMin;yy<=yMax;yy++){
+          (function(xx,yy){
+            var img=new Image();
+            img.crossOrigin='anonymous';
+            img.onload=function(){try{cctx.drawImage(img,(xx-xMin)*256,(yy-yMin)*256,256,256);}catch(e){failed=true;}checkDone();};
+            img.onerror=function(){failed=true;checkDone();};
+            img.src=SAT_TILE_URL+z+'/'+yy+'/'+xx;
+          })(xx,yy);
+        }
+      }
+    });
+  }
+  var satMosaic=null;
 
   // ── Haversine ──────────────────────────────────────────────────────────────
   function hav(p1,p2){
@@ -204,6 +286,33 @@ window.generateStory=function(opts){
     }
   }
 
+  if(requestedTheme!=='satellite'){
+    preloadPhotosThenStart();
+  }else{
+    var satPad=0.3;
+    var satBbox={
+      latMin:minLat-(maxLat-minLat)*satPad||minLat-0.003,
+      latMax:maxLat+(maxLat-minLat)*satPad||maxLat+0.003,
+      lngMin:minLng-(maxLng-minLng)*satPad||minLng-0.003,
+      lngMax:maxLng+(maxLng-minLng)*satPad||maxLng+0.003,
+    };
+    var guardTo=setTimeout(function(){
+      effTheme='dark';
+      window.ReactNativeWebView.postMessage(JSON.stringify({type:'story_theme_fallback',reason:'timeout'}));
+      preloadPhotosThenStart();
+    },11000);
+    buildSatMosaic(satBbox,mW,mH).then(function(res){
+      clearTimeout(guardTo);
+      if(!res){
+        effTheme='dark';
+        window.ReactNativeWebView.postMessage(JSON.stringify({type:'story_theme_fallback',reason:'tiles'}));
+      }else{
+        satMosaic=res;
+      }
+      preloadPhotosThenStart();
+    });
+  }
+
   function frame(ts){
     if(!t0)t0=ts;
     var el=ts-t0,prog=Math.min(1,el/DUR);
@@ -250,27 +359,39 @@ window.generateStory=function(opts){
     cam.cy+=(tgt.cy-cam.cy)*lf;
     cam.zoom=Math.exp(Math.log(cam.zoom)+(Math.log(tgt.zoom)-Math.log(cam.zoom))*lf);
 
-    // Background : dégradé radial + grille subtile
+    var THEME=palette();
+
+    // Background : dégradé radial + grille subtile (couvert par l'imagerie satellite
+    // dans la zone carte quand ce thème est actif et prêt)
     var bg=ctx.createRadialGradient(cW/2,cH*0.38,80,cW/2,cH*0.38,900);
-    bg.addColorStop(0,'#151820');bg.addColorStop(1,'#0A0B0E');
+    bg.addColorStop(0,THEME.bgGrad0);bg.addColorStop(1,THEME.bgGrad1);
     ctx.fillStyle=bg;ctx.fillRect(0,0,cW,cH);
-    ctx.strokeStyle='#FFFFFF06';ctx.lineWidth=1;
+    ctx.strokeStyle=THEME.gridStroke;ctx.lineWidth=1;
     for(var gx=0;gx<cW;gx+=60){ctx.beginPath();ctx.moveTo(gx,0);ctx.lineTo(gx,cH);ctx.stroke();}
     for(var gy=0;gy<cH;gy+=60){ctx.beginPath();ctx.moveTo(0,gy);ctx.lineTo(cW,gy);ctx.stroke();}
 
     // Header
-    ctx.fillStyle='#12141Acc';ctx.fillRect(0,0,cW,180);
+    ctx.fillStyle=THEME.headerBg;ctx.fillRect(0,0,cW,180);
     ctx.fillStyle=opts.color;ctx.font='bold 50px Arial,sans-serif';ctx.textAlign='center';
     ctx.fillText(opts.vehicleEmoji+'  '+opts.dateLabel,cW/2,72);
-    ctx.fillStyle='#8A8F99';ctx.font='32px Arial,sans-serif';
+    ctx.fillStyle=THEME.subColor;ctx.font='32px Arial,sans-serif';
     ctx.fillText(opts.timeLabel,cW/2,122);
-    ctx.strokeStyle=opts.color+'33';ctx.lineWidth=1;
+    ctx.strokeStyle=THEME.headerSep;ctx.lineWidth=1;
     ctx.beginPath();ctx.moveTo(0,180);ctx.lineTo(cW,180);ctx.stroke();
 
     // ── Zone carte : clip + transform caméra ─────────────────────────────────
     ctx.save();
     ctx.beginPath();ctx.rect(30,183,660,614);ctx.clip();
     ctx.translate(mCX,mCY);ctx.scale(cam.zoom,cam.zoom);ctx.translate(-cam.cx,-cam.cy);
+
+    // Imagerie satellite (thème satellite, prête) : dessinée dans le même repère que le
+    // tracé pour rester parfaitement alignée pendant les mouvements de caméra.
+    if(effTheme==='satellite'&&satMosaic){
+      var sx0=projX(satMosaic.lngLeft),sx1=projX(satMosaic.lngRight);
+      var sy0=projY(satMosaic.latTop),sy1=projY(satMosaic.latBottom);
+      ctx.drawImage(satMosaic.canvas,sx0,sy0,sx1-sx0,sy1-sy0);
+      ctx.fillStyle='rgba(6,7,10,0.22)';ctx.fillRect(sx0,sy0,sx1-sx0,sy1-sy0);
+    }
 
     // Aperçu du parcours complet (fantôme coloré, on voit où on va)
     if(route.length>1){
@@ -329,18 +450,18 @@ window.generateStory=function(opts){
 
     // Scale bar — seulement quand la vue est dézoomée (sinon échelle fausse)
     if(cam.zoom<1.15){
-      ctx.strokeStyle='#999999';ctx.lineWidth=2.5;ctx.lineCap='butt';
+      ctx.strokeStyle=THEME.captionColor;ctx.lineWidth=2.5;ctx.lineCap='butt';
       ctx.beginPath();ctx.moveTo(scBarX1,scBarY);ctx.lineTo(scBarX2,scBarY);ctx.stroke();
       ctx.beginPath();ctx.moveTo(scBarX1,scBarY-7);ctx.lineTo(scBarX1,scBarY+7);ctx.stroke();
       ctx.beginPath();ctx.moveTo(scBarX2,scBarY-7);ctx.lineTo(scBarX2,scBarY+7);ctx.stroke();
-      ctx.fillStyle='#999999';ctx.font='22px Arial,sans-serif';ctx.textAlign='center';
+      ctx.fillStyle=THEME.captionColor;ctx.font='22px Arial,sans-serif';ctx.textAlign='center';
       ctx.fillText(scLabel,(scBarX1+scBarX2)/2,scBarY-11);
     }
 
     // ── Stats panel ───────────────────────────────────────────────────────────
     var ci2=getChartIdxAtMs(currentMs);
     var curPt=pts[ci2]||pts[0];
-    ctx.fillStyle='#12141A';ctx.fillRect(0,800,cW,115);
+    ctx.fillStyle=THEME.footerBg;ctx.fillRect(0,800,cW,115);
     ctx.strokeStyle=opts.color+'22';ctx.lineWidth=1;
     ctx.beginPath();ctx.moveTo(0,800);ctx.lineTo(cW,800);ctx.stroke();
     ctx.beginPath();ctx.moveTo(0,915);ctx.lineTo(cW,915);ctx.stroke();
@@ -350,13 +471,13 @@ window.generateStory=function(opts){
     var elSec=Math.round(currentMs/1000);
     var elMin=Math.floor(elSec/60);var elH=Math.floor(elMin/60);
     var elLabel=elH>0?elH+'h'+(elMin%60<10?'0':'')+(elMin%60):(elMin<1?'< 1':elMin)+' min';
-    ctx.fillStyle='#565B66';ctx.font='28px Arial,sans-serif';
+    ctx.fillStyle=THEME.captionColor;ctx.font='28px Arial,sans-serif';
     ctx.fillText((curKm||0).toFixed(2)+' km \\xB7 '+elLabel,cW/2,928);
 
     // ── Speed chart — time axis, pause gaps in line ───────────────────────────
     var sL=50,sR=670,sTop=965,sH=85;
-    ctx.fillStyle='#161920';ctx.fillRect(sL-5,sTop-5,sR-sL+10,sH+10);
-    ctx.fillStyle='#565B66';ctx.font='20px Arial,sans-serif';ctx.textAlign='left';
+    ctx.fillStyle=THEME.panelBg;ctx.fillRect(sL-5,sTop-5,sR-sL+10,sH+10);
+    ctx.fillStyle=THEME.captionColor;ctx.font='20px Arial,sans-serif';ctx.textAlign='left';
     ctx.fillText(opts.showPace?'ALLURE':'VITESSE',sL,sTop-14);
     var visPts=[];
     for(var vi=0;vi<pts.length;vi++){if(pts[vi].ms<=currentMs)visPts.push(pts[vi]);else break;}
@@ -385,8 +506,8 @@ window.generateStory=function(opts){
     // ── Altitude chart — time axis ────────────────────────────────────────────
     if(opts.hasAlt){
       var aTop=1105,aH=80;
-      ctx.fillStyle='#161920';ctx.fillRect(sL-5,aTop-5,sR-sL+10,aH+10);
-      ctx.fillStyle='#565B66';ctx.font='20px Arial,sans-serif';ctx.textAlign='left';ctx.fillText('ALTITUDE',sL,aTop-14);
+      ctx.fillStyle=THEME.panelBg;ctx.fillRect(sL-5,aTop-5,sR-sL+10,aH+10);
+      ctx.fillStyle=THEME.captionColor;ctx.font='20px Arial,sans-serif';ctx.textAlign='left';ctx.fillText('ALTITUDE',sL,aTop-14);
       var pts3=visPts.filter(function(p){return p.alt!=null;});
       if(pts3.length>1){
         ctx.beginPath();
@@ -395,14 +516,14 @@ window.generateStory=function(opts){
           ctx.lineTo(sL+(pts3[k].ms/totalMs)*(sR-sL),aTop+aH-((pts3[k].alt-opts.minAlt)/altSpan)*aH);
         }
         ctx.lineTo(sL+(pts3[pts3.length-1].ms/totalMs)*(sR-sL),aTop+aH);
-        ctx.closePath();ctx.fillStyle='#AAAAAA22';ctx.fill();
+        ctx.closePath();ctx.fillStyle=THEME.subColor+'22';ctx.fill();
         ctx.beginPath();
         for(var k2=0;k2<pts3.length;k2++){
           var apx2=sL+(pts3[k2].ms/totalMs)*(sR-sL);
           var apy2=aTop+aH-((pts3[k2].alt-opts.minAlt)/altSpan)*aH;
           if(k2===0)ctx.moveTo(apx2,apy2);else ctx.lineTo(apx2,apy2);
         }
-        ctx.strokeStyle='#AAAAAA';ctx.lineWidth=2.5;ctx.stroke();
+        ctx.strokeStyle=THEME.subColor;ctx.lineWidth=2.5;ctx.stroke();
       }
     }
 
@@ -410,14 +531,14 @@ window.generateStory=function(opts){
     if(aProg>0.82){
       var fa=Math.min(1,(aProg-0.82)/0.12);ctx.globalAlpha=fa;
       var bY=opts.hasAlt?1235:1165;
-      ctx.fillStyle='#101218';ctx.fillRect(0,bY-52,cW,cH-bY+52);
-      ctx.fillStyle='#E0E0E0';ctx.font='bold 32px Arial,sans-serif';ctx.textAlign='center';
+      ctx.fillStyle=THEME.endBg;ctx.fillRect(0,bY-52,cW,cH-bY+52);
+      ctx.fillStyle=THEME.titleColor;ctx.font='bold 32px Arial,sans-serif';ctx.textAlign='center';
       var bestLabel=opts.showPace?('MEILLEURE '+formatPace(opts.maxSpeed)):('MAX '+opts.maxSpeed.toFixed(1)+' km/h');
       var stats=bestLabel;
       if(opts.gainM>0)stats+=(' \\xB7 +'+opts.gainM+' m');
       stats+=(' \\xB7 '+opts.distKm+' km');
       ctx.fillText(stats,cW/2,bY+2);
-      ctx.fillStyle='#565B66';ctx.font='26px Arial,sans-serif';ctx.fillText(opts.timeLabel,cW/2,bY+42);
+      ctx.fillStyle=THEME.captionColor;ctx.font='26px Arial,sans-serif';ctx.fillText(opts.timeLabel,cW/2,bY+42);
       ctx.globalAlpha=1;
     }
 
@@ -444,7 +565,6 @@ window.generateStory=function(opts){
     if(el-lastRep>400){lastRep=el;window.ReactNativeWebView.postMessage(JSON.stringify({type:'story_progress',p:Math.round(prog*100)}));}
     if(prog<1){requestAnimationFrame(frame);}else{setTimeout(function(){rec.stop();},300);}
   }
-  preloadPhotosThenStart();
 };
 `;
 
