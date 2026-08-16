@@ -265,7 +265,13 @@ window.generateStory=function(opts){
     return m+':'+(s<10?'0':'')+s+'/km';
   }
 
-  var animMs=(opts.videoDurationSec||18)*1000,t0=null,lastRep=0;
+  // ── Hyperlapse sur les longs trajets ────────────────────────────────────────
+  // Au-delà de 50km (autoroute), le trajet ennuie s'il défile à la même vitesse qu'un court
+  // trajet urbain : on accélère nettement la révélation du tracé (jusqu'à ~3x plus vite pour
+  // les très longs trajets), sans toucher aux trajets courts qui gardent leur rythme normal.
+  var HYPERLAPSE_KM=50;
+  var hyperSpeed=opts.distKm>HYPERLAPSE_KM?(1+Math.min(2,(opts.distKm-HYPERLAPSE_KM)/75)):1;
+  var animMs=((opts.videoDurationSec||18)*1000)/hyperSpeed,t0=null,lastRep=0;
   var maxSpd=opts.maxSpeed||1;
   var altSpan=Math.max(opts.maxAlt-opts.minAlt,1);
 
@@ -339,7 +345,10 @@ window.generateStory=function(opts){
   if(requestedTheme!=='satellite'){
     preloadPhotosThenStart();
   }else{
-    var satPad=0.3;
+    // Marge large : la caméra zoome jusqu'à x2.4 en suivi (FOLLOW_Z/zoom initial), donc la
+    // fenêtre visible peut dépasser largement la seule bbox du trajet ; 0.3 laissait apparaître
+    // le fond (dégradé) autour de l'imagerie satellite près des extrémités du tracé.
+    var satPad=0.6;
     var satBbox={
       latMin:minLat-(maxLat-minLat)*satPad||minLat-0.003,
       latMax:maxLat+(maxLat-minLat)*satPad||maxLat+0.003,
@@ -394,7 +403,10 @@ window.generateStory=function(opts){
 
     // ── Position du dot (avant caméra) ───────────────────────────────────────
     var curKm=getKmAtMs(currentMs);
-    var exactIdx=getRouteIdxAtKm(curKm);
+    // Snap au point final exact quand l'anim est quasi terminée : évite qu'un léger écart
+    // d'arrondi entre l'échelle de \`points\` (chart GPS) et celle de \`route\` (tracé affiché)
+    // laisse le trajet visuellement "coupé" juste avant la destination.
+    var exactIdx=aProg>=0.999?route.length-1:getRouteIdxAtKm(curKm);
     var dotP=posAtIdx(exactIdx);
     var dotX=projX(dotP.lng),dotY=projY(dotP.lat);
 

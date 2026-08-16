@@ -260,7 +260,10 @@ window.generatePeriodStory=function(opts){
   function bboxOfTrip(t){
     var rr=t.route,la0=rr[0].lat,la1=la0,ln0=rr[0].lng,ln1=ln0;
     for(var k=1;k<rr.length;k++){var p=rr[k];if(p.lat<la0)la0=p.lat;if(p.lat>la1)la1=p.lat;if(p.lng<ln0)ln0=p.lng;if(p.lng>ln1)ln1=p.lng;}
-    var padLa=(la1-la0)*0.3||0.003,padLn=(ln1-ln0)*0.3||0.003;
+    // Marge large (voir storyGenerator.ts) : la caméra par trajet peut zoomer très fort
+    // (camForTrip, jusqu'à x600), donc une marge de 30% laissait apparaître le fond autour
+    // de l'imagerie satellite près des extrémités du tracé.
+    var padLa=(la1-la0)*0.6||0.006,padLn=(ln1-ln0)*0.6||0.006;
     return{latMin:la0-padLa,latMax:la1+padLa,lngMin:ln0-padLn,lngMax:ln1+padLn};
   }
   var satMosaics=[]; /* un par trajet */
@@ -291,8 +294,12 @@ window.generatePeriodStory=function(opts){
   var DUR=(opts.videoDurationSec||20)*1000;
   var END_MS=5000;
   var animMs=DUR-END_MS;
+  // Hyperlapse sur les longs trajets (voir storyGenerator.ts) : au-delà de 50km (autoroute),
+  // le temps alloué croît beaucoup plus lentement pour ne pas laisser un long trajet d'autoroute
+  // dominer/traîner en longueur dans le récap ; en dessous de 50km, rythme normal inchangé.
+  function hyperKm(km){var HK=50;return km<=HK?km:HK+(km-HK)*0.25;}
   var wts=[],totW=0;
-  for(var ti=0;ti<trips.length;ti++){wts.push(Math.sqrt((trips[ti].distKm||0.2)+0.4));totW+=wts[ti];}
+  for(var ti=0;ti<trips.length;ti++){wts.push(Math.sqrt(hyperKm(trips[ti].distKm||0.2)+0.4));totW+=wts[ti];}
   var tStart=[0];
   for(var ti=1;ti<trips.length;ti++)tStart.push(tStart[ti-1]+(wts[ti-1]/totW)*animMs);
   function tDurOf(ti){return(wts[ti]/totW)*animMs;}
