@@ -194,7 +194,10 @@ window.generatePeriodStory=function(opts){
      (nécessaire pour que le tracé reste pixel-aligné avec l'imagerie en thème satellite ;
      à l'échelle d'un trajet la différence avec une projection equirectangulaire est
      imperceptible pour les thèmes dark/light). */
-  function mercY(lat){return Math.log(Math.tan(Math.PI/4+(lat*Math.PI/180)/2));}
+  // *(180/Math.PI) : ramène le résultat (en radians) à une échelle comparable aux degrés
+  // de longitude — sans ça mercSp est ~57x plus petit que lngSp, ce qui fait croire
+  // à rAsp que le trajet est bien plus large que haut et écrase la carte à quelques px de haut.
+  function mercY(lat){return Math.log(Math.tan(Math.PI/4+(lat*Math.PI/180)/2))*(180/Math.PI);}
   var minMerc=mercY(minLat),maxMerc=mercY(maxLat),mercSp=(maxMerc-minMerc)||0.0001;
 
   var headerH=opts.customName?214:180;

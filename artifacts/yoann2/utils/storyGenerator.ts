@@ -134,7 +134,10 @@ window.generateStory=function(opts){
   var padLa=(maxLat-minLat)*0.1||0.001,padLn=(maxLng-minLng)*0.1||0.001;
   minLat-=padLa;maxLat+=padLa;minLng-=padLn;maxLng+=padLn;
   var lngSpan=maxLng-minLng||0.001;
-  function mercY(lat){return Math.log(Math.tan(Math.PI/4+(lat*Math.PI/180)/2));}
+  // *(180/Math.PI) : ramène le résultat (en radians) à une échelle comparable aux degrés
+  // de longitude — sans ça mercSpan est ~57x plus petit que lngSpan, ce qui fait croire
+  // à rAsp que le trajet est bien plus large que haut et écrase la carte à quelques px de haut.
+  function mercY(lat){return Math.log(Math.tan(Math.PI/4+(lat*Math.PI/180)/2))*(180/Math.PI);}
   var minMerc=mercY(minLat),maxMerc=mercY(maxLat),mercSpan=(maxMerc-minMerc)||0.0001;
   var mT=195,mB=780,mL=60,mR=660;
   var mW=mR-mL,mH=mB-mT;
