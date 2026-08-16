@@ -8,6 +8,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
+  FlatList,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -101,6 +103,9 @@ export default function StoryPeriodScreen() {
   const [duration,  setDuration]  = useState<StoryDur>(20);
   const [storyName, setStoryName] = useState('');
 
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [pickerModalOpen, setPickerModalOpen] = useState(false);
+
   const [isGenerating, setIsGenerating] = useState(false);
   const [progress,     setProgress]     = useState(0);
 
@@ -141,6 +146,35 @@ export default function StoryPeriodScreen() {
     () => filtered.filter(t => t.route && t.route.length >= 2),
     [filtered]
   );
+  const withRouteIdsKey = useMemo(() => withRoute.map(t => t.id).join(','), [withRoute]);
+
+  // Par défaut, tous les trajets avec tracé GPS de la période sont inclus.
+  // On réinitialise la sélection uniquement quand l'ensemble de trajets disponibles
+  // change (nouvelle période) — pas à chaque re-render.
+  useEffect(() => {
+    setSelectedIds(new Set(withRoute.map(t => t.id)));
+  }, [withRouteIdsKey]);
+
+  const selectedTrips = useMemo(
+    () => withRoute.filter(t => selectedIds.has(t.id)),
+    [withRoute, selectedIds]
+  );
+
+  function toggleTrip(id: string) {
+    void Haptics.selectionAsync();
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleAllTrips() {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setSelectedIds(prev =>
+      prev.size === withRoute.length ? new Set() : new Set(withRoute.map(t => t.id))
+    );
+  }
 
   // ── Stats de la période ────────────────────────────────────────────────────
   const stats = useMemo(() => {
@@ -195,12 +229,12 @@ export default function StoryPeriodScreen() {
 
   // ── Lancement de la génération ─────────────────────────────────────────────
   function handleGenerate() {
-    if (withRoute.length === 0) {
-      Alert.alert('Story', 'Aucun trajet avec tracé GPS dans cette période.');
+    if (selectedTrips.length === 0) {
+      Alert.alert('Story', 'Aucun trajet sélectionné pour cette story.');
       return;
     }
 
-    const tripsOpts = withRoute.map(t => {
+    const tripsOpts = selectedTrips.map(t => {
       const d = new Date(t.startTime);
       return {
         route:       t.route!,
@@ -220,7 +254,7 @@ export default function StoryPeriodScreen() {
     const opts = {
       trips:         tripsOpts,
       periodLabel:   periodLabel(dateFrom, dateTo),
-      tripCountLabel:`${filtered.length} trajet${filtered.length > 1 ? 's' : ''}`,
+      tripCountLabel:`${selectedTrips.length} trajet${selectedTrips.length > 1 ? 's' : ''}`,
       driveDurLabel: driveDurTxt,
       walkDurLabel:  walkDurTxt,
       videoDurationSec: duration,
@@ -267,7 +301,14 @@ export default function StoryPeriodScreen() {
     }
   }
 
-  const canGenerate = withRoute.length > 0 && !isGenerating;
+  const canGenerate = selectedTrips.length > 0 && !isGenerating;
+
+  function vehIcon(t: Trip): { name: React.ComponentProps<typeof MaterialCommunityIcons>['name']; color: string } {
+    const type = getVType(t);
+    if (type === 'walk') return { name: 'walk', color: '#4CAF50' };
+    if (type === 'moto') return { name: 'motorbike', color: '#FF9800' };
+    return { name: 'car', color: '#2196F3' };
+  }
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
@@ -356,12 +397,21 @@ export default function StoryPeriodScreen() {
                 </View>
               )}
 
-              <Text style={[styles.routeAvailText, { color: withRoute.length === filtered.length ? '#4CAF50' : colors.mutedForeground }]}>
-                {withRoute.length === filtered.length
-                  ? `✓ ${withRoute.length} tracé${withRoute.length > 1 ? 's' : ''} GPS disponible${withRoute.length > 1 ? 's' : ''}`
-                  : `${withRoute.length} / ${filtered.length} trajets avec tracé GPS`
-                }
-              </Text>
+              <Pressable
+                onPress={() => { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setPickerModalOpen(true); }}
+                disabled={withRoute.length === 0}
+                style={styles.routeAvailRow}
+              >
+                <Text style={[styles.routeAvailText, { color: selectedTrips.length > 0 ? '#4CAF50' : colors.mutedForeground }]}>
+                  {withRoute.length === 0
+                    ? 'Aucun tracé GPS disponible'
+                    : `✓ ${selectedTrips.length} / ${withRoute.length} trajet${withRoute.length > 1 ? 's' : ''} inclus dans la story`
+                  }
+                </Text>
+                {withRoute.length > 0 && (
+                  <MaterialCommunityIcons name="chevron-right" size={16} color={colors.mutedForeground} />
+                )}
+              </Pressable>
             </>
           )}
         </View>
@@ -420,9 +470,9 @@ export default function StoryPeriodScreen() {
         >
           <MaterialCommunityIcons name="movie-play-outline" size={20} color={canGenerate ? '#fff' : colors.mutedForeground} />
           <Text style={[styles.generateBtnText, { color: canGenerate ? '#fff' : colors.mutedForeground }]}>
-            {withRoute.length === 0
-              ? 'Aucun tracé GPS disponible'
-              : `Générer la story · ${withRoute.length} trajet${withRoute.length > 1 ? 's' : ''}`
+            {selectedTrips.length === 0
+              ? 'Aucun trajet sélectionné'
+              : `Générer la story · ${selectedTrips.length} trajet${selectedTrips.length > 1 ? 's' : ''}`
             }
           </Text>
         </Pressable>
@@ -461,6 +511,77 @@ export default function StoryPeriodScreen() {
         </View>
       )}
 
+      {/* Modal — sélection des trajets inclus dans la story */}
+      <Modal
+        visible={pickerModalOpen}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setPickerModalOpen(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalCard, { backgroundColor: colors.background, paddingBottom: insets.bottom + 16 }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.foreground }]}>
+                {`Trajets inclus (${selectedTrips.length}/${withRoute.length})`}
+              </Text>
+              <Pressable onPress={() => setPickerModalOpen(false)} hitSlop={8}>
+                <MaterialCommunityIcons name="close" size={22} color={colors.mutedForeground} />
+              </Pressable>
+            </View>
+
+            <Pressable onPress={toggleAllTrips} style={styles.selectAllRow}>
+              <MaterialCommunityIcons
+                name={selectedTrips.length === withRoute.length ? 'checkbox-multiple-marked' : 'checkbox-multiple-blank-outline'}
+                size={18}
+                color="#2196F3"
+              />
+              <Text style={[styles.selectAllText, { color: '#2196F3' }]}>
+                {selectedTrips.length === withRoute.length ? 'Tout désélectionner' : 'Tout sélectionner'}
+              </Text>
+            </Pressable>
+
+            <FlatList
+              data={withRoute}
+              keyExtractor={t => t.id}
+              style={styles.modalList}
+              renderItem={({ item }) => {
+                const checked = selectedIds.has(item.id);
+                const icon = vehIcon(item);
+                const d = new Date(item.startTime);
+                return (
+                  <Pressable
+                    onPress={() => toggleTrip(item.id)}
+                    style={[styles.tripRow, { borderColor: colors.border }]}
+                  >
+                    <MaterialCommunityIcons
+                      name={checked ? 'checkbox-marked' : 'checkbox-blank-outline'}
+                      size={20}
+                      color={checked ? '#2196F3' : colors.mutedForeground}
+                    />
+                    <MaterialCommunityIcons name={icon.name} size={16} color={icon.color} style={{ marginLeft: 8 }} />
+                    <View style={styles.tripRowInfo}>
+                      <Text style={[styles.tripRowDate, { color: colors.foreground }]}>
+                        {`${DAYS_FR[d.getDay()]} ${d.getDate()} ${MONTHS_FR[d.getMonth()]} · ${pad2(d.getHours())}:${pad2(d.getMinutes())}`}
+                      </Text>
+                      <Text style={[styles.tripRowMeta, { color: colors.mutedForeground }]}>
+                        {`${item.distanceKm.toFixed(1)} km${fmtDur(item.endTime - item.startTime) ? '  ·  ' + fmtDur(item.endTime - item.startTime) : ''}`}
+                      </Text>
+                    </View>
+                  </Pressable>
+                );
+              }}
+            />
+
+            <Pressable
+              onPress={() => setPickerModalOpen(false)}
+              style={[styles.modalDoneBtn, { backgroundColor: '#2196F3' }]}
+            >
+              <Text style={styles.modalDoneBtnText}>Valider</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+
       {/* WebView caché — moteur de génération vidéo */}
       <WebView
         ref={webViewRef}
@@ -498,6 +619,7 @@ const styles = StyleSheet.create({
   statLabel:       { fontSize: 11, fontFamily: 'Inter_400Regular', textTransform: 'uppercase' },
   vehRow:          { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   vehChip:         { fontSize: 13, fontFamily: 'Inter_500Medium' },
+  routeAvailRow:   { flexDirection: 'row', alignItems: 'center', gap: 2 },
   routeAvailText:  { fontSize: 12, fontFamily: 'Inter_400Regular' },
 
   durationRow:     { flexDirection: 'row', gap: 8 },
@@ -528,4 +650,18 @@ const styles = StyleSheet.create({
   progressPct:     { fontSize: 13, fontFamily: 'Inter_400Regular' },
 
   hiddenWebView:   { position: 'absolute', width: 1, height: 1, opacity: 0, top: -100, left: -100 },
+
+  modalOverlay:    { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' },
+  modalCard:       { borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 16, maxHeight: '80%' },
+  modalHeader:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
+  modalTitle:      { fontSize: 16, fontFamily: 'Inter_600SemiBold' },
+  selectAllRow:    { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, marginBottom: 4 },
+  selectAllText:   { fontSize: 14, fontFamily: 'Inter_500Medium' },
+  modalList:       { maxHeight: 380 },
+  tripRow:         { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth },
+  tripRowInfo:     { marginLeft: 10, flex: 1 },
+  tripRowDate:     { fontSize: 14, fontFamily: 'Inter_500Medium' },
+  tripRowMeta:     { fontSize: 12, fontFamily: 'Inter_400Regular', marginTop: 2 },
+  modalDoneBtn:    { borderRadius: 14, paddingVertical: 14, alignItems: 'center', marginTop: 14 },
+  modalDoneBtnText:{ fontSize: 15, fontFamily: 'Inter_600SemiBold', color: '#fff' },
 });
