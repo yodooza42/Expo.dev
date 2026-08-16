@@ -381,6 +381,10 @@ export default function TripMapScreen() {
 
   const [photoModalOpen, setPhotoModalOpen] = useState(false);
   const [addingPhotos, setAddingPhotos] = useState(false);
+  const [galleryPickerOpen, setGalleryPickerOpen] = useState(false);
+  const [galleryLoading, setGalleryLoading] = useState(false);
+  const [galleryAssets, setGalleryAssets] = useState<MediaLibrary.Asset[]>([]);
+  const [gallerySelected, setGallerySelected] = useState<Set<string>>(new Set());
   const [photoSelectMode, setPhotoSelectMode] = useState(false);
   const [repositioningPhotoId, setRepositioningPhotoId] = useState<string | null>(null);
   const [photoNoteEditId, setPhotoNoteEditId] = useState<string | null>(null);
@@ -596,6 +600,75 @@ export default function TripMapScreen() {
       setAddingPhotos(false);
     }
   }, [trip, addingPhotos, computeRouteIndexFromTime]);
+
+  /** Ouvre un sélecteur maison listant en priorité les photos prises pendant le trajet
+   *  (déduites de leur date de création vs. la fenêtre horaire du trajet), impossible à
+   *  obtenir depuis le sélecteur système d'Android qui n'a aucune notion du trajet. */
+  const openGalleryPicker = useCallback(async () => {
+    if (!trip) return;
+    const { status } = await MediaLibrary.requestPermissionsAsync();
+    if (status !== 'granted') {
+      // Accès restreint ou refusé : repli sur le sélecteur système classique.
+      void handleAddPhotos();
+      return;
+    }
+    setGalleryLoading(true);
+    setGallerySelected(new Set());
+    try {
+      const margin = 30 * 60 * 1000; // ±30 min autour du trajet pour couvrir les photos prises juste avant/après
+      const { assets } = await MediaLibrary.getAssetsAsync({
+        mediaType: 'photo',
+        createdAfter: trip.startTime - margin,
+        createdBefore: trip.endTime + margin,
+        sortBy: [[MediaLibrary.SortBy.creationTime, false]],
+        first: 120,
+      });
+      if (assets.length === 0) {
+        // Rien trouvé dans la fenêtre du trajet : autant ouvrir directement la galerie complète.
+        void handleAddPhotos();
+        return;
+      }
+      setGalleryAssets(assets);
+      setGalleryPickerOpen(true);
+    } catch {
+      void handleAddPhotos();
+    } finally {
+      setGalleryLoading(false);
+    }
+  }, [trip, handleAddPhotos]);
+
+  const toggleGallerySelect = useCallback((id: string) => {
+    setGallerySelected(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const confirmGallerySelection = useCallback(async () => {
+    if (!trip || gallerySelected.size === 0) { setGalleryPickerOpen(false); return; }
+    setAddingPhotos(true);
+    try {
+      const chosen = galleryAssets.filter(a => gallerySelected.has(a.id));
+      const newPhotos: TripPhoto[] = chosen.map(a => {
+        const takenAt = a.creationTime || Date.now();
+        return {
+          id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+          uri: a.uri,
+          takenAt,
+          routeIndex: computeRouteIndexFromTime(trip, takenAt),
+        };
+      });
+      const merged = [...(trip.photos ?? []), ...newPhotos]
+        .sort((a, b) => (a.routeIndex ?? Infinity) - (b.routeIndex ?? Infinity) || a.takenAt - b.takenAt);
+      setTrip({ ...trip, photos: merged });
+      await updateTrip(trip.id, { photos: merged });
+      setGalleryPickerOpen(false);
+      setGallerySelected(new Set());
+    } finally {
+      setAddingPhotos(false);
+    }
+  }, [trip, galleryAssets, gallerySelected, computeRouteIndexFromTime]);
 
   const handleRemovePhoto = useCallback(async (photoId: string) => {
     if (!trip) return;
@@ -1426,8 +1499,8 @@ export default function TripMapScreen() {
                 </Pressable>
               ))}
               <Pressable
-                onPress={() => handleAddPhotos()}
-                disabled={addingPhotos}
+                onPress={() => openGalleryPicker()}
+                disabled={addingPhotos || galleryLoading}
                 style={[photoModalStyles.addBtn, { borderColor: colors.border }]}
               >
                 {addingPhotos ? (
@@ -1445,6 +1518,69 @@ export default function TripMapScreen() {
                 Ajoute des photos de ce trajet depuis ta galerie — elles ne seront pas dupliquées, seulement référencées.
               </Text>
             )}
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Sélecteur maison : photos de la galerie prises pendant la fenêtre horaire du trajet,
+          mises en avant en premier — le picker système d'Android n'a aucune notion du trajet. */}
+      <Modal visible={galleryPickerOpen} transparent animationType="slide" onRequestClose={() => setGalleryPickerOpen(false)}>
+        <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' }} onPress={() => setGalleryPickerOpen(false)}>
+          <Pressable
+            style={{ backgroundColor: colors.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 16, maxHeight: '80%', paddingBottom: insets.bottom + 16 }}
+            onStartShouldSetResponder={() => true}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+              <Text style={{ color: colors.foreground, fontSize: 16, fontFamily: 'Inter_700Bold' }}>Photos de ce trajet</Text>
+              <Pressable onPress={() => setGalleryPickerOpen(false)} hitSlop={8}>
+                <MaterialCommunityIcons name="close" size={22} color={colors.mutedForeground} />
+              </Pressable>
+            </View>
+            <Text style={{ color: colors.mutedForeground, fontSize: 12, marginBottom: 12 }}>
+              Photos prises pendant ce trajet (± 30 min), triées par heure. Touche pour sélectionner.
+            </Text>
+            <ScrollView contentContainerStyle={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              {galleryAssets.map(a => {
+                const sel = gallerySelected.has(a.id);
+                return (
+                  <Pressable key={a.id} onPress={() => toggleGallerySelect(a.id)} style={{ width: 96, height: 96, borderRadius: 10, overflow: 'hidden' }}>
+                    <RNImage source={{ uri: a.uri }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+                    <View style={{
+                      position: 'absolute', inset: 0, borderWidth: sel ? 3 : 0, borderColor: '#2196F3',
+                      backgroundColor: sel ? 'rgba(33,150,243,0.22)' : 'transparent', borderRadius: 10,
+                    }} />
+                    <View style={{
+                      position: 'absolute', top: 6, right: 6, width: 20, height: 20, borderRadius: 10,
+                      backgroundColor: sel ? '#2196F3' : 'rgba(0,0,0,0.45)', borderWidth: sel ? 0 : 1.5, borderColor: '#fff',
+                      alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      {sel && <MaterialCommunityIcons name="check" size={13} color="#fff" />}
+                    </View>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 14 }}>
+              <Pressable
+                onPress={() => { setGalleryPickerOpen(false); void handleAddPhotos(); }}
+                style={{ flex: 1, paddingVertical: 12, borderRadius: 10, alignItems: 'center', backgroundColor: colors.muted }}
+              >
+                <Text style={{ color: colors.foreground, fontFamily: 'Inter_500Medium', fontSize: 13 }}>Parcourir toute la galerie</Text>
+              </Pressable>
+              <Pressable
+                onPress={confirmGallerySelection}
+                disabled={gallerySelected.size === 0 || addingPhotos}
+                style={{ flex: 1, paddingVertical: 12, borderRadius: 10, alignItems: 'center', backgroundColor: gallerySelected.size === 0 ? colors.muted : '#2196F3' }}
+              >
+                {addingPhotos ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={{ color: gallerySelected.size === 0 ? colors.mutedForeground : '#fff', fontFamily: 'Inter_600SemiBold', fontSize: 13 }}>
+                    Ajouter{gallerySelected.size > 0 ? ` (${gallerySelected.size})` : ''}
+                  </Text>
+                )}
+              </Pressable>
+            </View>
           </Pressable>
         </Pressable>
       </Modal>
