@@ -47,6 +47,72 @@
  * React Native via un message `story_theme_fallback`.
  */
 export const STORY_PERIOD_JS = `
+(function(){
+  /* ── Cache de tuiles satellite ─────────────────────────────────────────
+     Deux niveaux, partagés par tous les appels à generatePeriodStory() dans cette
+     session WebView (déclarés dans cette IIFE, hors de la fonction, donc jamais
+     recréés) :
+       1. Mémoire (TILE_MEM) : Image déjà décodée → réutilisation instantanée,
+          sans réseau ni redécodage, tant que la page WebView reste chargée
+          (régénérer la même période plusieurs fois de suite, ex. pour ajuster
+          le nom ou la durée).
+       2. localStorage (best-effort, survit aux rechargements de la page WebView
+          et, quand l'origine du WebView est stable, aux redémarrages de l'appli) :
+          tuile encodée en JPEG data URI, avec un index FIFO pour plafonner la
+          taille et éviter un QuotaExceededError.
+     En cas d'échec (quota dépassé, stockage indisponible, canvas "tainted"), on
+     retombe silencieusement sur un téléchargement réseau classique : le cache est
+     une pure optimisation, jamais un point de défaillance. */
+  var TILE_MEM=Object.create(null);
+  var TILE_LS_PREFIX='satTile_v1_';
+  var TILE_LS_INDEX_KEY='satTileIndex_v1';
+  var TILE_LS_MAX=600;
+  function lsIndex(){try{return JSON.parse(localStorage.getItem(TILE_LS_INDEX_KEY)||'[]');}catch(e){return [];}}
+  function lsGetTile(key){try{return localStorage.getItem(TILE_LS_PREFIX+key);}catch(e){return null;}}
+  function lsSetTile(key,dataUrl){
+    try{
+      localStorage.setItem(TILE_LS_PREFIX+key,dataUrl);
+      var idx=lsIndex();
+      if(idx.indexOf(key)===-1){
+        idx.push(key);
+        while(idx.length>TILE_LS_MAX){
+          var old=idx.shift();
+          try{localStorage.removeItem(TILE_LS_PREFIX+old);}catch(e2){}
+        }
+        try{localStorage.setItem(TILE_LS_INDEX_KEY,JSON.stringify(idx));}catch(e3){}
+      }
+    }catch(e){ /* quota dépassée ou stockage indisponible : cache disque ignoré, réseau classique */ }
+  }
+  /* Charge une tuile (mémoire → disque → réseau) puis dessine dans cctx à (dx,dy).
+     cb() est appelé une fois la tuile traitée (succès ou échec), jamais avant. */
+  function loadTile(z,xx,yy,cctx,dx,dy,onFail,cb){
+    var key=z+'/'+xx+'/'+yy;
+    var mem=TILE_MEM[key];
+    if(mem){
+      try{cctx.drawImage(mem,dx,dy,256,256);}catch(e){onFail();}
+      cb();
+      return;
+    }
+    var cachedUrl=lsGetTile(key);
+    var img=new Image();
+    img.crossOrigin='anonymous';
+    img.onload=function(){
+      try{cctx.drawImage(img,dx,dy,256,256);}catch(e){onFail();}
+      TILE_MEM[key]=img;
+      if(!cachedUrl){
+        try{
+          var tc=document.createElement('canvas');tc.width=256;tc.height=256;
+          tc.getContext('2d').drawImage(img,0,0);
+          lsSetTile(key,tc.toDataURL('image/jpeg',0.82));
+        }catch(e2){ /* toDataURL peut échouer (canvas "tainted" si le CORS échoue) : on continue sans cache disque */ }
+      }
+      cb();
+    };
+    img.onerror=function(){onFail();cb();};
+    img.src=cachedUrl||(SAT_TILE_URL+z+'/'+yy+'/'+xx);
+  }
+  var SAT_TILE_URL='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/';
+
 window.generatePeriodStory=function(opts){
   var cW=720,cH=1280;
   var cv=document.createElement('canvas');
@@ -145,7 +211,6 @@ window.generatePeriodStory=function(opts){
      Tuiles XYZ Web Mercator standard, source Esri World Imagery (gratuite, sans clé API,
      CORS activé). Une mosaïque par trajet (bbox du trajet + marge) + une globale pour le
      récapitulatif final, assemblées en canvas offscreen avant l'enregistrement. */
-  var SAT_TILE_URL='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/';
   var SAT_MAX_TILES=36;
   var SAT_MOSAIC_TIMEOUT=9000;
   function lngToTileX(lng,z){return (lng+180)/360*Math.pow(2,z);}
@@ -184,13 +249,7 @@ window.generatePeriodStory=function(opts){
       }
       for(var xx=xMin;xx<=xMax;xx++){
         for(var yy=yMin;yy<=yMax;yy++){
-          (function(xx,yy){
-            var img=new Image();
-            img.crossOrigin='anonymous';
-            img.onload=function(){try{cctx.drawImage(img,(xx-xMin)*256,(yy-yMin)*256,256,256);}catch(e){failed=true;}checkDone();};
-            img.onerror=function(){failed=true;checkDone();};
-            img.src=SAT_TILE_URL+z+'/'+yy+'/'+xx;
-          })(xx,yy);
+          loadTile(z,xx,yy,cctx,(xx-xMin)*256,(yy-yMin)*256,function(){failed=true;},checkDone);
         }
       }
     });
@@ -629,6 +688,7 @@ window.generatePeriodStory=function(opts){
     if(prog<1){requestAnimationFrame(frame);}else{setTimeout(function(){rec.stop();},300);}
   }
 };
+})();
 `;
 
 /** HTML minimal hébergeant generatePeriodStory() dans le WebView caché. */

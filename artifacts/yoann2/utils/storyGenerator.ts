@@ -15,6 +15,60 @@
  *  - Speed display: reads from chart point at current elapsed time.
  */
 export const STORY_GENERATE_JS = `
+(function(){
+  /* ── Cache de tuiles satellite ─────────────────────────────────────────
+     Partagé par tous les appels à generateStory() dans cette session WebView
+     (déclaré ici, hors de la fonction, donc jamais recréé) : voir
+     storyGeneratorPeriod.ts pour le détail (mémoire + localStorage, best-effort,
+     jamais un point de défaillance). */
+  var TILE_MEM=Object.create(null);
+  var TILE_LS_PREFIX='satTile_v1_';
+  var TILE_LS_INDEX_KEY='satTileIndex_v1';
+  var TILE_LS_MAX=600;
+  function lsIndex(){try{return JSON.parse(localStorage.getItem(TILE_LS_INDEX_KEY)||'[]');}catch(e){return [];}}
+  function lsGetTile(key){try{return localStorage.getItem(TILE_LS_PREFIX+key);}catch(e){return null;}}
+  function lsSetTile(key,dataUrl){
+    try{
+      localStorage.setItem(TILE_LS_PREFIX+key,dataUrl);
+      var idx=lsIndex();
+      if(idx.indexOf(key)===-1){
+        idx.push(key);
+        while(idx.length>TILE_LS_MAX){
+          var old=idx.shift();
+          try{localStorage.removeItem(TILE_LS_PREFIX+old);}catch(e2){}
+        }
+        try{localStorage.setItem(TILE_LS_INDEX_KEY,JSON.stringify(idx));}catch(e3){}
+      }
+    }catch(e){ /* quota dépassée ou stockage indisponible : cache disque ignoré, réseau classique */ }
+  }
+  function loadTile(z,xx,yy,cctx,dx,dy,onFail,cb){
+    var key=z+'/'+xx+'/'+yy;
+    var mem=TILE_MEM[key];
+    if(mem){
+      try{cctx.drawImage(mem,dx,dy,256,256);}catch(e){onFail();}
+      cb();
+      return;
+    }
+    var cachedUrl=lsGetTile(key);
+    var img=new Image();
+    img.crossOrigin='anonymous';
+    img.onload=function(){
+      try{cctx.drawImage(img,dx,dy,256,256);}catch(e){onFail();}
+      TILE_MEM[key]=img;
+      if(!cachedUrl){
+        try{
+          var tc=document.createElement('canvas');tc.width=256;tc.height=256;
+          tc.getContext('2d').drawImage(img,0,0);
+          lsSetTile(key,tc.toDataURL('image/jpeg',0.82));
+        }catch(e2){ /* toDataURL peut échouer (canvas "tainted" si le CORS échoue) : on continue sans cache disque */ }
+      }
+      cb();
+    };
+    img.onerror=function(){onFail();cb();};
+    img.src=cachedUrl||(SAT_TILE_URL+z+'/'+yy+'/'+xx);
+  }
+  var SAT_TILE_URL='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/';
+
 window.generateStory=function(opts){
   var cW=720,cH=1280;
   var cv=document.createElement('canvas');
@@ -93,7 +147,6 @@ window.generateStory=function(opts){
   var mCX=(mL+mR)/2,mCY=(mT+mB)/2;
 
   // ── Imagerie satellite (thème 'satellite') — une seule mosaïque pour tout le trajet ──
-  var SAT_TILE_URL='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/';
   var SAT_MAX_TILES=48;
   var SAT_MOSAIC_TIMEOUT=9000;
   function lngToTileX(lng,z){return (lng+180)/360*Math.pow(2,z);}
@@ -131,13 +184,7 @@ window.generateStory=function(opts){
       }
       for(var xx=xMin;xx<=xMax;xx++){
         for(var yy=yMin;yy<=yMax;yy++){
-          (function(xx,yy){
-            var img=new Image();
-            img.crossOrigin='anonymous';
-            img.onload=function(){try{cctx.drawImage(img,(xx-xMin)*256,(yy-yMin)*256,256,256);}catch(e){failed=true;}checkDone();};
-            img.onerror=function(){failed=true;checkDone();};
-            img.src=SAT_TILE_URL+z+'/'+yy+'/'+xx;
-          })(xx,yy);
+          loadTile(z,xx,yy,cctx,(xx-xMin)*256,(yy-yMin)*256,function(){failed=true;},checkDone);
         }
       }
     });
@@ -566,6 +613,7 @@ window.generateStory=function(opts){
     if(prog<1){requestAnimationFrame(frame);}else{setTimeout(function(){rec.stop();},300);}
   }
 };
+})();
 `;
 
 /** Minimal HTML page hosting window.generateStory() for the hidden WebView in trip-map.tsx. */
