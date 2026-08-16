@@ -381,6 +381,11 @@ export default function TripMapScreen() {
 
   const [photoModalOpen, setPhotoModalOpen] = useState(false);
   const [addingPhotos, setAddingPhotos] = useState(false);
+  const [photoSelectMode, setPhotoSelectMode] = useState(false);
+  const [photoNoteEditId, setPhotoNoteEditId] = useState<string | null>(null);
+  const [photoNoteDraft, setPhotoNoteDraft] = useState('');
+  const [noteEditing, setNoteEditing] = useState(false);
+  const [tripNoteDraft, setTripNoteDraft] = useState('');
 
   // ── Swipe entre trajets ────────────────────────────────────────────────────
   const [sortedTripIds, setSortedTripIds] = useState<string[]>([]);
@@ -512,7 +517,8 @@ export default function TripMapScreen() {
     return Number.isFinite(t) ? t : null;
   };
 
-  const handleAddPhotos = useCallback(async () => {
+  /** Ouvre la galerie et ajoute la/les photo(s) choisies, ancrées au point de route donné (optionnel). */
+  const handleAddPhotos = useCallback(async (routeIndex?: number) => {
     if (!trip || addingPhotos) return;
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
@@ -521,7 +527,7 @@ export default function TripMapScreen() {
     }
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
-      allowsMultipleSelection: true,
+      allowsMultipleSelection: routeIndex == null,
       exif: true,
       quality: 1,
     });
@@ -542,11 +548,17 @@ export default function TripMapScreen() {
           id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
           uri: asset.uri,
           takenAt: takenAt ?? Date.now(),
+          routeIndex,
         });
       }
-      const merged = [...(trip.photos ?? []), ...newPhotos].sort((a, b) => a.takenAt - b.takenAt);
+      const merged = [...(trip.photos ?? []), ...newPhotos]
+        .sort((a, b) => (a.routeIndex ?? Infinity) - (b.routeIndex ?? Infinity) || a.takenAt - b.takenAt);
       setTrip({ ...trip, photos: merged });
       await updateTrip(trip.id, { photos: merged });
+      if (routeIndex != null && newPhotos.length > 0) {
+        setPhotoNoteEditId(newPhotos[newPhotos.length - 1]!.id);
+        setPhotoNoteDraft('');
+      }
     } finally {
       setAddingPhotos(false);
     }
@@ -558,6 +570,28 @@ export default function TripMapScreen() {
     setTrip({ ...trip, photos: remaining });
     await updateTrip(trip.id, { photos: remaining });
   }, [trip]);
+
+  const handleSavePhotoNote = useCallback(async () => {
+    if (!trip || !photoNoteEditId) return;
+    const next = (trip.photos ?? []).map(p => p.id === photoNoteEditId ? { ...p, note: photoNoteDraft.trim() || undefined } : p);
+    setTrip({ ...trip, photos: next });
+    await updateTrip(trip.id, { photos: next });
+    setPhotoNoteEditId(null);
+    setPhotoNoteDraft('');
+  }, [trip, photoNoteEditId, photoNoteDraft]);
+
+  const handleMapPointSelected = useCallback((idx: number) => {
+    setPhotoSelectMode(false);
+    void handleAddPhotos(idx);
+  }, [handleAddPhotos]);
+
+  const handleSaveTripNote = useCallback(async () => {
+    if (!trip) return;
+    const next = tripNoteDraft.trim() || undefined;
+    setTrip({ ...trip, note: next });
+    await updateTrip(trip.id, { note: next });
+    setNoteEditing(false);
+  }, [trip, tripNoteDraft]);
 
   const scrubMapPoint = useMemo(() => {
     if (!scrubTs || tripLocPts.length === 0) return undefined;
@@ -793,6 +827,7 @@ export default function TripMapScreen() {
     Promise.all([getTrips(), getVehicleSettings()]).then(([trips, v]) => {
       const found = trips.find(t => t.id === id) ?? null;
       setTrip(found);
+      setTripNoteDraft(found?.note ?? '');
       setVehicles(v);
       setWalkParticipantIds(found?.walkParticipants ?? []);
       setLoading(false);
@@ -1023,10 +1058,25 @@ export default function TripMapScreen() {
               lineColor={trip?.source === 'manual' ? '#2196F3' : '#FFC107'}
               waypoints={intermediateWaypoints.length > 0 ? intermediateWaypoints : undefined}
               scrubPoint={scrubMapPoint}
+              photoMarkerIndices={trip?.photos?.map(p => p.routeIndex).filter((i): i is number => i != null)}
+              selectMode={photoSelectMode}
+              onSelectPoint={handleMapPointSelected}
             />
           );
         })()}
-        {!screenshotMode && (
+        {photoSelectMode && (
+          <View style={{
+            position: 'absolute', left: 0, right: 0, top: 0, zIndex: 25,
+            backgroundColor: 'rgba(0,0,0,0.7)', paddingVertical: 8, paddingHorizontal: 12,
+            flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+          }}>
+            <Text style={{ color: '#fff', fontSize: 12, flex: 1 }}>Touche un point du tracé pour y placer la photo</Text>
+            <Pressable onPress={() => setPhotoSelectMode(false)} hitSlop={8}>
+              <Text style={{ color: '#FFC107', fontSize: 12, fontFamily: 'Inter_600SemiBold' }}>Annuler</Text>
+            </Pressable>
+          </View>
+        )}
+        {!screenshotMode && !photoSelectMode && (
           <Pressable
             onPress={() => setPhotoModalOpen(true)}
             style={{
@@ -1058,6 +1108,37 @@ export default function TripMapScreen() {
       {/* Fixed info + charts panel — no scroll */}
       {trip && (
         <View style={{ paddingHorizontal: 16, paddingTop: 4 }}>
+          {/* Note de trajet — remplace le libellé date dans la Story Période */}
+          {!screenshotMode && (
+            noteEditing ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                <TextInput
+                  value={tripNoteDraft}
+                  onChangeText={setTripNoteDraft}
+                  placeholder="Note du trajet (ex. balade au bord de la mer)"
+                  placeholderTextColor={colors.mutedForeground}
+                  style={{ flex: 1, fontSize: 13, color: colors.foreground, borderBottomWidth: 1, borderBottomColor: colors.border, paddingVertical: 4 }}
+                  autoFocus
+                  onSubmitEditing={handleSaveTripNote}
+                  returnKeyType="done"
+                />
+                <Pressable onPress={handleSaveTripNote} hitSlop={8}>
+                  <MaterialCommunityIcons name="check" size={18} color="#4CAF50" />
+                </Pressable>
+              </View>
+            ) : (
+              <Pressable
+                onPress={() => { setTripNoteDraft(trip.note ?? ''); setNoteEditing(true); }}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 }}
+              >
+                <MaterialCommunityIcons name="notebook-outline" size={13} color={colors.mutedForeground} />
+                <Text style={{ fontSize: 12, color: trip.note ? colors.foreground : colors.mutedForeground, flex: 1, fontStyle: trip.note ? 'normal' : 'italic' }} numberOfLines={1}>
+                  {trip.note || 'Ajouter une note de trajet'}
+                </Text>
+                <MaterialCommunityIcons name="pencil-outline" size={13} color={colors.mutedForeground} />
+              </Pressable>
+            )
+          )}
           {/* Legend */}
           {(trip.route || osrmRoute) && (
             <View style={[styles.legendRow, { marginBottom: 4 }]}>
@@ -1277,11 +1358,23 @@ export default function TripMapScreen() {
             </View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingVertical: 4 }}>
               {(trip?.photos ?? []).map(photo => (
-                <View key={photo.id} style={photoModalStyles.thumbWrap}>
+                <Pressable
+                  key={photo.id}
+                  style={photoModalStyles.thumbWrap}
+                  onPress={() => { setPhotoNoteEditId(photo.id); setPhotoNoteDraft(photo.note ?? ''); }}
+                >
                   <RNImage source={{ uri: photo.uri }} style={photoModalStyles.thumb} resizeMode="cover" />
+                  {photo.routeIndex == null && (
+                    <View style={photoModalStyles.noPosBadge}>
+                      <MaterialCommunityIcons name="map-marker-off-outline" size={11} color="#fff" />
+                    </View>
+                  )}
                   <Text style={[photoModalStyles.thumbDate, { color: colors.mutedForeground }]} numberOfLines={1}>
                     {new Date(photo.takenAt).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
                   </Text>
+                  {!!photo.note && (
+                    <Text style={[photoModalStyles.thumbNote, { color: colors.foreground }]} numberOfLines={1}>{photo.note}</Text>
+                  )}
                   <Pressable
                     onPress={() => handleRemovePhoto(photo.id)}
                     style={photoModalStyles.thumbDelete}
@@ -1289,10 +1382,10 @@ export default function TripMapScreen() {
                   >
                     <MaterialCommunityIcons name="close-circle" size={20} color="#fff" />
                   </Pressable>
-                </View>
+                </Pressable>
               ))}
               <Pressable
-                onPress={handleAddPhotos}
+                onPress={() => { setPhotoModalOpen(false); setPhotoSelectMode(true); }}
                 disabled={addingPhotos}
                 style={[photoModalStyles.addBtn, { borderColor: colors.border }]}
               >
@@ -1357,6 +1450,43 @@ export default function TripMapScreen() {
                 {storyDuration === s && <MaterialCommunityIcons name="check" size={16} color={vehColor} />}
               </Pressable>
             ))}
+          </View>
+        </Pressable>
+      </Modal>
+
+      {/* Note d'une photo */}
+      <Modal visible={photoNoteEditId !== null} transparent animationType="fade" onRequestClose={() => setPhotoNoteEditId(null)}>
+        <Pressable
+          style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'center', alignItems: 'center' }]}
+          onPress={() => setPhotoNoteEditId(null)}
+        >
+          <View style={{ backgroundColor: colors.card, borderRadius: 16, padding: 20, width: 280 }} onStartShouldSetResponder={() => true}>
+            <Text style={{ color: colors.foreground, fontSize: 15, fontFamily: 'Inter_700Bold', marginBottom: 12 }}>
+              Note de la photo
+            </Text>
+            <TextInput
+              value={photoNoteDraft}
+              onChangeText={setPhotoNoteDraft}
+              placeholder="ex. Anna dort comme un bébé"
+              placeholderTextColor={colors.mutedForeground}
+              style={{ fontSize: 14, color: colors.foreground, borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 10, marginBottom: 14 }}
+              multiline
+              autoFocus
+            />
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <Pressable
+                onPress={() => setPhotoNoteEditId(null)}
+                style={{ flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: 'center', backgroundColor: colors.muted }}
+              >
+                <Text style={{ color: colors.foreground, fontFamily: 'Inter_500Medium' }}>Annuler</Text>
+              </Pressable>
+              <Pressable
+                onPress={handleSavePhotoNote}
+                style={{ flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: 'center', backgroundColor: '#2196F3' }}
+              >
+                <Text style={{ color: '#fff', fontFamily: 'Inter_600SemiBold' }}>Enregistrer</Text>
+              </Pressable>
+            </View>
           </View>
         </Pressable>
       </Modal>
@@ -1927,6 +2057,19 @@ const photoModalStyles = StyleSheet.create({
     right: 4,
     backgroundColor: 'rgba(0,0,0,0.55)',
     borderRadius: 10,
+  },
+  noPosBadge: {
+    position: 'absolute',
+    top: 4,
+    left: 4,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderRadius: 8,
+    padding: 2,
+  },
+  thumbNote: {
+    fontSize: 10,
+    fontFamily: 'Inter_500Medium',
+    marginTop: 1,
   },
   addBtn: {
     width: 92,

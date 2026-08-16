@@ -15,6 +15,12 @@
  *     durationMs: number,
  *     vehicleType: 'car'|'moto'|'walk',
  *     dateLabel: string,
+ *     note?: string,             // remplace le libellé "trajet X/N · date" tant que ce trajet est actif
+ *     photos?: Array<{
+ *       img: string,             // data URI (base64) de la photo, format original conservé
+ *       note?: string,
+ *       frac: number,            // 0..1 — position le long du tracé où la lecture doit se figer
+ *     }>,
  *   }>,
  *   periodLabel: string,          // e.g. "juil. 2026" ou "1–31 juil. 2026"
  *   tripCountLabel: string,       // e.g. "42 trajets"
@@ -24,6 +30,11 @@
  *   customName?: string,         // e.g. "Road trip La Rochelle" — remplace periodLabel si fourni
  *   dateRangeLabel?: string,     // e.g. "du 13 au 15 Août 2026" — affiché sous customName
  * }
+ *
+ * Photos : quand la progression d'un trajet atteint le point ancré d'une photo, l'animation
+ * se fige (durée réelle ajoutée au budget total de la vidéo, sans accélérer le reste) pendant
+ * PHOTO_PAUSE_MS, affiche la photo en plein cadre (contain, ratio d'origine préservé) avec sa
+ * note éventuelle, puis reprend exactement où elle s'était arrêtée.
  */
 export const STORY_PERIOD_JS = `
 window.generatePeriodStory=function(opts){
@@ -55,8 +66,17 @@ window.generatePeriodStory=function(opts){
 
   var trips=opts.trips;
   var CAM_SLOWDOWN=50; /* facteur de ralenti du curseur pendant le vol de caméra */
+  var PHOTO_PAUSE_MS=2000;
   var VCL={car:'#2196F3',moto:'#FF9800',walk:'#4CAF50'};
   var VEMO={car:'\\uD83D\\uDE97',moto:'\\uD83C\\uDFCD',walk:'\\uD83D\\uDEB6'};
+
+  /* ── Photos ancrées — préchargées avant le début de l'enregistrement ──── */
+  var photoMarkers=[]; /* [{tripIdx, note, frac, imgEl, triggered}] triées par trajet puis frac */
+  for(var pti=0;pti<trips.length;pti++){
+    var tps=(trips[pti].photos||[]).slice().sort(function(a,b){return a.frac-b.frac;});
+    for(var pj=0;pj<tps.length;pj++)photoMarkers.push({tripIdx:pti,note:tps[pj].note||'',frac:tps[pj].frac,src:tps[pj].img,imgEl:null,triggered:false});
+  }
+  var totalPauseMs=photoMarkers.length*PHOTO_PAUSE_MS;
 
   /* ── Bounding box globale ─────────────────────────────────────────────── */
   var gLats=[],gLngs=[];
@@ -146,16 +166,49 @@ window.generatePeriodStory=function(opts){
     else cKm+=dk;
   }
 
+  DUR+=totalPauseMs;animMs+=totalPauseMs;
+
   var t0=null,lastRep=0;
-  rec.start();
+  var pauseActive=null; /* {marker, anchorEl, anchorConsumed} */
+  var pauseConsumedMs=0;
+
+  function startRecording(){
+    rec.start();
+    requestAnimationFrame(frame);
+  }
+  if(photoMarkers.length===0){
+    startRecording();
+  }else{
+    var loaded=0,settled=false;
+    var finish=function(){if(settled)return;settled=true;startRecording();};
+    var to=setTimeout(finish,6000); /* garde-fou si une image ne charge jamais */
+    for(var pmi=0;pmi<photoMarkers.length;pmi++){
+      (function(m){
+        var img=new Image();
+        img.onload=function(){m.imgEl=img;loaded++;if(loaded===photoMarkers.length){clearTimeout(to);finish();}};
+        img.onerror=function(){loaded++;if(loaded===photoMarkers.length){clearTimeout(to);finish();}};
+        img.src=m.src;
+      })(photoMarkers[pmi]);
+    }
+  }
 
   /* ── Boucle d'animation ──────────────────────────────────────────────── */
   function frame(ts){
     if(!t0)t0=ts;
     var el=ts-t0,prog=Math.min(1,el/DUR);
-    var isEnd=el>=animMs;
-    var endProg=isEnd?Math.min(1,(el-animMs)/END_MS):0;
-    var aEl=Math.min(el,animMs);
+
+    /* Pause photo en cours : fige la progression, garde le rendu figé, avance seulement le temps réel */
+    if(pauseActive){
+      pauseConsumedMs=pauseActive.anchorConsumed+(el-pauseActive.anchorEl);
+      if(el-pauseActive.anchorEl>=PHOTO_PAUSE_MS){
+        pauseConsumedMs=pauseActive.anchorConsumed+PHOTO_PAUSE_MS;
+        pauseActive=null;
+      }
+    }
+    var vEl=Math.max(0,el-pauseConsumedMs);
+    var isEnd=vEl>=animMs;
+    var endProg=isEnd?Math.min(1,(vEl-animMs)/END_MS):0;
+    var aEl=Math.min(vEl,animMs);
 
     /* Trajet courant */
     var ci=trips.length-1;
@@ -176,6 +229,19 @@ window.generatePeriodStory=function(opts){
     }else{
       var remainMs=(tDur-transMs)||1;
       tProg=Math.min(1,pEndSlow+((tEl-transMs)/remainMs)*(1-pEndSlow));
+    }
+
+    /* Déclenchement d'une pause photo : dès que la progression du trajet actif
+       atteint le point ancré d'une photo pas encore montrée. */
+    if(!pauseActive&&!isEnd){
+      for(var pmi=0;pmi<photoMarkers.length;pmi++){
+        var pm=photoMarkers[pmi];
+        if(pm.tripIdx===ci&&!pm.triggered&&tProg>=pm.frac){
+          pm.triggered=true;
+          pauseActive={marker:pm,anchorEl:el,anchorConsumed:pauseConsumedMs};
+          break;
+        }
+      }
     }
 
     /* Caméra : vol eased entre cams pré-calculées (converge TOUJOURS) */
@@ -226,7 +292,7 @@ window.generatePeriodStory=function(opts){
         liveTimeStr=(hh<10?'0':'')+hh+':'+(mm<10?'0':'')+mm;
       }
     }
-    var captionTxt=isEnd?'R\\xE9capitulatif':(VEMO[trips[ci].vehicleType]||'')+'  '+trips[ci].dateLabel+(liveTimeStr?'  \\xB7  '+liveTimeStr:'');
+    var captionTxt=isEnd?'R\\xE9capitulatif':trips[ci].note?((VEMO[trips[ci].vehicleType]||'')+'  '+trips[ci].note):((VEMO[trips[ci].vehicleType]||'')+'  '+trips[ci].dateLabel+(liveTimeStr?'  \\xB7  '+liveTimeStr:''));
     if(opts.customName){
       ctx.fillStyle='#FFFFFF';ctx.font='bold 40px Arial,sans-serif';ctx.textAlign='center';
       ctx.fillText(opts.customName,cW/2,58);
@@ -377,11 +443,29 @@ window.generatePeriodStory=function(opts){
       ctx.globalAlpha=1;
     }
 
+    /* ── Pause photo : overlay plein cadre, image non déformée + note ───── */
+    if(pauseActive&&pauseActive.marker.imgEl){
+      var pm2=pauseActive.marker,im=pm2.imgEl;
+      ctx.fillStyle='rgba(6,7,10,0.86)';ctx.fillRect(0,0,cW,cH);
+      var boxL=50,boxT=headerH+40,boxR=cW-50,boxB=cH-220;
+      var boxW=boxR-boxL,boxH=boxB-boxT;
+      var ir=im.naturalWidth/im.naturalHeight,br=boxW/boxH;
+      var dw,dh;
+      if(ir>br){dw=boxW;dh=boxW/ir;}else{dh=boxH;dw=boxH*ir;}
+      var dx=boxL+(boxW-dw)/2,dy=boxT+(boxH-dh)/2;
+      ctx.save();ctx.shadowColor='#000000CC';ctx.shadowBlur=30;
+      ctx.drawImage(im,dx,dy,dw,dh);
+      ctx.restore();
+      ctx.strokeStyle='#FFFFFF22';ctx.lineWidth=2;ctx.strokeRect(dx,dy,dw,dh);
+      if(pm2.note){
+        ctx.fillStyle='#FFFFFF';ctx.font='30px Arial,sans-serif';ctx.textAlign='center';
+        ctx.fillText(pm2.note,cW/2,boxB+56,cW-100);
+      }
+    }
+
     if(el-lastRep>400){lastRep=el;window.ReactNativeWebView.postMessage(JSON.stringify({type:'story_progress',p:Math.round(prog*100)}));}
     if(prog<1){requestAnimationFrame(frame);}else{setTimeout(function(){rec.stop();},300);}
   }
-
-  requestAnimationFrame(frame);
 };
 `;
 

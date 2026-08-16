@@ -14,6 +14,14 @@ export interface TripPhoto {
   uri: string;
   /** Moment the photo was taken (ms epoch), from EXIF/asset metadata when available. */
   takenAt: number;
+  /** Optional note shown alongside this photo (e.g. in the Story Période). */
+  note?: string;
+  /**
+   * Index into this trip's `route` array anchoring the photo to a specific GPS point,
+   * chosen by tapping a point on the trip map. Becomes stale/ignored if the route is
+   * later re-simplified or regenerated (point count/order changes) — not auto-migrated.
+   */
+  routeIndex?: number;
 }
 
 export interface RouteSegment {
@@ -64,6 +72,8 @@ export interface Trip {
   intermediates?: Array<{ name: string; placeId?: string }>;
   /** Photos referenced from the device gallery, attached to this trip. */
   photos?: TripPhoto[];
+  /** Trip caption/note — shown in place of the date label in the Story Période when set. */
+  note?: string;
 }
 
 /** A user-defined free group that can contain trips with any itinerary. */

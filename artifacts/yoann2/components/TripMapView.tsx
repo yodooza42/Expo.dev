@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import { GestureResponderEvent, View } from 'react-native';
 import { Circle, Line as SvgLine, Polyline, Rect, Svg, Text as SvgText } from 'react-native-svg';
 
 import type { RoutePoint } from '@/types/trips';
@@ -15,6 +16,12 @@ interface Props {
   waypoints?: Array<{ lat: number; lng: number }>;
   /** Scrub position — rendered as an orange circle on the route */
   scrubPoint?: { lat: number; lng: number };
+  /** Route indices of already-anchored photo markers — rendered as small pins */
+  photoMarkerIndices?: number[];
+  /** When true, tapping the map selects the nearest route point via onSelectPoint. */
+  selectMode?: boolean;
+  /** Called with the nearest route index when the user taps the map in selectMode. */
+  onSelectPoint?: (index: number) => void;
 }
 
 const PAD = 0.12;
@@ -33,7 +40,10 @@ function pickScaleKm(totalWidthKm: number, drawW: number, maxFrac = 0.28): { km:
   return { km: chosen, px, label };
 }
 
-export function TripMapView({ route, width, height, bgColor = '#1A1A1A', lineColor = '#FFC107', waypoints, scrubPoint }: Props) {
+export function TripMapView({
+  route, width, height, bgColor = '#1A1A1A', lineColor = '#FFC107', waypoints, scrubPoint,
+  photoMarkerIndices, selectMode, onSelectPoint,
+}: Props) {
   const { pointsStr, startX, startY, endX, endY, toX, toY, scale } = useMemo(() => {
     if (!route || route.length < 2) return { pointsStr: '', startX: 0, startY: 0, endX: 0, endY: 0, toX: () => 0, toY: () => 0, scale: null };
 
@@ -96,7 +106,22 @@ export function TripMapView({ route, width, height, bgColor = '#1A1A1A', lineCol
 
   if (!route || route.length < 2) return null;
 
+  function handleTap(evt: GestureResponderEvent) {
+    if (!selectMode || !onSelectPoint) return;
+    const { locationX, locationY } = evt.nativeEvent;
+    let bestIdx = 0;
+    let bestDist = Infinity;
+    for (let i = 0; i < route.length; i++) {
+      const dx = toX(route[i]!.lng) - locationX;
+      const dy = toY(route[i]!.lat) - locationY;
+      const d = dx * dx + dy * dy;
+      if (d < bestDist) { bestDist = d; bestIdx = i; }
+    }
+    onSelectPoint(bestIdx);
+  }
+
   return (
+    <View onStartShouldSetResponder={() => !!selectMode} onResponderRelease={handleTap}>
     <Svg width={width} height={height}>
       <Rect x={0} y={0} width={width} height={height} fill={bgColor} />
       <Polyline
@@ -108,6 +133,17 @@ export function TripMapView({ route, width, height, bgColor = '#1A1A1A', lineCol
         strokeLinecap="round"
         opacity={0.9}
       />
+      {/* Photo markers already anchored on this route */}
+      {photoMarkerIndices?.map((idx, i) => {
+        const p = route[Math.max(0, Math.min(idx, route.length - 1))]!;
+        const cx = toX(p.lng), cy = toY(p.lat);
+        return (
+          <React.Fragment key={`pm-${i}`}>
+            <Circle cx={cx} cy={cy} r={8} fill="#E91E63" opacity={0.9} />
+            <Circle cx={cx} cy={cy} r={3} fill="#fff" />
+          </React.Fragment>
+        );
+      })}
       {/* Intermediate waypoints */}
       {waypoints?.map((wp, i) => {
         const cx = toX(wp.lng);
@@ -156,5 +192,6 @@ export function TripMapView({ route, width, height, bgColor = '#1A1A1A', lineCol
         </>
       )}
     </Svg>
+    </View>
   );
 }

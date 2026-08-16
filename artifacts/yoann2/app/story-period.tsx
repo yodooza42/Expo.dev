@@ -227,24 +227,45 @@ export default function StoryPeriodScreen() {
     }
   }, []);
 
+  /** Encode une photo de galerie en data URI base64 pour que le WebView puisse la dessiner. */
+  async function photoToDataUri(uri: string): Promise<string | null> {
+    try {
+      const b64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
+      const ext = (uri.split('.').pop() || 'jpg').toLowerCase().split('?')[0];
+      const mime = ext === 'png' ? 'image/png' : ext === 'heic' ? 'image/heic' : 'image/jpeg';
+      return `data:${mime};base64,${b64}`;
+    } catch {
+      return null;
+    }
+  }
+
   // ── Lancement de la génération ─────────────────────────────────────────────
-  function handleGenerate() {
+  async function handleGenerate() {
     if (selectedTrips.length === 0) {
       Alert.alert('Story', 'Aucun trajet sélectionné pour cette story.');
       return;
     }
 
-    const tripsOpts = selectedTrips.map(t => {
+    const tripsOpts = await Promise.all(selectedTrips.map(async t => {
       const d = new Date(t.startTime);
+      const route = t.route!;
+      const anchoredPhotos = (t.photos ?? []).filter(p => p.routeIndex != null && route.length > 1);
+      const photos = (await Promise.all(anchoredPhotos.map(async p => {
+        const dataUri = await photoToDataUri(p.uri);
+        if (!dataUri) return null;
+        return { img: dataUri, note: p.note, frac: (p.routeIndex! / (route.length - 1)) };
+      }))).filter((p): p is { img: string; note: string | undefined; frac: number } => p != null);
       return {
-        route:       t.route!,
+        route,
         distKm:      t.distanceKm,
         durationMs:  t.endTime - t.startTime,
         startTimeMs: t.startTime,
         vehicleType: getVType(t),
         dateLabel:   `${DAYS_FR[d.getDay()]} ${d.getDate()} ${MONTHS_FR[d.getMonth()]}`,
+        note:        t.note,
+        photos,
       };
-    });
+    }));
 
     const driveDurTxt = stats.driveMs > 0 ? `🚗 ${fmtDur(stats.driveMs)}` : '';
     const walkDurTxt  = stats.walkMs  > 0 ? `${driveDurTxt ? '  ·  ' : ''}🚶 ${fmtDur(stats.walkMs)}` : '';
