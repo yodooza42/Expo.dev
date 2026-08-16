@@ -71,12 +71,12 @@ window.generatePeriodStory=function(opts){
   var VEMO={car:'\\uD83D\\uDE97',moto:'\\uD83C\\uDFCD',walk:'\\uD83D\\uDEB6'};
 
   /* ── Photos ancrées — préchargées avant le début de l'enregistrement ──── */
-  var photoMarkers=[]; /* [{tripIdx, note, frac, imgEl, triggered}] triées par trajet puis frac */
+  var photoMarkersRaw=[]; /* [{tripIdx, note, frac, src}] — position absolue calculée plus bas, une fois tStart/tDurOf connus */
   for(var pti=0;pti<trips.length;pti++){
     var tps=(trips[pti].photos||[]).slice().sort(function(a,b){return a.frac-b.frac;});
-    for(var pj=0;pj<tps.length;pj++)photoMarkers.push({tripIdx:pti,note:tps[pj].note||'',frac:tps[pj].frac,src:tps[pj].img,imgEl:null,triggered:false});
+    for(var pj=0;pj<tps.length;pj++)photoMarkersRaw.push({tripIdx:pti,note:tps[pj].note||'',frac:tps[pj].frac,src:tps[pj].img,imgEl:null,triggered:false});
   }
-  var totalPauseMs=photoMarkers.length*PHOTO_PAUSE_MS;
+  var totalPauseMs=photoMarkersRaw.length*PHOTO_PAUSE_MS;
 
   /* ── Bounding box globale ─────────────────────────────────────────────── */
   var gLats=[],gLngs=[];
@@ -166,7 +166,24 @@ window.generatePeriodStory=function(opts){
     else cKm+=dk;
   }
 
-  DUR+=totalPauseMs;animMs+=totalPauseMs;
+  /* IMPORTANT : seul DUR (budget réel d'enregistrement) grandit avec les pauses photo.
+     animMs reste la durée "virtuelle" d'animation (hors pauses) sur laquelle tStart/tDurOf
+     sont basés — l'étendre ici désynchroniserait les bornes de trajet (tStart, calculées
+     juste au-dessus avec l'ancien animMs) de leur durée (tDurOf, qui lirait le nouvel animMs
+     par closure), coupant les trajets trop tôt / les faisant sauter au suivant. */
+  DUR+=totalPauseMs;
+
+  /* ── Position absolue (en aEl, temps d'animation hors pauses) de chaque photo ──
+     Calculée une fois que tStart/tDurOf sont connus. Utiliser une position absolue plutôt
+     que "tripIdx===ci && tProg>=frac" évite la course avec le changement de trajet (une
+     photo en frac≈1 ou frac≈0 pouvait ne jamais matcher car ci changeait juste avant/après),
+     et permet à plusieurs photos au même endroit de s'enchaîner automatiquement : aEl reste
+     figé pendant une pause, donc dès qu'elle se termine, la photo suivante à la même position
+     absolue est immédiatement éligible. */
+  var photoMarkers=photoMarkersRaw.map(function(m){
+    return{tripIdx:m.tripIdx,note:m.note,frac:m.frac,src:m.src,imgEl:null,triggered:false,
+      absAEl:tStart[m.tripIdx]+m.frac*tDurOf(m.tripIdx)};
+  }).sort(function(a,b){return a.absAEl-b.absAEl;});
 
   var t0=null,lastRep=0;
   var pauseActive=null; /* {marker, anchorEl, anchorConsumed} */
@@ -231,12 +248,14 @@ window.generatePeriodStory=function(opts){
       tProg=Math.min(1,pEndSlow+((tEl-transMs)/remainMs)*(1-pEndSlow));
     }
 
-    /* Déclenchement d'une pause photo : dès que la progression du trajet actif
-       atteint le point ancré d'une photo pas encore montrée. */
-    if(!pauseActive&&!isEnd){
+    /* Déclenchement d'une pause photo : dès que la position absolue (aEl) d'une photo
+       pas encore montrée est atteinte. Comparaison sur aEl (indépendante de ci/tProg)
+       pour ne jamais rater une photo en tout début/fin de trajet, et pour enchaîner
+       automatiquement plusieurs photos ancrées au même endroit. */
+    if(!pauseActive){
       for(var pmi=0;pmi<photoMarkers.length;pmi++){
         var pm=photoMarkers[pmi];
-        if(pm.tripIdx===ci&&!pm.triggered&&tProg>=pm.frac){
+        if(!pm.triggered&&aEl>=pm.absAEl){
           pm.triggered=true;
           pauseActive={marker:pm,anchorEl:el,anchorConsumed:pauseConsumedMs};
           break;
