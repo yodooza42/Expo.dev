@@ -29,12 +29,22 @@
  *   videoDurationSec: number,
  *   customName?: string,         // e.g. "Road trip La Rochelle" — remplace periodLabel si fourni
  *   dateRangeLabel?: string,     // e.g. "du 13 au 15 Août 2026" — affiché sous customName
+ *   theme?: 'dark'|'light'|'satellite', // défaut 'dark'
  * }
  *
  * Photos : quand la progression d'un trajet atteint le point ancré d'une photo, l'animation
  * se fige (durée réelle ajoutée au budget total de la vidéo, sans accélérer le reste) pendant
  * PHOTO_PAUSE_MS, affiche la photo en plein cadre (contain, ratio d'origine préservé) avec sa
  * note éventuelle, puis reprend exactement où elle s'était arrêtée.
+ *
+ * Thèmes : 'dark' (défaut) et 'light' ne changent que la palette de couleurs (aucune
+ * dépendance réseau). 'satellite' télécharge et assemble de vraies tuiles satellite (Esri
+ * World Imagery, gratuit, sans clé API) en fond de la zone carte, une mosaïque par trajet
+ * (+ une globale pour le récapitulatif final), avant le lancement de l'enregistrement — comme
+ * le préchargement des photos existant. La projection est en Web Mercator (comme les tuiles)
+ * pour que le tracé reste pixel-aligné avec l'imagerie. Si l'assemblage échoue (réseau,
+ * timeout, trop de tuiles), on retombe automatiquement sur le thème 'dark' et on prévient
+ * React Native via un message `story_theme_fallback`.
  */
 export const STORY_PERIOD_JS = `
 window.generatePeriodStory=function(opts){
@@ -70,6 +80,30 @@ window.generatePeriodStory=function(opts){
   var VCL={car:'#2196F3',moto:'#FF9800',walk:'#4CAF50'};
   var VEMO={car:'\\uD83D\\uDE97',moto:'\\uD83C\\uDFCD',walk:'\\uD83D\\uDEB6'};
 
+  /* ── Thème ─────────────────────────────────────────────────────────────
+     'dark'/'light' ne changent que la palette. 'satellite' réutilise la palette
+     'dark' (texte lisible sur imagerie photo) et active le dessin de tuiles réelles
+     en fond de carte ; en cas d'échec réseau, effTheme retombe sur 'dark'. */
+  var requestedTheme=opts.theme||'dark';
+  var effTheme=requestedTheme;
+  var PALETTES={
+    dark:{
+      bgGrad0:'#151820',bgGrad1:'#0A0B0E',gridStroke:'#FFFFFF06',
+      headerBg:'#12141Acc',headerSep:'#FFFFFF12',
+      titleColor:'#FFFFFF',subColor:'#8A8F99',captionColor:'#565B66',
+      ghostStroke:'#FFFFFF0C',footerBg:'#101218',footerSep:'#FFFFFF14',
+      barBg:'#22252E',gold:'#FFC107',
+    },
+    light:{
+      bgGrad0:'#F4F5F8',bgGrad1:'#E2E5EB',gridStroke:'#00000008',
+      headerBg:'#FFFFFFcc',headerSep:'#00000012',
+      titleColor:'#161A20',subColor:'#5B616C',captionColor:'#9198A4',
+      ghostStroke:'#0000000C',footerBg:'#FFFFFF',footerSep:'#00000014',
+      barBg:'#E4E7EC',gold:'#B8860B',
+    },
+  };
+  function palette(){return PALETTES[effTheme==='light'?'light':'dark'];}
+
   /* ── Photos ancrées — préchargées avant le début de l'enregistrement ──── */
   var photoMarkersRaw=[]; /* [{tripIdx, note, frac, src}] — position absolue calculée plus bas, une fois tStart/tDurOf connus */
   for(var pti=0;pti<trips.length;pti++){
@@ -88,19 +122,88 @@ window.generatePeriodStory=function(opts){
   }
   var pLa=(maxLat-minLat)*0.18||0.01,pLn=(maxLng-minLng)*0.18||0.01;
   minLat-=pLa;maxLat+=pLa;minLng-=pLn;maxLng+=pLn;
-  var latSp=maxLat-minLat,lngSp=maxLng-minLng;
+  var lngSp=maxLng-minLng;
 
-  /* ── Projection map (zone centrale) ──────────────────────────────────── */
+  /* ── Projection map (zone centrale) — Web Mercator, comme les tuiles satellite ──
+     (nécessaire pour que le tracé reste pixel-aligné avec l'imagerie en thème satellite ;
+     à l'échelle d'un trajet la différence avec une projection equirectangulaire est
+     imperceptible pour les thèmes dark/light). */
+  function mercY(lat){return Math.log(Math.tan(Math.PI/4+(lat*Math.PI/180)/2));}
+  var minMerc=mercY(minLat),maxMerc=mercY(maxLat),mercSp=(maxMerc-minMerc)||0.0001;
+
   var headerH=opts.customName?214:180;
   var mT=headerH+5,mB=800,mL=40,mR=680;
   var mW=mR-mL,mH=mB-mT;
-  var midLR=((minLat+maxLat)/2)*Math.PI/180;
-  var rAsp=(lngSp/latSp)*Math.cos(midLR),mapAsp=mW/mH;
+  var rAsp=lngSp/mercSp,mapAsp=mW/mH;
   if(rAsp>mapAsp){var nH=mW/rAsp;mT+=(mH-nH)/2;mB=mT+nH;mH=nH;}
   else{var nW=mH*rAsp;mL+=(mW-nW)/2;mR=mL+nW;mW=nW;}
   var mCX=(mL+mR)/2,mCY=(mT+mB)/2;
   function pX(lng){return mL+(lng-minLng)/lngSp*mW;}
-  function pY(lat){return mB-(lat-minLat)/latSp*mH;}
+  function pY(lat){return mB-(mercY(lat)-minMerc)/mercSp*mH;}
+
+  /* ── Imagerie satellite (thème 'satellite') ──────────────────────────────
+     Tuiles XYZ Web Mercator standard, source Esri World Imagery (gratuite, sans clé API,
+     CORS activé). Une mosaïque par trajet (bbox du trajet + marge) + une globale pour le
+     récapitulatif final, assemblées en canvas offscreen avant l'enregistrement. */
+  var SAT_TILE_URL='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/';
+  var SAT_MAX_TILES=36;
+  var SAT_MOSAIC_TIMEOUT=9000;
+  function lngToTileX(lng,z){return (lng+180)/360*Math.pow(2,z);}
+  function latToTileY(lat,z){var r=lat*Math.PI/180;return (1-Math.log(Math.tan(r)+1/Math.cos(r))/Math.PI)/2*Math.pow(2,z);}
+  function tileXToLng(x,z){return x/Math.pow(2,z)*360-180;}
+  function tileYToLat(y,z){var n=Math.PI-2*Math.PI*y/Math.pow(2,z);return 180/Math.PI*Math.atan(0.5*(Math.exp(n)-Math.exp(-n)));}
+
+  function buildSatMosaic(bbox,targetWpx,targetHpx){
+    return new Promise(function(resolve){
+      var z=19,xMin,xMax,yMin,yMax,cols=1,rows=1;
+      while(z>1){
+        xMin=Math.floor(lngToTileX(bbox.lngMin,z));
+        xMax=Math.floor(lngToTileX(bbox.lngMax,z));
+        yMin=Math.floor(latToTileY(bbox.latMax,z));
+        yMax=Math.floor(latToTileY(bbox.latMin,z));
+        cols=xMax-xMin+1;rows=yMax-yMin+1;
+        var tilePx=Math.min(cols,rows)*256,targetPx=Math.max(targetWpx,targetHpx);
+        if(cols*rows<=SAT_MAX_TILES&&tilePx>=targetPx*0.85)break;
+        z--;
+      }
+      if(cols*rows>SAT_MAX_TILES||cols<1||rows<1){resolve(null);return;}
+      var canvas=document.createElement('canvas');
+      canvas.width=cols*256;canvas.height=rows*256;
+      var cctx=canvas.getContext('2d');
+      var total=cols*rows,done=0,failed=false,settled=false;
+      var to=setTimeout(function(){if(!settled){settled=true;resolve(null);}},SAT_MOSAIC_TIMEOUT);
+      function checkDone(){
+        done++;
+        if(done>=total&&!settled){
+          settled=true;clearTimeout(to);
+          if(failed){resolve(null);return;}
+          resolve({canvas:canvas,
+            lngLeft:tileXToLng(xMin,z),lngRight:tileXToLng(xMax+1,z),
+            latTop:tileYToLat(yMin,z),latBottom:tileYToLat(yMax+1,z)});
+        }
+      }
+      for(var xx=xMin;xx<=xMax;xx++){
+        for(var yy=yMin;yy<=yMax;yy++){
+          (function(xx,yy){
+            var img=new Image();
+            img.crossOrigin='anonymous';
+            img.onload=function(){try{cctx.drawImage(img,(xx-xMin)*256,(yy-yMin)*256,256,256);}catch(e){failed=true;}checkDone();};
+            img.onerror=function(){failed=true;checkDone();};
+            img.src=SAT_TILE_URL+z+'/'+yy+'/'+xx;
+          })(xx,yy);
+        }
+      }
+    });
+  }
+  function bboxOfTrip(t){
+    var rr=t.route,la0=rr[0].lat,la1=la0,ln0=rr[0].lng,ln1=ln0;
+    for(var k=1;k<rr.length;k++){var p=rr[k];if(p.lat<la0)la0=p.lat;if(p.lat>la1)la1=p.lat;if(p.lng<ln0)ln0=p.lng;if(p.lng>ln1)ln1=p.lng;}
+    var padLa=(la1-la0)*0.3||0.003,padLn=(ln1-ln0)*0.3||0.003;
+    return{latMin:la0-padLa,latMax:la1+padLa,lngMin:ln0-padLn,lngMax:ln1+padLn};
+  }
+  var satMosaics=[]; /* un par trajet */
+  var satGlobalMosaic=null;
+  var satReady=(requestedTheme!=='satellite');
 
   /* ── Caméra par trajet — cadrage serré, zoom quasi illimité ──────────── */
   function camForTrip(t){
@@ -193,9 +296,9 @@ window.generatePeriodStory=function(opts){
     rec.start();
     requestAnimationFrame(frame);
   }
-  if(photoMarkers.length===0){
-    startRecording();
-  }else{
+
+  function preloadPhotosThenStart(){
+    if(photoMarkers.length===0){startRecording();return;}
     var loaded=0,settled=false;
     var finish=function(){if(settled)return;settled=true;startRecording();};
     var to=setTimeout(finish,6000); /* garde-fou si une image ne charge jamais */
@@ -209,10 +312,36 @@ window.generatePeriodStory=function(opts){
     }
   }
 
+  if(requestedTheme!=='satellite'){
+    preloadPhotosThenStart();
+  }else{
+    var mosaicPromises=trips.map(function(t){return buildSatMosaic(bboxOfTrip(t),mW,mH);});
+    mosaicPromises.push(buildSatMosaic({latMin:minLat,latMax:maxLat,lngMin:minLng,lngMax:maxLng},mW,mH));
+    var overallGuard=Math.min(25000,6000+trips.length*1500);
+    var guardTo=setTimeout(function(){ /* garde-fou global : si ça traîne trop, on abandonne le satellite */
+      effTheme='dark';
+      window.ReactNativeWebView.postMessage(JSON.stringify({type:'story_theme_fallback',reason:'timeout'}));
+      preloadPhotosThenStart();
+    },overallGuard);
+    Promise.all(mosaicPromises).then(function(results){
+      clearTimeout(guardTo);
+      var ok=results.every(function(r){return r!=null;});
+      if(!ok){
+        effTheme='dark';
+        window.ReactNativeWebView.postMessage(JSON.stringify({type:'story_theme_fallback',reason:'tiles'}));
+      }else{
+        satMosaics=results.slice(0,trips.length);
+        satGlobalMosaic=results[results.length-1];
+      }
+      preloadPhotosThenStart();
+    });
+  }
+
   /* ── Boucle d'animation ──────────────────────────────────────────────── */
   function frame(ts){
     if(!t0)t0=ts;
     var el=ts-t0,prog=Math.min(1,el/DUR);
+    var THEME=palette();
 
     /* Pause photo en cours : fige la progression, garde le rendu figé, avance seulement le temps réel */
     if(pauseActive){
@@ -282,16 +411,17 @@ window.generatePeriodStory=function(opts){
       if(flI>=activeRoute.length-1){flI=activeRoute.length-2;frI=1;}
     }
 
-    /* Background : dégradé radial sombre + grille subtile */
+    /* Background : dégradé radial + grille subtile (couvert par l'imagerie satellite
+       dans la zone carte quand ce thème est actif et prêt) */
     var bg=ctx.createRadialGradient(cW/2,cH*0.38,80,cW/2,cH*0.38,900);
-    bg.addColorStop(0,'#151820');bg.addColorStop(1,'#0A0B0E');
+    bg.addColorStop(0,THEME.bgGrad0);bg.addColorStop(1,THEME.bgGrad1);
     ctx.fillStyle=bg;ctx.fillRect(0,0,cW,cH);
-    ctx.strokeStyle='#FFFFFF06';ctx.lineWidth=1;
+    ctx.strokeStyle=THEME.gridStroke;ctx.lineWidth=1;
     for(var gx=0;gx<cW;gx+=60){ctx.beginPath();ctx.moveTo(gx,0);ctx.lineTo(gx,cH);ctx.stroke();}
     for(var gy=0;gy<cH;gy+=60){ctx.beginPath();ctx.moveTo(0,gy);ctx.lineTo(cW,gy);ctx.stroke();}
 
     /* Header */
-    ctx.fillStyle='#12141Acc';ctx.fillRect(0,0,cW,headerH);
+    ctx.fillStyle=THEME.headerBg;ctx.fillRect(0,0,cW,headerH);
     var dispKm=(isEnd?totKm:(accKm[ci]+(trips[ci].distKm||0)*tProg)).toFixed(1);
     /* Heure temps réel : timestamp GPS exact du point où se trouve le curseur si
        disponible (trace GPS brute), sinon interpolation uniforme sur la durée
@@ -313,35 +443,48 @@ window.generatePeriodStory=function(opts){
     }
     var captionTxt=isEnd?'R\\xE9capitulatif':trips[ci].note?((VEMO[trips[ci].vehicleType]||'')+'  '+trips[ci].note):((VEMO[trips[ci].vehicleType]||'')+'  '+trips[ci].dateLabel+(liveTimeStr?'  \\xB7  '+liveTimeStr:''));
     if(opts.customName){
-      ctx.fillStyle='#FFFFFF';ctx.font='bold 40px Arial,sans-serif';ctx.textAlign='center';
+      ctx.fillStyle=THEME.titleColor;ctx.font='bold 40px Arial,sans-serif';ctx.textAlign='center';
       ctx.fillText(opts.customName,cW/2,58);
-      ctx.fillStyle='#8A8F99';ctx.font='26px Arial,sans-serif';
+      ctx.fillStyle=THEME.subColor;ctx.font='26px Arial,sans-serif';
       ctx.fillText(opts.dateRangeLabel||'',cW/2,96);
-      ctx.fillStyle='#8A8F99';ctx.font='24px Arial,sans-serif';
+      ctx.fillStyle=THEME.subColor;ctx.font='24px Arial,sans-serif';
       ctx.fillText(opts.tripCountLabel+'  \\xB7  '+totKm.toFixed(1)+' km',cW/2,132);
-      ctx.fillStyle='#565B66';ctx.font='20px Arial,sans-serif';
+      ctx.fillStyle=THEME.captionColor;ctx.font='20px Arial,sans-serif';
       ctx.fillText(captionTxt,cW/2,170);
     } else {
-      ctx.fillStyle='#FFFFFF';ctx.font='bold 42px Arial,sans-serif';ctx.textAlign='center';
+      ctx.fillStyle=THEME.titleColor;ctx.font='bold 42px Arial,sans-serif';ctx.textAlign='center';
       ctx.fillText('\\uD83D\\uDDFA\\uFE0F  '+opts.periodLabel,cW/2,65);
-      ctx.fillStyle='#8A8F99';ctx.font='26px Arial,sans-serif';
+      ctx.fillStyle=THEME.subColor;ctx.font='26px Arial,sans-serif';
       ctx.fillText(opts.tripCountLabel+'  \\xB7  '+dispKm+' km',cW/2,105);
-      ctx.fillStyle='#565B66';ctx.font='22px Arial,sans-serif';
+      ctx.fillStyle=THEME.captionColor;ctx.font='22px Arial,sans-serif';
       ctx.fillText(captionTxt,cW/2,142);
     }
-    ctx.strokeStyle='#FFFFFF12';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(0,headerH);ctx.lineTo(cW,headerH);ctx.stroke();
+    ctx.strokeStyle=THEME.headerSep;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(0,headerH);ctx.lineTo(cW,headerH);ctx.stroke();
 
     /* Zone carte avec clip + transform caméra */
     ctx.save();
     ctx.beginPath();ctx.rect(38,mT-2,684,mB-mT+7);ctx.clip();
     ctx.translate(mCX,mCY);ctx.scale(cam.zoom,cam.zoom);ctx.translate(-cam.cx,-cam.cy);
 
+    /* Imagerie satellite (thème satellite, prête) : dessinée dans le même repère que
+       le tracé (translate/scale ci-dessus) pour rester parfaitement alignée pendant
+       le vol de caméra. */
+    if(effTheme==='satellite'){
+      var mosaic=isEnd?satGlobalMosaic:(satMosaics[ci]||satGlobalMosaic);
+      if(mosaic){
+        var sx0=pX(mosaic.lngLeft),sx1=pX(mosaic.lngRight);
+        var sy0=pY(mosaic.latTop),sy1=pY(mosaic.latBottom);
+        ctx.drawImage(mosaic.canvas,sx0,sy0,sx1-sx0,sy1-sy0);
+        ctx.fillStyle='rgba(6,7,10,0.22)';ctx.fillRect(sx0,sy0,sx1-sx0,sy1-sy0);
+      }
+    }
+
     /* Ghost (tous les tracés, très transparent) */
     for(var ti=0;ti<trips.length;ti++){
       var rr=trips[ti].route;if(rr.length<2)continue;
       ctx.beginPath();ctx.moveTo(pX(rr[0].lng),pY(rr[0].lat));
       for(var ri=1;ri<rr.length;ri++)ctx.lineTo(pX(rr[ri].lng),pY(rr[ri].lat));
-      ctx.strokeStyle='#FFFFFF0C';ctx.lineWidth=2.5/cam.zoom;ctx.lineJoin='round';ctx.lineCap='round';ctx.stroke();
+      ctx.strokeStyle=THEME.ghostStroke;ctx.lineWidth=2.5/cam.zoom;ctx.lineJoin='round';ctx.lineCap='round';ctx.stroke();
     }
 
     /* Trajets terminés */
@@ -401,15 +544,15 @@ window.generatePeriodStory=function(opts){
     ctx.restore(); /* fin clip + caméra */
 
     /* ── Panneau stats bas ────────────────────────────────────────────── */
-    ctx.fillStyle='#101218';ctx.fillRect(0,800,cW,cH-800);
-    ctx.strokeStyle='#FFFFFF14';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(0,800);ctx.lineTo(cW,800);ctx.stroke();
+    ctx.fillStyle=THEME.footerBg;ctx.fillRect(0,800,cW,cH-800);
+    ctx.strokeStyle=THEME.footerSep;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(0,800);ctx.lineTo(cW,800);ctx.stroke();
 
     if(!isEnd){
       /* Phase animation : km courant + infos trajet */
       var col=VCL[trips[ci].vehicleType]||'#2196F3';
       ctx.fillStyle=col;ctx.font='bold 80px Arial,sans-serif';ctx.textAlign='center';
       ctx.fillText((accKm[ci]+(trips[ci].distKm||0)*tProg).toFixed(1)+' km',cW/2,884);
-      ctx.fillStyle='#565B66';ctx.font='26px Arial,sans-serif';
+      ctx.fillStyle=THEME.captionColor;ctx.font='26px Arial,sans-serif';
       ctx.fillText('trajet '+(ci+1)+' / '+trips.length+'  \\xB7  '+trips[ci].dateLabel,cW/2,928);
 
       /* Barre de progression segmentée (1 segment par trajet) */
@@ -418,7 +561,7 @@ window.generatePeriodStory=function(opts){
       for(var si=0;si<trips.length;si++){
         var segW=(wts[si]/totW)*barW;
         var sCol=VCL[trips[si].vehicleType]||'#2196F3';
-        ctx.fillStyle='#22252E';
+        ctx.fillStyle=THEME.barBg;
         ctx.fillRect(bx,barY,Math.max(segW-2,1),barH);
         if(si<ci){ctx.fillStyle=sCol;ctx.fillRect(bx,barY,Math.max(segW-2,1),barH);}
         else if(si===ci){ctx.fillStyle=sCol;ctx.fillRect(bx,barY,Math.max((segW-2)*tProg,0),barH);}
@@ -435,11 +578,11 @@ window.generatePeriodStory=function(opts){
     } else {
       /* Phase end card : recap complet, fade-in */
       var fa=Math.min(1,endProg*2.2);ctx.globalAlpha=fa;
-      ctx.fillStyle='#FFFFFF';ctx.font='bold 46px Arial,sans-serif';ctx.textAlign='center';
+      ctx.fillStyle=THEME.titleColor;ctx.font='bold 46px Arial,sans-serif';ctx.textAlign='center';
       ctx.fillText(opts.periodLabel,cW/2,856);
-      ctx.fillStyle='#FFC107';ctx.font='bold 100px Arial,sans-serif';
+      ctx.fillStyle=THEME.gold;ctx.font='bold 100px Arial,sans-serif';
       ctx.fillText(totKm.toFixed(0)+' km',cW/2,968);
-      ctx.fillStyle='#8A8F99';ctx.font='28px Arial,sans-serif';
+      ctx.fillStyle=THEME.subColor;ctx.font='28px Arial,sans-serif';
       ctx.fillText(opts.tripCountLabel,cW/2,1012);
 
       /* Détail par véhicule — apparition décalée */
@@ -457,7 +600,7 @@ window.generatePeriodStory=function(opts){
 
       /* Durées */
       var durLine=(opts.driveDurLabel||'')+(opts.walkDurLabel||'');
-      if(durLine){ctx.fillStyle='#565B66';ctx.font='24px Arial,sans-serif';ctx.fillText(durLine,cW/2,1142);}
+      if(durLine){ctx.fillStyle=THEME.captionColor;ctx.font='24px Arial,sans-serif';ctx.fillText(durLine,cW/2,1142);}
 
       ctx.globalAlpha=1;
     }

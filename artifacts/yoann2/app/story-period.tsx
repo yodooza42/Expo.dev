@@ -85,6 +85,14 @@ function periodLabel(from: Date, to: Date): string {
 type StoryDur = 10 | 20 | 30 | 60 | 120;
 const DURATIONS: StoryDur[] = [10, 20, 30, 60, 120];
 
+// ── Thème visuel de la carte ─────────────────────────────────────────────────
+type StoryTheme = 'dark' | 'light' | 'satellite';
+const THEMES: { key: StoryTheme; label: string; icon: React.ComponentProps<typeof MaterialCommunityIcons>['name'] }[] = [
+  { key: 'dark',      label: 'Sombre',    icon: 'weather-night' },
+  { key: 'light',     label: 'Clair',     icon: 'weather-sunny' },
+  { key: 'satellite', label: 'Satellite', icon: 'satellite-variant' },
+];
+
 export default function StoryPeriodScreen() {
   const colors  = useColors();
   const router  = useRouter();
@@ -101,6 +109,7 @@ export default function StoryPeriodScreen() {
   const [allTrips,  setAllTrips]  = useState<Trip[]>([]);
   const [vehicles,  setVehicles]  = useState<Vehicle[]>([]);
   const [duration,  setDuration]  = useState<StoryDur>(20);
+  const [theme,     setTheme]     = useState<StoryTheme>('dark');
   const [storyName, setStoryName] = useState('');
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -198,6 +207,13 @@ export default function StoryPeriodScreen() {
       setProgress(msg.p as number ?? 0);
       return;
     }
+    if (msg.type === 'story_theme_fallback') {
+      Alert.alert(
+        'Thème satellite indisponible',
+        "Impossible de récupérer l'imagerie satellite (réseau ou délai dépassé). La story a été générée avec le thème Sombre à la place.",
+      );
+      return;
+    }
     if (msg.type === 'story_chunk') {
       const idx   = msg.index as number ?? 0;
       const total = msg.total as number ?? 1;
@@ -281,6 +297,7 @@ export default function StoryPeriodScreen() {
       videoDurationSec: duration,
       customName:    trimmedName || undefined,
       dateRangeLabel: trimmedName ? dateRangeLabelFr(dateFrom, dateTo) : undefined,
+      theme,
     };
 
     setIsGenerating(true);
@@ -479,6 +496,37 @@ export default function StoryPeriodScreen() {
             </Pressable>
           ))}
         </View>
+
+        {/* ── Thème de la carte ────────────────────────────────────────── */}
+        <Text style={[styles.sectionLabel, { color: colors.mutedForeground, marginTop: 20 }]}>THÈME DE LA CARTE</Text>
+        <View style={styles.durationRow}>
+          {THEMES.map(th => (
+            <Pressable
+              key={th.key}
+              onPress={() => { void Haptics.selectionAsync(); setTheme(th.key); }}
+              style={[
+                styles.durChip,
+                {
+                  backgroundColor: theme === th.key ? '#2196F322' : colors.card,
+                  borderColor:     theme === th.key ? '#2196F3'   : colors.border,
+                },
+              ]}
+            >
+              <MaterialCommunityIcons name={th.icon} size={14} color={theme === th.key ? '#2196F3' : colors.mutedForeground} />
+              <Text style={[styles.durChipText, { color: theme === th.key ? '#2196F3' : colors.foreground }]}>
+                {th.label}
+              </Text>
+              {theme === th.key && (
+                <MaterialCommunityIcons name="check" size={13} color="#2196F3" />
+              )}
+            </Pressable>
+          ))}
+        </View>
+        {theme === 'satellite' && (
+          <Text style={[styles.namePreview, { color: colors.mutedForeground }]}>
+            Nécessite une connexion internet pour charger l'imagerie satellite. En cas d'échec, la story sera générée avec le thème Sombre.
+          </Text>
+        )}
 
         {/* ── Bouton Générer ───────────────────────────────────────────── */}
         <Pressable
