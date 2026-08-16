@@ -718,7 +718,19 @@ export default function TripMapScreen() {
     return { lat: best.lat, lng: best.lng };
   }, [scrubTs, tripLocPts]);
 
-  const handleGenerateStory = useCallback((durationOverride?: number) => {
+  /** Encode une photo de galerie en data URI base64 pour que le WebView puisse la dessiner. */
+  const photoToDataUri = useCallback(async (uri: string): Promise<string | null> => {
+    try {
+      const b64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
+      const ext = (uri.split('.').pop() || 'jpg').toLowerCase().split('?')[0];
+      const mime = ext === 'png' ? 'image/png' : ext === 'heic' ? 'image/heic' : 'image/jpeg';
+      return `data:${mime};base64,${b64}`;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const handleGenerateStory = useCallback(async (durationOverride?: number) => {
     if (!trip || isGeneratingStory) return;
 
     // Route : tracé stocké ou tracé GPS déjà chargé dans tripLocPts
@@ -733,6 +745,14 @@ export default function TripMapScreen() {
       Alert.alert('Story', 'Tracé GPS insuffisant pour générer une story.');
       return;
     }
+
+    // Photos ancrées sur le tracé (comme la Story Période) : encodées en data URI
+    const anchoredPhotos = (trip.photos ?? []).filter(p => p.routeIndex != null && route.length > 1);
+    const photos = (await Promise.all(anchoredPhotos.map(async p => {
+      const dataUri = await photoToDataUri(p.uri);
+      if (!dataUri) return null;
+      return { img: dataUri, note: p.note, frac: (p.routeIndex! / (route.length - 1)) };
+    }))).filter((p): p is { img: string; note: string | undefined; frac: number } => p != null);
 
     setIsGeneratingStory(true);
     setStoryProgress(0);
@@ -796,10 +816,11 @@ export default function TripMapScreen() {
       route,
       videoDurationSec: durationOverride ?? storyDuration,
       showPace: isWalk && speedUnitPace,
+      photos,
     };
 
     storyWebViewRef.current?.injectJavaScript(`(function(){window.generateStory(${JSON.stringify(opts)});})();true;`);
-  }, [trip, vehicles, isGeneratingStory, storyDuration, tripLocPts]);
+  }, [trip, vehicles, isGeneratingStory, storyDuration, tripLocPts, photoToDataUri]);
 
   function handleOpenDtPicker() {
     if (!trip) return;

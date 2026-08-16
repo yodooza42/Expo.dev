@@ -133,9 +133,39 @@ window.generateStory=function(opts){
     return m+':'+(s<10?'0':'')+s+'/km';
   }
 
-  var DUR=(opts.videoDurationSec||18)*1000,t0=null,lastRep=0;
+  var animMs=(opts.videoDurationSec||18)*1000,t0=null,lastRep=0;
   var maxSpd=opts.maxSpeed||1;
   var altSpan=Math.max(opts.maxAlt-opts.minAlt,1);
+
+  // ── Photos ancrées (comme la Story Période) ──────────────────────────────────
+  // opts.photos: [{img, note, frac}] — frac = position (0..1) le long du tableau
+  // \`route\` (routeIndex/(route.length-1)), converti ci-dessous en instant précis de
+  // l'animation via le vrai timing GPS (km parcourus à cet instant, cf. getKmAtMs).
+  var PHOTO_PAUSE_MS=2000;
+  function getMsAtKm(km){
+    if(!pts||pts.length<2)return 0;
+    if(km<=pts[0].km)return pts[0].ms;
+    for(var ii=1;ii<pts.length;ii++){
+      if(pts[ii].km>=km){
+        var span=pts[ii].km-pts[ii-1].km||0.0001;
+        var t=(km-pts[ii-1].km)/span;
+        return pts[ii-1].ms+(pts[ii].ms-pts[ii-1].ms)*t;
+      }
+    }
+    return pts[pts.length-1].ms;
+  }
+  var photoMarkers=(opts.photos||[]).map(function(p){
+    var idx=Math.max(0,Math.min(1,p.frac))*(route.length-1);
+    var fi=Math.min(Math.floor(idx),route.length-2),fr=idx-fi;
+    var kmRaw=routeCumKm[fi]+(routeCumKm[Math.min(fi+1,route.length-1)]-routeCumKm[fi])*fr;
+    var km=kmRaw*dScale;
+    var ms=getMsAtKm(km);
+    var aProgAt=totalMs>0?Math.min(1,ms/totalMs):0;
+    return{note:p.note||'',src:p.img,imgEl:null,triggered:false,absAEl:aProgAt*animMs};
+  }).sort(function(a,b){return a.absAEl-b.absAEl;});
+  var totalPauseMs=photoMarkers.length*PHOTO_PAUSE_MS;
+  var DUR=animMs+totalPauseMs;
+  var pauseActive=null,pauseConsumedMs=0;
 
   // ── Caméra ────────────────────────────────────────────────────────────────
   var startPos={x:projX(route[0].lng),y:projY(route[0].lat)};
@@ -155,12 +185,53 @@ window.generateStory=function(opts){
   var scBarX2=mR-18,scBarX1=scBarX2-scalePx,scBarY=mB-22;
   var scLabel=scaleKm<1?Math.round(scaleKm*1000)+' m':scaleKm+' km';
 
-  rec.start();
+  function startRecording(){
+    rec.start();
+    requestAnimationFrame(frame);
+  }
+  function preloadPhotosThenStart(){
+    if(photoMarkers.length===0){startRecording();return;}
+    var loaded=0,settled=false;
+    var finish=function(){if(settled)return;settled=true;startRecording();};
+    var to=setTimeout(finish,6000);
+    for(var pmi=0;pmi<photoMarkers.length;pmi++){
+      (function(m){
+        var img=new Image();
+        img.onload=function(){m.imgEl=img;loaded++;if(loaded===photoMarkers.length){clearTimeout(to);finish();}};
+        img.onerror=function(){loaded++;if(loaded===photoMarkers.length){clearTimeout(to);finish();}};
+        img.src=m.src;
+      })(photoMarkers[pmi]);
+    }
+  }
 
   function frame(ts){
     if(!t0)t0=ts;
     var el=ts-t0,prog=Math.min(1,el/DUR);
-    var currentMs=prog*totalMs;
+
+    // Pause photo en cours : fige la progression de l'animation, avance seulement le temps réel
+    if(pauseActive){
+      pauseConsumedMs=pauseActive.anchorConsumed+(el-pauseActive.anchorEl);
+      if(el-pauseActive.anchorEl>=PHOTO_PAUSE_MS){
+        pauseConsumedMs=pauseActive.anchorConsumed+PHOTO_PAUSE_MS;
+        pauseActive=null;
+      }
+    }
+    var vEl=Math.max(0,el-pauseConsumedMs);
+    var aProg=Math.min(1,vEl/animMs);
+    var currentMs=aProg*totalMs;
+
+    // Déclenchement d'une pause photo : dès que l'instant absolu (vEl) d'une photo pas
+    // encore montrée est atteint.
+    if(!pauseActive){
+      for(var pmi2=0;pmi2<photoMarkers.length;pmi2++){
+        var pmc=photoMarkers[pmi2];
+        if(!pmc.triggered&&vEl>=pmc.absAEl){
+          pmc.triggered=true;
+          pauseActive={marker:pmc,anchorEl:el,anchorConsumed:pauseConsumedMs};
+          break;
+        }
+      }
+    }
 
     // ── Position du dot (avant caméra) ───────────────────────────────────────
     var curKm=getKmAtMs(currentMs);
@@ -170,9 +241,9 @@ window.generateStory=function(opts){
 
     // ── Update caméra (lerp doux, zoom en log) ───────────────────────────────
     var tgt,lf;
-    if(prog>=0.84){tgt=fullCam;lf=0.085;}
+    if(aProg>=0.84){tgt=fullCam;lf=0.085;}
     else{
-      var z=prog<0.05?2.4:FOLLOW_Z;
+      var z=aProg<0.05?2.4:FOLLOW_Z;
       tgt={cx:dotX,cy:dotY,zoom:z};lf=0.065;
     }
     cam.cx+=(tgt.cx-cam.cx)*lf;
@@ -336,8 +407,8 @@ window.generateStory=function(opts){
     }
 
     // End card fade-in
-    if(prog>0.82){
-      var fa=Math.min(1,(prog-0.82)/0.12);ctx.globalAlpha=fa;
+    if(aProg>0.82){
+      var fa=Math.min(1,(aProg-0.82)/0.12);ctx.globalAlpha=fa;
       var bY=opts.hasAlt?1235:1165;
       ctx.fillStyle='#101218';ctx.fillRect(0,bY-52,cW,cH-bY+52);
       ctx.fillStyle='#E0E0E0';ctx.font='bold 32px Arial,sans-serif';ctx.textAlign='center';
@@ -350,10 +421,30 @@ window.generateStory=function(opts){
       ctx.globalAlpha=1;
     }
 
+    // ── Pause photo : overlay plein cadre, image non déformée + note ───────────
+    if(pauseActive&&pauseActive.marker.imgEl){
+      var pm3=pauseActive.marker,im=pm3.imgEl;
+      ctx.fillStyle='rgba(6,7,10,0.86)';ctx.fillRect(0,0,cW,cH);
+      var boxL=50,boxT=220,boxR=cW-50,boxB=cH-220;
+      var boxW=boxR-boxL,boxH=boxB-boxT;
+      var ir=im.naturalWidth/im.naturalHeight,br=boxW/boxH;
+      var dw,dh;
+      if(ir>br){dw=boxW;dh=boxW/ir;}else{dh=boxH;dw=boxH*ir;}
+      var dx=boxL+(boxW-dw)/2,dy=boxT+(boxH-dh)/2;
+      ctx.save();ctx.shadowColor='#000000CC';ctx.shadowBlur=30;
+      ctx.drawImage(im,dx,dy,dw,dh);
+      ctx.restore();
+      ctx.strokeStyle='#FFFFFF22';ctx.lineWidth=2;ctx.strokeRect(dx,dy,dw,dh);
+      if(pm3.note){
+        ctx.fillStyle='#FFFFFF';ctx.font='30px Arial,sans-serif';ctx.textAlign='center';
+        ctx.fillText(pm3.note,cW/2,boxB+56,cW-100);
+      }
+    }
+
     if(el-lastRep>400){lastRep=el;window.ReactNativeWebView.postMessage(JSON.stringify({type:'story_progress',p:Math.round(prog*100)}));}
     if(prog<1){requestAnimationFrame(frame);}else{setTimeout(function(){rec.stop();},300);}
   }
-  requestAnimationFrame(frame);
+  preloadPhotosThenStart();
 };
 `;
 
