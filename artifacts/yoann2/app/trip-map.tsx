@@ -2,6 +2,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Haptics from 'expo-haptics';
+import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as MediaLibrary from 'expo-media-library';
 import * as Sharing from 'expo-sharing';
@@ -11,6 +12,7 @@ import {
   ActivityIndicator,
   Alert,
   Dimensions,
+  Image as RNImage,
   Keyboard,
   Modal,
   PanResponder,
@@ -37,7 +39,7 @@ import { BottomSheet } from '@/components/BottomSheet';
 import { TripMapView } from '@/components/TripMapView';
 import { useColors } from '@/hooks/useColors';
 import type { KnownPlace, PlaceCategory, WalkRoute } from '@/types/places';
-import type { RoutePoint, Trip, Vehicle, WalkParticipant } from '@/types/trips';
+import type { RoutePoint, Trip, TripPhoto, Vehicle, WalkParticipant } from '@/types/trips';
 import { simplifyRoute, EPSILON_DEG_WALK } from '@/utils/routeSimplification';
 import {
   getAddressUsage,
@@ -377,6 +379,9 @@ export default function TripMapScreen() {
   const [scrubTs, setScrubTs] = useState<number | null>(null);
   const [storyModalVisible, setStoryModalVisible] = useState(false);
 
+  const [photoModalOpen, setPhotoModalOpen] = useState(false);
+  const [addingPhotos, setAddingPhotos] = useState(false);
+
   // ── Swipe entre trajets ────────────────────────────────────────────────────
   const [sortedTripIds, setSortedTripIds] = useState<string[]>([]);
   const swipeStateRef = useRef({ ids: [] as string[], idx: -1 });
@@ -496,6 +501,63 @@ export default function TripMapScreen() {
   const handleChartScrub = useCallback((pt: LocationPoint | null) => {
     setScrubTs(pt ? pt.timestamp : null);
   }, []);
+
+  const parseExifDate = (raw?: string): number | null => {
+    if (!raw) return null;
+    // EXIF DateTimeOriginal format: "YYYY:MM:DD HH:MM:SS"
+    const m = /^(\d{4}):(\d{2}):(\d{2}) (\d{2}):(\d{2}):(\d{2})/.exec(raw);
+    if (!m) return null;
+    const [, y, mo, d, h, mi, s] = m;
+    const t = new Date(Number(y), Number(mo) - 1, Number(d), Number(h), Number(mi), Number(s)).getTime();
+    return Number.isFinite(t) ? t : null;
+  };
+
+  const handleAddPhotos = useCallback(async () => {
+    if (!trip || addingPhotos) return;
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission refusée', 'Autorise l\'accès à la galerie dans les paramètres.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsMultipleSelection: true,
+      exif: true,
+      quality: 1,
+    });
+    if (result.canceled || result.assets.length === 0) return;
+    setAddingPhotos(true);
+    try {
+      const newPhotos: TripPhoto[] = [];
+      for (const asset of result.assets) {
+        let takenAt = parseExifDate(asset.exif?.['DateTimeOriginal'] as string | undefined)
+          ?? parseExifDate(asset.exif?.['DateTime'] as string | undefined);
+        if (takenAt == null && asset.assetId) {
+          try {
+            const info = await MediaLibrary.getAssetInfoAsync(asset.assetId);
+            if (info.creationTime) takenAt = info.creationTime;
+          } catch {}
+        }
+        newPhotos.push({
+          id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+          uri: asset.uri,
+          takenAt: takenAt ?? Date.now(),
+        });
+      }
+      const merged = [...(trip.photos ?? []), ...newPhotos].sort((a, b) => a.takenAt - b.takenAt);
+      setTrip({ ...trip, photos: merged });
+      await updateTrip(trip.id, { photos: merged });
+    } finally {
+      setAddingPhotos(false);
+    }
+  }, [trip, addingPhotos]);
+
+  const handleRemovePhoto = useCallback(async (photoId: string) => {
+    if (!trip) return;
+    const remaining = (trip.photos ?? []).filter(p => p.id !== photoId);
+    setTrip({ ...trip, photos: remaining });
+    await updateTrip(trip.id, { photos: remaining });
+  }, [trip]);
 
   const scrubMapPoint = useMemo(() => {
     if (!scrubTs || tripLocPts.length === 0) return undefined;
@@ -964,6 +1026,33 @@ export default function TripMapScreen() {
             />
           );
         })()}
+        {!screenshotMode && (
+          <Pressable
+            onPress={() => setPhotoModalOpen(true)}
+            style={{
+              position: 'absolute', left: 8, bottom: 8, zIndex: 15,
+              width: 48, height: 48, borderRadius: 10, overflow: 'hidden',
+              backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center',
+              borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)',
+            }}
+          >
+            {trip?.photos && trip.photos.length > 0 ? (
+              <>
+                <RNImage source={{ uri: trip.photos[0]!.uri }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+                {trip.photos.length > 1 && (
+                  <View style={{
+                    position: 'absolute', right: 2, bottom: 2, backgroundColor: 'rgba(0,0,0,0.7)',
+                    borderRadius: 8, paddingHorizontal: 4, minWidth: 16, alignItems: 'center',
+                  }}>
+                    <Text style={{ color: '#fff', fontSize: 10, fontWeight: '700' }}>{trip.photos.length}</Text>
+                  </View>
+                )}
+              </>
+            ) : (
+              <MaterialCommunityIcons name="camera-plus-outline" size={22} color="#fff" />
+            )}
+          </Pressable>
+        )}
       </View>
 
       {/* Fixed info + charts panel — no scroll */}
@@ -1175,6 +1264,56 @@ export default function TripMapScreen() {
         </View>
       )}
 
+
+      {/* Photos du trajet */}
+      <Modal visible={photoModalOpen} transparent animationType="slide" onRequestClose={() => setPhotoModalOpen(false)}>
+        <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' }} onPress={() => setPhotoModalOpen(false)}>
+          <Pressable style={[photoModalStyles.card, { backgroundColor: colors.card, paddingBottom: insets.bottom + 16 }]} onStartShouldSetResponder={() => true}>
+            <View style={photoModalStyles.header}>
+              <Text style={[photoModalStyles.title, { color: colors.foreground }]}>Photos du trajet</Text>
+              <Pressable onPress={() => setPhotoModalOpen(false)} hitSlop={8}>
+                <MaterialCommunityIcons name="close" size={22} color={colors.mutedForeground} />
+              </Pressable>
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingVertical: 4 }}>
+              {(trip?.photos ?? []).map(photo => (
+                <View key={photo.id} style={photoModalStyles.thumbWrap}>
+                  <RNImage source={{ uri: photo.uri }} style={photoModalStyles.thumb} resizeMode="cover" />
+                  <Text style={[photoModalStyles.thumbDate, { color: colors.mutedForeground }]} numberOfLines={1}>
+                    {new Date(photo.takenAt).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                  </Text>
+                  <Pressable
+                    onPress={() => handleRemovePhoto(photo.id)}
+                    style={photoModalStyles.thumbDelete}
+                    hitSlop={6}
+                  >
+                    <MaterialCommunityIcons name="close-circle" size={20} color="#fff" />
+                  </Pressable>
+                </View>
+              ))}
+              <Pressable
+                onPress={handleAddPhotos}
+                disabled={addingPhotos}
+                style={[photoModalStyles.addBtn, { borderColor: colors.border }]}
+              >
+                {addingPhotos ? (
+                  <ActivityIndicator size="small" color="#FFC107" />
+                ) : (
+                  <>
+                    <MaterialCommunityIcons name="image-plus" size={26} color={colors.mutedForeground} />
+                    <Text style={{ color: colors.mutedForeground, fontSize: 11, marginTop: 4 }}>Ajouter</Text>
+                  </>
+                )}
+              </Pressable>
+            </ScrollView>
+            {(trip?.photos ?? []).length === 0 && (
+              <Text style={{ color: colors.mutedForeground, fontSize: 12, marginTop: 8 }}>
+                Ajoute des photos de ce trajet depuis ta galerie — elles ne seront pas dupliquées, seulement référencées.
+              </Text>
+            )}
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       {/* Date / time pickers */}
       {dtPickerStep === 'date' && <DateTimePicker value={draftStart} mode="date" display="calendar" maximumDate={new Date()} onChange={handleDateChange} />}
@@ -1750,6 +1889,55 @@ function AddressBadge({
     </Pressable>
   );
 }
+
+const photoModalStyles = StyleSheet.create({
+  card: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  title: {
+    fontSize: 16,
+    fontFamily: 'Inter_600SemiBold',
+  },
+  thumbWrap: {
+    width: 92,
+  },
+  thumb: {
+    width: 92,
+    height: 92,
+    borderRadius: 10,
+    backgroundColor: '#00000010',
+  },
+  thumbDate: {
+    fontSize: 10,
+    marginTop: 3,
+    textAlign: 'center',
+  },
+  thumbDelete: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderRadius: 10,
+  },
+  addBtn: {
+    width: 92,
+    height: 92,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+});
 
 const styles = StyleSheet.create({
   root: { flex: 1 },

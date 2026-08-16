@@ -7,6 +7,15 @@ export interface RoutePoint {
   t?: number;
 }
 
+/** A photo referenced from the device gallery (not copied into app storage) and attached to a trip. */
+export interface TripPhoto {
+  id: string;
+  /** Gallery/content URI of the original asset — never copied locally. */
+  uri: string;
+  /** Moment the photo was taken (ms epoch), from EXIF/asset metadata when available. */
+  takenAt: number;
+}
+
 export interface RouteSegment {
   points: RoutePoint[];
   distanceKm: number;
@@ -53,6 +62,8 @@ export interface Trip {
   labelId?: string;
   /** Intermediate stops for multi-waypoint manual trips. */
   intermediates?: Array<{ name: string; placeId?: string }>;
+  /** Photos referenced from the device gallery, attached to this trip. */
+  photos?: TripPhoto[];
 }
 
 /** A user-defined free group that can contain trips with any itinerary. */
