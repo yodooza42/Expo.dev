@@ -382,6 +382,7 @@ export default function TripMapScreen() {
   const [photoModalOpen, setPhotoModalOpen] = useState(false);
   const [addingPhotos, setAddingPhotos] = useState(false);
   const [photoSelectMode, setPhotoSelectMode] = useState(false);
+  const [repositioningPhotoId, setRepositioningPhotoId] = useState<string | null>(null);
   const [photoNoteEditId, setPhotoNoteEditId] = useState<string | null>(null);
   const [photoNoteDraft, setPhotoNoteDraft] = useState('');
   const [noteEditing, setNoteEditing] = useState(false);
@@ -517,8 +518,38 @@ export default function TripMapScreen() {
     return Number.isFinite(t) ? t : null;
   };
 
-  /** Ouvre la galerie et ajoute la/les photo(s) choisies, ancrées au point de route donné (optionnel). */
-  const handleAddPhotos = useCallback(async (routeIndex?: number) => {
+  /**
+   * Déduit automatiquement la position d'une photo sur le tracé à partir de son heure de
+   * prise de vue (EXIF/asset) : on la compare aux horodatages GPS réels des points du
+   * tracé quand ils existent (trace brute), sinon on interpole uniformément entre le
+   * début et la fin du trajet (tracé OSRM/manuel, sans horodatage par point).
+   * Retourne `undefined` si l'heure de la photo tombe hors de la fenêtre du trajet.
+   */
+  const computeRouteIndexFromTime = useCallback((t: Trip, takenAt: number): number | undefined => {
+    const route = t.route;
+    if (!route || route.length < 2) return undefined;
+    const margin = 5 * 60 * 1000; // tolère 5 min hors bornes (imprécision d'horloge photo/GPS)
+    if (takenAt < t.startTime - margin || takenAt > t.endTime + margin) return undefined;
+    const hasTimestamps = route.some(p => p.t != null);
+    if (hasTimestamps) {
+      let bestIdx = 0, bestDiff = Infinity;
+      route.forEach((p, i) => {
+        if (p.t == null) return;
+        const diff = Math.abs(p.t - takenAt);
+        if (diff < bestDiff) { bestDiff = diff; bestIdx = i; }
+      });
+      return bestIdx;
+    }
+    const dur = t.endTime - t.startTime;
+    if (dur <= 0) return undefined;
+    const frac = Math.max(0, Math.min(1, (takenAt - t.startTime) / dur));
+    return Math.round(frac * (route.length - 1));
+  }, []);
+
+  /** Ouvre la galerie et ajoute la/les photo(s) choisies ; leur position sur le trajet est
+   *  déduite automatiquement de leur heure de prise de vue (EXIF), sauf `forceRouteIndex`
+   *  fourni explicitement (repositionnement manuel). */
+  const handleAddPhotos = useCallback(async (forceRouteIndex?: number) => {
     if (!trip || addingPhotos) return;
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
@@ -527,7 +558,7 @@ export default function TripMapScreen() {
     }
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
-      allowsMultipleSelection: routeIndex == null,
+      allowsMultipleSelection: forceRouteIndex == null,
       exif: true,
       quality: 1,
     });
@@ -544,10 +575,12 @@ export default function TripMapScreen() {
             if (info.creationTime) takenAt = info.creationTime;
           } catch {}
         }
+        takenAt = takenAt ?? Date.now();
+        const routeIndex = forceRouteIndex ?? computeRouteIndexFromTime(trip, takenAt);
         newPhotos.push({
           id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
           uri: asset.uri,
-          takenAt: takenAt ?? Date.now(),
+          takenAt,
           routeIndex,
         });
       }
@@ -555,14 +588,14 @@ export default function TripMapScreen() {
         .sort((a, b) => (a.routeIndex ?? Infinity) - (b.routeIndex ?? Infinity) || a.takenAt - b.takenAt);
       setTrip({ ...trip, photos: merged });
       await updateTrip(trip.id, { photos: merged });
-      if (routeIndex != null && newPhotos.length > 0) {
+      if (forceRouteIndex != null && newPhotos.length > 0) {
         setPhotoNoteEditId(newPhotos[newPhotos.length - 1]!.id);
         setPhotoNoteDraft('');
       }
     } finally {
       setAddingPhotos(false);
     }
-  }, [trip, addingPhotos]);
+  }, [trip, addingPhotos, computeRouteIndexFromTime]);
 
   const handleRemovePhoto = useCallback(async (photoId: string) => {
     if (!trip) return;
@@ -580,10 +613,18 @@ export default function TripMapScreen() {
     setPhotoNoteDraft('');
   }, [trip, photoNoteEditId, photoNoteDraft]);
 
-  const handleMapPointSelected = useCallback((idx: number) => {
+  const handleMapPointSelected = useCallback(async (idx: number) => {
     setPhotoSelectMode(false);
+    if (repositioningPhotoId && trip) {
+      const next = (trip.photos ?? []).map(p => p.id === repositioningPhotoId ? { ...p, routeIndex: idx } : p)
+        .sort((a, b) => (a.routeIndex ?? Infinity) - (b.routeIndex ?? Infinity) || a.takenAt - b.takenAt);
+      setTrip({ ...trip, photos: next });
+      await updateTrip(trip.id, { photos: next });
+      setRepositioningPhotoId(null);
+      return;
+    }
     void handleAddPhotos(idx);
-  }, [handleAddPhotos]);
+  }, [handleAddPhotos, repositioningPhotoId, trip]);
 
   const handleSaveTripNote = useCallback(async () => {
     if (!trip) return;
@@ -1070,8 +1111,8 @@ export default function TripMapScreen() {
             backgroundColor: 'rgba(0,0,0,0.7)', paddingVertical: 8, paddingHorizontal: 12,
             flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
           }}>
-            <Text style={{ color: '#fff', fontSize: 12, flex: 1 }}>Touche un point du tracé pour y placer la photo</Text>
-            <Pressable onPress={() => setPhotoSelectMode(false)} hitSlop={8}>
+            <Text style={{ color: '#fff', fontSize: 12, flex: 1 }}>Touche le point du tracé où placer cette photo</Text>
+            <Pressable onPress={() => { setPhotoSelectMode(false); setRepositioningPhotoId(null); }} hitSlop={8}>
               <Text style={{ color: '#FFC107', fontSize: 12, fontFamily: 'Inter_600SemiBold' }}>Annuler</Text>
             </Pressable>
           </View>
@@ -1385,7 +1426,7 @@ export default function TripMapScreen() {
                 </Pressable>
               ))}
               <Pressable
-                onPress={() => { setPhotoModalOpen(false); setPhotoSelectMode(true); }}
+                onPress={() => handleAddPhotos()}
                 disabled={addingPhotos}
                 style={[photoModalStyles.addBtn, { borderColor: colors.border }]}
               >
@@ -1473,6 +1514,19 @@ export default function TripMapScreen() {
               multiline
               autoFocus
             />
+            <Pressable
+              onPress={() => {
+                if (!photoNoteEditId) return;
+                setRepositioningPhotoId(photoNoteEditId);
+                setPhotoNoteEditId(null);
+                setPhotoModalOpen(false);
+                setPhotoSelectMode(true);
+              }}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 14 }}
+            >
+              <MaterialCommunityIcons name="map-marker-radius-outline" size={15} color="#2196F3" />
+              <Text style={{ color: '#2196F3', fontSize: 13, fontFamily: 'Inter_500Medium' }}>Repositionner sur la carte</Text>
+            </Pressable>
             <View style={{ flexDirection: 'row', gap: 10 }}>
               <Pressable
                 onPress={() => setPhotoNoteEditId(null)}
