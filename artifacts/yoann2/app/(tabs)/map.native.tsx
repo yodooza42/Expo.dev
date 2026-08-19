@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { STORY_GENERATE_JS } from '../../utils/storyGenerator';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -133,6 +134,30 @@ const ACTIVITY_COLORS: Record<string, string> = {
   unknown: '#FFC107',
 };
 
+// ── Thème de carte (identique aux stories : Nuit/Jour/Satellite) ──────────────
+type MapTheme = 'dark' | 'light' | 'satellite';
+const MAP_THEME_KEY = '@yoann2_map_theme';
+const MAP_THEMES: { key: MapTheme; label: string; icon: React.ComponentProps<typeof MaterialCommunityIcons>['name'] }[] = [
+  { key: 'dark',      label: 'Nuit',      icon: 'weather-night' },
+  { key: 'light',     label: 'Jour',      icon: 'weather-sunny' },
+  { key: 'satellite', label: 'Satellite', icon: 'satellite-variant' },
+];
+// Injecté dans le HTML Leaflet : bascule la tuile de fond sans recharger la page.
+const TILE_THEME_JS = `
+var TILE_URLS={
+  dark:'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+  light:'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+  satellite:'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+};
+var _curTileLayer=null;
+function _applyMapTheme(theme){
+  var url=TILE_URLS[theme]||TILE_URLS.dark;
+  if(_curTileLayer)map.removeLayer(_curTileLayer);
+  _curTileLayer=L.tileLayer(url,{maxZoom:19,maxNativeZoom:theme==='satellite'?19:19}).addTo(map);
+}
+window.setMapTheme=function(theme){_applyMapTheme(theme);};
+`;
+
 const LEAFLET_HEAD = `
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
@@ -150,6 +175,7 @@ function buildMapHtml(
   primaryColor: string,
   highlightPt: LocationPoint | null,
   tripIntervals: Array<{ s: number; e: number }> = [],
+  mapTheme: MapTheme = 'dark',
 ): string {
   const ptsData = JSON.stringify(
     points.map(p => ({
@@ -183,7 +209,8 @@ function buildMapHtml(
 <div id="map"></div>
 <script>
 var map=L.map('map',{zoomControl:true,attributionControl:false});
-L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{maxZoom:19}).addTo(map);
+${TILE_THEME_JS}
+_applyMapTheme('${mapTheme}');
 
 var ptsData=${ptsData};
 var hl=${highlight};
@@ -306,7 +333,7 @@ ${STORY_GENERATE_JS}
 </html>`;
 }
 
-function buildReplayHtml(points: LocationPoint[]): string {
+function buildReplayHtml(points: LocationPoint[], mapTheme: MapTheme = 'dark'): string {
   const ptsJSON = JSON.stringify(
     points.map(p => ({ lat: p.lat, lng: p.lng, ts: p.timestamp, activity: p.activity ?? 'unknown' })),
   );
@@ -329,7 +356,8 @@ function buildReplayHtml(points: LocationPoint[]): string {
 <div id="replay-time"></div>
 <script>
 var map=L.map('map',{zoomControl:true,attributionControl:false});
-L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{maxZoom:19}).addTo(map);
+${TILE_THEME_JS}
+_applyMapTheme('${mapTheme}');
 
 var pts=${ptsJSON};
 var COLORS={walk:'#4CAF50',car:'#2196F3',unknown:'#FFC107'};
@@ -960,6 +988,20 @@ export default function MapScreen() {
   const pendingTimeRef                         = useRef<string | null>(null);
   const [correctionCount, setCorrectionCount] = useState(0);
 
+  // ── Thème de carte (Nuit/Jour/Satellite, comme les stories) ────────────────────
+  const [mapTheme, setMapThemeState] = useState<MapTheme>('dark');
+  useEffect(() => {
+    AsyncStorage.getItem(MAP_THEME_KEY).then(v => {
+      if (v === 'light' || v === 'satellite' || v === 'dark') setMapThemeState(v);
+    }).catch(() => {});
+  }, []);
+  const chooseMapTheme = useCallback((theme: MapTheme) => {
+    void Haptics.selectionAsync();
+    setMapThemeState(theme);
+    AsyncStorage.setItem(MAP_THEME_KEY, theme).catch(() => {});
+    webRef.current?.injectJavaScript(`window.setMapTheme && window.setMapTheme('${theme}'); true;`);
+  }, []);
+
   // ── Vehicles (pour résoudre type/couleur/icône depuis l'ID du trajet) ──────────
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   useEffect(() => { void getVehicleSettings().then(setVehicles); }, []);
@@ -1491,8 +1533,8 @@ export default function MapScreen() {
   // ── Map HTML / key ──────────────────────────────────────────────────────────
 
   const mapHtml = replayMode
-    ? buildReplayHtml(replayPoints)
-    : buildMapHtml(dayStats.points, colors.primary, highlightPt, dayTrips.map(t => ({ s: t.startTime, e: t.endTime })));
+    ? buildReplayHtml(replayPoints, mapTheme)
+    : buildMapHtml(dayStats.points, colors.primary, highlightPt, dayTrips.map(t => ({ s: t.startTime, e: t.endTime })), mapTheme);
 
   const mapKey = replayMode
     ? `replay-${replayPoints.length}-${replayPoints[0]?.timestamp ?? 0}`
@@ -1583,6 +1625,34 @@ export default function MapScreen() {
         >
           <MaterialCommunityIcons name="crosshairs-gps" size={20} color={colors.primary} />
         </Pressable>
+      )}
+
+      {/* ── Thème de carte (Nuit/Jour/Satellite) ── */}
+      {!replayMode && (
+        <View
+          style={[
+            styles.mapThemeRow,
+            { backgroundColor: colors.card + 'F0', borderColor: colors.border },
+          ]}
+        >
+          {MAP_THEMES.map(th => (
+            <Pressable
+              key={th.key}
+              onPress={() => chooseMapTheme(th.key)}
+              hitSlop={6}
+              style={[
+                styles.mapThemeBtn,
+                mapTheme === th.key && { backgroundColor: colors.primary + '22' },
+              ]}
+            >
+              <MaterialCommunityIcons
+                name={th.icon}
+                size={17}
+                color={mapTheme === th.key ? colors.primary : colors.mutedForeground}
+              />
+            </Pressable>
+          ))}
+        </View>
       )}
 
       {/* ── Edit confirm bandeau ── */}
@@ -1980,6 +2050,24 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     gap: 8,
     elevation: 4,
+  },
+  mapThemeRow: {
+    position: 'absolute',
+    left: 16,
+    bottom: 260,
+    flexDirection: 'row',
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: 3,
+    gap: 2,
+    elevation: 4,
+  },
+  mapThemeBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   dayNav: {
     flexDirection: 'row',
