@@ -12,7 +12,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useApp } from '@/contexts/AppContext';
 import { useColors } from '@/hooks/useColors';
-import type { Priority, Task } from '@/types';
+import type { CalendarPeriod, Priority, Task } from '@/types';
 import { getRecurringTransfers, type RecurringTransfer } from '@/utils/bankStorage';
 import { pH } from '@/styles/header';
 
@@ -96,11 +96,37 @@ function appointmentDateKey(a: { date: string }) {
   return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
 }
 
+function periodLanes(
+  periods: CalendarPeriod[],
+  week: Date[],
+): { period: CalendarPeriod; startCol: number; endCol: number; lane: number }[] {
+  const weekStart = dateKey(week[0]!);
+  const weekEnd = dateKey(week[6]!);
+  const visible = periods
+    .filter(p => p.startDate <= weekEnd && p.endDate >= weekStart)
+    .map(p => ({
+      period: p,
+      startCol: p.startDate <= weekStart ? 0 : week.findIndex(d => dateKey(d) === p.startDate),
+      endCol: p.endDate >= weekEnd ? 6 : week.findIndex(d => dateKey(d) === p.endDate),
+      lane: 0,
+    }))
+    .sort((a, b) => a.startCol - b.startCol || a.endCol - b.endCol);
+
+  const laneEnds: number[] = [];
+  visible.forEach(item => {
+    let lane = laneEnds.findIndex(end => end < item.startCol);
+    if (lane < 0) lane = laneEnds.length;
+    laneEnds[lane] = item.endCol;
+    item.lane = lane;
+  });
+  return visible;
+}
+
 export default function CalendarScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { tasks, projects, appointments } = useApp();
+  const { tasks, projects, appointments, calendarPeriods } = useApp();
 
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
@@ -152,6 +178,9 @@ export default function CalendarScreen() {
   const selectedTasks        = selectedDate ? (tasksByDate[selectedDate]        ?? []) : [];
   const selectedAppointments = selectedDate ? (appointmentsByDate[selectedDate] ?? []) : [];
   const selectedTransfers    = selectedDate ? (transfersByDate[selectedDate]    ?? []) : [];
+  const selectedPeriods = selectedDate
+    ? calendarPeriods.filter(p => p.startDate <= selectedDate && p.endDate >= selectedDate)
+    : [];
 
   const isToday = (d: Date) =>
     d.getDate() === today.getDate() &&
@@ -190,6 +219,13 @@ export default function CalendarScreen() {
               style={[pH.btn, { backgroundColor: '#7C3AED22', borderColor: '#7C3AED55' }]}
             >
               <MaterialCommunityIcons name="calendar-plus" size={18} color="#7C3AED" />
+            </Pressable>
+            <Pressable
+              onPress={() => router.push('/calendar-period/new' as any)}
+              hitSlop={8}
+              style={[pH.btn, { backgroundColor: '#14B8A622', borderColor: '#14B8A655' }]}
+            >
+              <MaterialCommunityIcons name="calendar-range" size={18} color="#14B8A6" />
             </Pressable>
             <Pressable
               onPress={() => router.push('/work' as any)}
@@ -237,61 +273,99 @@ export default function CalendarScreen() {
 
       {/* ── Calendar ── */}
       <ScrollView contentContainerStyle={{ paddingBottom: 120 }} showsVerticalScrollIndicator={false}>
-        <View style={[styles.grid, { paddingHorizontal: 12 }]}>
-          {days.map((d, i) => {
-            const key = dateKey(d);
-            const dayTasks      = tasksByDate[key]        ?? [];
-            const dayAppts      = appointmentsByDate[key] ?? [];
-            const dayTransfers  = transfersByDate[key]    ?? [];
-            const isCurrentMonth = d.getMonth() === month;
-            const isSelected = selectedDate === key;
-            const todayFlag = isToday(d);
-
-            const topPriority = dayTasks.reduce<Priority | null>((best, t) => {
-              const order: Priority[] = ['critical', 'high', 'medium', 'low'];
-              if (!best) return t.priority;
-              return order.indexOf(t.priority) < order.indexOf(best) ? t.priority : best;
-            }, null);
-
+        <View style={[styles.calendarGrid, { paddingHorizontal: 12 }]}>
+          {Array.from({ length: Math.ceil(days.length / 7) }, (_, weekIndex) => {
+            const week = days.slice(weekIndex * 7, weekIndex * 7 + 7);
+            const bands = periodLanes(calendarPeriods, week);
+            const laneCount = bands.length ? Math.max(...bands.map(b => b.lane)) + 1 : 0;
             return (
-              <Pressable
-                key={i}
-                onPress={() => setSelectedDate(isSelected ? null : key)}
-                style={[
-                  styles.dayCell,
-                  isSelected && { backgroundColor: colors.primary + '25', borderColor: colors.primary },
-                  !isSelected && todayFlag && { borderColor: colors.primary },
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.dayNum,
-                    { color: isCurrentMonth ? colors.foreground : colors.border },
-                    todayFlag && { color: colors.primary, fontFamily: 'Inter_700Bold' },
-                  ]}
-                >
-                  {d.getDate()}
-                </Text>
-                <View style={styles.dotRow}>
-                  {topPriority && <View style={[styles.dot, { backgroundColor: PRIORITY_COLORS[topPriority] }]} />}
-                  {dayAppts.slice(0, 2).map((a, j) => (
-                    <View key={`a${j}`} style={[styles.dot, { backgroundColor: apptColor(a) }]} />
-                  ))}
-                  {dayTransfers.length > 0 && (
-                    <View style={[styles.dot, { backgroundColor: TRANSFER_COLOR }]} />
-                  )}
-                </View>
-              </Pressable>
+              <View key={`week-${weekIndex}`} style={[styles.weekRow, { height: 58 + laneCount * 13 }]}>
+                {week.map((d, dayIndex) => {
+                  const key = dateKey(d);
+                  const dayTasks = tasksByDate[key] ?? [];
+                  const dayAppts = appointmentsByDate[key] ?? [];
+                  const dayTransfers = transfersByDate[key] ?? [];
+                  const isCurrentMonth = d.getMonth() === month;
+                  const isSelected = selectedDate === key;
+                  const todayFlag = isToday(d);
+                  const topPriority = dayTasks.reduce<Priority | null>((best, t) => {
+                    const order: Priority[] = ['critical', 'high', 'medium', 'low'];
+                    if (!best) return t.priority;
+                    return order.indexOf(t.priority) < order.indexOf(best) ? t.priority : best;
+                  }, null);
+                  return (
+                    <Pressable
+                      key={dayIndex}
+                      onPress={() => setSelectedDate(isSelected ? null : key)}
+                      style={[
+                        styles.dayCell,
+                        isSelected && { backgroundColor: colors.primary + '25', borderColor: colors.primary },
+                        !isSelected && todayFlag && { borderColor: colors.primary },
+                      ]}
+                    >
+                      <Text style={[styles.dayNum, { color: isCurrentMonth ? colors.foreground : colors.border }, todayFlag && { color: colors.primary, fontFamily: 'Inter_700Bold' }]}>
+                        {d.getDate()}
+                      </Text>
+                      <View style={styles.dotRow}>
+                        {topPriority && <View style={[styles.dot, { backgroundColor: PRIORITY_COLORS[topPriority] }]} />}
+                        {dayAppts.slice(0, 2).map((a, j) => <View key={`a${j}`} style={[styles.dot, { backgroundColor: apptColor(a) }]} />)}
+                        {dayTransfers.length > 0 && <View style={[styles.dot, { backgroundColor: TRANSFER_COLOR }]} />}
+                      </View>
+                    </Pressable>
+                  );
+                })}
+                {bands.map(({ period, startCol, endCol, lane }) => (
+                  <Pressable
+                    key={period.id}
+                    onPress={() => router.push(`/calendar-period/new?id=${period.id}` as any)}
+                    style={[
+                      styles.periodBand,
+                      {
+                        left: `${(startCol * 100) / 7}%`,
+                        width: `${((endCol - startCol + 1) * 100) / 7}%`,
+                        top: 39 + lane * 13,
+                        backgroundColor: period.color,
+                      },
+                    ]}
+                  >
+                    {startCol === 0 && <Text style={styles.periodBandText} numberOfLines={1}>{period.name}</Text>}
+                  </Pressable>
+                ))}
+              </View>
             );
           })}
         </View>
 
         {/* ── Selected day detail ── */}
-        {(selectedTasks.length > 0 || selectedAppointments.length > 0 || selectedTransfers.length > 0) && (
+        {(selectedTasks.length > 0 || selectedAppointments.length > 0 || selectedTransfers.length > 0 || selectedPeriods.length > 0) && (
           <View style={[styles.dayDetail, { paddingHorizontal: 16 }]}>
-            {selectedAppointments.length > 0 && (
+            {selectedPeriods.length > 0 && (
               <>
                 <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
+                  <MaterialCommunityIcons name="calendar-range" size={15} color="#14B8A6" />
+                  {'  '}Périodes ({selectedPeriods.length})
+                </Text>
+                {selectedPeriods.map(period => (
+                  <Pressable
+                    key={period.id}
+                    onPress={() => router.push(`/calendar-period/new?id=${period.id}` as any)}
+                    style={[styles.apptItem, { backgroundColor: `${period.color}22`, borderColor: `${period.color}66`, borderLeftColor: period.color }]}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.apptTitle, { color: colors.foreground }]}>{period.name}</Text>
+                      <Text style={[styles.apptDetail, { color: period.color }]}>
+                        {period.owner === 'marie' ? 'Marie' : period.owner === 'both' ? 'Nous deux' : 'Yoann'}
+                        {' · '}{period.startDate.split('-').reverse().join('/')} → {period.endDate.split('-').reverse().join('/')}
+                      </Text>
+                    </View>
+                    <MaterialCommunityIcons name="chevron-right" size={18} color={colors.mutedForeground} />
+                  </Pressable>
+                ))}
+              </>
+            )}
+            {selectedAppointments.length > 0 && (
+              <>
+                <Text style={[styles.sectionTitle, { color: colors.foreground, marginTop: selectedPeriods.length > 0 ? 12 : 0 }]}>
                   <MaterialCommunityIcons name="calendar-clock" size={15} color={APPOINTMENT_COLOR} />
                   {'  '}Rendez-vous ({selectedAppointments.length})
                 </Text>
@@ -329,7 +403,7 @@ export default function CalendarScreen() {
 
             {selectedTransfers.length > 0 && (
               <>
-                <Text style={[styles.sectionTitle, { color: colors.foreground, marginTop: selectedAppointments.length > 0 ? 12 : 0 }]}>
+                <Text style={[styles.sectionTitle, { color: colors.foreground, marginTop: (selectedAppointments.length > 0 || selectedPeriods.length > 0) ? 12 : 0 }]}>
                   <MaterialCommunityIcons name="bank-transfer" size={15} color={TRANSFER_COLOR} />
                   {'  '}Virements programmés ({selectedTransfers.length})
                 </Text>
@@ -354,7 +428,7 @@ export default function CalendarScreen() {
 
             {selectedTasks.length > 0 && (
               <>
-                <Text style={[styles.sectionTitle, { color: colors.foreground, marginTop: (selectedAppointments.length > 0 || selectedTransfers.length > 0) ? 12 : 0 }]}>
+                <Text style={[styles.sectionTitle, { color: colors.foreground, marginTop: (selectedPeriods.length > 0 || selectedAppointments.length > 0 || selectedTransfers.length > 0) ? 12 : 0 }]}>
                   Tâches ({selectedTasks.length})
                 </Text>
                 {selectedTasks.map(t => {
@@ -407,6 +481,10 @@ export default function CalendarScreen() {
               <View style={[styles.legendDot, { backgroundColor: TRANSFER_COLOR }]} />
               <Text style={[styles.legendLabel, { color: colors.mutedForeground }]}>Virement</Text>
             </View>
+            <View style={styles.legendItem}>
+              <View style={[styles.legendDot, { backgroundColor: '#14B8A6' }]} />
+              <Text style={[styles.legendLabel, { color: colors.mutedForeground }]}>Période</Text>
+            </View>
           </View>
         </View>
       </ScrollView>
@@ -442,15 +520,26 @@ const styles = StyleSheet.create({
     flex: 1, textAlign: 'center', fontSize: 12,
     fontFamily: 'Inter_500Medium', paddingBottom: 4,
   },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 2 },
+  calendarGrid: { gap: 3 },
+  weekRow: { position: 'relative', flexDirection: 'row', gap: 2 },
   dayCell: {
-    width: `${100 / 7}%` as any,
-    aspectRatio: 1, alignItems: 'center', justifyContent: 'center',
+    flex: 1,
+    height: 56,
+    alignItems: 'center', justifyContent: 'center',
     borderRadius: 10, borderWidth: 1, borderColor: 'transparent', padding: 2,
   },
   dayNum: { fontSize: 13, fontFamily: 'Inter_400Regular' },
   dotRow: { flexDirection: 'row', gap: 2, marginTop: 2 },
   dot: { width: 5, height: 5, borderRadius: 3 },
+  periodBand: {
+    position: 'absolute',
+    height: 10,
+    borderRadius: 3,
+    paddingHorizontal: 4,
+    justifyContent: 'center',
+    zIndex: 2,
+  },
+  periodBandText: { color: '#fff', fontSize: 8, fontFamily: 'Inter_700Bold', lineHeight: 10 },
   dayDetail: { marginTop: 16, gap: 8 },
   sectionTitle: { fontSize: 15, fontFamily: 'Inter_600SemiBold', marginBottom: 4 },
   apptItem: {

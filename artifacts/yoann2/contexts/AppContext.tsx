@@ -296,6 +296,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         setTasks(SEED_TASKS);
         setCategories(SEED_CATEGORIES);
         setAppointments(SEED_APPOINTMENTS);
+        setCalendarPeriods([]);
         await AsyncStorage.multiSet([
           [STORAGE_KEYS.PROJECTS, JSON.stringify(SEED_PROJECTS)],
           [STORAGE_KEYS.TASKS, JSON.stringify(SEED_TASKS)],
@@ -303,6 +304,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           [STORAGE_KEYS.CATEGORIES, JSON.stringify(SEED_CATEGORIES)],
           [STORAGE_KEYS.EXPENSE_CATEGORIES, JSON.stringify(SEED_EXPENSE_CATEGORIES)],
           [STORAGE_KEYS.APPOINTMENTS, JSON.stringify(SEED_APPOINTMENTS)],
+           [STORAGE_KEYS.CALENDAR_PERIODS, JSON.stringify([])],
           [STORAGE_KEYS.INITIALIZED, 'true'],
           [STORAGE_KEYS.SEED_VERSION, SEED_VERSION],
           ['@yoann2/bank_transactions', SEED_BANK_TRANSACTIONS],
@@ -655,11 +657,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setTasks(sample.tasks);
     setCategories(DEFAULT_CATEGORIES);
     setAppointments([]);
+    setCalendarPeriods([]);
     AsyncStorage.multiSet([
       [STORAGE_KEYS.PROJECTS, JSON.stringify(sample.projects)],
       [STORAGE_KEYS.TASKS, JSON.stringify(sample.tasks)],
       [STORAGE_KEYS.CATEGORIES, JSON.stringify(DEFAULT_CATEGORIES)],
       [STORAGE_KEYS.APPOINTMENTS, JSON.stringify([])],
+      [STORAGE_KEYS.CALENDAR_PERIODS, JSON.stringify([])],
       [STORAGE_KEYS.INITIALIZED, 'true'],
     ]);
     markDirty();
