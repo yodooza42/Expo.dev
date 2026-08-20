@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 
-import type { Appointment, AppStats, Category, Priority, Project, Task, TaskStatus } from '@/types';
+import type { Appointment, AppStats, CalendarPeriod, Category, Priority, Project, Task, TaskStatus } from '@/types';
 import { saveBackup } from '@/utils/backup';
 import { genId } from '@/utils/ids';
 import { ensureAllTaskFolders, ensureTaskFolder } from '@/utils/photoStorage';
@@ -44,6 +44,7 @@ const STORAGE_KEYS = {
   CATEGORIES: '@yoann2_categories',
   EXPENSE_CATEGORIES: '@yoann2_expense_categories',
   APPOINTMENTS: '@yoann2_appointments',
+  CALENDAR_PERIODS: '@yoann2_calendar_periods',
   INITIALIZED: '@yoann2_initialized',
   SEED_VERSION: '@yoann2_seed_version',
 };
@@ -181,6 +182,7 @@ interface AppContextValue {
   transactions: BankTransaction[];
   categories: Category[];
   appointments: Appointment[];
+  calendarPeriods: CalendarPeriod[];
   loading: boolean;
   addProject: (p: Omit<Project, 'id' | 'createdAt' | 'updatedAt'>) => void;
   updateProject: (id: string, updates: Partial<Project>) => void;
@@ -202,6 +204,9 @@ interface AppContextValue {
   addAppointment: (a: Omit<Appointment, 'id' | 'createdAt'>) => void;
   updateAppointment: (id: string, updates: Partial<Appointment>) => void;
   deleteAppointment: (id: string) => void;
+  addCalendarPeriod: (p: Omit<CalendarPeriod, 'id' | 'createdAt'>) => void;
+  updateCalendarPeriod: (id: string, updates: Partial<CalendarPeriod>) => void;
+  deleteCalendarPeriod: (id: string) => void;
   getProjectTasks: (projectId: string) => Task[];
   getStats: () => AppStats;
   resetData: () => void;
@@ -215,6 +220,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [transactions, setTransactions] = useState<BankTransaction[]>([]);
   const [categories, setCategories] = useState<Category[]>(DEFAULT_CATEGORIES);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [calendarPeriods, setCalendarPeriods] = useState<CalendarPeriod[]>([]);
   const [loading, setLoading] = useState(true);
 
   const dirtyRef = useRef(false);
@@ -308,16 +314,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           ['@yoann2_trips', SEED_TRIPS],
         ]);
       } else {
-        const [pRaw, tRaw, cRaw, aRaw] = await AsyncStorage.multiGet([
+        const [pRaw, tRaw, cRaw, aRaw, cpRaw] = await AsyncStorage.multiGet([
           STORAGE_KEYS.PROJECTS,
           STORAGE_KEYS.TASKS,
           STORAGE_KEYS.CATEGORIES,
           STORAGE_KEYS.APPOINTMENTS,
+          STORAGE_KEYS.CALENDAR_PERIODS,
         ]);
         if (pRaw[1]) setProjects(JSON.parse(pRaw[1]));
         if (tRaw[1]) setTasks(JSON.parse(tRaw[1]));
         if (cRaw[1]) setCategories(JSON.parse(cRaw[1]));
         if (aRaw[1]) setAppointments(JSON.parse(aRaw[1]));
+        if (cpRaw[1]) setCalendarPeriods(JSON.parse(cpRaw[1]));
       }
 
       // Migration one-shot : convert @yoann2_expenses → BankTransactions with projectId
@@ -580,6 +588,34 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  const addCalendarPeriod = useCallback((p: Omit<CalendarPeriod, 'id' | 'createdAt'>) => {
+    const newPeriod: CalendarPeriod = { ...p, id: genId(), createdAt: new Date().toISOString() };
+    setCalendarPeriods(prev => {
+      const next = [...prev, newPeriod];
+      AsyncStorage.setItem(STORAGE_KEYS.CALENDAR_PERIODS, JSON.stringify(next));
+      markDirty();
+      return next;
+    });
+  }, []);
+
+  const updateCalendarPeriod = useCallback((id: string, updates: Partial<CalendarPeriod>) => {
+    setCalendarPeriods(prev => {
+      const next = prev.map(p => p.id === id ? { ...p, ...updates } : p);
+      AsyncStorage.setItem(STORAGE_KEYS.CALENDAR_PERIODS, JSON.stringify(next));
+      markDirty();
+      return next;
+    });
+  }, []);
+
+  const deleteCalendarPeriod = useCallback((id: string) => {
+    setCalendarPeriods(prev => {
+      const next = prev.filter(p => p.id !== id);
+      AsyncStorage.setItem(STORAGE_KEYS.CALENDAR_PERIODS, JSON.stringify(next));
+      markDirty();
+      return next;
+    });
+  }, []);
+
   const getProjectTasks = useCallback(
     (projectId: string) => tasks.filter(t => t.projectId === projectId),
     [tasks]
@@ -637,6 +673,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         transactions,
         categories,
         appointments,
+    calendarPeriods,
         loading,
         addProject,
         updateProject,
@@ -656,6 +693,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         addAppointment,
         updateAppointment,
         deleteAppointment,
+    addCalendarPeriod,
+    updateCalendarPeriod,
+    deleteCalendarPeriod,
         getProjectTasks,
         getProjectExpenses,
         getTaskExpenses,

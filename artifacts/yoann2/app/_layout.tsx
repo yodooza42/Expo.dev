@@ -240,6 +240,7 @@ function RootLayoutNav() {
         <Stack.Screen name="task/new" options={{ headerShown: false, presentation: 'modal' }} />
         <Stack.Screen name="appointment/new" options={{ headerShown: false, presentation: 'modal' }} />
         <Stack.Screen name="appointment/[id]" options={{ headerShown: false, presentation: 'modal' }} />
+        <Stack.Screen name="calendar-period/new" options={{ headerShown: false, presentation: 'modal' }} />
         <Stack.Screen
           name="voice"
           options={{ headerShown: false, presentation: 'transparentModal', animation: 'fade' }}

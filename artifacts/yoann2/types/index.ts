@@ -87,6 +87,18 @@ export interface Appointment {
   fromMarie?: boolean;
 }
 
+export type CalendarPeriodOwner = 'yoann' | 'marie' | 'both';
+
+export interface CalendarPeriod {
+  id: string;
+  name: string;
+  startDate: string;
+  endDate: string;
+  color: string;
+  owner: CalendarPeriodOwner;
+  createdAt: string;
+}
+
 export interface AppStats {
   totalProjects: number;
   totalTasks: number;
