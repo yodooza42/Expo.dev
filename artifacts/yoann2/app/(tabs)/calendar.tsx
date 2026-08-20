@@ -91,6 +91,16 @@ function dateKey(d: Date) {
   return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
 }
 
+function periodDateKey(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function periodDateForCalendarKey(key: string) {
+  const [year, month, day] = key.split('-').map(Number);
+  if (!year || month === undefined || !day) return '';
+  return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
 function appointmentDateKey(a: { date: string }) {
   const d = new Date(a.date);
   return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
@@ -100,14 +110,14 @@ function periodLanes(
   periods: CalendarPeriod[],
   week: Date[],
 ): { period: CalendarPeriod; startCol: number; endCol: number; lane: number }[] {
-  const weekStart = dateKey(week[0]!);
-  const weekEnd = dateKey(week[6]!);
+  const weekStart = periodDateKey(week[0]!);
+  const weekEnd = periodDateKey(week[6]!);
   const visible = periods
     .filter(p => p.startDate <= weekEnd && p.endDate >= weekStart)
     .map(p => ({
       period: p,
-      startCol: p.startDate <= weekStart ? 0 : week.findIndex(d => dateKey(d) === p.startDate),
-      endCol: p.endDate >= weekEnd ? 6 : week.findIndex(d => dateKey(d) === p.endDate),
+      startCol: p.startDate <= weekStart ? 0 : week.findIndex(d => periodDateKey(d) === p.startDate),
+      endCol: p.endDate >= weekEnd ? 6 : week.findIndex(d => periodDateKey(d) === p.endDate),
       lane: 0,
     }))
     .sort((a, b) => a.startCol - b.startCol || a.endCol - b.endCol);
@@ -179,7 +189,10 @@ export default function CalendarScreen() {
   const selectedAppointments = selectedDate ? (appointmentsByDate[selectedDate] ?? []) : [];
   const selectedTransfers    = selectedDate ? (transfersByDate[selectedDate]    ?? []) : [];
   const selectedPeriods = selectedDate
-    ? calendarPeriods.filter(p => p.startDate <= selectedDate && p.endDate >= selectedDate)
+    ? calendarPeriods.filter(p => {
+        const selectedPeriodDate = periodDateForCalendarKey(selectedDate);
+        return p.startDate <= selectedPeriodDate && p.endDate >= selectedPeriodDate;
+      })
     : [];
 
   const isToday = (d: Date) =>
