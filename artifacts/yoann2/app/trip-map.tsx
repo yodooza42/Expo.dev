@@ -53,6 +53,7 @@ import { tripEvents } from '@/utils/tripEvents';
 import { getTrips, getVehicleSettings, updateTrip } from '@/utils/tripStorage';
 import { fmtDayLong, fmtHHMM } from '@/utils/date';
 import { haversineKm } from '@/utils/haversine';
+import { computeRouteDistanceKm } from '@/utils/osrmMatching';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { loadMultiDayPoints } from '@/utils/locationTracking';
 import type { LocationPoint } from '@/utils/locationTracking';
@@ -1039,6 +1040,8 @@ export default function TripMapScreen() {
     setAddressUsage(prev => ({ ...prev, [name]: (prev[name] ?? 0) + 1 }));
   }
 
+  const isWalkTrip = !!trip && vehicles.some(v => v.id === trip.vehicle && v.type === 'walk');
+
   const handleRegenGpsRoute = useCallback(async () => {
     if (!trip || regenGpsLoading) return;
     setRegenGpsLoading(true);
@@ -1051,11 +1054,17 @@ export default function TripMapScreen() {
         Alert.alert('Tracé GPS', 'Pas assez de points GPS pour ce trajet.');
         return;
       }
+      const gpsRoute = filtered.map(p => ({ lat: p.lat, lng: p.lng }));
       const newRoute: RoutePoint[] = simplifyRoute(
-        filtered.map(p => ({ lat: p.lat, lng: p.lng })),
-        EPSILON_DEG_WALK,
+        gpsRoute,
+        isWalkTrip ? EPSILON_DEG_WALK : undefined,
       );
-      const patch: Partial<Trip> = { route: newRoute, routeSource: 'gps' };
+      const patch: Partial<Trip> = {
+        route: newRoute,
+        routeSource: 'gps',
+        distanceKm: Math.round(computeRouteDistanceKm(gpsRoute) * 100) / 100,
+        pointCount: filtered.length,
+      };
       setTrip(prev => prev ? { ...prev, ...patch } : prev);
       await updateTrip(trip.id, patch);
       tripEvents.emitTripUpdated();
@@ -1065,7 +1074,7 @@ export default function TripMapScreen() {
     } finally {
       setRegenGpsLoading(false);
     }
-  }, [trip, regenGpsLoading]);
+  }, [trip, regenGpsLoading, isWalkTrip]);
 
   async function handlePickWalkRoute(routeId: string | undefined) {
     if (!trip) return;
@@ -1098,7 +1107,6 @@ export default function TripMapScreen() {
     ? (trip?.startAddress ?? '')
     : (trip?.endAddress ?? '');
 
-  const isWalkTrip = !!trip && vehicles.some(v => v.id === trip.vehicle && v.type === 'walk');
   const walkRouteName = isWalkTrip && trip?.walkRouteId
     ? walkRoutes.find(r => r.id === trip.walkRouteId)?.name
     : undefined;
@@ -1406,8 +1414,8 @@ export default function TripMapScreen() {
 
           {/* Date + vehicle row */}
           <View style={[styles.dtRow, { marginTop: 4, marginBottom: 0 }]}>
-            {/* Regen GPS — icône seule, avant la date (balades uniquement) */}
-            {isWalkTrip && tripLocPts.length >= 2 && !screenshotMode && (
+            {/* Regen GPS — disponible pour les balades et les trajets véhicule. */}
+            {tripLocPts.length >= 2 && !screenshotMode && (
               <Pressable
                 onPress={handleRegenGpsRoute}
                 disabled={regenGpsLoading}
