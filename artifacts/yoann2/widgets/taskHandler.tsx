@@ -484,27 +484,39 @@ async function handleTripEnd(
   const isWalkMode = savedMode === 'balade';
 
   let osrmRoute: RoutePoint[] | null = null;
-  let distanceKm: number;
   try {
     if (!isWalkMode && routePoints.length >= 2) {
       osrmRoute = await matchRouteOSRM(routePoints);
     }
   } catch {}
 
-  if (osrmRoute && osrmRoute.length >= 2) {
-    distanceKm = computeRouteDistanceKm(osrmRoute);
-  } else {
-    distanceKm =
-      rawPts.length >= 2
-        ? computeRouteDistanceKm(rawPts.map(p => ({ lat: p.lat, lng: p.lng })))
-        : haversineKm(manualState.startLat, manualState.startLon, endLat, endLon);
-  }
+  // Distance GPS brute (référence) : toujours calculée quand on a assez de points,
+  // pour pouvoir détecter un map-matching OSRM aberrant (ex : retour court-circuité,
+  // matching partiel) avant de lui faire confiance.
+  const rawDistanceKm =
+    rawPts.length >= 2
+      ? computeRouteDistanceKm(rawPts.map(p => ({ lat: p.lat, lng: p.lng })))
+      : haversineKm(manualState.startLat, manualState.startLon, endLat, endLon);
+
+  // On ne fait confiance au tracé OSRM que s'il reste cohérent avec la distance
+  // GPS réelle. Le service de map-matching peut silencieusement renvoyer un
+  // tracé partiel/tronqué (ex : 11,8 km affichés pour un vrai trajet de 67,8 km) —
+  // dans ce cas on retombe sur le tracé GPS brut, comme pour les balades.
+  const osrmDistanceKm = osrmRoute ? computeRouteDistanceKm(osrmRoute) : null;
+  const osrmIsPlausible =
+    osrmDistanceKm != null &&
+    rawPts.length >= 2 &&
+    (rawDistanceKm < 0.3 ||
+      (osrmDistanceKm >= rawDistanceKm * 0.7 && osrmDistanceKm <= rawDistanceKm * 1.4));
+
+  const trustedOsrmRoute = osrmIsPlausible ? osrmRoute : null;
+  const distanceKm = trustedOsrmRoute ? osrmDistanceKm! : rawDistanceKm;
 
   // Balades : epsilon fin (~4 m) pour conserver les courbes des sentiers.
-  // Voiture/moto : epsilon standard (~15 m), OSRM en priorité.
+  // Voiture/moto : epsilon standard (~15 m), OSRM en priorité si le matching est fiable.
   const finalRoute = isWalkMode
     ? simplifyRoute(routePoints, EPSILON_DEG_WALK)
-    : simplifyRoute(osrmRoute ?? routePoints);
+    : simplifyRoute(trustedOsrmRoute ?? routePoints);
 
   const trip: Trip = {
     id: genId(),
@@ -518,7 +530,7 @@ async function handleTripEnd(
     endLat,
     endLon,
     route: finalRoute,
-    routeSource: osrmRoute ? 'osrm' : 'gps',
+    routeSource: trustedOsrmRoute ? 'osrm' : 'gps',
     source: 'manual',
   };
 
