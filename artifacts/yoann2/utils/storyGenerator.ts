@@ -140,7 +140,7 @@ window.generateStory=function(opts){
   // à rAsp que le trajet est bien plus large que haut et écrase la carte à quelques px de haut.
   function mercY(lat){return Math.log(Math.tan(Math.PI/4+(lat*Math.PI/180)/2))*(180/Math.PI);}
   var minMerc=mercY(minLat),maxMerc=mercY(maxLat),mercSpan=(maxMerc-minMerc)||0.0001;
-  var mT=195,mB=780,mL=60,mR=660;
+  var mT=storyHeaderH+15,mB=780,mL=60,mR=660;
   var mW=mR-mL,mH=mB-mT;
   var rAsp=lngSpan/mercSpan;
   var mapAsp=mW/mH;
@@ -442,8 +442,8 @@ window.generateStory=function(opts){
     if(opts.isWalk){
       ctx.fillStyle=THEME.subColor;ctx.font='22px Arial,sans-serif';
       var participantsLabel=(opts.walkParticipants||[]).join(' · ');
-      if(participantsLabel)ctx.fillText('Avec '+participantsLabel,cW/2,160);
-      if(opts.walkSpotName)ctx.fillText('Spot : '+opts.walkSpotName,cW/2,193);
+      if(participantsLabel)ctx.fillText('Avec '+participantsLabel,cW/2,160,cW-80);
+      if(opts.walkSpotName)ctx.fillText('Spot : '+opts.walkSpotName,cW/2,193,cW-80);
     }
     ctx.strokeStyle=THEME.headerSep;ctx.lineWidth=1;
     ctx.beginPath();ctx.moveTo(0,storyHeaderH);ctx.lineTo(cW,storyHeaderH);ctx.stroke();
