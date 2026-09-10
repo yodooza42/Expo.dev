@@ -1,7 +1,7 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   Platform,
   Pressable,
@@ -17,22 +17,22 @@ import { useColors } from '@/hooks/useColors';
 import { SubPageHeader } from '@/components/SubPageHeader';
 import { loadAnnaBadges, NOUNOU_COLORS, saveAnnaBadges, type AnnaBadges, type Nounou } from '@/utils/annaStorage';
 import { loadMariePlanning, SHIFT_TIMES, type MariePlanning, type Shift } from '@/utils/marieStorage';
+import { DEFAULT_WORK_SCHEDULE, getWidgetSettings, type DaySchedule } from '@/widgets/widgetSettings';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 /**
- * Yoann's fixed weekly schedule (index 0 = Monday … 6 = Sunday).
- * null = repos.
+ * Reads Yoann's schedule for a given weekday from the live "Planning de
+ * travail" (Travail tab), instead of a hardcoded copy — so edits there are
+ * reflected here.
+ * `workSchedule` index convention: 0=Dimanche … 6=Samedi (Date.getDay()).
+ * `weekdayIdx` here: 0=Monday … 6=Sunday.
  */
-const YOANN_SCHEDULE: Record<number, { start: string; end: string } | null> = {
-  0: { start: '15:00', end: '01:00' }, // Lundi
-  1: { start: '17:00', end: '00:00' }, // Mardi
-  2: { start: '16:00', end: '01:00' }, // Mercredi
-  3: { start: '17:00', end: '01:00' }, // Jeudi
-  4: null,                              // Vendredi
-  5: null,                              // Samedi
-  6: { start: '20:00', end: '00:00' }, // Dimanche
-};
+function yoannScheduleFor(weekdayIdx: number, workSchedule: DaySchedule[]): { start: string; end: string } | null {
+  const day = workSchedule[(weekdayIdx + 1) % 7];
+  if (!day || day.off) return null;
+  return { start: day.start, end: day.end };
+}
 
 const FR_MONTHS = [
   'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
@@ -67,10 +67,10 @@ function intersect(a: [number, number], b: [number, number]): [number, number] |
 
 /**
  * Returns [startMins, endMins] | null.
- * Uses Yoann's fixed schedule (weekdayIdx 0=Mon…6=Sun) and Marie's shift.
+ * Uses Yoann's live work schedule (weekdayIdx 0=Mon…6=Sun) and Marie's shift.
  */
-function nobodyHome(weekdayIdx: number, shift: Shift | undefined): [number, number] | null {
-  const yoann = YOANN_SCHEDULE[weekdayIdx];
+function nobodyHome(weekdayIdx: number, shift: Shift | undefined, workSchedule: DaySchedule[]): [number, number] | null {
+  const yoann = yoannScheduleFor(weekdayIdx, workSchedule);
   if (!yoann || !shift) return null;
 
   // Yoann: 45min before start → end (extended hours if crosses midnight)
@@ -138,19 +138,23 @@ export default function AnnaScreen() {
   const router  = useRouter();
   const topPad  = Platform.OS === 'web' ? 67 : insets.top;
 
-  const [monthStr, setMonthStr] = useState(currentMonthStr);
-  const [marie,    setMarie]    = useState<MariePlanning>({});
-  const [badges,   setBadges]   = useState<AnnaBadges>({});
+  const [monthStr, setMonthStr]         = useState(currentMonthStr);
+  const [marie,    setMarie]            = useState<MariePlanning>({});
+  const [badges,   setBadges]           = useState<AnnaBadges>({});
+  const [workSchedule, setWorkSchedule] = useState<DaySchedule[]>(DEFAULT_WORK_SCHEDULE);
 
-  useEffect(() => {
+  // Reload on every focus (not just on mount) so edits made in the "Travail"
+  // tab are reflected immediately when coming back to this screen.
+  useFocusEffect(useCallback(() => {
     loadMariePlanning().then(setMarie);
     loadAnnaBadges().then(setBadges);
-  }, []);
+    getWidgetSettings().then(s => setWorkSchedule(s.workSchedule));
+  }, []));
 
   const { year, month } = parseMonth(monthStr);
   const monthLabel = `${FR_MONTHS[month - 1]} ${year}`;
 
-  // Compute "nobody home" days for this month using fixed Yoann schedule
+  // Compute "nobody home" days for this month using Yoann's live work schedule
   const entries: DayEntry[] = useMemo(() => {
     const result: DayEntry[] = [];
     const total = daysInMonth(year, month);
@@ -158,7 +162,7 @@ export default function AnnaScreen() {
       const dateKey = toDateKey(year, month, d);
       const wdIdx   = weekdayIndex(dateKey);
       const shift   = marie[dateKey];
-      const window  = nobodyHome(wdIdx, shift);
+      const window  = nobodyHome(wdIdx, shift, workSchedule);
       if (window) {
         result.push({
           dateKey,
@@ -169,7 +173,7 @@ export default function AnnaScreen() {
       }
     }
     return result;
-  }, [year, month, marie, badges]);
+  }, [year, month, marie, badges, workSchedule]);
 
   const handleToggleNounou = useCallback(async (dateKey: string) => {
     const current = badges[dateKey] ?? 'Isabelle';
@@ -312,7 +316,7 @@ export default function AnnaScreen() {
                   <View style={styles.sourceRow}>
                     {(() => {
                       const wdIdx = weekdayIndex(e.dateKey);
-                      const y = YOANN_SCHEDULE[wdIdx];
+                      const y = yoannScheduleFor(wdIdx, workSchedule);
                       return y ? (
                         <View style={[styles.sourceChip, { backgroundColor: '#FFC10722' }]}>
                           <Text style={[styles.sourceChipTxt, { color: '#FFC107' }]}>
