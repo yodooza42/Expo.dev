@@ -12,3 +12,4 @@
 - [EAS build — NE JAMAIS lancer sans autorisation explicite](eas-build-no-auto.md) — ne JAMAIS déclencher un build EAS sans que l'utilisateur le demande explicitement. Les quotas sont limités et précieux.
 - [Walk route — skip OSRM, use GPS fine epsilon](walk-route-osrm-skip.md) — OSRM snape sur les routes voiture; pour les balades utiliser GPS + EPSILON_DEG_WALK (~4 m) depuis routeSimplification.ts.
 - [Widget trip live refresh](widget-trip-refresh.md) — appeler updateTodoWidget() throttlé (30 s) depuis la tâche GPS locationTracking.ts pour que km/durée se mettent à jour pendant un trajet.
+- [Captures de stories](story-preview-capture.md) — une capture d’iframe animée peut précéder le dessin ; comparer sur un état déterministe sans changer le renderer de l’app.
