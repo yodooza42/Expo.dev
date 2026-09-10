@@ -817,6 +817,14 @@ export default function TripMapScreen() {
       : veh?.type === 'walk' ? '🚶' : '🚗';
 
     const isWalk = veh?.type === 'walk';
+    const walkStoryParticipants = isWalk
+      ? (trip.walkParticipants ?? [])
+          .map(id => veh?.walkParticipants?.find(p => p.id === id)?.name)
+          .filter((name): name is string => !!name)
+      : [];
+    const walkStorySpot = isWalk && trip.walkRouteId
+      ? walkRoutes.find(r => r.id === trip.walkRouteId)?.name
+      : undefined;
     const opts = {
       color: vehicleColor,
       vehicleEmoji,
@@ -833,12 +841,15 @@ export default function TripMapScreen() {
       route,
       videoDurationSec: durationOverride ?? storyDuration,
       showPace: isWalk && speedUnitPace,
+      isWalk,
+      walkParticipants: walkStoryParticipants,
+      walkSpotName: walkStorySpot,
       photos,
       theme: storyTheme,
     };
 
     storyWebViewRef.current?.injectJavaScript(`(function(){window.generateStory(${JSON.stringify(opts)});})();true;`);
-  }, [trip, vehicles, isGeneratingStory, storyDuration, storyTheme, tripLocPts, photoToDataUri]);
+  }, [trip, vehicles, walkRoutes, isGeneratingStory, storyDuration, storyTheme, tripLocPts, photoToDataUri, speedUnitPace]);
 
   function handleOpenDtPicker() {
     if (!trip) return;

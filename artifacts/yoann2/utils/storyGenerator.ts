@@ -100,6 +100,7 @@ window.generateStory=function(opts){
   };
 
   var route=opts.route;
+  var storyHeaderH=opts.isWalk?230:180;
 
   // ── Thème ─────────────────────────────────────────────────────────────
   // 'dark'/'light' ne changent que la palette. 'satellite' télécharge et assemble de
@@ -433,17 +434,23 @@ window.generateStory=function(opts){
     for(var gy=0;gy<cH;gy+=60){ctx.beginPath();ctx.moveTo(0,gy);ctx.lineTo(cW,gy);ctx.stroke();}
 
     // Header
-    ctx.fillStyle=THEME.headerBg;ctx.fillRect(0,0,cW,180);
+    ctx.fillStyle=THEME.headerBg;ctx.fillRect(0,0,cW,storyHeaderH);
     ctx.fillStyle=opts.color;ctx.font='bold 50px Arial,sans-serif';ctx.textAlign='center';
     ctx.fillText(opts.vehicleEmoji+'  '+opts.dateLabel,cW/2,72);
     ctx.fillStyle=THEME.subColor;ctx.font='32px Arial,sans-serif';
     ctx.fillText(opts.timeLabel,cW/2,122);
+    if(opts.isWalk){
+      ctx.fillStyle=THEME.subColor;ctx.font='22px Arial,sans-serif';
+      var participantsLabel=(opts.walkParticipants||[]).join(' · ');
+      if(participantsLabel)ctx.fillText('Avec '+participantsLabel,cW/2,160);
+      if(opts.walkSpotName)ctx.fillText('Spot : '+opts.walkSpotName,cW/2,193);
+    }
     ctx.strokeStyle=THEME.headerSep;ctx.lineWidth=1;
-    ctx.beginPath();ctx.moveTo(0,180);ctx.lineTo(cW,180);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(0,storyHeaderH);ctx.lineTo(cW,storyHeaderH);ctx.stroke();
 
     // ── Zone carte : clip + transform caméra ─────────────────────────────────
     ctx.save();
-    ctx.beginPath();ctx.rect(30,183,660,614);ctx.clip();
+    ctx.beginPath();ctx.rect(30,storyHeaderH+3,660,797-storyHeaderH-3);ctx.clip();
     ctx.translate(mCX,mCY);ctx.scale(cam.zoom,cam.zoom);ctx.translate(-cam.cx,-cam.cy);
 
     // Imagerie satellite (thème satellite, prête) : dessinée dans le même repère que le
