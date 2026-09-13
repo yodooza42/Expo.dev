@@ -49,21 +49,29 @@
 export const STORY_PERIOD_JS = `
 (function(){
   /* ── Cache de tuiles satellite ─────────────────────────────────────────
-     Deux niveaux, partagés par tous les appels à generatePeriodStory() dans cette
-     session WebView (déclarés dans cette IIFE, hors de la fonction, donc jamais
-     recréés) :
-       1. Mémoire (TILE_MEM) : Image déjà décodée → réutilisation instantanée,
-          sans réseau ni redécodage, tant que la page WebView reste chargée
-          (régénérer la même période plusieurs fois de suite, ex. pour ajuster
-          le nom ou la durée).
-       2. localStorage (best-effort, survit aux rechargements de la page WebView
-          et, quand l'origine du WebView est stable, aux redémarrages de l'appli) :
+     Deux niveaux, utilisables pendant une génération dans ce document WebView :
+        1. Mémoire (TILE_MEM) : Image déjà décodée → réutilisation instantanée,
+           avec un LRU très court. Le cycle natif emploie un WebView frais par
+           génération : ce cache ne porte donc aucune promesse inter-story.
+        2. localStorage (best-effort) :
           tuile encodée en JPEG data URI, avec un index FIFO pour plafonner la
           taille et éviter un QuotaExceededError.
      En cas d'échec (quota dépassé, stockage indisponible, canvas "tainted"), on
      retombe silencieusement sur un téléchargement réseau classique : le cache est
      une pure optimisation, jamais un point de défaillance. */
+  /* Images decoded by the browser are expensive: keep a deliberately tiny LRU.
+     localStorage remains the larger, encoded, best-effort cache. */
   var TILE_MEM=Object.create(null);
+  var TILE_MEM_LRU=[];
+  var TILE_MEM_MAX=24;
+  var ACTIVE_PERIOD_JOB=null;
+  function clearTileMemory(){
+    for(var k in TILE_MEM){
+      try{TILE_MEM[k].onload=null;TILE_MEM[k].onerror=null;TILE_MEM[k].src='';}catch(e){}
+      delete TILE_MEM[k];
+    }
+    TILE_MEM_LRU.length=0;
+  }
   var TILE_LS_PREFIX='satTile_v1_';
   var TILE_LS_INDEX_KEY='satTileIndex_v1';
   var TILE_LS_MAX=600;
@@ -83,22 +91,40 @@ export const STORY_PERIOD_JS = `
       }
     }catch(e){ /* quota dépassée ou stockage indisponible : cache disque ignoré, réseau classique */ }
   }
-  /* Charge une tuile (mémoire → disque → réseau) puis dessine dans cctx à (dx,dy).
-     cb() est appelé une fois la tuile traitée (succès ou échec), jamais avant. */
-  function loadTile(z,xx,yy,cctx,dx,dy,onFail,cb){
+  function touchTile(key,img){
+    var old=TILE_MEM_LRU.indexOf(key);
+    if(old!==-1)TILE_MEM_LRU.splice(old,1);
+    TILE_MEM_LRU.push(key);TILE_MEM[key]=img;
+    while(TILE_MEM_LRU.length>TILE_MEM_MAX){
+      var drop=TILE_MEM_LRU.shift(),oldImg=TILE_MEM[drop];
+      delete TILE_MEM[drop];
+      /* Detaching a data URL is safe only for cache-owned images. */
+      if(oldImg){try{oldImg.onload=null;oldImg.onerror=null;oldImg.src='';}catch(e){}}
+    }
+  }
+  /* Returns a cancel function.  The caller owns all pending Image objects, so a
+     cancellation really aborts network/decode work instead of merely ignoring it. */
+  function loadTile(z,xx,yy,cctx,dx,dy,job,done){
     var key=z+'/'+xx+'/'+yy;
     var mem=TILE_MEM[key];
     if(mem){
-      try{cctx.drawImage(mem,dx,dy,256,256);}catch(e){onFail();}
-      cb();
-      return;
+      try{cctx.drawImage(mem,dx,dy,256,256);touchTile(key,mem);done(true);}catch(e){done(false);}
+      return function(){};
     }
     var cachedUrl=lsGetTile(key);
     var img=new Image();
+    var ended=false;
+    function finish(ok){
+      if(ended)return;ended=true;
+      var pi=job.pendingImages.indexOf(img);if(pi!==-1)job.pendingImages.splice(pi,1);
+      if(!job.cancelled)done(ok);
+    }
+    job.pendingImages.push(img);
     img.crossOrigin='anonymous';
     img.onload=function(){
-      try{cctx.drawImage(img,dx,dy,256,256);}catch(e){onFail();}
-      TILE_MEM[key]=img;
+      if(job.cancelled){finish(false);return;}
+      try{cctx.drawImage(img,dx,dy,256,256);}catch(e){finish(false);return;}
+      touchTile(key,img);
       if(!cachedUrl){
         try{
           var tc=document.createElement('canvas');tc.width=256;tc.height=256;
@@ -106,41 +132,145 @@ export const STORY_PERIOD_JS = `
           lsSetTile(key,tc.toDataURL('image/jpeg',0.82));
         }catch(e2){ /* toDataURL peut échouer (canvas "tainted" si le CORS échoue) : on continue sans cache disque */ }
       }
-      cb();
+      finish(true);
     };
-    img.onerror=function(){onFail();cb();};
-    img.src=cachedUrl||(SAT_TILE_URL+z+'/'+yy+'/'+xx);
+    img.onerror=function(){finish(false);};
+    try{img.src=cachedUrl||(SAT_TILE_URL+z+'/'+yy+'/'+xx);}catch(e){finish(false);}
+    return function(){
+      /* Once loaded, TILE_MEM owns this decoded image. A mosaic completing must
+         not blank its src while later mosaics can still reuse it. */
+      if(ended)return;
+      try{img.onload=null;img.onerror=null;img.src='';}catch(e){}
+      finish(false);
+    };
   }
   var SAT_TILE_URL='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/';
 
-window.generatePeriodStory=function(opts){
+  window.generatePeriodStory=function(opts){
+   opts=opts||{};
+   var jobId=typeof opts.jobId==='string'?opts.jobId:'';
+   function post(message){
+     message.jobId=jobId;
+     try{if(window.ReactNativeWebView&&window.ReactNativeWebView.postMessage)window.ReactNativeWebView.postMessage(JSON.stringify(message));}catch(e){}
+   }
+   var job={jobId:jobId,cancelled:false,started:false,terminal:false,pendingImages:[],mosaicCancels:[],mosaicOutputs:[],timers:[],raf:0,cv:null,stream:null,rec:null,reader:null,prepTimer:0,recordTimer:0,exportTimer:0};
+   function clearJobTimer(id){try{clearTimeout(id);}catch(e){}}
+   function abandonCanvas(canvas){if(!canvas)return;try{canvas.width=0;canvas.height=0;}catch(e){}}
+   function cleanup(stopRecorder){
+     for(var i=0;i<job.timers.length;i++)clearJobTimer(job.timers[i]);
+     job.timers=[];
+     if(job.raf){try{cancelAnimationFrame(job.raf);}catch(e){}job.raf=0;}
+     var imgs=job.pendingImages.slice();job.pendingImages.length=0;
+     for(var j=0;j<imgs.length;j++){try{imgs[j].onload=null;imgs[j].onerror=null;imgs[j].src='';}catch(e2){}}
+     if(job.reader){try{job.reader.onload=null;job.reader.onerror=null;job.reader.abort();}catch(eReader){}job.reader=null;}
+     var mosaics=job.mosaicCancels.slice();job.mosaicCancels.length=0;
+     for(var m=0;m<mosaics.length;m++)mosaics[m]();
+     for(var mo=0;mo<job.mosaicOutputs.length;mo++)abandonCanvas(job.mosaicOutputs[mo]);
+     job.mosaicOutputs.length=0;
+     clearTileMemory();
+     if(typeof photoMarkers!=='undefined'){
+       for(var photoCleanup=0;photoCleanup<photoMarkers.length;photoCleanup++){
+         if(photoMarkers[photoCleanup].imgEl){try{photoMarkers[photoCleanup].imgEl.src='';}catch(ePhoto){}photoMarkers[photoCleanup].imgEl=null;}
+       }
+     }
+     if(stopRecorder&&job.rec&&job.rec.state==='recording'){try{job.rec.stop();}catch(e3){}}
+     if(job.stream&&job.stream.getTracks){try{job.stream.getTracks().forEach(function(t){t.stop();});}catch(e4){}}
+   }
+   function fail(message){
+     if(job.terminal||job.cancelled)return;
+     job.terminal=true;cleanup(true);
+     if(job.cv&&job.cv.parentNode){try{job.cv.parentNode.removeChild(job.cv);}catch(e){}}
+     abandonCanvas(job.cv);post({type:'story_error',message:message||'Impossible de générer la story.'});
+   }
+   job.cancel=function(){
+     if(job.cancelled||job.terminal)return;
+     job.cancelled=true;cleanup(true);
+     if(job.cv&&job.cv.parentNode){try{job.cv.parentNode.removeChild(job.cv);}catch(e){}}
+     abandonCanvas(job.cv);
+   };
+   if(ACTIVE_PERIOD_JOB)ACTIVE_PERIOD_JOB.cancel();
+   ACTIVE_PERIOD_JOB=job;
+   if(!jobId){fail('Identifiant de génération manquant.');return;}
+   if(!Array.isArray(opts.trips)||opts.trips.length===0){fail('Aucun trajet exploitable pour la story.');return;}
+   var trips=opts.trips;
+   for(var validTi=0;validTi<trips.length;validTi++){
+     if(!trips[validTi]||!Array.isArray(trips[validTi].route)||trips[validTi].route.length<2){fail('Un trajet ne contient pas de tracé exploitable.');return;}
+   }
+   try{
+    if(!window.MediaRecorder||!document.createElement){fail('L’enregistrement vidéo n’est pas pris en charge.');return;}
   var cW=720,cH=1280;
   var cv=document.createElement('canvas');
+   job.cv=cv;
   cv.width=cW;cv.height=cH;
   document.body.appendChild(cv);
   cv.style.cssText='position:absolute;top:-9999px;left:-9999px;';
   var ctx=cv.getContext('2d');
+   if(!ctx||!cv.captureStream){fail('Le canevas vidéo n’est pas disponible.');return;}
   var mimes=['video/mp4;codecs=avc1','video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm'];
   var mime='video/webm';
-  for(var mi=0;mi<mimes.length;mi++){if(MediaRecorder.isTypeSupported(mimes[mi])){mime=mimes[mi];break;}}
+   for(var mi=0;mi<mimes.length;mi++){if(!MediaRecorder.isTypeSupported||MediaRecorder.isTypeSupported(mimes[mi])){mime=mimes[mi];break;}}
   var chunks=[];
   var stream=cv.captureStream(30);
+   job.stream=stream;
   var rec=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:3600000});
-  rec.ondataavailable=function(e){if(e.data&&e.data.size>0)chunks.push(e.data);};
+   job.rec=rec;
+   rec.onerror=function(){fail('L’enregistrement vidéo a échoué.');};
+   rec.ondataavailable=function(e){if(!job.cancelled&&!job.terminal&&e.data&&e.data.size>0)chunks.push(e.data);};
   rec.onstop=function(){
-    document.body.removeChild(cv);
+     try{
+     if(job.cancelled||job.terminal)return;
+     if(job.recordTimer){clearTimeout(job.recordTimer);job.recordTimer=0;}
+     cleanup(false);
+     if(cv.parentNode){try{cv.parentNode.removeChild(cv);}catch(e){}}
+     abandonCanvas(cv);
+     for(var releaseMi=0;releaseMi<satMosaics.length;releaseMi++)if(satMosaics[releaseMi])abandonCanvas(satMosaics[releaseMi].canvas);
+     if(satGlobalMosaic)abandonCanvas(satGlobalMosaic.canvas);
+     satMosaics=[];satGlobalMosaic=null;
+     for(var releasePi=0;releasePi<photoMarkers.length;releasePi++){
+       if(photoMarkers[releasePi].imgEl){try{photoMarkers[releasePi].imgEl.src='';}catch(e2){}photoMarkers[releasePi].imgEl=null;}
+     }
     var blob=new Blob(chunks,{type:mime.split(';')[0]});
-    var fr=new FileReader();
-    fr.onload=function(){
-      var du=fr.result,sep=du.indexOf(',');
-      var mO=du.slice(5,du.indexOf(';')),b64=du.slice(sep+1);
-      var C=200000,tot=Math.ceil(b64.length/C);
-      for(var ci=0;ci<tot;ci++)window.ReactNativeWebView.postMessage(JSON.stringify({type:'story_chunk',index:ci,total:tot,mime:mO,data:b64.slice(ci*C,(ci+1)*C)}));
-    };
-    fr.readAsDataURL(blob);
+     chunks.length=0;
+     if(!blob||!blob.size){fail('La vidéo générée est vide.');return;}
+     /* Each byte slice is divisible by three.  Concatenating independently
+        encoded chunks is therefore valid base64 without a full-video copy. */
+     var BYTES_PER_CHUNK=150000,total=Math.ceil(blob.size/BYTES_PER_CHUNK),index=0,mimeOut=mime.split(';')[0];
+     post({type:'story_phase',phase:'export',completed:0,total:total});
+     function refreshExportIdleDeadline(){
+       if(job.exportTimer)clearTimeout(job.exportTimer);
+       job.exportTimer=setTimeout(function(){fail('L’export de la vidéo a dépassé le délai.');},30000);
+       job.timers.push(job.exportTimer);
+     }
+     refreshExportIdleDeadline();
+     function exportNext(){
+       try{
+       if(job.cancelled||job.terminal)return;
+       if(index>=total){if(job.exportTimer){clearTimeout(job.exportTimer);job.exportTimer=0;}job.terminal=true;ACTIVE_PERIOD_JOB=ACTIVE_PERIOD_JOB===job?null:ACTIVE_PERIOD_JOB;return;}
+       var fr;
+       try{fr=new FileReader();}catch(e){fail('Export vidéo indisponible.');return;}
+       job.reader=fr;
+       fr.onerror=function(){fail('Impossible d’exporter la vidéo.');};
+       fr.onload=function(){
+         try{
+         if(job.cancelled||job.terminal)return;
+         job.reader=null;
+         var value=typeof fr.result==='string'?fr.result:'',comma=value.indexOf(',');
+         if(comma<0){fail('Impossible d’exporter la vidéo.');return;}
+         post({type:'story_chunk',index:index,total:total,mime:mimeOut,data:value.slice(comma+1)});
+         index++;
+         post({type:'story_phase',phase:'export',completed:index,total:total});
+         refreshExportIdleDeadline();
+         var id=setTimeout(exportNext,0);job.timers.push(id);
+         }catch(readerError){fail('Impossible d’exporter la vidéo.');}
+       };
+       try{fr.readAsDataURL(blob.slice(index*BYTES_PER_CHUNK,Math.min(blob.size,(index+1)*BYTES_PER_CHUNK),mimeOut));}catch(e2){fail('Impossible d’exporter la vidéo.');}
+       }catch(exportError){fail('Impossible d’exporter la vidéo.');}
+     }
+     exportNext();
+     }catch(stopError){fail('Impossible de finaliser la vidéo.');}
   };
-
-  var trips=opts.trips;
+   }catch(setupError){fail('Impossible de préparer la vidéo.');return;}
+   try{
   var CAM_SLOWDOWN=50; /* facteur de ralenti du curseur pendant le vol de caméra */
   var PHOTO_PAUSE_MS=2000;
   var VCL={car:'#2196F3',moto:'#FF9800',walk:'#4CAF50'};
@@ -214,15 +344,18 @@ window.generatePeriodStory=function(opts){
      Tuiles XYZ Web Mercator standard, source Esri World Imagery (gratuite, sans clé API,
      CORS activé). Une mosaïque par trajet (bbox du trajet + marge) + une globale pour le
      récapitulatif final, assemblées en canvas offscreen avant l'enregistrement. */
-  var SAT_MAX_TILES=36;
-  var SAT_MOSAIC_TIMEOUT=9000;
+   var SAT_MAX_TILES=36;
+   var SAT_MOSAIC_TIMEOUT=7000;
+   var SAT_TILE_CONCURRENCY=4;
+   var SAT_TOTAL_OUTPUT_PIXELS=5000000;
   function lngToTileX(lng,z){return (lng+180)/360*Math.pow(2,z);}
   function latToTileY(lat,z){var r=lat*Math.PI/180;return (1-Math.log(Math.tan(r)+1/Math.cos(r))/Math.PI)/2*Math.pow(2,z);}
   function tileXToLng(x,z){return x/Math.pow(2,z)*360-180;}
   function tileYToLat(y,z){var n=Math.PI-2*Math.PI*y/Math.pow(2,z);return 180/Math.PI*Math.atan(0.5*(Math.exp(n)-Math.exp(-n)));}
 
-  function buildSatMosaic(bbox,targetWpx,targetHpx){
+   function buildSatMosaic(bbox,targetWpx,targetHpx,outputBudget){
     return new Promise(function(resolve){
+       if(job.cancelled||job.mapAbort){resolve(null);return;}
       var z=19,xMin,xMax,yMin,yMax,cols=1,rows=1;
       while(z>1){
         xMin=Math.floor(lngToTileX(bbox.lngMin,z));
@@ -235,26 +368,52 @@ window.generatePeriodStory=function(opts){
         z--;
       }
       if(cols*rows>SAT_MAX_TILES||cols<1||rows<1){resolve(null);return;}
-      var canvas=document.createElement('canvas');
-      canvas.width=cols*256;canvas.height=rows*256;
+       /* The scratch canvas exists for one mosaic only. Retained mosaics use an
+          adaptive share of the aggregate decoded-pixel budget: long periods get
+          less satellite detail, never different geography. Their geographic
+          bounds stay unchanged, so projection/map alignment is exact. */
+       var canvas=document.createElement('canvas');
+       canvas.width=cols*256;canvas.height=rows*256;
       var cctx=canvas.getContext('2d');
-      var total=cols*rows,done=0,failed=false,settled=false;
-      var to=setTimeout(function(){if(!settled){settled=true;resolve(null);}},SAT_MOSAIC_TIMEOUT);
-      function checkDone(){
-        done++;
-        if(done>=total&&!settled){
-          settled=true;clearTimeout(to);
-          if(failed){resolve(null);return;}
-          resolve({canvas:canvas,
-            lngLeft:tileXToLng(xMin,z),lngRight:tileXToLng(xMax+1,z),
-            latTop:tileYToLat(yMin,z),latBottom:tileYToLat(yMax+1,z)});
+       if(!cctx){abandonCanvas(canvas);resolve(null);return;}
+       var total=cols*rows,done=0,failed=false,settled=false,next=0,running=0,cancellers=[];
+       var to=setTimeout(function(){finish(null);},SAT_MOSAIC_TIMEOUT);job.timers.push(to);
+       function finish(result){
+         if(settled)return;settled=true;clearTimeout(to);
+         var mc=job.mosaicCancels.indexOf(cancelMosaic);if(mc!==-1)job.mosaicCancels.splice(mc,1);
+         for(var q=0;q<cancellers.length;q++)cancellers[q]();
+         cancellers.length=0;
+         if(!result)abandonCanvas(canvas);
+         resolve(result);
+       }
+       function cancelMosaic(){finish(null);}
+       job.mosaicCancels.push(cancelMosaic);
+       function complete(ok){
+         if(settled)return;
+         running--;done++;if(!ok)failed=true;
+         if(job.cancelled||job.mapAbort){finish(null);return;}
+         if(done>=total){
+           if(failed){finish(null);return;}
+           var sw=canvas.width,sh=canvas.height,scale=Math.min(1,Math.sqrt(outputBudget/(sw*sh)));
+           var out=document.createElement('canvas');
+           out.width=Math.max(1,Math.round(sw*scale));out.height=Math.max(1,Math.round(sh*scale));
+           var outCtx=out.getContext('2d');
+           try{outCtx.drawImage(canvas,0,0,out.width,out.height);}catch(e){abandonCanvas(out);finish(null);return;}
+           abandonCanvas(canvas);
+           job.mosaicOutputs.push(out);
+           finish({canvas:out,lngLeft:tileXToLng(xMin,z),lngRight:tileXToLng(xMax+1,z),
+             latTop:tileYToLat(yMin,z),latBottom:tileYToLat(yMax+1,z)});
+           return;
+        }
+         pump();
+      }
+       function pump(){
+         while(!settled&&!job.cancelled&&!job.mapAbort&&running<SAT_TILE_CONCURRENCY&&next<total){
+           var tx=xMin+(next%cols),ty=yMin+Math.floor(next/cols);next++;running++;
+           cancellers.push(loadTile(z,tx,ty,cctx,(tx-xMin)*256,(ty-yMin)*256,job,complete));
         }
       }
-      for(var xx=xMin;xx<=xMax;xx++){
-        for(var yy=yMin;yy<=yMax;yy++){
-          loadTile(z,xx,yy,cctx,(xx-xMin)*256,(yy-yMin)*256,function(){failed=true;},checkDone);
-        }
-      }
+       pump();
     });
   }
   function bboxOfTrip(t){
@@ -266,7 +425,7 @@ window.generatePeriodStory=function(opts){
     var padLa=(la1-la0)*0.6||0.006,padLn=(ln1-ln0)*0.6||0.006;
     return{latMin:la0-padLa,latMax:la1+padLa,lngMin:ln0-padLn,lngMax:ln1+padLn};
   }
-  var satMosaics=[]; /* un par trajet */
+   var satMosaics=[]; /* un par trajet, volontairement basse résolution si période longue */
   var satGlobalMosaic=null;
   var satReady=(requestedTheme!=='satellite');
 
@@ -283,6 +442,17 @@ window.generatePeriodStory=function(opts){
   var cams=[];
   for(var ti=0;ti<trips.length;ti++)cams.push(camForTrip(trips[ti]));
   var fullCam={cx:mCX,cy:mCY,zoom:1};
+   /* Static polylines use preprojected paths: no repeated Mercator/log work per
+      frame.  Dynamic revealed segments keep the original point-by-point geometry. */
+   var routePaths=[];
+   for(var pathTi=0;pathTi<trips.length;pathTi++){
+     var pathRoute=trips[pathTi].route,path=null;
+     if(window.Path2D&&pathRoute.length>=2){
+       path=new window.Path2D();path.moveTo(pX(pathRoute[0].lng),pY(pathRoute[0].lat));
+       for(var pathRi=1;pathRi<pathRoute.length;pathRi++)path.lineTo(pX(pathRoute[pathRi].lng),pY(pathRoute[pathRi].lat));
+     }
+     routePaths.push(path);
+   }
 
   function easeIO(t){return t<0.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;}
   function lerpCam(a,b,t){
@@ -360,23 +530,67 @@ window.generatePeriodStory=function(opts){
   var t0=null,lastRep=0;
   var pauseActive=null; /* {marker, anchorEl, anchorConsumed} */
   var pauseConsumedMs=0;
+   var lastFrameTs=0,recordingStarted=false,themeFallbackSent=false,stopping=false,photoPreloading=false;
+   var PREPARATION_DEADLINE_MS=45000;
+   function fallbackTheme(reason){
+     if(themeFallbackSent)return;
+     themeFallbackSent=true;effTheme='dark';
+     post({type:'story_theme_fallback',reason:reason});
+   }
+   job.prepTimer=setTimeout(function(){
+     if(job.cancelled||job.terminal)return;
+     if(!recordingStarted){
+       fallbackTheme('timeout');
+       /* A map fallback can already have started its six-second photo batch;
+          the one-shot guard keeps this deadline from duplicating it. */
+       if(!photoPreloading)preloadPhotosThenStart();
+     }
+   },PREPARATION_DEADLINE_MS);job.timers.push(job.prepTimer);
 
   function startRecording(){
-    rec.start();
-    requestAnimationFrame(frame);
+     if(job.cancelled||job.terminal||job.started)return;
+     job.started=true;recordingStarted=true;post({type:'story_phase',phase:'recording'});post({type:'story_progress',p:0});
+     if(job.prepTimer){clearTimeout(job.prepTimer);job.prepTimer=0;}
+     /* The recording gets its own deadline after all photo pauses have been
+        included in DUR.  It must never inherit the preparation timeout. */
+     job.recordTimer=setTimeout(function(){fail('La génération de la story a dépassé le délai.');},DUR+15000);
+     job.timers.push(job.recordTimer);
+     try{rec.start();job.raf=requestAnimationFrame(frame);}catch(e){fail('Impossible de démarrer l’enregistrement vidéo.');}
   }
 
   function preloadPhotosThenStart(){
+     if(job.cancelled||job.terminal||job.started||photoPreloading)return;
+     photoPreloading=true;
+     post({type:'story_phase',phase:'photos',completed:0,total:photoMarkers.length});
     if(photoMarkers.length===0){startRecording();return;}
-    var loaded=0,settled=false;
-    var finish=function(){if(settled)return;settled=true;startRecording();};
-    var to=setTimeout(finish,6000); /* garde-fou si une image ne charge jamais */
+     var loaded=0,settled=false,batch=[];
+     var finish=function(){
+       if(settled)return;settled=true;photoPreloading=false;clearTimeout(to);
+       /* A photo timeout must not leave decoders/network requests alive. */
+       for(var bi=0;bi<batch.length;bi++){
+         var pendingPhoto=batch[bi];if(pendingPhoto.done)continue;
+         pendingPhoto.done=true;
+         var bp=job.pendingImages.indexOf(pendingPhoto.img);if(bp!==-1)job.pendingImages.splice(bp,1);
+         try{pendingPhoto.img.onload=null;pendingPhoto.img.onerror=null;pendingPhoto.img.src='';}catch(e){}
+       }
+       startRecording();
+     };
+     var to=setTimeout(finish,6000);job.timers.push(to); /* garde-fou si une image ne charge jamais */
     for(var pmi=0;pmi<photoMarkers.length;pmi++){
       (function(m){
         var img=new Image();
-        img.onload=function(){m.imgEl=img;loaded++;if(loaded===photoMarkers.length){clearTimeout(to);finish();}};
-        img.onerror=function(){loaded++;if(loaded===photoMarkers.length){clearTimeout(to);finish();}};
-        img.src=m.src;
+         var entry={img:img,done:false};batch.push(entry);
+         job.pendingImages.push(img);
+         function photoDone(ok){
+           if(entry.done)return;entry.done=true;
+           var pos=job.pendingImages.indexOf(img);if(pos!==-1)job.pendingImages.splice(pos,1);
+           if(job.cancelled||settled)return;
+           if(ok)m.imgEl=img;
+           loaded++;post({type:'story_phase',phase:'photos',completed:loaded,total:photoMarkers.length});
+           if(loaded===photoMarkers.length){clearTimeout(to);finish();}
+         }
+         img.onload=function(){photoDone(true);};img.onerror=function(){photoDone(false);};
+         try{img.src=m.src;}catch(e){photoDone(false);}
       })(photoMarkers[pmi]);
     }
   }
@@ -384,30 +598,51 @@ window.generatePeriodStory=function(opts){
   if(requestedTheme!=='satellite'){
     preloadPhotosThenStart();
   }else{
-    var mosaicPromises=trips.map(function(t){return buildSatMosaic(bboxOfTrip(t),mW,mH);});
-    mosaicPromises.push(buildSatMosaic({latMin:minLat,latMax:maxLat,lngMin:minLng,lngMax:maxLng},mW,mH));
-    var overallGuard=Math.min(25000,6000+trips.length*1500);
-    var guardTo=setTimeout(function(){ /* garde-fou global : si ça traîne trop, on abandonne le satellite */
-      effTheme='dark';
-      window.ReactNativeWebView.postMessage(JSON.stringify({type:'story_theme_fallback',reason:'timeout'}));
-      preloadPhotosThenStart();
-    },overallGuard);
-    Promise.all(mosaicPromises).then(function(results){
-      clearTimeout(guardTo);
-      var ok=results.every(function(r){return r!=null;});
-      if(!ok){
-        effTheme='dark';
-        window.ReactNativeWebView.postMessage(JSON.stringify({type:'story_theme_fallback',reason:'tiles'}));
-      }else{
-        satMosaics=results.slice(0,trips.length);
-        satGlobalMosaic=results[results.length-1];
-      }
-      preloadPhotosThenStart();
-    });
+     var mapTotal=trips.length+1,mapDone=0,mapResults=[],mapGuard,mapFinished=false;
+     post({type:'story_phase',phase:'maps',completed:0,total:mapTotal});
+     function mapComplete(result){
+       if(job.cancelled||job.terminal||mapFinished)return;
+       mapResults.push(result);mapDone++;
+       post({type:'story_phase',phase:'maps',completed:mapDone,total:mapTotal});
+       if(!result){fallbackTheme('tiles');finishMaps();return;}
+       if(mapDone>=mapTotal){satMosaics=mapResults.slice(0,trips.length);satGlobalMosaic=mapResults[trips.length];finishMaps();return;}
+       runNextMap();
+     }
+     function finishMaps(){
+       if(mapFinished)return;mapFinished=true;
+       if(mapGuard){clearTimeout(mapGuard);mapGuard=0;}
+       /* Release any successful mosaics if satellite was abandoned mid-queue. */
+       if(effTheme!=='satellite'){
+         job.mapAbort=true;
+         var mapCancels=job.mosaicCancels.slice();
+         for(var pi2=0;pi2<mapCancels.length;pi2++)mapCancels[pi2]();
+         for(var mi2=0;mi2<mapResults.length;mi2++)if(mapResults[mi2])abandonCanvas(mapResults[mi2].canvas);satMosaics=[];satGlobalMosaic=null;
+         for(var outMi=0;outMi<job.mosaicOutputs.length;outMi++)abandonCanvas(job.mosaicOutputs[outMi]);
+         job.mosaicOutputs.length=0;
+       }
+       /* Mosaics are already rasterized; decoded individual tiles are no longer
+          useful once preparation has ended. */
+       clearTileMemory();
+       preloadPhotosThenStart();
+     }
+     function runNextMap(){
+       if(job.cancelled||job.terminal||mapFinished)return;
+       var bbox=mapDone<trips.length?bboxOfTrip(trips[mapDone]):{latMin:minLat,latMax:maxLat,lngMin:minLng,lngMax:maxLng};
+       buildSatMosaic(bbox,mW,mH,Math.max(1,Math.floor(SAT_TOTAL_OUTPUT_PIXELS/mapTotal))).then(mapComplete,function(){mapComplete(null);});
+     }
+     mapGuard=setTimeout(function(){if(!job.cancelled&&!job.terminal){fallbackTheme('timeout');finishMaps();}},40000);job.timers.push(mapGuard);
+     runNextMap();
   }
 
   /* ── Boucle d'animation ──────────────────────────────────────────────── */
   function frame(ts){
+     try{
+     if(job.cancelled||job.terminal)return;
+     /* captureStream is 30 fps: drawing more often only burns CPU and allocations. */
+     if(lastFrameTs&&ts-lastFrameTs<1000/30){
+       job.raf=requestAnimationFrame(frame);return;
+     }
+     lastFrameTs=ts;
     if(!t0)t0=ts;
     var el=ts-t0,prog=Math.min(1,el/DUR);
     var THEME=palette();
@@ -551,9 +786,8 @@ window.generatePeriodStory=function(opts){
     /* Ghost (tous les tracés, très transparent) */
     for(var ti=0;ti<trips.length;ti++){
       var rr=trips[ti].route;if(rr.length<2)continue;
-      ctx.beginPath();ctx.moveTo(pX(rr[0].lng),pY(rr[0].lat));
-      for(var ri=1;ri<rr.length;ri++)ctx.lineTo(pX(rr[ri].lng),pY(rr[ri].lat));
-      ctx.strokeStyle=THEME.ghostStroke;ctx.lineWidth=2.5/cam.zoom;ctx.lineJoin='round';ctx.lineCap='round';ctx.stroke();
+       ctx.strokeStyle=THEME.ghostStroke;ctx.lineWidth=2.5/cam.zoom;ctx.lineJoin='round';ctx.lineCap='round';
+       if(routePaths[ti])ctx.stroke(routePaths[ti]);else{ctx.beginPath();ctx.moveTo(pX(rr[0].lng),pY(rr[0].lat));for(var ri=1;ri<rr.length;ri++)ctx.lineTo(pX(rr[ri].lng),pY(rr[ri].lat));ctx.stroke();}
     }
 
     /* Trajets terminés */
@@ -561,10 +795,10 @@ window.generatePeriodStory=function(opts){
     for(var ti=0;ti<compLimit;ti++){
       var rr=trips[ti].route;if(rr.length<2)continue;
       var col=VCL[trips[ti].vehicleType]||'#2196F3';
-      ctx.beginPath();ctx.moveTo(pX(rr[0].lng),pY(rr[0].lat));
-      for(var ri=1;ri<rr.length;ri++)ctx.lineTo(pX(rr[ri].lng),pY(rr[ri].lat));
       ctx.strokeStyle=col;ctx.lineWidth=(isEnd?5:3.5)/cam.zoom;ctx.lineJoin='round';ctx.lineCap='round';
-      ctx.globalAlpha=isEnd?0.85:0.5;ctx.stroke();ctx.globalAlpha=1;
+       ctx.globalAlpha=isEnd?0.85:0.5;
+       if(routePaths[ti])ctx.stroke(routePaths[ti]);else{ctx.beginPath();ctx.moveTo(pX(rr[0].lng),pY(rr[0].lat));for(var ri=1;ri<rr.length;ri++)ctx.lineTo(pX(rr[ri].lng),pY(rr[ri].lat));ctx.stroke();}
+       ctx.globalAlpha=1;
       ctx.beginPath();ctx.arc(pX(rr[0].lng),pY(rr[0].lat),5/cam.zoom,0,Math.PI*2);ctx.fillStyle=col+'99';ctx.fill();
     }
 
@@ -575,9 +809,8 @@ window.generatePeriodStory=function(opts){
 
       /* Aperçu du parcours complet (fantôme coloré) */
       if(rr.length>=2){
-        ctx.beginPath();ctx.moveTo(pX(rr[0].lng),pY(rr[0].lat));
-        for(var ri=1;ri<rr.length;ri++)ctx.lineTo(pX(rr[ri].lng),pY(rr[ri].lat));
-        ctx.strokeStyle=col+'38';ctx.lineWidth=4/cam.zoom;ctx.lineJoin='round';ctx.lineCap='round';ctx.stroke();
+         ctx.strokeStyle=col+'38';ctx.lineWidth=4/cam.zoom;ctx.lineJoin='round';ctx.lineCap='round';
+         if(routePaths[ci])ctx.stroke(routePaths[ci]);else{ctx.beginPath();ctx.moveTo(pX(rr[0].lng),pY(rr[0].lat));for(var ri=1;ri<rr.length;ri++)ctx.lineTo(pX(rr[ri].lng),pY(rr[ri].lat));ctx.stroke();}
         /* Marqueur destination */
         var rl=rr[rr.length-1];
         ctx.beginPath();ctx.arc(pX(rl.lng),pY(rl.lat),6/cam.zoom,0,Math.PI*2);
@@ -694,10 +927,22 @@ window.generatePeriodStory=function(opts){
       }
     }
 
-    if(el-lastRep>400){lastRep=el;window.ReactNativeWebView.postMessage(JSON.stringify({type:'story_progress',p:Math.round(prog*100)}));}
-    if(prog<1){requestAnimationFrame(frame);}else{setTimeout(function(){rec.stop();},300);}
+    if(el-lastRep>400){lastRep=el;post({type:'story_progress',p:Math.round(prog*100)});}
+    if(prog<1){job.raf=requestAnimationFrame(frame);}
+    else if(!stopping){
+      stopping=true;
+      post({type:'story_progress',p:100});
+      var stopTimer=setTimeout(function(){if(!job.cancelled&&!job.terminal){try{rec.stop();}catch(e){fail('Impossible de finaliser la vidéo.');}}},300);
+      job.timers.push(stopTimer);
+    }
+     }catch(frameError){fail('Une erreur est survenue pendant le rendu.');}
   }
-};
+   }catch(renderSetupError){fail('Impossible de préparer le rendu de la story.');}
+  };
+  window.cancelPeriodStory=function(jobId){
+    if(ACTIVE_PERIOD_JOB&&ACTIVE_PERIOD_JOB.jobId===jobId)ACTIVE_PERIOD_JOB.cancel();
+  };
+  try{if(window.ReactNativeWebView&&window.ReactNativeWebView.postMessage)window.ReactNativeWebView.postMessage(JSON.stringify({type:'story_ready'}));}catch(e){}
 })();
 `;
 

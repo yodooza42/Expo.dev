@@ -1,10 +1,8 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import * as FileSystem from 'expo-file-system/legacy';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
-import * as Sharing from 'expo-sharing';
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -21,10 +19,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import WebView from 'react-native-webview';
 
 import { useColors } from '@/hooks/useColors';
+import { usePeriodStoryGeneration } from '@/hooks/usePeriodStoryGeneration';
 import { pH } from '@/styles/header';
 import type { Trip, Vehicle } from '@/types/trips';
 import { getTrips, getVehicleSettings } from '@/utils/tripStorage';
-import { buildStoryPeriodHtml } from '@/utils/storyGeneratorPeriod';
 
 const MONTHS_FR = ['jan','fév','mar','avr','mai','juin','juil','août','sep','oct','nov','déc'];
 const MONTHS_FULL_FR = [
@@ -115,15 +113,11 @@ export default function StoryPeriodScreen() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [pickerModalOpen, setPickerModalOpen] = useState(false);
 
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [progress,     setProgress]     = useState(0);
+  const generation = usePeriodStoryGeneration();
+  const { isGenerating, progress, jobId } = generation;
 
   const [pickerTarget, setPickerTarget] = useState<'from' | 'to' | null>(null);
   const [pickerDraft,  setPickerDraft]  = useState<Date>(new Date());
-
-  const storyChunksRef = useRef<{ mime: string; chunks: string[]; total: number }>({ mime: 'video/mp4', chunks: [], total: 0 });
-  const webViewRef   = useRef<WebView>(null);
-  const storyHtml    = useRef(buildStoryPeriodHtml()).current;
 
   // ── Chargement des données ──────────────────────────────────────────────────
   useEffect(() => {
@@ -198,63 +192,6 @@ export default function StoryPeriodScreen() {
     return { carKm, motoKm, walkKm, driveMs, walkMs, total: carKm + motoKm + walkKm };
   }, [filtered, vehicleMap]);
 
-  // ── WebView — assemblage des chunks ───────────────────────────────────────
-  const handleWebViewMessage = useCallback((event: { nativeEvent: { data: string } }) => {
-    let msg: Record<string, unknown>;
-    try { msg = JSON.parse(event.nativeEvent.data) as Record<string, unknown>; } catch { return; }
-
-    if (msg.type === 'story_progress') {
-      setProgress(msg.p as number ?? 0);
-      return;
-    }
-    if (msg.type === 'story_theme_fallback') {
-      Alert.alert(
-        'Thème satellite indisponible',
-        "Impossible de récupérer l'imagerie satellite (réseau ou délai dépassé). La story a été générée avec le thème Sombre à la place.",
-      );
-      return;
-    }
-    if (msg.type === 'story_chunk') {
-      const idx   = msg.index as number ?? 0;
-      const total = msg.total as number ?? 1;
-      const mime  = msg.mime  as string ?? 'video/mp4';
-      const data  = msg.data  as string ?? '';
-      if (idx === 0) {
-        storyChunksRef.current = { mime, chunks: new Array(total).fill(''), total };
-      }
-      storyChunksRef.current.chunks[idx] = data;
-      const received = storyChunksRef.current.chunks.filter(s => s !== '').length;
-      if (received === storyChunksRef.current.total) {
-        const { mime: m, chunks } = storyChunksRef.current;
-        const ext  = m === 'video/mp4' ? 'mp4' : 'webm';
-        const path = `${FileSystem.cacheDirectory ?? ''}story_period_${Date.now()}.${ext}`;
-        const b64  = chunks.join('');
-        void (async () => {
-          try {
-            await FileSystem.writeAsStringAsync(path, b64, { encoding: FileSystem.EncodingType.Base64 });
-            setIsGenerating(false);
-            await Sharing.shareAsync(path, { mimeType: m, dialogTitle: 'Partager la story période' });
-          } catch {
-            setIsGenerating(false);
-            Alert.alert('Erreur', 'Impossible de générer la story.');
-          }
-        })();
-      }
-    }
-  }, []);
-
-  /** Encode une photo de galerie en data URI base64 pour que le WebView puisse la dessiner. */
-  async function photoToDataUri(uri: string): Promise<string | null> {
-    try {
-      const b64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
-      const ext = (uri.split('.').pop() || 'jpg').toLowerCase().split('?')[0];
-      const mime = ext === 'png' ? 'image/png' : ext === 'heic' ? 'image/heic' : 'image/jpeg';
-      return `data:${mime};base64,${b64}`;
-    } catch {
-      return null;
-    }
-  }
-
   // ── Lancement de la génération ─────────────────────────────────────────────
   async function handleGenerate() {
     if (selectedTrips.length === 0) {
@@ -262,34 +199,19 @@ export default function StoryPeriodScreen() {
       return;
     }
 
-    const tripsOpts = await Promise.all(selectedTrips.map(async t => {
-      const d = new Date(t.startTime);
-      const route = t.route!;
-      const anchoredPhotos = (t.photos ?? []).filter(p => p.routeIndex != null && route.length > 1);
-      const photos = (await Promise.all(anchoredPhotos.map(async p => {
-        const dataUri = await photoToDataUri(p.uri);
-        if (!dataUri) return null;
-        return { img: dataUri, note: p.note, frac: (p.routeIndex! / (route.length - 1)) };
-      }))).filter((p): p is { img: string; note: string | undefined; frac: number } => p != null);
-      return {
-        route,
-        distKm:      t.distanceKm,
-        durationMs:  t.endTime - t.startTime,
-        startTimeMs: t.startTime,
-        vehicleType: getVType(t),
-        dateLabel:   `${DAYS_FR[d.getDay()]} ${d.getDate()} ${MONTHS_FR[d.getMonth()]}`,
-        note:        t.note,
-        photos,
-      };
-    }));
-
     const driveDurTxt = stats.driveMs > 0 ? `🚗 ${fmtDur(stats.driveMs)}` : '';
     const walkDurTxt  = stats.walkMs  > 0 ? `${driveDurTxt ? '  ·  ' : ''}🚶 ${fmtDur(stats.walkMs)}` : '';
 
     const trimmedName = storyName.trim();
 
-    const opts = {
-      trips:         tripsOpts,
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    await generation.start({
+      trips: selectedTrips,
+      vehicleType: getVType,
+      dateLabel: t => {
+        const d = new Date(t.startTime);
+        return `${DAYS_FR[d.getDay()]} ${d.getDate()} ${MONTHS_FR[d.getMonth()]}`;
+      },
       periodLabel:   periodLabel(dateFrom, dateTo),
       tripCountLabel:`${selectedTrips.length} trajet${selectedTrips.length > 1 ? 's' : ''}`,
       driveDurLabel: driveDurTxt,
@@ -298,14 +220,7 @@ export default function StoryPeriodScreen() {
       customName:    trimmedName || undefined,
       dateRangeLabel: trimmedName ? dateRangeLabelFr(dateFrom, dateTo) : undefined,
       theme,
-    };
-
-    setIsGenerating(true);
-    setProgress(0);
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    webViewRef.current?.injectJavaScript(
-      `(function(){window.generatePeriodStory(${JSON.stringify(opts)});})();true;`
-    );
+    });
   }
 
   // ── Date picker handlers ───────────────────────────────────────────────────
@@ -550,6 +465,9 @@ export default function StoryPeriodScreen() {
         <Text style={[styles.hint, { color: colors.mutedForeground }]}>
           {`Animation : ${duration - 5} s · Récapitulatif final : 5 s`}
         </Text>
+        {!!generation.fallbackNote && (
+          <Text style={[styles.hint, { color: colors.mutedForeground }]}>{generation.fallbackNote}</Text>
+        )}
 
       </ScrollView>
 
@@ -565,20 +483,28 @@ export default function StoryPeriodScreen() {
       )}
 
       {/* Overlay de progression */}
-      {isGenerating && (
+      <Modal visible={isGenerating} transparent animationType="fade" onRequestClose={generation.cancel}>
         <View style={styles.progressOverlay}>
           <View style={[styles.progressCard, { backgroundColor: colors.card }]}>
             <ActivityIndicator size="large" color="#2196F3" />
             <Text style={[styles.progressTitle, { color: colors.foreground }]}>
-              Génération en cours…
+              {generation.title}
             </Text>
             <View style={[styles.progressBarTrack, { backgroundColor: colors.muted }]}>
               <View style={[styles.progressBarFill, { width: `${progress}%`, backgroundColor: '#2196F3' }]} />
             </View>
-            <Text style={[styles.progressPct, { color: colors.mutedForeground }]}>{progress}%</Text>
+            <Text accessibilityLiveRegion="polite" style={[styles.progressPct, { color: colors.mutedForeground }]}>
+              {generation.detail || 'Préparation en cours…'}
+            </Text>
+            {!!generation.fallbackNote && (
+              <Text style={[styles.hint, { color: colors.mutedForeground }]}>{generation.fallbackNote}</Text>
+            )}
+            <Pressable accessibilityRole="button" onPress={generation.cancel} style={styles.cancelStoryBtn}>
+              <Text style={{ color: '#2196F3', fontFamily: 'Inter_600SemiBold' }}>Annuler</Text>
+            </Pressable>
           </View>
         </View>
-      )}
+      </Modal>
 
       {/* Modal — sélection des trajets inclus dans la story */}
       <Modal
@@ -652,14 +578,19 @@ export default function StoryPeriodScreen() {
       </Modal>
 
       {/* WebView caché — moteur de génération vidéo */}
-      <WebView
-        ref={webViewRef}
-        source={{ html: storyHtml }}
-        onMessage={handleWebViewMessage}
+      {jobId && <WebView
+        key={jobId}
+        ref={generation.webViewRef}
+        source={generation.source}
+        onMessage={event => generation.onMessage(jobId, event)}
+        onLoadEnd={() => generation.onLoadEnd(jobId)}
+        onError={() => generation.onEngineError(jobId)}
+        onRenderProcessGone={() => generation.onEngineError(jobId)}
+        onContentProcessDidTerminate={() => generation.onEngineError(jobId)}
         javaScriptEnabled
         mediaPlaybackRequiresUserAction={false}
         style={styles.hiddenWebView}
-      />
+      />}
     </View>
   );
 }
@@ -713,10 +644,11 @@ const styles = StyleSheet.create({
     zIndex: 99,
   },
   progressCard:    { borderRadius: 18, padding: 28, alignItems: 'center', gap: 16, width: 260 },
-  progressTitle:   { fontSize: 15, fontFamily: 'Inter_600SemiBold' },
+  progressTitle:   { fontSize: 15, fontFamily: 'Inter_600SemiBold', textAlign: 'center' },
   progressBarTrack:{ width: '100%', height: 6, borderRadius: 3, overflow: 'hidden' },
   progressBarFill: { height: '100%', borderRadius: 3 },
-  progressPct:     { fontSize: 13, fontFamily: 'Inter_400Regular' },
+  progressPct:     { fontSize: 13, fontFamily: 'Inter_400Regular', textAlign: 'center' },
+  cancelStoryBtn:  { minHeight: 44, minWidth: 100, alignItems: 'center', justifyContent: 'center' },
 
   hiddenWebView:   { position: 'absolute', width: 1, height: 1, opacity: 0, top: -100, left: -100 },
 
