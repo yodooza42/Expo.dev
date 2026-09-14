@@ -1131,30 +1131,6 @@ export default function TripListScreen() {
           </View>
         )}
 
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-            {uncategorized.length > 0 ? `Trajets récents (${uncategorized.length})` : 'Trajets récents'}
-          </Text>
-          {uncategorized.length === 0 && trips.length === 0 ? (
-            <View style={[styles.emptyCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <MaterialCommunityIcons name="road-variant" size={36} color={colors.mutedForeground} />
-              <Text style={[styles.emptyTitle, { color: colors.foreground }]}>Aucun trajet enregistré</Text>
-              <Text style={[styles.emptySub, { color: colors.mutedForeground }]}>
-                Les trajets sont détectés automatiquement à partir de 15 km/h.
-              </Text>
-            </View>
-          ) : uncategorized.length === 0 ? (
-            <View style={[styles.allGroupedCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <MaterialCommunityIcons name="check-circle-outline" size={24} color={colors.primary} />
-              <Text style={[styles.allGroupedText, { color: colors.mutedForeground }]}>Tous les trajets sont groupés en catégories.</Text>
-            </View>
-          ) : (
-            uncategorized.map(trip => (
-              <TripRow key={trip.id} trip={trip} colors={colors} onUpdate={load} vehicles={settings}
-                walkRouteMap={walkRouteMap} onGroup={setGroupingTrip} onDelete={() => handleDeleteTrip(trip.id)} />
-            ))
-          )}
-        </View>
       </ScrollView>
 
       <Pressable
