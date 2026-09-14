@@ -11,7 +11,13 @@ import { buildStoryPeriodHtml } from '@/utils/storyGeneratorPeriod';
 import { PeriodStoryTransfer, type StoryVideoChunk } from '@/utils/periodStoryTransfer';
 
 type Phase = 'prepare' | 'maps' | 'photos' | 'recording' | 'export';
-type GenerationRequest = {
+export type PeriodStoryChapter = {
+  id: string;
+  title: string;
+  tripIds: string[];
+  durationSec: number;
+};
+export type GenerationRequest = {
   trips: Trip[];
   vehicleType: (trip: Trip) => 'car' | 'moto' | 'walk';
   dateLabel: (trip: Trip) => string;
@@ -23,7 +29,11 @@ type GenerationRequest = {
   customName?: string;
   dateRangeLabel?: string;
   theme: 'dark' | 'light' | 'satellite';
+  familyStory?: boolean;
+  chapters?: PeriodStoryChapter[];
 };
+export type PeriodStoryResult = { uri: string; mimeType: 'video/mp4' | 'video/webm' };
+type CachedPeriodStoryResult = PeriodStoryResult & { file: File };
 type Run = {
   id: string;
   ready: boolean;
@@ -83,7 +93,30 @@ export function usePeriodStoryGeneration() {
   const [progress, setProgress] = useState(0);
   const [detail, setDetail] = useState('');
   const [fallbackNote, setFallbackNote] = useState('');
+  const [result, setResult] = useState<PeriodStoryResult | null>(null);
+  const [isSharing, setIsSharing] = useState(false);
+  const resultRef = useRef<CachedPeriodStoryResult | null>(null);
+  const sharingRef = useRef(false);
+  const discardAfterShareRef = useRef(false);
   const source = useMemo(() => ({ html: buildStoryPeriodHtml() }), []);
+
+  const clearCachedResult = useCallback(() => {
+    /*
+     * A share sheet owns the URI while it is open.  Deleting the cache file
+     * underneath it makes Android's document provider report a missing video,
+     * so defer cleanup until shareResult() has settled.
+     */
+    if (sharingRef.current) {
+      discardAfterShareRef.current = true;
+      return;
+    }
+    const cached = resultRef.current;
+    resultRef.current = null;
+    if (cached) {
+      try { cached.file.delete(); } catch {}
+    }
+    if (mounted.current) setResult(null);
+  }, []);
 
   const stop = useCallback((keepFile = false) => {
     const run = runRef.current;
@@ -115,8 +148,9 @@ export function usePeriodStoryGeneration() {
       mounted.current = false;
       clearInterval(timer);
       stop();
+      clearCachedResult();
     };
-  }, [fail, stop]);
+  }, [clearCachedResult, fail, stop]);
 
   const injectIfReady = useCallback(() => {
     const run = runRef.current;
@@ -197,9 +231,9 @@ export function usePeriodStoryGeneration() {
       const uri = run.file!.uri;
       const mimeType = run.transfer.mime;
       stop(true);
-      void Sharing.shareAsync(uri, { mimeType, dialogTitle: 'Partager la story période' }).catch(() => {
-        if (mounted.current) Alert.alert('Partage indisponible', 'La vidéo a été créée, mais le partage a échoué. Tu peux relancer la génération.');
-      });
+       const cached: CachedPeriodStoryResult = { uri, mimeType, file: run.file! };
+       resultRef.current = cached;
+       if (mounted.current) setResult({ uri, mimeType });
     } catch {
       fail('Impossible d’enregistrer la vidéo. Vérifie l’espace libre du téléphone puis réessaie.');
     }
@@ -220,11 +254,12 @@ export function usePeriodStoryGeneration() {
   }, [fail]);
 
   const start = useCallback(async (request: GenerationRequest) => {
-    if (runRef.current || request.trips.length === 0) return;
+    if (runRef.current || sharingRef.current || request.trips.length === 0) return;
     if (Platform.OS === 'web') {
       Alert.alert('Story', 'La création vidéo est disponible dans l’application mobile.');
       return;
     }
+    clearCachedResult();
     const id = `${Date.now()}-${++sequence.current}`;
     const photoCount = request.trips.reduce((n, t) => n + (t.photos?.filter(p => p.routeIndex != null).length ?? 0), 0);
     runRef.current = {
@@ -249,15 +284,39 @@ export function usePeriodStoryGeneration() {
           throw new Error('Un trajet contient des coordonnées GPS invalides. Retire-le de la sélection puis réessaie.');
         }
         const photos = [];
-        for (const photo of trip.photos ?? []) {
+        const sourcePhotos = trip.photos ?? [];
+        for (let photoIndex = 0; photoIndex < sourcePhotos.length; photoIndex++) {
+          const photo = sourcePhotos[photoIndex];
           if (photo.routeIndex == null) continue;
           setDetail(`Trajet ${i + 1} / ${request.trips.length} · préparation d’une photo`);
-          const img = await preparePhoto(photo.uri, () => runRef.current?.id === id);
+          let img: string;
+          try {
+            img = await preparePhoto(photo.uri, () => runRef.current?.id === id);
+          } catch (error) {
+            /*
+             * A referenced photo is never silently dropped.  Include a
+             * stable trip/photo locator so a family-story draft can remove
+             * the unreadable asset and retry without guessing which gallery
+             * item failed.
+             */
+            const photoLabel = photo.note?.trim()
+              ? `«${photo.note.trim()}»`
+              : `n°${photoIndex + 1}`;
+            const reason = error instanceof Error ? error.message : 'photo illisible';
+            throw new Error(`Photo ${photoLabel} du trajet ${i + 1}${trip.id ? ` (${trip.id})` : ''} : ${reason}`);
+          }
           if (runRef.current?.id !== id) return;
           runRef.current.lastActivity = Date.now();
           photos.push({ img, note: photo.note, frac: Math.max(0, Math.min(1, photo.routeIndex / (route.length - 1))) });
         }
+        const tripId = trip.id;
+        const chapterIndex = request.chapters?.findIndex(chapter => chapter.tripIds.includes(tripId)) ?? -1;
+        const chapter = chapterIndex >= 0 ? request.chapters?.[chapterIndex] : undefined;
         trips.push({
+          id: tripId,
+          chapterId: chapter?.id,
+          chapterTitle: chapter?.title,
+          chapterIndex: chapterIndex >= 0 ? chapterIndex : undefined,
           route: route.map(p => ({ lat: p.lat, lng: p.lng, t: p.t })),
           distKm: trip.distanceKm, durationMs: trip.endTime - trip.startTime,
           startTimeMs: trip.startTime, vehicleType: request.vehicleType(trip),
@@ -276,10 +335,53 @@ export function usePeriodStoryGeneration() {
     } catch (error) {
       if (runRef.current?.id === id) fail(error instanceof Error ? error.message : 'Impossible de préparer les trajets.');
     }
-  }, [fail, injectIfReady]);
+  }, [clearCachedResult, fail, injectIfReady]);
+
+  const shareResult = useCallback(async (): Promise<boolean> => {
+    const cached = resultRef.current;
+    if (!cached || sharingRef.current) return false;
+    sharingRef.current = true;
+    if (mounted.current) setIsSharing(true);
+    try {
+      if (Sharing.isAvailableAsync && !(await Sharing.isAvailableAsync())) {
+        throw new Error('Partage indisponible sur cet appareil.');
+      }
+      await Sharing.shareAsync(cached.uri, {
+        mimeType: cached.mimeType,
+        dialogTitle: 'Partager la story période',
+      });
+      return true;
+    } catch {
+      /*
+       * Keep the file after a failed share.  The user can retry without
+       * paying for another rendering pass.
+       */
+      if (mounted.current) {
+        Alert.alert('Partage indisponible', 'La vidéo a été créée, mais le partage a échoué. Tu peux réessayer.');
+      }
+      return false;
+    } finally {
+      sharingRef.current = false;
+      if (mounted.current) setIsSharing(false);
+      if (discardAfterShareRef.current) {
+        discardAfterShareRef.current = false;
+        const pending = resultRef.current;
+        resultRef.current = null;
+        if (pending) {
+          try { pending.file.delete(); } catch {}
+        }
+        if (mounted.current) setResult(null);
+      }
+    }
+  }, []);
+
+  const discardResult = useCallback(() => {
+    clearCachedResult();
+  }, [clearCachedResult]);
 
   return {
     jobId, isGenerating: jobId !== null, progress, detail, title: TITLES[phase], fallbackNote,
     webViewRef, source, start, cancel: () => stop(), onMessage, onLoadEnd, onEngineError,
+    result, shareResult, discardResult, isSharing,
   };
 }

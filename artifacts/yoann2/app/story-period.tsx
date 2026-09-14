@@ -1,668 +1,335 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useMemo, useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  FlatList,
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import WebView from 'react-native-webview';
-
+import { DraftChapters } from '@/components/period-story/DraftChapters';
+import { FamilyEventEditor } from '@/components/period-story/FamilyEventEditor';
+import { StoryVideoReview } from '@/components/period-story/StoryVideoReview';
 import { useColors } from '@/hooks/useColors';
 import { usePeriodStoryGeneration } from '@/hooks/usePeriodStoryGeneration';
 import { pH } from '@/styles/header';
+import type { FamilyEvent, StoryDraftChoices } from '@/types/periodStory';
 import type { Trip, Vehicle } from '@/types/trips';
+import { genId } from '@/utils/ids';
+import {
+  buildPeriodStoryDraft, EMPTY_STORY_CHOICES, getStoryTiming, lastCompletedMonth,
+  localDateKey, monthRange, parseLocalDate, periodKey,
+} from '@/utils/periodStoryDraft';
+import { deleteFamilyEvent, loadFamilyEvents, loadPeriodChoices, saveFamilyEvent, savePeriodChoices } from '@/utils/periodStoryStorage';
 import { getTrips, getVehicleSettings } from '@/utils/tripStorage';
 
-const MONTHS_FR = ['jan','fév','mar','avr','mai','juin','juil','août','sep','oct','nov','déc'];
-const MONTHS_FULL_FR = [
-  'Janvier','Février','Mars','Avril','Mai','Juin',
-  'Juillet','Août','Septembre','Octobre','Novembre','Décembre',
-];
-const DAYS_FR   = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
-
-function pad2(n: number): string {
-  return String(n).padStart(2, '0');
-}
-
-/** Formatte une plage de dates façon "du 13 au 15 Août 2026". */
-function dateRangeLabelFr(from: Date, to: Date): string {
-  const sameDay   = from.toDateString() === to.toDateString();
-  const sameMonth = from.getMonth() === to.getMonth() && from.getFullYear() === to.getFullYear();
-  const sameYear  = from.getFullYear() === to.getFullYear();
-  if (sameDay) {
-    return `le ${from.getDate()} ${MONTHS_FULL_FR[from.getMonth()]} ${from.getFullYear()}`;
-  }
-  if (sameMonth) {
-    return `du ${from.getDate()} au ${to.getDate()} ${MONTHS_FULL_FR[from.getMonth()]} ${from.getFullYear()}`;
-  }
-  if (sameYear) {
-    return `du ${from.getDate()} ${MONTHS_FULL_FR[from.getMonth()]} au ${to.getDate()} ${MONTHS_FULL_FR[to.getMonth()]} ${to.getFullYear()}`;
-  }
-  return `du ${from.getDate()} ${MONTHS_FULL_FR[from.getMonth()]} ${from.getFullYear()} au ${to.getDate()} ${MONTHS_FULL_FR[to.getMonth()]} ${to.getFullYear()}`;
-}
-
-function fmtDur(ms: number): string {
-  const m = Math.round(ms / 60_000);
-  if (m < 1)  return '';
-  if (m < 60) return `${m} min`;
-  const h = Math.floor(m / 60);
-  return `${h}h${String(m % 60).padStart(2, '0')}`;
-}
-
-function fmtDate(d: Date): string {
-  return `${d.getDate()} ${MONTHS_FR[d.getMonth()]} ${d.getFullYear()}`;
-}
-
-function periodLabel(from: Date, to: Date): string {
-  if (
-    from.getMonth() === to.getMonth() &&
-    from.getFullYear() === to.getFullYear() &&
-    from.getDate() === 1 &&
-    to.getDate() === new Date(to.getFullYear(), to.getMonth() + 1, 0).getDate()
-  ) {
-    return `${MONTHS_FR[from.getMonth()]} ${from.getFullYear()}`;
-  }
-  if (from.getMonth() === to.getMonth() && from.getFullYear() === to.getFullYear()) {
-    return `${from.getDate()}–${to.getDate()} ${MONTHS_FR[from.getMonth()]} ${from.getFullYear()}`;
-  }
-  return `${from.getDate()} ${MONTHS_FR[from.getMonth()]} → ${to.getDate()} ${MONTHS_FR[to.getMonth()]} ${to.getFullYear()}`;
-}
-
-// ── Durée courante sélectionnée ────────────────────────────────────────────────
-type StoryDur = 10 | 20 | 30 | 60 | 120;
-const DURATIONS: StoryDur[] = [10, 20, 30, 60, 120];
-
-// ── Thème visuel de la carte ─────────────────────────────────────────────────
-type StoryTheme = 'dark' | 'light' | 'satellite';
-const THEMES: { key: StoryTheme; label: string; icon: React.ComponentProps<typeof MaterialCommunityIcons>['name'] }[] = [
-  { key: 'dark',      label: 'Sombre',    icon: 'weather-night' },
-  { key: 'light',     label: 'Clair',     icon: 'weather-sunny' },
+const THEMES = [
+  { key: 'dark', label: 'Sombre', icon: 'weather-night' },
+  { key: 'light', label: 'Clair', icon: 'weather-sunny' },
   { key: 'satellite', label: 'Satellite', icon: 'satellite-variant' },
-];
+] as const;
+const formatDate = (date: Date) => date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+const formatSeconds = (seconds: number) => seconds < 60 ? `${seconds} s` : `${Math.floor(seconds / 60)} min ${seconds % 60 ? `${seconds % 60} s` : ''}`.trim();
+
+function PeriodDate({ label, value, onChange, disabled }: { label: string; value: Date; onChange: (date: Date) => void; disabled: boolean }) {
+  const colors = useColors();
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState(localDateKey(value));
+  const [error, setError] = useState(false);
+  useEffect(() => { setText(localDateKey(value)); setError(false); }, [value]);
+  return <View style={s.flex}>
+    <Text style={[s.small, { color: colors.mutedForeground }]}>{label}</Text>
+    {Platform.OS === 'web' ? <TextInput accessibilityLabel={label} value={text} editable={!disabled} placeholder="AAAA-MM-JJ"
+      onChangeText={setText} onBlur={() => {
+        const date = parseLocalDate(text);
+        setError(!date);
+        if (date) onChange(date);
+      }} style={[s.dateButton, { color: colors.foreground, borderColor: error ? colors.destructive : colors.border }]} />
+      : <Pressable disabled={disabled} onPress={() => setOpen(true)} style={[s.dateButton, { borderColor: colors.border }]}>
+        <Text style={[s.body, { color: colors.foreground }]}>{formatDate(value)}</Text>
+      </Pressable>}
+    {error && <Text style={{ color: colors.destructive }}>Date invalide : AAAA-MM-JJ</Text>}
+    {open && <DateTimePicker value={value} mode="date" display="calendar" onChange={(_, date) => {
+      setOpen(false); if (date) onChange(date);
+    }} />}
+  </View>;
+}
 
 export default function StoryPeriodScreen() {
-  const colors  = useColors();
-  const router  = useRouter();
-  const insets  = useSafeAreaInsets();
-
-  const now = new Date();
-  const [dateFrom, setDateFrom] = useState<Date>(() =>
-    new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0)
-  );
-  const [dateTo, setDateTo] = useState<Date>(() =>
-    new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999)
-  );
-
-  const [allTrips,  setAllTrips]  = useState<Trip[]>([]);
-  const [vehicles,  setVehicles]  = useState<Vehicle[]>([]);
-  const [duration,  setDuration]  = useState<StoryDur>(20);
-  const [theme,     setTheme]     = useState<StoryTheme>('dark');
-  const [storyName, setStoryName] = useState('');
-
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [pickerModalOpen, setPickerModalOpen] = useState(false);
-
+  const colors = useColors();
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const [range, setRange] = useState(() => lastCompletedMonth());
+  const [custom, setCustom] = useState(false);
+  const [allTrips, setAllTrips] = useState<Trip[]>([]);
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [events, setEvents] = useState<FamilyEvent[]>([]);
+  const [choices, setChoices] = useState<StoryDraftChoices>(EMPTY_STORY_CHOICES);
+  const [loadedKey, setLoadedKey] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [retry, setRetry] = useState(0);
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
+  const [theme, setTheme] = useState<'dark' | 'light' | 'satellite'>('dark');
+  const [duration, setDuration] = useState<number | undefined>();
+  const [editor, setEditor] = useState<{ event: FamilyEvent; isNew: boolean } | null>(null);
+  const [showAllEvents, setShowAllEvents] = useState(false);
   const generation = usePeriodStoryGeneration();
-  const { isGenerating, progress, jobId } = generation;
-
-  const [pickerTarget, setPickerTarget] = useState<'from' | 'to' | null>(null);
-  const [pickerDraft,  setPickerDraft]  = useState<Date>(new Date());
-
-  // ── Chargement des données ──────────────────────────────────────────────────
+  const { jobId, isGenerating, progress } = generation;
+  const key = periodKey(range.from, range.to);
+  const currentKey = useRef(key);
+  currentKey.current = key;
+  const alive = useRef(true);
   useEffect(() => {
-    Promise.all([getTrips(), getVehicleSettings()]).then(([t, v]) => {
-      setAllTrips(t.sort((a, b) => a.startTime - b.startTime)); // ordre chrono
-      setVehicles(v);
-    });
+    alive.current = true;
+    return () => { alive.current = false; };
   }, []);
 
-  // ── Map vehicleId → Vehicle ────────────────────────────────────────────────
-  const vehicleMap = useMemo(() => new Map(vehicles.map(v => [v.id, v])), [vehicles]);
-
-  function getVType(t: Trip): 'car' | 'moto' | 'walk' {
-    const v = vehicleMap.get(t.vehicle ?? '');
-    if (!v) return 'car';
-    return v.type === 'moto' ? 'moto' : v.type === 'walk' ? 'walk' : 'car';
-  }
-
-  // ── Trajets filtrés ────────────────────────────────────────────────────────
-  const filtered = useMemo(() => {
-    const fromMs = dateFrom.getTime();
-    const toMs   = dateTo.getTime();
-    return allTrips.filter(
-      t => t.startTime >= fromMs && t.startTime <= toMs && t.vehicle !== 'ignored'
-    );
-  }, [allTrips, dateFrom, dateTo]);
-
-  const withRoute = useMemo(
-    () => filtered.filter(t => t.route && t.route.length >= 2),
-    [filtered]
-  );
-  const withRouteIdsKey = useMemo(() => withRoute.map(t => t.id).join(','), [withRoute]);
-
-  // Par défaut, tous les trajets avec tracé GPS de la période sont inclus.
-  // On réinitialise la sélection uniquement quand l'ensemble de trajets disponibles
-  // change (nouvelle période) — pas à chaque re-render.
   useEffect(() => {
-    setSelectedIds(new Set(withRoute.map(t => t.id)));
-  }, [withRouteIdsKey]);
-
-  const selectedTrips = useMemo(
-    () => withRoute.filter(t => selectedIds.has(t.id)),
-    [withRoute, selectedIds]
-  );
-
-  function toggleTrip(id: string) {
-    void Haptics.selectionAsync();
-    setSelectedIds(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
+    let active = true;
+    setLoading(true); setError('');
+    Promise.all([getTrips(), getVehicleSettings(), loadFamilyEvents()]).then(([trips, settings, stored]) => {
+      if (!active) return;
+      setAllTrips([...trips].sort((a, b) => a.startTime - b.startTime));
+      setVehicles(settings); setEvents(stored); setLoading(false);
+    }).catch(() => {
+      if (active) { setError('Impossible de charger les souvenirs enregistrés. Réessaie sans effacer les données.'); setLoading(false); }
     });
-  }
+    return () => { active = false; };
+  }, [retry]);
 
-  function toggleAllTrips() {
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setSelectedIds(prev =>
-      prev.size === withRoute.length ? new Set() : new Set(withRoute.map(t => t.id))
-    );
-  }
+  useEffect(() => {
+    let active = true;
+    setLoadedKey('');
+    loadPeriodChoices(key).then(stored => {
+      if (active) { setChoices(stored); setLoadedKey(key); }
+    }).catch(() => {
+      if (active) setError('Impossible de charger les choix de ce brouillon. Réessaie sans effacer les données.');
+    });
+    return () => { active = false; };
+  }, [key, retry]);
 
-  // ── Stats de la période ────────────────────────────────────────────────────
-  const stats = useMemo(() => {
-    let carKm = 0, motoKm = 0, walkKm = 0, driveMs = 0, walkMs = 0;
-    for (const t of filtered) {
-      const type = getVType(t);
-      const dur  = t.endTime - t.startTime;
-      if (type === 'walk') { walkKm += t.distanceKm; walkMs += dur; }
-      else if (type === 'moto') { motoKm += t.distanceKm; driveMs += dur; }
-      else { carKm += t.distanceKm; driveMs += dur; }
+  const draft = useMemo(() => buildPeriodStoryDraft({
+    trips: allTrips, events, choices: loadedKey === key ? choices : EMPTY_STORY_CHOICES, ...range,
+  }), [allTrips, events, choices, loadedKey, key, range]);
+  const timing = useMemo(() => getStoryTiming(draft.chapters, duration), [draft.chapters, duration]);
+  const sourceTrips = useMemo(() => allTrips.filter(t => t.vehicle !== 'ignored' &&
+    t.startTime >= range.from.getTime() && t.startTime <= range.to.getTime()), [allTrips, range]);
+  const visibleEvents = showAllEvents ? events : events.filter(event =>
+    (event.startDate <= localDateKey(range.to) && event.endDate >= localDateKey(range.from)) ||
+    event.includedTripIds.some(id => sourceTrips.some(t => t.id === id)));
+  const busy = loading || loadedKey !== key || saving || isGenerating || generation.isSharing;
+  const canGenerate = !busy && !error && draft.trips.length > 0 && draft.conflicts.length === 0;
+
+  async function updateChoices(next: StoryDraftChoices) {
+    if (savingRef.current || busy) return;
+    const savingKey = key;
+    savingRef.current = true; setSaving(true);
+    try {
+      await savePeriodChoices(savingKey, next);
+      if (alive.current && currentKey.current === savingKey) { generation.discardResult(); setChoices(next); setError(''); }
+    } catch {
+      if (alive.current) setError('Choix non enregistrés. Réessaie ; le brouillon précédent est conservé.');
+    } finally {
+      savingRef.current = false;
+      if (alive.current) setSaving(false);
     }
-    return { carKm, motoKm, walkKm, driveMs, walkMs, total: carKm + motoKm + walkKm };
-  }, [filtered, vehicleMap]);
+  }
 
-  // ── Lancement de la génération ─────────────────────────────────────────────
+  function changeRange(next: { from: Date; to: Date }) {
+    if (busy) return;
+    generation.discardResult(); setError(''); setRange(next); setDuration(undefined);
+  }
+
+  async function saveEvent(event: FamilyEvent) {
+    await saveFamilyEvent(event);
+    const stored = await loadFamilyEvents();
+    if (alive.current) { generation.discardResult(); setEvents(stored); setEditor(null); }
+  }
+  async function deleteEvent() {
+    if (!editor) return;
+    await deleteFamilyEvent(editor.event.id);
+    const [stored, cleanedChoices] = await Promise.all([loadFamilyEvents(), loadPeriodChoices(key)]);
+    if (alive.current) {
+      generation.discardResult(); setEvents(stored); setChoices(cleanedChoices); setEditor(null);
+    }
+  }
+  function createEvent() {
+    setEditor({ isNew: true, event: { id: genId(), title: '', startDate: localDateKey(range.from), endDate: localDateKey(range.to),
+      includedTripIds: [], excludedTripIds: [] } });
+  }
+
   async function handleGenerate() {
-    if (selectedTrips.length === 0) {
-      Alert.alert('Story', 'Aucun trajet sélectionné pour cette story.');
-      return;
-    }
-
-    const driveDurTxt = stats.driveMs > 0 ? `🚗 ${fmtDur(stats.driveMs)}` : '';
-    const walkDurTxt  = stats.walkMs  > 0 ? `${driveDurTxt ? '  ·  ' : ''}🚶 ${fmtDur(stats.walkMs)}` : '';
-
-    const trimmedName = storyName.trim();
-
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    if (!canGenerate) return;
     await generation.start({
-      trips: selectedTrips,
-      vehicleType: getVType,
-      dateLabel: t => {
-        const d = new Date(t.startTime);
-        return `${DAYS_FR[d.getDay()]} ${d.getDate()} ${MONTHS_FR[d.getMonth()]}`;
+      trips: draft.trips,
+      vehicleType: trip => {
+        const type = vehicles.find(v => v.id === trip.vehicle)?.type;
+        return type === 'walk' ? 'walk' : type === 'moto' ? 'moto' : 'car';
       },
-      periodLabel:   periodLabel(dateFrom, dateTo),
-      tripCountLabel:`${selectedTrips.length} trajet${selectedTrips.length > 1 ? 's' : ''}`,
-      driveDurLabel: driveDurTxt,
-      walkDurLabel:  walkDurTxt,
-      videoDurationSec: duration,
-      customName:    trimmedName || undefined,
-      dateRangeLabel: trimmedName ? dateRangeLabelFr(dateFrom, dateTo) : undefined,
-      theme,
+      dateLabel: trip => new Date(trip.startTime).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }),
+      periodLabel: `${formatDate(range.from)} – ${formatDate(range.to)}`,
+      tripCountLabel: `${draft.trips.length} trajets`,
+      driveDurLabel: '', walkDurLabel: '',
+      customName: draft.title, dateRangeLabel: `${formatDate(range.from)} – ${formatDate(range.to)}`,
+      familyStory: true, chapters: timing.chapters, videoDurationSec: timing.baseDurationSec, theme,
     });
   }
 
-  // ── Date picker handlers ───────────────────────────────────────────────────
-  function openPicker(target: 'from' | 'to') {
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setPickerDraft(target === 'from' ? dateFrom : dateTo);
-    setPickerTarget(target);
-  }
-
-  function handlePickerChange(_: unknown, selected?: Date) {
-    setPickerTarget(null);
-    if (!selected) return;
-    if (pickerTarget === 'from') {
-      const d = new Date(selected);
-      d.setHours(0, 0, 0, 0);
-      setDateFrom(d);
-      if (d > dateTo) {
-        const to = new Date(d);
-        to.setHours(23, 59, 59, 999);
-        setDateTo(to);
-      }
-    } else {
-      const d = new Date(selected);
-      d.setHours(23, 59, 59, 999);
-      setDateTo(d);
-      if (d < dateFrom) {
-        const from = new Date(d);
-        from.setHours(0, 0, 0, 0);
-        setDateFrom(from);
-      }
-    }
-  }
-
-  const canGenerate = selectedTrips.length > 0 && !isGenerating;
-
-  function vehIcon(t: Trip): { name: React.ComponentProps<typeof MaterialCommunityIcons>['name']; color: string } {
-    const type = getVType(t);
-    if (type === 'walk') return { name: 'walk', color: '#4CAF50' };
-    if (type === 'moto') return { name: 'motorbike', color: '#FF9800' };
-    return { name: 'car', color: '#2196F3' };
-  }
-
-  return (
-    <View style={[styles.root, { backgroundColor: colors.background }]}>
-
-      {/* Header */}
-      <View style={[pH.row, { paddingTop: insets.top + 8, backgroundColor: colors.background, borderBottomColor: colors.border }]}>
-        <Pressable
-          onPress={() => router.back()}
-          hitSlop={8}
-          style={[pH.btn, { backgroundColor: colors.card, borderColor: colors.border }]}
-        >
-          <MaterialCommunityIcons name="arrow-left" size={18} color={colors.foreground} />
-        </Pressable>
-        <Text style={[styles.headerTitle, { color: colors.foreground, flex: 1 }]}>Story Période</Text>
-        <MaterialCommunityIcons name="movie-play-outline" size={20} color={colors.mutedForeground} style={{ marginRight: 4 }} />
-      </View>
-
-      <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 40 }]}>
-
-        {/* ── Sélection de la période ─────────────────────────────────── */}
-        <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>PÉRIODE</Text>
-        <View style={styles.dateRow}>
-          <Pressable
-            onPress={() => openPicker('from')}
-            style={[styles.dateBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
-          >
-            <MaterialCommunityIcons name="calendar-start" size={16} color="#2196F3" />
-            <View>
-              <Text style={[styles.dateBtnLabel, { color: colors.mutedForeground }]}>Du</Text>
-              <Text style={[styles.dateBtnValue, { color: colors.foreground }]}>{fmtDate(dateFrom)}</Text>
-            </View>
-          </Pressable>
-
-          <MaterialCommunityIcons name="arrow-right" size={16} color={colors.mutedForeground} />
-
-          <Pressable
-            onPress={() => openPicker('to')}
-            style={[styles.dateBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
-          >
-            <MaterialCommunityIcons name="calendar-end" size={16} color="#2196F3" />
-            <View>
-              <Text style={[styles.dateBtnLabel, { color: colors.mutedForeground }]}>Au</Text>
-              <Text style={[styles.dateBtnValue, { color: colors.foreground }]}>{fmtDate(dateTo)}</Text>
-            </View>
-          </Pressable>
-        </View>
-
-        {/* ── Résultats de la période ─────────────────────────────────── */}
-        <Text style={[styles.sectionLabel, { color: colors.mutedForeground, marginTop: 20 }]}>RÉSULTATS</Text>
-        <View style={[styles.statsCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          {filtered.length === 0 ? (
-            <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
-              Aucun trajet dans cette période.
-            </Text>
-          ) : (
-            <>
-              <View style={styles.statsRow}>
-                <View style={styles.statItem}>
-                  <Text style={[styles.statValue, { color: colors.foreground }]}>{filtered.length}</Text>
-                  <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>trajet{filtered.length > 1 ? 's' : ''}</Text>
-                </View>
-                <View style={styles.statItem}>
-                  <Text style={[styles.statValue, { color: '#FFC107' }]}>{stats.total.toFixed(0)}</Text>
-                  <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>km total</Text>
-                </View>
-                {stats.driveMs > 0 && (
-                  <View style={styles.statItem}>
-                    <Text style={[styles.statValue, { color: '#2196F3' }]}>{fmtDur(stats.driveMs)}</Text>
-                    <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>conduite</Text>
-                  </View>
-                )}
-                {stats.walkMs > 0 && (
-                  <View style={styles.statItem}>
-                    <Text style={[styles.statValue, { color: '#4CAF50' }]}>{fmtDur(stats.walkMs)}</Text>
-                    <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>balade</Text>
-                  </View>
-                )}
-              </View>
-
-              {/* Détail par véhicule */}
-              {(stats.carKm > 0 || stats.motoKm > 0 || stats.walkKm > 0) && (
-                <View style={styles.vehRow}>
-                  {stats.carKm > 0  && <Text style={[styles.vehChip, { color: '#2196F3' }]}>🚗 {stats.carKm.toFixed(0)} km</Text>}
-                  {stats.motoKm > 0 && <Text style={[styles.vehChip, { color: '#FF9800' }]}>🏍 {stats.motoKm.toFixed(0)} km</Text>}
-                  {stats.walkKm > 0 && <Text style={[styles.vehChip, { color: '#4CAF50' }]}>🚶 {stats.walkKm.toFixed(0)} km</Text>}
-                </View>
-              )}
-
-              <Pressable
-                onPress={() => { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setPickerModalOpen(true); }}
-                disabled={withRoute.length === 0}
-                style={styles.routeAvailRow}
-              >
-                <Text style={[styles.routeAvailText, { color: selectedTrips.length > 0 ? '#4CAF50' : colors.mutedForeground }]}>
-                  {withRoute.length === 0
-                    ? 'Aucun tracé GPS disponible'
-                    : `✓ ${selectedTrips.length} / ${withRoute.length} trajet${withRoute.length > 1 ? 's' : ''} inclus dans la story`
-                  }
-                </Text>
-                {withRoute.length > 0 && (
-                  <MaterialCommunityIcons name="chevron-right" size={16} color={colors.mutedForeground} />
-                )}
-              </Pressable>
-            </>
-          )}
-        </View>
-
-        {/* ── Nom personnalisé de la story ─────────────────────────────── */}
-        <Text style={[styles.sectionLabel, { color: colors.mutedForeground, marginTop: 20 }]}>NOM (OPTIONNEL)</Text>
-        <View style={[styles.nameBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <MaterialCommunityIcons name="pencil-outline" size={16} color={colors.mutedForeground} />
-          <TextInput
-            value={storyName}
-            onChangeText={setStoryName}
-            placeholder="Nom : Road trip La Rochelle"
-            placeholderTextColor={colors.mutedForeground}
-            style={[styles.nameInput, { color: colors.foreground }]}
-          />
-        </View>
-        {storyName.trim().length > 0 && (
-          <Text style={[styles.namePreview, { color: colors.mutedForeground }]}>
-            {`${storyName.trim()}\n${dateRangeLabelFr(dateFrom, dateTo)}`}
-          </Text>
-        )}
-
-        {/* ── Durée de la vidéo ────────────────────────────────────────── */}
-        <Text style={[styles.sectionLabel, { color: colors.mutedForeground, marginTop: 20 }]}>DURÉE DE LA VIDÉO</Text>
-        <View style={styles.durationRow}>
-          {DURATIONS.map(s => (
-            <Pressable
-              key={s}
-              onPress={() => { void Haptics.selectionAsync(); setDuration(s); }}
-              style={[
-                styles.durChip,
-                {
-                  backgroundColor: duration === s ? '#2196F322' : colors.card,
-                  borderColor:     duration === s ? '#2196F3'   : colors.border,
-                },
-              ]}
-            >
-              <Text style={[styles.durChipText, { color: duration === s ? '#2196F3' : colors.foreground }]}>
-                {s === 120 ? '2 min' : s === 60 ? '1 min' : `${s} s`}
-              </Text>
-              {duration === s && (
-                <MaterialCommunityIcons name="check" size={13} color="#2196F3" />
-              )}
-            </Pressable>
-          ))}
-        </View>
-
-        {/* ── Thème de la carte ────────────────────────────────────────── */}
-        <Text style={[styles.sectionLabel, { color: colors.mutedForeground, marginTop: 20 }]}>THÈME DE LA CARTE</Text>
-        <View style={styles.durationRow}>
-          {THEMES.map(th => (
-            <Pressable
-              key={th.key}
-              onPress={() => { void Haptics.selectionAsync(); setTheme(th.key); }}
-              style={[
-                styles.durChip,
-                {
-                  backgroundColor: theme === th.key ? '#2196F322' : colors.card,
-                  borderColor:     theme === th.key ? '#2196F3'   : colors.border,
-                },
-              ]}
-            >
-              <MaterialCommunityIcons name={th.icon} size={14} color={theme === th.key ? '#2196F3' : colors.mutedForeground} />
-              <Text style={[styles.durChipText, { color: theme === th.key ? '#2196F3' : colors.foreground }]}>
-                {th.label}
-              </Text>
-              {theme === th.key && (
-                <MaterialCommunityIcons name="check" size={13} color="#2196F3" />
-              )}
-            </Pressable>
-          ))}
-        </View>
-        {theme === 'satellite' && (
-          <Text style={[styles.namePreview, { color: colors.mutedForeground }]}>
-            Nécessite une connexion internet pour charger l'imagerie satellite. En cas d'échec, la story sera générée avec le thème Sombre.
-          </Text>
-        )}
-
-        {/* ── Bouton Générer ───────────────────────────────────────────── */}
-        <Pressable
-          onPress={handleGenerate}
-          disabled={!canGenerate}
-          style={({ pressed }) => [
-            styles.generateBtn,
-            { backgroundColor: canGenerate ? '#2196F3' : colors.muted, opacity: pressed ? 0.8 : 1 },
-          ]}
-        >
-          <MaterialCommunityIcons name="movie-play-outline" size={20} color={canGenerate ? '#fff' : colors.mutedForeground} />
-          <Text style={[styles.generateBtnText, { color: canGenerate ? '#fff' : colors.mutedForeground }]}>
-            {selectedTrips.length === 0
-              ? 'Aucun trajet sélectionné'
-              : `Générer la story · ${selectedTrips.length} trajet${selectedTrips.length > 1 ? 's' : ''}`
-            }
-          </Text>
-        </Pressable>
-
-        {/* Explication durée */}
-        <Text style={[styles.hint, { color: colors.mutedForeground }]}>
-          {`Animation : ${duration - 5} s · Récapitulatif final : 5 s`}
-        </Text>
-        {!!generation.fallbackNote && (
-          <Text style={[styles.hint, { color: colors.mutedForeground }]}>{generation.fallbackNote}</Text>
-        )}
-
-      </ScrollView>
-
-      {/* Date pickers (Android natif) */}
-      {pickerTarget !== null && (
-        <DateTimePicker
-          value={pickerDraft}
-          mode="date"
-          display="calendar"
-          maximumDate={new Date()}
-          onChange={handlePickerChange}
-        />
-      )}
-
-      {/* Overlay de progression */}
-      <Modal visible={isGenerating} transparent animationType="fade" onRequestClose={generation.cancel}>
-        <View style={styles.progressOverlay}>
-          <View style={[styles.progressCard, { backgroundColor: colors.card }]}>
-            <ActivityIndicator size="large" color="#2196F3" />
-            <Text style={[styles.progressTitle, { color: colors.foreground }]}>
-              {generation.title}
-            </Text>
-            <View style={[styles.progressBarTrack, { backgroundColor: colors.muted }]}>
-              <View style={[styles.progressBarFill, { width: `${progress}%`, backgroundColor: '#2196F3' }]} />
-            </View>
-            <Text accessibilityLiveRegion="polite" style={[styles.progressPct, { color: colors.mutedForeground }]}>
-              {generation.detail || 'Préparation en cours…'}
-            </Text>
-            {!!generation.fallbackNote && (
-              <Text style={[styles.hint, { color: colors.mutedForeground }]}>{generation.fallbackNote}</Text>
-            )}
-            <Pressable accessibilityRole="button" onPress={generation.cancel} style={styles.cancelStoryBtn}>
-              <Text style={{ color: '#2196F3', fontFamily: 'Inter_600SemiBold' }}>Annuler</Text>
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Modal — sélection des trajets inclus dans la story */}
-      <Modal
-        visible={pickerModalOpen}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setPickerModalOpen(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalCard, { backgroundColor: colors.background, paddingBottom: insets.bottom + 16 }]}>
-            <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: colors.foreground }]}>
-                {`Trajets inclus (${selectedTrips.length}/${withRoute.length})`}
-              </Text>
-              <Pressable onPress={() => setPickerModalOpen(false)} hitSlop={8}>
-                <MaterialCommunityIcons name="close" size={22} color={colors.mutedForeground} />
-              </Pressable>
-            </View>
-
-            <Pressable onPress={toggleAllTrips} style={styles.selectAllRow}>
-              <MaterialCommunityIcons
-                name={selectedTrips.length === withRoute.length ? 'checkbox-multiple-marked' : 'checkbox-multiple-blank-outline'}
-                size={18}
-                color="#2196F3"
-              />
-              <Text style={[styles.selectAllText, { color: '#2196F3' }]}>
-                {selectedTrips.length === withRoute.length ? 'Tout désélectionner' : 'Tout sélectionner'}
-              </Text>
-            </Pressable>
-
-            <FlatList
-              data={withRoute}
-              keyExtractor={t => t.id}
-              style={styles.modalList}
-              renderItem={({ item }) => {
-                const checked = selectedIds.has(item.id);
-                const icon = vehIcon(item);
-                const d = new Date(item.startTime);
-                return (
-                  <Pressable
-                    onPress={() => toggleTrip(item.id)}
-                    style={[styles.tripRow, { borderColor: colors.border }]}
-                  >
-                    <MaterialCommunityIcons
-                      name={checked ? 'checkbox-marked' : 'checkbox-blank-outline'}
-                      size={20}
-                      color={checked ? '#2196F3' : colors.mutedForeground}
-                    />
-                    <MaterialCommunityIcons name={icon.name} size={16} color={icon.color} style={{ marginLeft: 8 }} />
-                    <View style={styles.tripRowInfo}>
-                      <Text style={[styles.tripRowDate, { color: colors.foreground }]}>
-                        {`${DAYS_FR[d.getDay()]} ${d.getDate()} ${MONTHS_FR[d.getMonth()]} · ${pad2(d.getHours())}:${pad2(d.getMinutes())}`}
-                      </Text>
-                      <Text style={[styles.tripRowMeta, { color: colors.mutedForeground }]}>
-                        {`${item.distanceKm.toFixed(1)} km${fmtDur(item.endTime - item.startTime) ? '  ·  ' + fmtDur(item.endTime - item.startTime) : ''}`}
-                      </Text>
-                    </View>
-                  </Pressable>
-                );
-              }}
-            />
-
-            <Pressable
-              onPress={() => setPickerModalOpen(false)}
-              style={[styles.modalDoneBtn, { backgroundColor: '#2196F3' }]}
-            >
-              <Text style={styles.modalDoneBtnText}>Valider</Text>
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
-
-      {/* WebView caché — moteur de génération vidéo */}
-      {jobId && <WebView
-        key={jobId}
-        ref={generation.webViewRef}
-        source={generation.source}
-        onMessage={event => generation.onMessage(jobId, event)}
-        onLoadEnd={() => generation.onLoadEnd(jobId)}
-        onError={() => generation.onEngineError(jobId)}
-        onRenderProcessGone={() => generation.onEngineError(jobId)}
-        onContentProcessDidTerminate={() => generation.onEngineError(jobId)}
-        javaScriptEnabled
-        mediaPlaybackRequiresUserAction={false}
-        style={styles.hiddenWebView}
-      />}
+  return <View style={[s.root, { backgroundColor: colors.background }]}>
+    <View style={[pH.row, { paddingTop: (Platform.OS === 'web' ? 67 : insets.top) + 8, backgroundColor: colors.background, borderBottomColor: colors.border }]}>
+      <Pressable accessibilityLabel="Retour" disabled={saving || generation.isSharing} onPress={() => router.back()} hitSlop={8}
+        style={[pH.btn, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        <MaterialCommunityIcons name="arrow-left" size={18} color={colors.foreground} />
+      </Pressable>
+      <Text style={[s.headerTitle, { color: colors.foreground }]}>Souvenir du mois</Text>
+      <MaterialCommunityIcons name="movie-play-outline" size={20} color={colors.mutedForeground} />
     </View>
-  );
+    <ScrollView contentContainerStyle={[s.scroll, { paddingBottom: (Platform.OS === 'web' ? 34 : insets.bottom) + 30 }]} keyboardShouldPersistTaps="handled">
+      <View style={s.row}>
+        <Pressable disabled={busy} testID="previous-month" accessibilityLabel="Mois précédent" style={s.iconButton}
+          onPress={() => { setCustom(false); changeRange(monthRange(new Date(range.from.getFullYear(), range.from.getMonth() - 1, 1))); }}>
+          <MaterialCommunityIcons name="chevron-left" size={26} color={colors.foreground} />
+        </Pressable>
+        <Text style={[s.month, s.flex, { color: colors.foreground }]}>
+          {custom ? 'Période personnalisée' : range.from.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}
+        </Text>
+        <Pressable disabled={busy} testID="next-month" accessibilityLabel="Mois suivant" style={s.iconButton}
+          onPress={() => { setCustom(false); changeRange(monthRange(new Date(range.from.getFullYear(), range.from.getMonth() + 1, 1))); }}>
+          <MaterialCommunityIcons name="chevron-right" size={26} color={colors.foreground} />
+        </Pressable>
+      </View>
+      <Pressable disabled={busy} onPress={() => { if (custom) changeRange(monthRange(range.from)); setCustom(!custom); }}>
+        <Text style={[s.link, { color: colors.primary }]}>{custom ? 'Revenir au mois entier' : 'Choisir une période personnalisée'}</Text>
+      </Pressable>
+      {custom && <View style={s.row}>
+        <PeriodDate label="Du" value={range.from} disabled={busy} onChange={date => {
+          const from = new Date(date); from.setHours(0, 0, 0, 0);
+          const to = new Date(Math.max(from.getTime(), range.to.getTime())); to.setHours(23, 59, 59, 999);
+          changeRange({ from, to });
+        }} />
+        <PeriodDate label="Au" value={range.to} disabled={busy} onChange={date => {
+          const to = new Date(date); to.setHours(23, 59, 59, 999);
+          const from = new Date(Math.min(range.from.getTime(), to.getTime())); from.setHours(0, 0, 0, 0);
+          changeRange({ from, to });
+        }} />
+      </View>}
+
+      {!!error && <View style={[s.card, { borderColor: colors.destructive }]}>
+        <Text accessibilityLiveRegion="polite" style={[s.body, { color: colors.destructive }]}>{error}</Text>
+        <Pressable testID="retry-draft" onPress={() => { setError(''); setRetry(n => n + 1); }}><Text style={{ color: colors.primary }}>Réessayer</Text></Pressable>
+      </View>}
+      {(loading || loadedKey !== key) && !error ? <ActivityIndicator color={colors.primary} /> : <>
+        <View style={[s.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Text style={[s.label, { color: colors.primary }]}>BROUILLON · {saving ? 'ENREGISTREMENT…' : 'À VÉRIFIER'}</Text>
+          <Text testID="memory-title" style={[s.hero, { color: colors.foreground }]}>{draft.title}</Text>
+          <Text style={[s.small, { color: colors.mutedForeground }]}>{formatDate(range.from)} – {formatDate(range.to)}</Text>
+          <Text style={[s.body, { color: colors.foreground }]}>{draft.chapters.length} chapitre(s) · {draft.trips.length} trajet(s) · {draft.photoCount} photo(s)</Text>
+          <Text style={[s.small, { color: colors.mutedForeground }]}>
+            Préparé à l’ouverture avec les photos déjà associées. Les trajets sont classés selon leur départ, en heure locale. Chaque événement reste un chapitre, classé à sa première sortie.
+          </Text>
+        </View>
+        {generation.result && <StoryVideoReview key={generation.result.uri} uri={generation.result.uri}
+          isSharing={generation.isSharing} onShare={() => { void generation.shareResult(); }} onDiscard={generation.discardResult} />}
+
+        <View style={s.row}>
+          <Text style={[s.label, s.flex, { color: colors.mutedForeground }]}>ÉVÉNEMENTS</Text>
+          <Pressable disabled={busy || !!error} testID="create-event" onPress={createEvent} style={s.iconButton}>
+            <Text style={[s.link, { color: colors.primary }]}>+ Ajouter</Text>
+          </Pressable>
+        </View>
+        {visibleEvents.map(event => <Pressable key={event.id} disabled={busy} testID={`edit-event-${event.id}`}
+          onPress={() => setEditor({ event, isNew: false })} style={[s.eventRow, { borderColor: colors.border }]}>
+          <View style={s.flex}>
+            <Text style={[s.body, { color: colors.foreground }]}>{event.title}</Text>
+            <Text style={[s.small, { color: colors.mutedForeground }]}>{event.startDate} → {event.endDate}</Text>
+          </View>
+          <MaterialCommunityIcons name="pencil-outline" size={18} color={colors.primary} />
+        </Pressable>)}
+        {!visibleEvents.length && <Text style={[s.small, { color: colors.mutedForeground }]}>Sans événement, les sorties sont simplement regroupées par journée.</Text>}
+        {events.length > 0 && <Pressable onPress={() => setShowAllEvents(!showAllEvents)}>
+          <Text style={[s.link, { color: colors.primary }]}>{showAllEvents ? 'Événements de la période' : `Tous les événements (${events.length})`}</Text>
+        </Pressable>}
+        <Text style={[s.label, { color: colors.mutedForeground, marginTop: 12 }]}>CHAPITRES · ORDRE DE LA VIDÉO</Text>
+        {!draft.chapters.length && <Text testID="empty-memory" style={[s.body, { color: colors.mutedForeground }]}>
+          {sourceTrips.length ? 'Aucun passage retenu. Rétablis un trajet ci-dessous ou choisis une autre période.' : 'Aucun trajet ce mois-ci. Choisis un autre mois ou une période personnalisée.'}
+        </Text>}
+        <DraftChapters draft={draft} sourceTrips={sourceTrips} events={events} choices={choices} disabled={busy || !!error}
+          onChange={next => { void updateChoices(next); }} onEditEvent={event => setEditor({ event, isNew: false })} />
+        <Text style={[s.small, { color: colors.mutedForeground }]}>Écarter un passage ou une photo ne modifie jamais les originaux.</Text>
+
+        <Text style={[s.label, { color: colors.mutedForeground, marginTop: 12 }]}>MONTAGE</Text>
+        <View style={s.row}>
+          {[undefined, 60, 120].map((seconds, i) => <Pressable key={i} disabled={busy} onPress={() => { generation.discardResult(); setDuration(seconds); }}
+            style={[s.chip, { backgroundColor: colors.card, borderColor: duration === seconds ? colors.primary : colors.border }]}>
+            <Text style={[s.body, { color: duration === seconds ? colors.primary : colors.foreground }]}>{seconds ? `${seconds / 60} min` : 'Auto'}</Text>
+          </Pressable>)}
+        </View>
+        <Text testID="story-timing" style={[s.small, { color: colors.mutedForeground }]}>
+          {`${formatSeconds(timing.baseDurationSec)} de montage + ${timing.photoPauseSec} s de pauses photo (${draft.photoCount} × 2 s) = environ ${formatSeconds(timing.totalDurationSec)}.\nOuverture ${timing.openingSec} s · récap discret ${timing.recapSec} s. Les séquences s’adaptent au contenu ; la durée minimale conserve des trajets lisibles.`}
+        </Text>
+        <View style={s.row}>{THEMES.map(option => <Pressable key={option.key} disabled={busy}
+          onPress={() => { generation.discardResult(); setTheme(option.key); }}
+          style={[s.chip, { backgroundColor: colors.card, borderColor: theme === option.key ? colors.primary : colors.border }]}>
+          <MaterialCommunityIcons name={option.icon} size={16} color={theme === option.key ? colors.primary : colors.mutedForeground} />
+          <Text style={[s.small, { color: theme === option.key ? colors.primary : colors.foreground }]}>{option.label}</Text>
+        </Pressable>)}</View>
+        {theme === 'satellite' && <Text style={[s.small, { color: colors.mutedForeground }]}>Connexion internet nécessaire. Si le satellite est indisponible ou trop lourd, le fond Sombre est utilisé.</Text>}
+        <Pressable disabled={!canGenerate} testID="generate-memory" onPress={handleGenerate}
+          style={[s.generateButton, { backgroundColor: canGenerate ? colors.primary : colors.muted }]}>
+          <MaterialCommunityIcons name="movie-play-outline" size={20} color={canGenerate ? colors.primaryForeground : colors.mutedForeground} />
+          <Text style={[s.buttonText, { color: canGenerate ? colors.primaryForeground : colors.mutedForeground }]}>
+            {draft.conflicts.length ? 'Choisir les chapitres en conflit' : 'Créer la vidéo à vérifier'}
+          </Text>
+        </Pressable>
+        <Text style={[s.small, { color: colors.mutedForeground, textAlign: 'center' }]}>Garde l’app ouverte pendant la création. Le partage reste manuel, après lecture de la vidéo.</Text>
+        {!!generation.fallbackNote && <Text style={[s.small, { color: colors.mutedForeground }]}>{generation.fallbackNote}</Text>}
+      </>}
+    </ScrollView>
+    {editor && <FamilyEventEditor key={editor.event.id} {...editor} trips={allTrips} onSave={saveEvent} onDelete={deleteEvent} onClose={() => setEditor(null)} />}
+    <Modal visible={isGenerating} transparent animationType="fade" onRequestClose={generation.cancel}>
+      <View style={[s.progressOverlay, { backgroundColor: colors.background }]}>
+        <View style={[s.progressCard, { backgroundColor: colors.card }]}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={[s.buttonText, { color: colors.foreground }]}>{generation.title}</Text>
+          <View style={[s.progressTrack, { backgroundColor: colors.muted }]}>
+            <View style={{ width: `${progress}%`, height: 6, backgroundColor: colors.primary }} />
+          </View>
+          <Text accessibilityLiveRegion="polite" style={[s.body, { color: colors.mutedForeground }]}>{generation.detail || 'Préparation en cours…'}</Text>
+          {!!generation.fallbackNote && <Text style={[s.small, { color: colors.mutedForeground }]}>{generation.fallbackNote}</Text>}
+          <Pressable testID="cancel-memory" accessibilityRole="button" onPress={generation.cancel} style={s.iconButton}>
+            <Text style={[s.link, { color: colors.primary }]}>Annuler</Text>
+          </Pressable>
+        </View>
+      </View>
+    </Modal>
+    {jobId && <WebView key={jobId} ref={generation.webViewRef} source={generation.source}
+      onMessage={event => generation.onMessage(jobId, event)} onLoadEnd={() => generation.onLoadEnd(jobId)}
+      onError={() => generation.onEngineError(jobId)} onRenderProcessGone={() => generation.onEngineError(jobId)}
+      onContentProcessDidTerminate={() => generation.onEngineError(jobId)} javaScriptEnabled
+      mediaPlaybackRequiresUserAction={false} style={s.hiddenWebView} />}
+  </View>;
 }
 
-const styles = StyleSheet.create({
-  root:            { flex: 1 },
-  headerTitle:     { fontSize: 17, fontFamily: 'Inter_600SemiBold', marginLeft: 10 },
-
-  scroll:          { padding: 16, gap: 10 },
-  sectionLabel:    { fontSize: 11, fontFamily: 'Inter_600SemiBold', textTransform: 'uppercase', letterSpacing: 0.6 },
-
-  nameBox:         { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: 14, paddingVertical: 4 },
-  nameInput:       { flex: 1, fontSize: 14, fontFamily: 'Inter_500Medium', paddingVertical: 10 },
-  namePreview:     { fontSize: 12, fontFamily: 'Inter_400Regular', marginTop: 6, lineHeight: 17 },
-
-  dateRow:         { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  dateBtn:         { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, padding: 14 },
-  dateBtnLabel:    { fontSize: 11, fontFamily: 'Inter_400Regular' },
-  dateBtnValue:    { fontSize: 14, fontFamily: 'Inter_600SemiBold', marginTop: 2 },
-
-  statsCard:       { borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, padding: 16, gap: 12 },
-  emptyText:       { fontSize: 14, fontFamily: 'Inter_400Regular', textAlign: 'center', paddingVertical: 8 },
-  statsRow:        { flexDirection: 'row', flexWrap: 'wrap', gap: 16 },
-  statItem:        { alignItems: 'center', gap: 2, minWidth: 64 },
-  statValue:       { fontSize: 22, fontFamily: 'Inter_700Bold' },
-  statLabel:       { fontSize: 11, fontFamily: 'Inter_400Regular', textTransform: 'uppercase' },
-  vehRow:          { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  vehChip:         { fontSize: 13, fontFamily: 'Inter_500Medium' },
-  routeAvailRow:   { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  routeAvailText:  { fontSize: 12, fontFamily: 'Inter_400Regular' },
-
-  durationRow:     { flexDirection: 'row', gap: 8 },
-  durChip:         {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 5, borderRadius: 10, borderWidth: 1, paddingVertical: 12,
-  },
-  durChipText:     { fontSize: 14, fontFamily: 'Inter_500Medium' },
-
-  generateBtn:     {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 10, borderRadius: 14, paddingVertical: 16, marginTop: 8,
-  },
-  generateBtnText: { fontSize: 16, fontFamily: 'Inter_600SemiBold' },
-  hint:            { fontSize: 12, fontFamily: 'Inter_400Regular', textAlign: 'center' },
-
-  progressOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.75)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 99,
-  },
-  progressCard:    { borderRadius: 18, padding: 28, alignItems: 'center', gap: 16, width: 260 },
-  progressTitle:   { fontSize: 15, fontFamily: 'Inter_600SemiBold', textAlign: 'center' },
-  progressBarTrack:{ width: '100%', height: 6, borderRadius: 3, overflow: 'hidden' },
-  progressBarFill: { height: '100%', borderRadius: 3 },
-  progressPct:     { fontSize: 13, fontFamily: 'Inter_400Regular', textAlign: 'center' },
-  cancelStoryBtn:  { minHeight: 44, minWidth: 100, alignItems: 'center', justifyContent: 'center' },
-
-  hiddenWebView:   { position: 'absolute', width: 1, height: 1, opacity: 0, top: -100, left: -100 },
-
-  modalOverlay:    { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' },
-  modalCard:       { borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 16, maxHeight: '80%' },
-  modalHeader:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
-  modalTitle:      { fontSize: 16, fontFamily: 'Inter_600SemiBold' },
-  selectAllRow:    { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, marginBottom: 4 },
-  selectAllText:   { fontSize: 14, fontFamily: 'Inter_500Medium' },
-  modalList:       { maxHeight: 380 },
-  tripRow:         { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth },
-  tripRowInfo:     { marginLeft: 10, flex: 1 },
-  tripRowDate:     { fontSize: 14, fontFamily: 'Inter_500Medium' },
-  tripRowMeta:     { fontSize: 12, fontFamily: 'Inter_400Regular', marginTop: 2 },
-  modalDoneBtn:    { borderRadius: 14, paddingVertical: 14, alignItems: 'center', marginTop: 14 },
-  modalDoneBtnText:{ fontSize: 15, fontFamily: 'Inter_600SemiBold', color: '#fff' },
+const s = StyleSheet.create({
+  root: { flex: 1 }, flex: { flex: 1 }, scroll: { padding: 16, gap: 14 },
+  headerTitle: { flex: 1, marginLeft: 10, fontSize: 17, fontFamily: 'Inter_600SemiBold' },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  month: { fontSize: 17, textAlign: 'center', fontFamily: 'Inter_600SemiBold' },
+  iconButton: { padding: 8, minHeight: 40, justifyContent: 'center' },
+  card: { borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, padding: 16, gap: 10 },
+  hero: { fontSize: 26, lineHeight: 34, fontFamily: 'Inter_600SemiBold' },
+  label: { fontSize: 11, fontFamily: 'Inter_600SemiBold', letterSpacing: 0.6 },
+  body: { fontSize: 14, lineHeight: 21, fontFamily: 'Inter_400Regular' },
+  small: { fontSize: 12, lineHeight: 18, fontFamily: 'Inter_400Regular' },
+  link: { fontSize: 13, fontFamily: 'Inter_500Medium', paddingVertical: 4 },
+  dateButton: { borderWidth: 1, padding: 10, marginTop: 6, borderRadius: 10, minHeight: 44 },
+  eventRow: { borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: 'row', alignItems: 'center', paddingVertical: 8, gap: 10 },
+  chip: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderWidth: 1, paddingVertical: 12, borderRadius: 10 },
+  generateButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, padding: 16, borderRadius: 12, marginTop: 8 },
+  buttonText: { fontSize: 15, fontFamily: 'Inter_600SemiBold' },
+  progressOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 28 },
+  progressCard: { width: '100%', borderRadius: 18, padding: 24, gap: 18, alignItems: 'center' },
+  progressTrack: { width: '100%', height: 6, borderRadius: 3, overflow: 'hidden' },
+  // The canvas must keep rendering in Android WebView (never display:none).
+  hiddenWebView: { position: 'absolute', width: 1, height: 1, opacity: 0.01, top: -10, left: -10 },
 });

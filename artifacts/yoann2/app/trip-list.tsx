@@ -999,6 +999,7 @@ export default function TripListScreen() {
         <Text style={[styles.pageHeaderTitle, { color: colors.foreground }]}>Mes Trajets</Text>
         <Pressable
           onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/story-period' as any); }}
+          accessibilityLabel="Préparer le souvenir du mois"
           hitSlop={8}
           style={[pH.btn, { backgroundColor: colors.card, borderColor: colors.border }]}
         >

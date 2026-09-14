@@ -30,6 +30,8 @@
  *   customName?: string,         // e.g. "Road trip La Rochelle" — remplace periodLabel si fourni
  *   dateRangeLabel?: string,     // e.g. "du 13 au 15 Août 2026" — affiché sous customName
  *   theme?: 'dark'|'light'|'satellite', // défaut 'dark'
+ *   familyStory?: boolean,       // intro + grouped chapters + discreet recap
+ *   chapters?: Array<{id:string,title:string,tripIds:string[],durationSec:number}>,
  * }
  *
  * Photos : quand la progression d'un trajet atteint le point ancré d'une photo, l'animation
@@ -330,7 +332,22 @@ export const STORY_PERIOD_JS = `
   function mercY(lat){return Math.log(Math.tan(Math.PI/4+(lat*Math.PI/180)/2))*(180/Math.PI);}
   var minMerc=mercY(minLat),maxMerc=mercY(maxLat),mercSp=(maxMerc-minMerc)||0.0001;
 
-  var headerH=opts.customName?214:180;
+   var familyStory=opts.familyStory===true;
+   var FAMILY_OPENING_MS=familyStory?3000:0;
+   var FAMILY_RECAP_MS=familyStory?3000:0;
+   function familyFitFont(value,basePx,minPx,maxWidth,weight){
+     var text=String(value||''),size=basePx;
+     if(familyStory&&ctx.measureText){
+       while(size>minPx){
+         ctx.font=weight+' '+size+'px Arial,sans-serif';
+         var measured=ctx.measureText(text);
+         if(!measured||!Number.isFinite(measured.width)||measured.width<=maxWidth)break;
+         size--;
+       }
+     }
+     return weight+' '+size+'px Arial,sans-serif';
+   }
+   var headerH=opts.customName?214:180;
   var mT=headerH+5,mB=800,mL=40,mR=680;
   var mW=mR-mL,mH=mB-mT;
   var rAsp=lngSp/mercSp,mapAsp=mW/mH;
@@ -460,19 +477,129 @@ export const STORY_PERIOD_JS = `
       zoom:Math.exp(Math.log(a.zoom)+(Math.log(b.zoom)-Math.log(a.zoom))*t)};
   }
 
-  /* ── Allocation du temps par trajet (∝ √km → petits trajets visibles) ── */
-  var DUR=(opts.videoDurationSec||20)*1000;
-  var END_MS=5000;
-  var animMs=DUR-END_MS;
+   /*
+    * Family stories have a fixed 3s introduction and a fixed 3s discreet
+    * recap.  videoDurationSec is the complete base duration (before photo
+    * pauses); only the time between those cards is allocated to chapters.
+    * Legacy requests intentionally keep the old five-second recap and timing
+    * formula byte-for-byte in spirit.
+    */
+   var requestedDurationMs=(opts.videoDurationSec||20)*1000;
+   var baseDUR=familyStory?Math.max(FAMILY_OPENING_MS+FAMILY_RECAP_MS,requestedDurationMs):requestedDurationMs;
+   var DUR=baseDUR;
+   var END_MS=familyStory?FAMILY_RECAP_MS:5000;
+   var animMs=familyStory?Math.max(0,baseDUR-FAMILY_OPENING_MS-FAMILY_RECAP_MS):DUR-END_MS;
+   var chapterDefs=[];
+   var chapterForTrip=[];
+   var tripIdIndex=Object.create(null);
+   for(var tripIdIdx=0;tripIdIdx<trips.length;tripIdIdx++){
+     if(trips[tripIdIdx]&&trips[tripIdIdx].id!=null)tripIdIndex[String(trips[tripIdIdx].id)]=tripIdIdx;
+   }
+   if(familyStory&&Array.isArray(opts.chapters)){
+     for(var chapterIdx=0;chapterIdx<opts.chapters.length;chapterIdx++){
+       var suppliedChapter=opts.chapters[chapterIdx];
+       if(!suppliedChapter||typeof suppliedChapter!=='object'||!Array.isArray(suppliedChapter.tripIds))continue;
+       var memberIndices=[];
+       for(var chapterTripIdx=0;chapterTripIdx<suppliedChapter.tripIds.length;chapterTripIdx++){
+         var mappedIndex=tripIdIndex[String(suppliedChapter.tripIds[chapterTripIdx])];
+         if(mappedIndex==null||chapterForTrip[mappedIndex]!=null)continue;
+         memberIndices.push(mappedIndex);chapterForTrip[mappedIndex]=chapterDefs.length;
+       }
+       if(memberIndices.length){
+         memberIndices.sort(function(a,b){return a-b;});
+         chapterDefs.push({
+           id:String(suppliedChapter.id),
+           title:String(suppliedChapter.title||suppliedChapter.id),
+           tripIds:memberIndices.map(function(memberIndex){return trips[memberIndex].id;}),
+           durationSec:Number.isFinite(Number(suppliedChapter.durationSec))?Math.max(0,Number(suppliedChapter.durationSec)):0,
+           members:memberIndices,
+         });
+       }
+     }
+   }
+   /* A family request must never lose a selected trip whose chapter metadata
+      is stale.  Keep it in a visible fallback chapter instead. */
+   var unassigned=[];
+   for(var unassignedIdx=0;unassignedIdx<trips.length;unassignedIdx++){
+     if(chapterForTrip[unassignedIdx]==null)unassigned.push(unassignedIdx);
+   }
+   if(unassigned.length){
+     chapterDefs.push({
+       id:'unassigned',
+       title:opts.periodLabel||'Trajets',
+       tripIds:unassigned.map(function(unassignedTrip){return trips[unassignedTrip].id;}),
+       durationSec:0,
+       members:unassigned,
+     });
+     var fallbackChapterIndex=chapterDefs.length-1;
+     for(var unassignedSet=0;unassignedSet<unassigned.length;unassignedSet++)chapterForTrip[unassigned[unassignedSet]]=fallbackChapterIndex;
+   }
+   if(familyStory&&!chapterDefs.length){
+     chapterDefs=[{
+       id:'period',
+       title:opts.periodLabel||'Trajets',
+       tripIds:trips.map(function(periodTrip){return periodTrip.id;}),
+       durationSec:1,
+       members:trips.map(function(_,periodTripIndex){return periodTripIndex;}),
+     }];
+     for(var periodTripIndex=0;periodTripIndex<trips.length;periodTripIndex++)chapterForTrip[periodTripIndex]=0;
+   }
+   var chapterWeights=[],totalChapterWeight=0;
+   if(familyStory){
+     for(var chapterWeightIndex=0;chapterWeightIndex<chapterDefs.length;chapterWeightIndex++){
+       var chapterWeight=Math.max(0,Number(chapterDefs[chapterWeightIndex].durationSec)||0);
+       chapterWeights.push(chapterWeight);totalChapterWeight+=chapterWeight;
+     }
+     if(totalChapterWeight<=0){
+       totalChapterWeight=chapterDefs.length||1;
+       for(var equalChapterIndex=0;equalChapterIndex<chapterDefs.length;equalChapterIndex++)chapterWeights[equalChapterIndex]=1;
+     }
+   }
+   var chapterStart=[],chapterDurations=[];
+   if(familyStory){
+     var chapterCursor=0;
+     for(var chapterTimingIndex=0;chapterTimingIndex<chapterDefs.length;chapterTimingIndex++){
+       chapterStart.push(chapterCursor);
+       var allocatedChapterMs=chapterDefs.length
+         ? animMs*chapterWeights[chapterTimingIndex]/totalChapterWeight : 0;
+       chapterDurations.push(allocatedChapterMs);chapterCursor+=allocatedChapterMs;
+     }
+   }
   // Hyperlapse sur les longs trajets (voir storyGenerator.ts) : au-delà de 50km (autoroute),
   // le temps alloué croît beaucoup plus lentement pour ne pas laisser un long trajet d'autoroute
   // dominer/traîner en longueur dans le récap ; en dessous de 50km, rythme normal inchangé.
   function hyperKm(km){var HK=50;return km<=HK?km:HK+(km-HK)*0.25;}
-  var wts=[],totW=0;
-  for(var ti=0;ti<trips.length;ti++){wts.push(Math.sqrt(hyperKm(trips[ti].distKm||0.2)+0.4));totW+=wts[ti];}
-  var tStart=[0];
-  for(var ti=1;ti<trips.length;ti++)tStart.push(tStart[ti-1]+(wts[ti-1]/totW)*animMs);
-  function tDurOf(ti){return(wts[ti]/totW)*animMs;}
+   var wts=[],totW=0,tStart=[],tripDurations=[];
+   if(familyStory){
+     for(var familyChapterIndex=0;familyChapterIndex<chapterDefs.length;familyChapterIndex++){
+       var familyMembers=chapterDefs[familyChapterIndex].members,totalFamilyDistance=0,familyChapterOffset=0;
+       for(var familyMemberIndex=0;familyMemberIndex<familyMembers.length;familyMemberIndex++){
+         var memberDistance=trips[familyMembers[familyMemberIndex]].distKm;
+         var memberWeight=Number.isFinite(memberDistance)?Math.min(8,3+Math.sqrt(Math.max(0,memberDistance))):3;
+         totalFamilyDistance+=memberWeight;
+       }
+       if(totalFamilyDistance<=0)totalFamilyDistance=familyMembers.length||1;
+       for(var familyTripOffset=0;familyTripOffset<familyMembers.length;familyTripOffset++){
+         var familyTripIndex=familyMembers[familyTripOffset],familyDistance=trips[familyTripIndex].distKm;
+         var routeWeight=Number.isFinite(familyDistance)?Math.min(8,3+Math.sqrt(Math.max(0,familyDistance))):3;
+         wts[familyTripIndex]=routeWeight;
+         tStart[familyTripIndex]=chapterStart[familyChapterIndex]+familyChapterOffset;
+         tripDurations[familyTripIndex]=(chapterDurations[familyChapterIndex]||0)*routeWeight/totalFamilyDistance;
+         familyChapterOffset+=tripDurations[familyTripIndex];
+       }
+     }
+     for(var familyDurationIndex=0;familyDurationIndex<trips.length;familyDurationIndex++){
+       if(!Number.isFinite(tStart[familyDurationIndex]))tStart[familyDurationIndex]=0;
+       if(!Number.isFinite(tripDurations[familyDurationIndex]))tripDurations[familyDurationIndex]=0;
+     }
+     totW=1;
+   }else{
+     for(var ti=0;ti<trips.length;ti++){wts.push(Math.sqrt(hyperKm(trips[ti].distKm||0.2)+0.4));totW+=wts[ti];}
+     tStart=[0];
+     for(var ti=1;ti<trips.length;ti++)tStart.push(tStart[ti-1]+(wts[ti-1]/totW)*animMs);
+     for(var legacyDurationIndex=0;legacyDurationIndex<trips.length;legacyDurationIndex++)tripDurations[legacyDurationIndex]=(wts[legacyDurationIndex]/totW)*animMs;
+   }
+   function tDurOf(ti){return familyStory?tripDurations[ti]:(wts[ti]/totW)*animMs;}
   var totKm=0;
   for(var ti=0;ti<trips.length;ti++)totKm+=trips[ti].distKm||0.5;
 
@@ -515,17 +642,30 @@ export const STORY_PERIOD_JS = `
      par closure), coupant les trajets trop tôt / les faisant sauter au suivant. */
   DUR+=totalPauseMs;
 
-  /* ── Position absolue (en aEl, temps d'animation hors pauses) de chaque photo ──
+  /* ── Position absolue (hors pauses, après l'intro familiale si présente) ──
      Calculée une fois que tStart/tDurOf sont connus. Utiliser une position absolue plutôt
      que "tripIdx===ci && tProg>=frac" évite la course avec le changement de trajet (une
      photo en frac≈1 ou frac≈0 pouvait ne jamais matcher car ci changeait juste avant/après),
      et permet à plusieurs photos au même endroit de s'enchaîner automatiquement : aEl reste
      figé pendant une pause, donc dès qu'elle se termine, la photo suivante à la même position
-     absolue est immédiatement éligible. */
+     absolue est immédiatement éligible. Les limites d'un chapitre restent donc indépendantes
+     du temps ajouté par les photos. */
   var photoMarkers=photoMarkersRaw.map(function(m){
     return{tripIdx:m.tripIdx,note:m.note,frac:m.frac,src:m.src,imgEl:null,triggered:false,
-      absAEl:tStart[m.tripIdx]+m.frac*tDurOf(m.tripIdx)};
+      absAEl:(familyStory?FAMILY_OPENING_MS:0)+tStart[m.tripIdx]+m.frac*tDurOf(m.tripIdx)};
   }).sort(function(a,b){return a.absAEl-b.absAEl;});
+  if(familyStory){
+    post({type:'story_timing',baseDurationSec:baseDUR/1000,openingSec:FAMILY_OPENING_MS/1000,
+      recapSec:FAMILY_RECAP_MS/1000,chapterAnimationSec:animMs/1000,
+      photoPauseSec:totalPauseMs/1000,totalDurationSec:DUR/1000,
+       photos:photoMarkers.map(function(marker){return{tripId:trips[marker.tripIdx].id,frac:marker.frac,atSec:marker.absAEl/1000};}),
+       trips:trips.map(function(trip,tripTimingIndex){return{id:trip.id,startSec:(FAMILY_OPENING_MS+tStart[tripTimingIndex])/1000,durationSec:(tDurOf(tripTimingIndex)||0)/1000};}),
+      chapters:chapterDefs.map(function(chapter,chapterTimingIndex){
+        return{id:chapter.id,title:chapter.title,tripIds:chapter.tripIds,
+          startSec:(FAMILY_OPENING_MS+chapterStart[chapterTimingIndex])/1000,
+          durationSec:(chapterDurations[chapterTimingIndex]||0)/1000};
+      })});
+  }
 
   var t0=null,lastRep=0;
   var pauseActive=null; /* {marker, anchorEl, anchorConsumed} */
@@ -644,7 +784,7 @@ export const STORY_PERIOD_JS = `
      }
      lastFrameTs=ts;
     if(!t0)t0=ts;
-    var el=ts-t0,prog=Math.min(1,el/DUR);
+     var el=ts-t0,prog=Math.min(1,el/DUR);
     var THEME=palette();
 
     /* Pause photo en cours : fige la progression, garde le rendu figé, avance seulement le temps réel */
@@ -655,10 +795,13 @@ export const STORY_PERIOD_JS = `
         pauseActive=null;
       }
     }
-    var vEl=Math.max(0,el-pauseConsumedMs);
-    var isEnd=vEl>=animMs;
-    var endProg=isEnd?Math.min(1,(vEl-animMs)/END_MS):0;
-    var aEl=Math.min(vEl,animMs);
+     var vEl=Math.max(0,el-pauseConsumedMs);
+     var isOpening=familyStory&&vEl<FAMILY_OPENING_MS;
+     var familyAnimationEl=familyStory?Math.max(0,vEl-FAMILY_OPENING_MS):vEl;
+     var familyEndAt=familyStory?FAMILY_OPENING_MS+animMs:animMs;
+     var isEnd=vEl>=familyEndAt;
+     var endProg=isEnd?Math.min(1,(vEl-familyEndAt)/(END_MS||1)):0;
+     var aEl=Math.min(familyAnimationEl,animMs);
 
     /* Trajet courant */
     var ci=trips.length-1;
@@ -688,18 +831,25 @@ export const STORY_PERIOD_JS = `
     if(!pauseActive){
       for(var pmi=0;pmi<photoMarkers.length;pmi++){
         var pm=photoMarkers[pmi];
-        if(!pm.triggered&&aEl>=pm.absAEl){
+         var photoTimelineEl=familyStory?vEl:aEl;
+         if(!pm.triggered&&photoTimelineEl>=pm.absAEl){
           pm.triggered=true;
           pauseActive={marker:pm,anchorEl:el,anchorConsumed:pauseConsumedMs};
           break;
         }
       }
     }
+    /* A photo anchored at frac=1 belongs to the preceding chapter even when
+       the virtual clock has just reached the next chapter boundary. */
+    var displayTripIndex=pauseActive?pauseActive.marker.tripIdx:ci;
 
     /* Caméra : vol eased entre cams pré-calculées (converge TOUJOURS) */
-    var cam;
-    if(isEnd){
-      var eT=Math.min(1,(el-animMs)/1400);
+     var cam;
+    if(isOpening){
+       cam=fullCam;
+     }else if(isEnd){
+      var recapElapsed=familyStory?vEl-familyEndAt:el-animMs;
+      var eT=Math.min(1,recapElapsed/1400);
       cam=lerpCam(cams[trips.length-1]||fullCam,fullCam,easeIO(eT));
     }else{
       var prevCam=ci>0?cams[ci-1]:fullCam;
@@ -708,7 +858,7 @@ export const STORY_PERIOD_JS = `
     }
 
     /* Position exacte sur le tracé actif (réutilisée pour l'heure temps réel + le dessin) */
-    var activeRoute=trips[ci].route;
+     var activeRoute=trips[ci].route;
     var exI=0,flI=0,frI=0;
     if(!isEnd&&activeRoute&&activeRoute.length>1){
       exI=idxAtFrac(ci,tProg);flI=Math.floor(exI);frI=exI-flI;
@@ -731,7 +881,7 @@ export const STORY_PERIOD_JS = `
        disponible (trace GPS brute), sinon interpolation uniforme sur la durée
        du trajet (tracé OSRM synthétique, sans horodatage par point). */
     var liveTimeStr='';
-    if(!isEnd){
+     if(!isEnd&&!isOpening){
       var curMs=null;
       if(activeRoute&&activeRoute.length>1&&activeRoute[flI]&&activeRoute[flI].t!=null&&activeRoute[Math.min(flI+1,activeRoute.length-1)].t!=null){
         var ptA=activeRoute[flI],ptB=activeRoute[Math.min(flI+1,activeRoute.length-1)];
@@ -745,23 +895,29 @@ export const STORY_PERIOD_JS = `
         liveTimeStr=(hh<10?'0':'')+hh+':'+(mm<10?'0':'')+mm;
       }
     }
-    var captionTxt=isEnd?'R\\xE9capitulatif':trips[ci].note?((VEMO[trips[ci].vehicleType]||'')+'  '+trips[ci].note):((VEMO[trips[ci].vehicleType]||'')+'  '+trips[ci].dateLabel+(liveTimeStr?'  \\xB7  '+liveTimeStr:''));
+     var activeChapter=familyStory&&!isOpening&&!isEnd&&chapterDefs[chapterForTrip[displayTripIndex]];
+     var chapterCaption=activeChapter?('  ·  '+activeChapter.title):'';
+     var captionTxt=isOpening?'Introduction':isEnd?'R\\xE9capitulatif':trips[ci].note?((VEMO[trips[ci].vehicleType]||'')+'  '+trips[ci].note+chapterCaption):((VEMO[trips[ci].vehicleType]||'')+'  '+trips[ci].dateLabel+(liveTimeStr?'  \\xB7  '+liveTimeStr:'')+chapterCaption);
     if(opts.customName){
-      ctx.fillStyle=THEME.titleColor;ctx.font='bold 40px Arial,sans-serif';ctx.textAlign='center';
+      ctx.fillStyle=THEME.titleColor;ctx.font=familyStory?familyFitFont(opts.customName,40,24,640,'bold'):'bold 40px Arial,sans-serif';ctx.textAlign='center';
       ctx.fillText(opts.customName,cW/2,58);
-      ctx.fillStyle=THEME.subColor;ctx.font='26px Arial,sans-serif';
+      ctx.fillStyle=THEME.subColor;ctx.font=familyStory?familyFitFont(opts.dateRangeLabel||'',26,18,640,'normal'):'26px Arial,sans-serif';
       ctx.fillText(opts.dateRangeLabel||'',cW/2,96);
       ctx.fillStyle=THEME.subColor;ctx.font='24px Arial,sans-serif';
       ctx.fillText(opts.tripCountLabel+'  \\xB7  '+totKm.toFixed(1)+' km',cW/2,132);
       ctx.fillStyle=THEME.captionColor;ctx.font='20px Arial,sans-serif';
       ctx.fillText(captionTxt,cW/2,170);
     } else {
-      ctx.fillStyle=THEME.titleColor;ctx.font='bold 42px Arial,sans-serif';ctx.textAlign='center';
+      ctx.fillStyle=THEME.titleColor;ctx.font=familyStory?familyFitFont('\\uD83D\\uDDFA\\uFE0F  '+opts.periodLabel,42,24,640,'bold'):'bold 42px Arial,sans-serif';ctx.textAlign='center';
       ctx.fillText('\\uD83D\\uDDFA\\uFE0F  '+opts.periodLabel,cW/2,65);
       ctx.fillStyle=THEME.subColor;ctx.font='26px Arial,sans-serif';
       ctx.fillText(opts.tripCountLabel+'  \\xB7  '+dispKm+' km',cW/2,105);
       ctx.fillStyle=THEME.captionColor;ctx.font='22px Arial,sans-serif';
       ctx.fillText(captionTxt,cW/2,142);
+    }
+    if(familyStory&&!isOpening&&!isEnd&&activeChapter){
+      ctx.fillStyle=THEME.gold;ctx.font=familyFitFont(activeChapter.title,24,16,640,'bold');ctx.textAlign='center';
+      ctx.fillText(activeChapter.title,cW/2,headerH-10);
     }
     ctx.strokeStyle=THEME.headerSep;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(0,headerH);ctx.lineTo(cW,headerH);ctx.stroke();
 
@@ -803,7 +959,7 @@ export const STORY_PERIOD_JS = `
     }
 
     /* Trajet actif */
-    if(!isEnd){
+    if(!isEnd&&!isOpening){
       var rr=trips[ci].route;
       var col=VCL[trips[ci].vehicleType]||'#2196F3';
 
@@ -849,19 +1005,35 @@ export const STORY_PERIOD_JS = `
     ctx.fillStyle=THEME.footerBg;ctx.fillRect(0,800,cW,cH-800);
     ctx.strokeStyle=THEME.footerSep;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(0,800);ctx.lineTo(cW,800);ctx.stroke();
 
-    if(!isEnd){
+    if(isOpening){
+      /* Opening card: keep it quiet, but make the generated monthly/event
+         title and selected date range unambiguous before the map appears. */
+      ctx.fillStyle=THEME.titleColor;ctx.font=familyStory?familyFitFont(opts.customName||opts.periodLabel,56,28,640,'bold'):'bold 56px Arial,sans-serif';ctx.textAlign='center';
+      ctx.fillText(opts.customName||opts.periodLabel,cW/2,900);
+      if(opts.dateRangeLabel){
+        ctx.fillStyle=THEME.subColor;ctx.font=familyFitFont(opts.dateRangeLabel,30,18,640,'normal');
+        ctx.fillText(opts.dateRangeLabel,cW/2,950);
+      }
+      ctx.fillStyle=THEME.captionColor;ctx.font='26px Arial,sans-serif';
+      ctx.fillText(opts.tripCountLabel+'  ·  '+totKm.toFixed(1)+' km',cW/2,1010);
+      ctx.fillText('Introduction',cW/2,1060);
+    }else if(!isEnd){
       /* Phase animation : km courant + infos trajet */
       var col=VCL[trips[ci].vehicleType]||'#2196F3';
       ctx.fillStyle=col;ctx.font='bold 80px Arial,sans-serif';ctx.textAlign='center';
       ctx.fillText((accKm[ci]+(trips[ci].distKm||0)*tProg).toFixed(1)+' km',cW/2,884);
       ctx.fillStyle=THEME.captionColor;ctx.font='26px Arial,sans-serif';
       ctx.fillText('trajet '+(ci+1)+' / '+trips.length+'  \\xB7  '+trips[ci].dateLabel,cW/2,928);
+      if(activeChapter){
+        ctx.fillStyle=THEME.gold;ctx.font='bold 25px Arial,sans-serif';
+        ctx.fillText(activeChapter.title,cW/2,964);
+      }
 
       /* Barre de progression segmentée (1 segment par trajet) */
       var barL=60,barR=660,barY=966,barH=10,barW=barR-barL;
       var bx=barL;
       for(var si=0;si<trips.length;si++){
-        var segW=(wts[si]/totW)*barW;
+        var segW=(familyStory?(tripDurations[si]/(animMs||1)):(wts[si]/totW))*barW;
         var sCol=VCL[trips[si].vehicleType]||'#2196F3';
         ctx.fillStyle=THEME.barBg;
         ctx.fillRect(bx,barY,Math.max(segW-2,1),barH);
@@ -880,11 +1052,15 @@ export const STORY_PERIOD_JS = `
     } else {
       /* Phase end card : recap complet, fade-in */
       var fa=Math.min(1,endProg*2.2);ctx.globalAlpha=fa;
-      ctx.fillStyle=THEME.titleColor;ctx.font='bold 46px Arial,sans-serif';ctx.textAlign='center';
-      ctx.fillText(opts.periodLabel,cW/2,856);
-      ctx.fillStyle=THEME.gold;ctx.font='bold 100px Arial,sans-serif';
+      ctx.fillStyle=THEME.titleColor;ctx.font=familyStory?familyFitFont(opts.customName||opts.periodLabel,38,24,640,'bold'):'bold 46px Arial,sans-serif';ctx.textAlign='center';
+      ctx.fillText(familyStory?(opts.customName||opts.periodLabel):opts.periodLabel,cW/2,856);
+      if(familyStory&&opts.dateRangeLabel){
+        ctx.fillStyle=THEME.subColor;ctx.font='21px Arial,sans-serif';
+        ctx.fillText(opts.dateRangeLabel,cW/2,895);
+      }
+      ctx.fillStyle=THEME.gold;ctx.font=familyStory?'bold 72px Arial,sans-serif':'bold 100px Arial,sans-serif';
       ctx.fillText(totKm.toFixed(0)+' km',cW/2,968);
-      ctx.fillStyle=THEME.subColor;ctx.font='28px Arial,sans-serif';
+      ctx.fillStyle=THEME.subColor;ctx.font=familyStory?'24px Arial,sans-serif':'28px Arial,sans-serif';
       ctx.fillText(opts.tripCountLabel,cW/2,1012);
 
       /* Détail par véhicule — apparition décalée */

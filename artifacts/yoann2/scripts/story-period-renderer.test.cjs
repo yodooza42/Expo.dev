@@ -13,10 +13,10 @@ vm.runInNewContext(compiled, { exports: mod.exports, module: mod, require });
 const renderer = mod.exports.STORY_PERIOD_JS;
 
 function makeHarness(imageMode = 'ok', recorderSupported = true, exportBytes = 300003, deferredReader = false, mosaicTimeout = 7000) {
-  const messages = [], timers = [], rafs = [], images = [];
+  const messages = [], timers = [], rafs = [], images = [], canvasText = [];
   const readerPending = [];
   let timerId = 0, clock = 0, activeTiles = 0, maxTiles = 0, recorderStarts = 0, imageLoads = 0;
-  const ctx2d = new Proxy({ drawImage(image) { if (image?.invalid) throw new Error('empty image source'); } }, { get: (target, key) => key in target ? target[key] : key === 'createRadialGradient'
+  const ctx2d = new Proxy({ drawImage(image) { if (image?.invalid) throw new Error('empty image source'); }, fillText(value) { canvasText.push(String(value)); } }, { get: (target, key) => key in target ? target[key] : key === 'createRadialGradient'
     ? () => ({ addColorStop() {} }) : () => {} });
   class ImageMock {
     constructor() { this.onload = this.onerror = null; this.naturalWidth = 256; this.naturalHeight = 256; images.push(this); }
@@ -79,7 +79,7 @@ function makeHarness(imageMode = 'ok', recorderSupported = true, exportBytes = 3
   };
   vm.runInNewContext(renderer.replace('var SAT_MOSAIC_TIMEOUT=7000;', `var SAT_MOSAIC_TIMEOUT=${mosaicTimeout};`), sandbox);
   return {
-    messages, images, get starts() { return recorderStarts; }, get maxTiles() { return maxTiles; }, get imageLoads() { return imageLoads; },
+    messages, images, canvasText, get starts() { return recorderStarts; }, get maxTiles() { return maxTiles; }, get imageLoads() { return imageLoads; },
     runTimers(maxDelay) { for (const t of timers.filter(t => t.live && t.delay <= maxDelay)) { t.live = false; t.fn(); } },
     runFrame(ms) { clock = ms; const fn = rafs.shift(); if (fn) fn(ms); },
     advanceTo(ms) {
@@ -207,6 +207,94 @@ test('60s and 120s recordings, including photo pause, outlive preparation timeou
     assert.equal(h.messages.filter(m => m.type === 'story_error').length, 0, `${seconds}s must not hit preparation deadline`);
     assert.ok(h.messages.some(m => m.type === 'story_chunk'), `${seconds}s must finalize after its photo pause`);
   }
+});
+
+test('family stories render the exact title, selected chapter identities, and pause-excluded timing', async () => {
+  const h = makeHarness();
+  const familyTrips = trips(3).map((trip, index) => ({
+    ...trip,
+    id: `selected-${index}`,
+    distKm: index + 1,
+    photos: index === 1 ? [{ img: 'data:image/jpeg;base64,AA==', frac: 0.5, note: 'family photo' }] : [],
+  }));
+  h.window.generatePeriodStory({
+    jobId: 'family',
+    trips: familyTrips,
+    familyStory: true,
+    customName: 'Mars · Souvenirs',
+    dateRangeLabel: 'du 1 au 31 mars 2026',
+    periodLabel: 'mars 2026',
+    tripCountLabel: '3 trajets',
+    driveDurLabel: '🚗 1h',
+    walkDurLabel: '',
+    videoDurationSec: 12,
+    theme: 'dark',
+    chapters: [
+      { id: 'chapter-a', title: 'Maison', tripIds: ['selected-0', 'selected-1'], durationSec: 1 },
+      { id: 'chapter-b', title: 'Anniversaire', tripIds: ['selected-2'], durationSec: 2 },
+    ],
+  });
+  await settle();
+  const timing = h.messages.find(message => message.type === 'story_timing');
+  assert.deepEqual(timing.chapters.map(chapter => chapter.tripIds), [
+    ['selected-0', 'selected-1'],
+    ['selected-2'],
+  ]);
+  assert.equal(timing.baseDurationSec, 12);
+  assert.equal(timing.openingSec, 3);
+  assert.equal(timing.recapSec, 3);
+  assert.equal(timing.chapterAnimationSec, 6);
+  assert.equal(timing.photoPauseSec, 2);
+  assert.equal(timing.totalDurationSec, 14);
+  assert.equal(timing.photos[0].tripId, 'selected-1');
+  const firstChapterWeights = [4, 3 + Math.sqrt(2)];
+  const firstChapterDuration = 2;
+  const expectedPhotoSec = 3 +
+    firstChapterDuration * firstChapterWeights[0] / firstChapterWeights.reduce((sum, weight) => sum + weight, 0) +
+    firstChapterDuration * firstChapterWeights[1] / firstChapterWeights.reduce((sum, weight) => sum + weight, 0) / 2;
+  assert.ok(Math.abs(timing.photos[0].atSec - expectedPhotoSec) < 1e-9,
+    'photo anchor is measured on the virtual timeline');
+
+  h.runFrame(1);       // starts the shared animation clock
+  h.runFrame(2000);    // opening card
+  assert.ok(h.canvasText.includes('Mars · Souvenirs'));
+  assert.ok(h.canvasText.includes('du 1 au 31 mars 2026'));
+  h.runFrame(3001);    // first chapter
+  assert.ok(h.canvasText.includes('Maison'));
+  h.runFrame(5001);    // reaches the photo anchor and starts its pause
+  h.runFrame(7001);    // second chapter boundary, after the 2s photo pause
+  assert.ok(h.canvasText.includes('Anniversaire'));
+});
+
+test('family trips use bounded route weights inside one mixed-distance chapter', async () => {
+  const h = makeHarness();
+  const mixedTrips = trips(2).map((trip, index) => ({
+    ...trip,
+    id: index === 0 ? 'long-trip' : 'short-trip',
+    distKm: index === 0 ? 100 : 1,
+    photos: index === 1 ? [{ img: 'data:image/jpeg;base64,AA==', frac: 0.5, note: 'short route' }] : [],
+  }));
+  h.window.generatePeriodStory({
+    jobId: 'family-mixed-distance',
+    trips: mixedTrips,
+    familyStory: true,
+    customName: 'Mixed distances',
+    dateRangeLabel: '1–2 mars 2026',
+    periodLabel: 'mars 2026',
+    tripCountLabel: '2 trajets',
+    driveDurLabel: '',
+    walkDurLabel: '',
+    videoDurationSec: 18,
+    theme: 'dark',
+    chapters: [{ id: 'same-chapter', title: 'Même chapitre', tripIds: ['long-trip', 'short-trip'], durationSec: 12 }],
+  });
+  await settle();
+  const timing = h.messages.find(message => message.type === 'story_timing');
+  const shortTrip = timing.trips.find(trip => trip.id === 'short-trip');
+  assert.ok(shortTrip.durationSec >= 3, `short route received ${shortTrip.durationSec}s`);
+  assert.equal(shortTrip.durationSec, 4);
+  assert.equal(timing.photos[0].tripId, 'short-trip');
+  assert.equal(timing.photos[0].atSec, 13, 'photo stays anchored after the bounded long-route segment');
 });
 
 test('large exports refresh an idle deadline after every actual chunk', async () => {

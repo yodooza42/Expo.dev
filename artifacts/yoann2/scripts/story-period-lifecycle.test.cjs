@@ -300,6 +300,7 @@ function makeNativeMocks(clock, options = {}) {
     },
     'expo-sharing': {
       shareAsync: async (uri, config) => {
+        if (options.shareMode === 'error') throw new Error('synthetic share failure');
         native.shares.push({ uri, config });
       },
     },
@@ -359,6 +360,7 @@ function makeHarness(options = {}) {
 function requestWithTrips(overrides = {}) {
   return {
     trips: [{
+      id: 'trip-1',
       route: [{ lat: 1, lng: 2, t: 1750000000000 }, { lat: 1.001, lng: 2.002, t: 1750000030000 }],
       distanceKm: 1.25,
       startTime: 1_000,
@@ -513,6 +515,32 @@ test('hook starts only one job for an immediate double tap and waits for ready b
     'coordinates and exact GPS times must survive native preparation');
 });
 
+test('hook preserves family chapter ids and attaches the matching identity to each prepared trip', async () => {
+  const harness = makeHarness();
+  const request = requestWithTrips({
+    familyStory: true,
+    customName: 'Mars · Anniversaire',
+    dateRangeLabel: 'du 1 au 31 mars 2026',
+    chapters: [{
+      id: 'chapter-a',
+      title: 'Maison',
+      tripIds: ['trip-1'],
+      durationSec: 4,
+    }],
+  });
+  const id = await prepareStart(harness, request);
+  ready(harness, id);
+  let preparedOptions;
+  vm.runInNewContext(harness.native.injections[0], {
+    window: { generatePeriodStory: options => { preparedOptions = options; } },
+  });
+  assert.equal(preparedOptions.familyStory, true);
+  assert.equal(JSON.stringify(preparedOptions.chapters), JSON.stringify(request.chapters));
+  assert.equal(preparedOptions.trips[0].id, 'trip-1');
+  assert.equal(preparedOptions.trips[0].chapterId, 'chapter-a');
+  assert.equal(preparedOptions.trips[0].chapterTitle, 'Maison');
+});
+
 test('hook assigns a new job id after cancel and ignores stale chunks from the previous job', async () => {
   const harness = makeHarness();
   const oldId = harness.api.start(requestWithTrips()) && harness.api.jobId;
@@ -533,7 +561,7 @@ test('hook assigns a new job id after cancel and ignores stale chunks from the p
   assert.equal(harness.api.jobId, newId);
 });
 
-test('hook writes incremental chunks in order and shares a completed file exactly once', async () => {
+test('hook writes incremental chunks in order, retains the result, and manually shares once per gesture', async () => {
   const harness = makeHarness();
   const id = await prepareStart(harness);
   ready(harness, id);
@@ -559,13 +587,65 @@ test('hook writes incremental chunks in order and shares a completed file exactl
   ]);
   assert.equal(file.handle.closed, true);
   assert.equal(file.deleted, false);
-  assert.equal(harness.native.shares.length, 1);
-  assert.equal(harness.native.shares[0].uri, file.uri);
+  assert.equal(harness.native.shares.length, 0, 'completion must not open the share sheet');
+  assert.equal(JSON.stringify(harness.api.result), JSON.stringify({ uri: file.uri, mimeType: 'video/mp4' }));
   assert.equal(harness.api.jobId, null);
 
   send(harness, id, makeChunk(2, 3, 30));
   await settle(2);
+  assert.equal(harness.native.shares.length, 0);
+  const firstShare = harness.api.shareResult();
+  const duplicateShare = harness.api.shareResult();
+  assert.equal(await duplicateShare, false, 'a double tap must not open two sheets');
+  assert.equal(await firstShare, true);
   assert.equal(harness.native.shares.length, 1);
+  assert.equal(harness.native.shares[0].uri, file.uri);
+  assert.equal(harness.api.isSharing, false);
+});
+
+test('failed sharing retains the generated video and discardResult removes it explicitly', async () => {
+  const harness = makeHarness({ shareMode: 'error' });
+  const id = await prepareStart(harness);
+  ready(harness, id);
+  send(harness, id, {
+    type: 'story_chunk', jobId: id, index: 0, total: 1,
+    mime: 'video/webm', data: chunkData(2, 44),
+  });
+  const file = harness.native.files[0];
+  assert.equal((await harness.api.shareResult()), false);
+  assert.equal(file.deleted, false);
+  assert.equal(JSON.stringify(harness.api.result), JSON.stringify({ uri: file.uri, mimeType: 'video/webm' }));
+  harness.api.discardResult();
+  assert.equal(file.deleted, true);
+  assert.equal(harness.api.result, null);
+});
+
+test('starting a new generation clears an old cached result and unmount clears a completed result', async () => {
+  const harness = makeHarness();
+  let id = await prepareStart(harness);
+  ready(harness, id);
+  send(harness, id, {
+    type: 'story_chunk', jobId: id, index: 0, total: 1,
+    mime: 'video/mp4', data: chunkData(2, 45),
+  });
+  const oldFile = harness.native.files[0];
+  const nextStart = harness.api.start(requestWithTrips());
+  assert.equal(oldFile.deleted, true);
+  assert.ok(harness.api.jobId);
+  harness.api.cancel();
+  harness.clock.fireTimeout(0);
+  await nextStart;
+
+  const completed = makeHarness();
+  id = await prepareStart(completed);
+  ready(completed, id);
+  send(completed, id, {
+    type: 'story_chunk', jobId: id, index: 0, total: 1,
+    mime: 'video/mp4', data: chunkData(2, 46),
+  });
+  const completedFile = completed.native.files[0];
+  completed.runner.unmount();
+  assert.equal(completedFile.deleted, true);
 });
 
 test('renderer error and native renderer crash leave no partial file and show a terminal alert', async () => {
@@ -637,6 +717,8 @@ test('blocked photo preparation times out with a useful error', async () => {
   await started;
   assert.equal(harness.api.jobId, null);
   assert.match(harness.native.alerts.at(-1).message, /photo ne répond pas/);
+  assert.match(harness.native.alerts.at(-1).message, /trajet 1/);
+  assert.match(harness.native.alerts.at(-1).message, /synthetic/);
 });
 
 test('cancelling blocked photo preparation prevents its late continuation', async () => {
