@@ -31,6 +31,7 @@ const RECAP_SEC = 3;
 export const EMPTY_STORY_CHOICES: StoryDraftChoices = {
   excludedTripIds: [],
   excludedPhotoKeys: [],
+  photoCaptions: {},
   tripChapterOverrides: {},
 };
 
@@ -276,6 +277,9 @@ function validChoices(choices: StoryDraftChoices): StoryDraftChoices {
   return {
     excludedTripIds: Array.isArray(choices?.excludedTripIds) ? choices.excludedTripIds : [],
     excludedPhotoKeys: Array.isArray(choices?.excludedPhotoKeys) ? choices.excludedPhotoKeys : [],
+    photoCaptions: choices?.photoCaptions && typeof choices.photoCaptions === 'object'
+      ? choices.photoCaptions
+      : {},
     tripChapterOverrides: choices?.tripChapterOverrides &&
       typeof choices.tripChapterOverrides === 'object'
       ? choices.tripChapterOverrides
@@ -395,7 +399,11 @@ export function buildPeriodStoryDraft({
       }
       seenPhotoUris.add(photo.uri);
       if (typeof photo.id === 'string' && photo.id.length > 0) seenPhotoIds.add(photo.id);
-      keptPhotos.push(copiedPhoto(sourceTrip, photo));
+      const copy = copiedPhoto(sourceTrip, photo);
+      if (Object.prototype.hasOwnProperty.call(safeChoices.photoCaptions, key)) {
+        copy.note = safeChoices.photoCaptions[key]?.trim() || undefined;
+      }
+      keptPhotos.push(copy);
       photoCount++;
     }
 

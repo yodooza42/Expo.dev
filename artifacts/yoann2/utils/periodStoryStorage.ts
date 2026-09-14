@@ -8,6 +8,7 @@ const PERIOD_CHOICES_STORAGE_PREFIX = '@yoann2_period_story_choices:';
 export const EMPTY_STORY_CHOICES: StoryDraftChoices = {
   excludedTripIds: [],
   excludedPhotoKeys: [],
+  photoCaptions: {},
   tripChapterOverrides: {},
 };
 
@@ -96,6 +97,19 @@ function validateChoices(value: unknown): StoryDraftChoices {
   if (!isRecord(value)) throw new Error('Choix de story invalides.');
   const excludedTripIds = stringArray(value.excludedTripIds, 'Trajets exclus');
   const excludedPhotoKeys = stringArray(value.excludedPhotoKeys, 'Photos exclues');
+  const rawPhotoCaptions = value.photoCaptions ?? {};
+  if (!isRecord(rawPhotoCaptions) ||
+      Object.entries(rawPhotoCaptions).some(
+        ([photoKey, caption]) =>
+          photoKey.length === 0 || typeof caption !== 'string' || caption.length > 120,
+      )) {
+    throw new Error('Commentaires de photos invalides.');
+  }
+  const photoCaptions: Record<string, string> = {};
+  for (const [photoKey, caption] of Object.entries(rawPhotoCaptions)) {
+    if (typeof caption !== 'string') throw new Error('Commentaires de photos invalides.');
+    photoCaptions[photoKey] = caption;
+  }
   if (!isRecord(value.tripChapterOverrides) ||
       Object.entries(value.tripChapterOverrides).some(
         ([tripId, chapter]) =>
@@ -110,13 +124,14 @@ function validateChoices(value: unknown): StoryDraftChoices {
     if (typeof chapter !== 'string') throw new Error('Remplacements de chapitres invalides.');
     tripChapterOverrides[tripId] = chapter;
   }
-  return { excludedTripIds, excludedPhotoKeys, tripChapterOverrides };
+  return { excludedTripIds, excludedPhotoKeys, photoCaptions, tripChapterOverrides };
 }
 
 function cloneChoices(choices: StoryDraftChoices): StoryDraftChoices {
   return {
     excludedTripIds: [...choices.excludedTripIds],
     excludedPhotoKeys: [...choices.excludedPhotoKeys],
+    photoCaptions: { ...choices.photoCaptions },
     tripChapterOverrides: { ...choices.tripChapterOverrides },
   };
 }

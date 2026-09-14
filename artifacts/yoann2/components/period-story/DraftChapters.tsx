@@ -1,6 +1,6 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import React, { useState } from 'react';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useColors } from '@/hooks/useColors';
 import type { FamilyEvent, StoryDraftChoices } from '@/types/periodStory';
 import type { Trip, TripPhoto } from '@/types/trips';
@@ -23,32 +23,67 @@ export function tripCaption(trip: Trip): string {
   return `${when}${places ? ` · ${places}` : ''}`;
 }
 
-function PhotoChoice({ trip, photo, included, excluded, disabled, onToggle }: {
-  trip: Trip; photo: TripPhoto; included: boolean; excluded: boolean; disabled: boolean; onToggle: () => void;
+function PhotoChoice({ trip, photo, photoKeyValue, included, excluded, disabled, captionOverride, onToggle, onCaptionChange }: {
+  trip: Trip;
+  photo: TripPhoto;
+  photoKeyValue: string;
+  included: boolean;
+  excluded: boolean;
+  disabled: boolean;
+  captionOverride: string | undefined;
+  onToggle: () => void;
+  onCaptionChange: (caption: string) => void;
 }) {
   const colors = useColors();
   const [missing, setMissing] = useState(!photo.uri);
+  const effectiveCaption = captionOverride ?? photo.note ?? '';
+  const [caption, setCaption] = useState(effectiveCaption);
+  useEffect(() => { setCaption(effectiveCaption); }, [effectiveCaption, photoKeyValue]);
+  const commitCaption = (value: string) => {
+    const next = value.trim();
+    if (next !== effectiveCaption.trim()) onCaptionChange(next);
+  };
   return (
-    <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: included }}
-      accessibilityLabel={`${included ? 'Exclure' : 'Inclure'} la photo ${photo.note || photo.id}`}
-      testID={`draft-photo-${trip.id}-${photo.id}`} disabled={disabled || !photo.uri || (!included && !excluded)}
-      onPress={onToggle} style={[s.photoRow, { borderColor: colors.border }]}>
-      {!missing ? <Image source={{ uri: photo.uri }} style={s.thumbnail} resizeMode="cover"
-        onError={() => setMissing(true)} /> :
-        <MaterialCommunityIcons name="image-broken-variant" size={32} color={colors.mutedForeground} />}
-      <View style={s.flex}>
-        <Text style={[s.body, { color: colors.foreground }]} numberOfLines={2}>
-          {photo.note || 'Photo du trajet'}
-        </Text>
-        <Text style={[s.small, { color: missing ? colors.destructive : colors.mutedForeground }]}>
-          {missing ? 'Photo indisponible · à exclure ou à rétablir dans la galerie'
-            : included ? 'Incluse · pause de 2 s'
-              : excluded ? 'Écartée du souvenir' : 'Doublon non exporté'}
-        </Text>
-      </View>
-      <MaterialCommunityIcons name={included ? 'checkbox-marked' : 'checkbox-blank-outline'}
-        size={22} color={included ? colors.primary : colors.mutedForeground} />
-    </Pressable>
+    <View style={[s.photoBlock, { borderColor: colors.border }]}>
+      <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: included }}
+        accessibilityLabel={`${included ? 'Exclure' : 'Inclure'} la photo ${effectiveCaption || photo.id}`}
+        testID={`draft-photo-${trip.id}-${photo.id}`} disabled={disabled || !photo.uri || (!included && !excluded)}
+        onPress={onToggle} style={s.photoRow}>
+        {!missing ? <Image source={{ uri: photo.uri }} style={s.thumbnail} resizeMode="cover"
+          onError={() => setMissing(true)} /> :
+          <MaterialCommunityIcons name="image-broken-variant" size={32} color={colors.mutedForeground} />}
+        <View style={s.flex}>
+          <Text style={[s.body, { color: colors.foreground }]} numberOfLines={2}>
+            {effectiveCaption || 'Photo du trajet'}
+          </Text>
+          <Text style={[s.small, { color: missing ? colors.destructive : colors.mutedForeground }]}>
+            {missing ? 'Photo indisponible · à exclure ou à rétablir dans la galerie'
+              : included ? 'Incluse · pause de 2 s'
+                : excluded ? 'Écartée du souvenir' : 'Doublon non exporté'}
+          </Text>
+        </View>
+        <MaterialCommunityIcons name={included ? 'checkbox-marked' : 'checkbox-blank-outline'}
+          size={22} color={included ? colors.primary : colors.mutedForeground} />
+      </Pressable>
+      <TextInput
+        accessibilityLabel="Commentaire affiché sous la photo dans la vidéo"
+        testID={`draft-photo-caption-${trip.id}-${photo.id}`}
+        value={caption}
+        editable={!disabled && included && !missing}
+        maxLength={120}
+        multiline
+        placeholder="Ajouter un commentaire sous la photo…"
+        placeholderTextColor={colors.mutedForeground}
+        onChangeText={setCaption}
+        onEndEditing={event => commitCaption(event.nativeEvent.text)}
+        style={[s.captionInput, {
+          color: colors.foreground,
+          backgroundColor: colors.input,
+          borderColor: colors.border,
+          opacity: included && !missing ? 1 : 0.5,
+        }]}
+      />
+    </View>
   );
 }
 
@@ -122,7 +157,14 @@ export function DraftChapters({ draft, sourceTrips, events, choices, disabled, o
                 {(original.photos ?? []).map((photo, photoIndex) => {
                   const key = photoKey(trip.id, photo);
                   return <PhotoChoice key={`${key}-${photoIndex}`} trip={trip} photo={photo}
+                     photoKeyValue={key} captionOverride={choices.photoCaptions[key]}
                     included={includedPhotos.has(key)} excluded={choices.excludedPhotoKeys.includes(key)} disabled={disabled}
+                     onCaptionChange={caption => {
+                       const photoCaptions = { ...choices.photoCaptions };
+                       if (caption === (photo.note ?? '').trim()) delete photoCaptions[key];
+                       else photoCaptions[key] = caption;
+                       onChange({ ...choices, photoCaptions });
+                     }}
                     onToggle={() => onChange({ ...choices, excludedPhotoKeys: choices.excludedPhotoKeys.includes(key)
                       ? choices.excludedPhotoKeys.filter(p => p !== key) : [...choices.excludedPhotoKeys, key] })} />;
                 })}
@@ -161,8 +203,10 @@ const s = StyleSheet.create({
   link: { fontSize: 12, fontFamily: 'Inter_500Medium', paddingVertical: 8 },
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 14 },
   trip: { gap: 10, borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 10 },
-  photoRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 },
+  photoBlock: { gap: 8, paddingVertical: 8, borderTopWidth: StyleSheet.hairlineWidth },
+  photoRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   thumbnail: { width: 48, height: 56, borderRadius: 6 },
+  captionInput: { minHeight: 42, maxHeight: 82, borderWidth: 1, borderRadius: 9, paddingHorizontal: 11, paddingVertical: 9, fontSize: 13, lineHeight: 18, fontFamily: 'Inter_400Regular' },
   notice: { fontSize: 13, lineHeight: 20, fontFamily: 'Inter_500Medium' },
   option: { padding: 10, borderWidth: 1, borderRadius: 8 },
 });

@@ -262,6 +262,8 @@ test('family stories render the exact title, selected chapter identities, and pa
   h.runFrame(3001);    // first chapter
   assert.ok(h.canvasText.includes('Maison'));
   h.runFrame(5001);    // reaches the photo anchor and starts its pause
+  assert.ok(h.canvasText.includes('family photo'),
+    'the selected photo caption is rendered below the photo');
   h.runFrame(7001);    // second chapter boundary, after the 2s photo pause
   assert.ok(h.canvasText.includes('Anniversaire'));
 });

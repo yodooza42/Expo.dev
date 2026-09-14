@@ -121,6 +121,7 @@ test('draft groups, resolves overrides/conflicts, deduplicates photos and does n
     choices: {
       excludedTripIds: [],
       excludedPhotoKeys: [],
+      photoCaptions: { '["a","p1"]': 'Notre sortie à la mer' },
       tripChapterOverrides: { b: 'day' },
     },
     from: new Date(2024, 7, 1),
@@ -131,6 +132,8 @@ test('draft groups, resolves overrides/conflicts, deduplicates photos and does n
   assert.equal(result.unavailableTrips.length, 1);
   assert.equal(result.conflicts.length, 0, 'the day override resolves the overlap');
   assert.equal(result.trips[0].photos[0].routeIndex, 1);
+  assert.equal(result.trips[0].photos[0].note, 'Notre sortie à la mer',
+    'the story-only caption is copied onto the exported photo');
   assert.equal(result.photoCount, 2);
   assert.equal(result.omittedPhotoCount, 2, 'missing and globally duplicate photos are counted');
   assert.equal(result.chapters.some(chapter => chapter.title === 'Journée du 11 août'), true);
@@ -258,6 +261,7 @@ test('storage CRUD survives reload, serialises writes, validates metadata and ex
   await mod.savePeriodChoices('delete-reload', {
     excludedTripIds: ['kept-exclusion'],
     excludedPhotoKeys: ['kept-photo'],
+    photoCaptions: { 'trip:photo': 'Souvenir en famille' },
     tripChapterOverrides: { assigned: 'e', neutral: 'day' },
   });
   await mod.deleteFamilyEvent('e');
@@ -266,6 +270,7 @@ test('storage CRUD survives reload, serialises writes, validates metadata and ex
   assert.deepEqual(JSON.parse(JSON.stringify(cleaned)), {
     excludedTripIds: ['kept-exclusion'],
     excludedPhotoKeys: ['kept-photo'],
+    photoCaptions: { 'trip:photo': 'Souvenir en famille' },
     tripChapterOverrides: { neutral: 'day' },
   });
   const reloaded = loadTypeScript('utils/periodStoryStorage.ts', {
@@ -277,6 +282,7 @@ test('storage CRUD survives reload, serialises writes, validates metadata and ex
   const choices = {
     excludedTripIds: ['t'],
     excludedPhotoKeys: ['t:p'],
+    photoCaptions: { 't:p': 'Chez Mamie' },
     tripChapterOverrides: { t: 'day' },
   };
   await mod.savePeriodChoices('2024-08-01_2024-08-31', choices);
@@ -284,11 +290,12 @@ test('storage CRUD survives reload, serialises writes, validates metadata and ex
   assert.deepEqual(JSON.parse(JSON.stringify(await mod.loadPeriodChoices('2024-08-01_2024-08-31'))), {
     excludedTripIds: ['t'],
     excludedPhotoKeys: ['t:p'],
+    photoCaptions: { 't:p': 'Chez Mamie' },
     tripChapterOverrides: { t: 'day' },
   });
   assert.deepEqual(
     JSON.parse(JSON.stringify(await mod.loadPeriodChoices('other'))),
-    { excludedTripIds: [], excludedPhotoKeys: [], tripChapterOverrides: {} },
+    { excludedTripIds: [], excludedPhotoKeys: [], photoCaptions: {}, tripChapterOverrides: {} },
   );
 
   storage.setFailWrites(true);
@@ -299,6 +306,6 @@ test('storage CRUD survives reload, serialises writes, validates metadata and ex
   storage.setFailWrites(false);
   assert.deepEqual(
     JSON.parse(JSON.stringify(await mod.loadPeriodChoices('failed'))),
-    { excludedTripIds: [], excludedPhotoKeys: [], tripChapterOverrides: {} },
+    { excludedTripIds: [], excludedPhotoKeys: [], photoCaptions: {}, tripChapterOverrides: {} },
   );
 });

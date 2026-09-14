@@ -21,6 +21,8 @@ export interface FamilyEvent {
 export interface StoryDraftChoices {
   excludedTripIds: string[];
   excludedPhotoKeys: string[];
+  /** Story-only captions keyed by photoKey; an empty value hides the original photo note. */
+  photoCaptions: Record<string, string>;
   /** A value is a FamilyEvent id, or "day" for a neutral local-day chapter. */
   tripChapterOverrides: Record<string, string>;
 }
