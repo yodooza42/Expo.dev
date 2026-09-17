@@ -28,6 +28,7 @@ import { DEPARTURE_CHECK_PREFIX, rescheduleIfNeeded } from '@/utils/departureAle
 import { isManualTripActive } from '@/utils/manualTripStorage';
 import { runMaintenanceScheduler } from '@/utils/maintenanceScheduler';
 import { updateTodoWidget } from '@/widgets/updateWidget';
+import { tripEvents } from '@/utils/tripEvents';
 import {
   computeOdometer,
   getTrips,
@@ -63,7 +64,11 @@ const queryClient = new QueryClient();
 async function bootstrapLocationTracking() {
   purgeOldData().catch(() => {});
   purgeOldTrips(90).catch(() => {});
-  recoverConfiguredManualTrip().catch(() => {});
+  const recovery = await recoverConfiguredManualTrip().catch(() => null);
+  if (recovery?.status === 'recovered') {
+    tripEvents.emitTripUpdated();
+    updateTodoWidget().catch(() => {});
+  }
 
   try {
     const fg = await import('expo-location').then(m => m.getForegroundPermissionsAsync());
