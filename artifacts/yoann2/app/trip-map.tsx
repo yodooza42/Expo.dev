@@ -51,6 +51,7 @@ import {
 } from '@/utils/placesStorage';
 import { tripEvents } from '@/utils/tripEvents';
 import { getTrips, getVehicleSettings, updateTrip } from '@/utils/tripStorage';
+import { persistTripPhotoUri } from '@/utils/tripPhotoStorage';
 import { fmtDayLong, fmtHHMM } from '@/utils/date';
 import { haversineKm } from '@/utils/haversine';
 import { computeRouteDistanceKm } from '@/utils/osrmMatching';
@@ -598,9 +599,11 @@ export default function TripMapScreen() {
         }
         takenAt = takenAt ?? Date.now();
         const routeIndex = forceRouteIndex ?? computeRouteIndexFromTime(trip, takenAt);
+        const id = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
         newPhotos.push({
-          id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-          uri: asset.uri,
+          id,
+          uri: await persistTripPhotoUri(asset.uri, id),
+          assetId: asset.assetId ?? undefined,
           takenAt,
           routeIndex,
         });
@@ -613,6 +616,11 @@ export default function TripMapScreen() {
         setPhotoNoteEditId(newPhotos[newPhotos.length - 1]!.id);
         setPhotoNoteDraft('');
       }
+    } catch (error) {
+      Alert.alert(
+        'Photo non enregistrée',
+        error instanceof Error ? error.message : 'Impossible de conserver cette photo dans l’application.',
+      );
     } finally {
       setAddingPhotos(false);
     }
@@ -667,15 +675,18 @@ export default function TripMapScreen() {
     setAddingPhotos(true);
     try {
       const chosen = galleryAssets.filter(a => gallerySelected.has(a.id));
-      const newPhotos: TripPhoto[] = chosen.map(a => {
+      const newPhotos: TripPhoto[] = [];
+      for (const a of chosen) {
         const takenAt = a.creationTime || Date.now();
-        return {
-          id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-          uri: a.uri,
+        const id = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        newPhotos.push({
+          id,
+          uri: await persistTripPhotoUri(a.uri, id),
+          assetId: a.id,
           takenAt,
           routeIndex: computeRouteIndexFromTime(trip, takenAt),
-        };
-      });
+        });
+      }
       const merged = [...(trip.photos ?? []), ...newPhotos]
         .sort((a, b) => (a.routeIndex ?? Infinity) - (b.routeIndex ?? Infinity) || a.takenAt - b.takenAt);
       setTrip({ ...trip, photos: merged });

@@ -2,13 +2,16 @@ import { File, Paths, type FileHandle } from 'expo-file-system';
 import * as FileSystem from 'expo-file-system/legacy';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import * as Sharing from 'expo-sharing';
+import * as MediaLibrary from 'expo-media-library';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Image, Alert, Platform } from 'react-native';
 import type WebView from 'react-native-webview';
 
 import type { Trip } from '@/types/trips';
+import type { TripPhoto } from '@/types/trips';
 import { buildStoryPeriodHtml } from '@/utils/storyGeneratorPeriod';
 import { PeriodStoryTransfer, type StoryVideoChunk } from '@/utils/periodStoryTransfer';
+import { persistTripPhotoUri } from '@/utils/tripPhotoStorage';
 
 type Phase = 'prepare' | 'maps' | 'photos' | 'recording' | 'export';
 export type PeriodStoryChapter = {
@@ -55,7 +58,68 @@ const TITLES: Record<Phase, string> = {
   export: 'Enregistrement de la vidéo…',
 };
 
-async function preparePhoto(uri: string, isCurrent: () => boolean): Promise<string> {
+async function imageIsReadable(uri: string): Promise<boolean> {
+  return new Promise(resolve => {
+    Image.getSize(uri, () => resolve(true), () => resolve(false));
+  });
+}
+
+function photoFilename(uri: string): string | null {
+  const value = uri.split('?')[0] ?? '';
+  const filename = value.slice(value.lastIndexOf('/') + 1);
+  return filename || null;
+}
+
+async function recoverGalleryPhoto(photo: TripPhoto): Promise<string> {
+  const candidates: string[] = [photo.uri];
+  const addCandidate = (uri: string | null | undefined) => {
+    if (uri && !candidates.includes(uri)) candidates.push(uri);
+  };
+
+  try {
+    if (photo.assetId) {
+      const info = await MediaLibrary.getAssetInfoAsync(photo.assetId);
+      addCandidate(info.localUri);
+      addCandidate(info.uri);
+    }
+  } catch {}
+
+  try {
+    const filename = photoFilename(photo.uri);
+    const assets = await MediaLibrary.getAssetsAsync({
+      mediaType: 'photo',
+      createdAfter: photo.takenAt - 10 * 60_000,
+      createdBefore: photo.takenAt + 10 * 60_000,
+      first: 200,
+      sortBy: [[MediaLibrary.SortBy.creationTime, false]],
+    });
+    const match = assets.assets.find(asset =>
+      asset.id === photo.assetId ||
+      asset.uri === photo.uri ||
+      (!!filename && asset.filename === filename),
+    );
+    if (match) {
+      addCandidate(match.uri);
+      const info = await MediaLibrary.getAssetInfoAsync(match.id);
+      addCandidate(info.localUri);
+      addCandidate(info.uri);
+    }
+  } catch {}
+
+  for (const candidate of candidates) {
+    if (await imageIsReadable(candidate)) {
+      try {
+        return await persistTripPhotoUri(candidate, photo.id);
+      } catch {
+        return candidate;
+      }
+    }
+  }
+  throw new Error('Photo inaccessible depuis la galerie. Ouvre le trajet et rattache-la à nouveau.');
+}
+
+async function preparePhoto(photo: TripPhoto, isCurrent: () => boolean): Promise<string> {
+  const uri = await recoverGalleryPhoto(photo);
   let timer: ReturnType<typeof setTimeout> | undefined;
   const work = (async () => {
     const size = await new Promise<{ width: number; height: number }>((resolve, reject) =>
@@ -294,7 +358,7 @@ export function usePeriodStoryGeneration() {
           setDetail(`Trajet ${i + 1} / ${request.trips.length} · préparation d’une photo`);
           let img: string;
           try {
-            img = await preparePhoto(photo.uri, () => runRef.current?.id === id);
+            img = await preparePhoto(photo, () => runRef.current?.id === id);
           } catch (error) {
             /*
              * A referenced photo is never silently dropped.  Include a
