@@ -12,6 +12,7 @@
 - [EAS build — NE JAMAIS lancer sans autorisation explicite](eas-build-no-auto.md) — ne JAMAIS déclencher un build EAS sans que l'utilisateur le demande explicitement. Les quotas sont limités et précieux.
 - [Walk route — skip OSRM, use GPS fine epsilon](walk-route-osrm-skip.md) — OSRM snape sur les routes voiture; pour les balades utiliser GPS + EPSILON_DEG_WALK (~4 m) depuis routeSimplification.ts.
 - [Widget trip live refresh](widget-trip-refresh.md) — appeler updateTodoWidget() throttlé (30 s) depuis la tâche GPS locationTracking.ts pour que km/durée se mettent à jour pendant un trajet.
+- [Widget après long trajet](long-trip-widget-recovery.md) — borner l’historique GPS quotidien et attendre l’arrêt FGS avant de réarmer un trajet, sinon AsyncStorage peut bloquer le widget.
 - [Captures de stories](story-preview-capture.md) — une capture d’iframe animée peut précéder le dessin ; comparer sur un état déterministe sans changer le renderer de l’app.
 - [Ressources des stories](story-resource-budgets.md) — borner les pixels décodés sur toute la période ; tester minuteries et animation avec une horloge commune.
 - [Souvenirs mensuels familiaux](monthly-memory-semantics.md) — priorité aux événements saisis ; chronologie par chapitre, choix de montage sans modification des originaux.

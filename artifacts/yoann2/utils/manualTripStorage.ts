@@ -44,10 +44,13 @@ export async function getManualTripState(): Promise<ManualTripState | null> {
   }
 }
 
-export async function saveManualTripState(state: ManualTripState): Promise<void> {
+export async function saveManualTripState(state: ManualTripState): Promise<boolean> {
   try {
     await AsyncStorage.setItem(KEY, JSON.stringify(state));
-  } catch {}
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export async function clearManualTripState(): Promise<void> {

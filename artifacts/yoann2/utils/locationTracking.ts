@@ -11,6 +11,10 @@ export { haversineKm };
 export const LOCATION_TASK_NAME = 'background-location-task';
 const KEY_PREFIX = '@yoann2_location_';
 const MAX_DAYS = 7;
+// Chaque journée est stockée comme une seule valeur AsyncStorage. Un trajet
+// très long ne doit pas rendre cette valeur assez grosse pour bloquer ensuite
+// les écritures d'état du widget.
+const MAX_STORED_POINTS_PER_DAY = 6_000;
 
 // Throttle autoBackup : au maximum 1×/minute pour ne pas surcharger le stockage
 // à chaque point GPS (~3s en trajet actif).
@@ -91,7 +95,7 @@ export async function appendPoint(point: LocationPoint): Promise<void> {
     const raw = await AsyncStorage.getItem(key);
     const points: LocationPoint[] = raw ? JSON.parse(raw) : [];
     points.push(point);
-    await AsyncStorage.setItem(key, JSON.stringify(points));
+    await AsyncStorage.setItem(key, JSON.stringify(compactPoints(points)));
     // Throttle : backup au maximum 1×/minute pour ne pas écrire sur
     // le stockage externe à chaque point GPS (~toutes les 3 s en trajet).
     const now = Date.now();
@@ -101,6 +105,37 @@ export async function appendPoint(point: LocationPoint): Promise<void> {
     }
   } catch {
     // silently ignore storage errors
+  }
+}
+
+function compactPoints(points: LocationPoint[]): LocationPoint[] {
+  if (points.length <= MAX_STORED_POINTS_PER_DAY) return points;
+  const step = (points.length - 1) / (MAX_STORED_POINTS_PER_DAY - 1);
+  const compacted: LocationPoint[] = [];
+  for (let i = 0; i < MAX_STORED_POINTS_PER_DAY; i++) {
+    compacted.push(points[Math.min(Math.round(i * step), points.length - 1)]!);
+  }
+  return compacted;
+}
+
+/**
+ * Compacts old raw GPS days before a new trip. Saved trips keep their
+ * simplified route; raw history remains available to charts, sampled at a
+ * bounded size.
+ */
+export async function compactStoredLocationHistory(): Promise<void> {
+  try {
+    const keys = (await AsyncStorage.getAllKeys())
+      .filter(key => key.startsWith(KEY_PREFIX));
+    for (const key of keys) {
+      const raw = await AsyncStorage.getItem(key);
+      if (!raw) continue;
+      const points = JSON.parse(raw) as LocationPoint[];
+      if (!Array.isArray(points) || points.length <= MAX_STORED_POINTS_PER_DAY) continue;
+      await AsyncStorage.setItem(key, JSON.stringify(compactPoints(points)));
+    }
+  } catch {
+    // A malformed old day must not prevent a new trip from starting.
   }
 }
 

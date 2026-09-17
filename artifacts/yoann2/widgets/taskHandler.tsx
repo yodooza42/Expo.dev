@@ -30,6 +30,7 @@ import { haversineKm } from '@/utils/haversine';
 import { genId } from '@/utils/ids';
 import {
   dateKey,
+  compactStoredLocationHistory,
   getTripDistKm,
   loadDayPoints,
   resetTripTracking,
@@ -286,11 +287,24 @@ async function handleNavigateHome(): Promise<void> {
 async function handleTripStart(
   doRender: WidgetTaskHandlerProps['renderWidget'],
 ): Promise<void> {
+  // Un long trajet peut avoir laissé une journée GPS volumineuse. Compacter
+  // avant d'écrire le nouvel état évite un échec AsyncStorage silencieux.
+  await compactStoredLocationHistory();
   // Guard état : déjà actif → re-rendre sans réinitialiser
   const existingState = await getManualTripState();
   if (existingState?.active) {
-    await renderWidget(doRender, existingState.paused ? 'paused' : 'active');
-    return;
+    const trackingRegistered = await Location.hasStartedLocationUpdatesAsync(
+      'background-location-task',
+    ).catch(() => false);
+    if (trackingRegistered) {
+      await renderWidget(doRender, existingState.paused ? 'paused' : 'active');
+      return;
+    }
+    // État laissé par un ancien trajet dont le service GPS a déjà disparu.
+    // On le remet à zéro pour permettre un nouveau démarrage propre.
+    await clearManualTripState();
+    await AsyncStorage.removeItem(TRIP_MODE_KEY).catch(() => {});
+    resetTripTracking();
   }
   // Guard état : déjà en sélection → re-rendre sans réinitialiser
   if (existingState?.selecting) {
@@ -299,7 +313,7 @@ async function handleTripStart(
   }
 
   // Passer en mode "sélection" : l'utilisateur doit choisir Voiture / Moto / Balade
-  await saveManualTripState({
+  const saved = await saveManualTripState({
     active: false,
     selecting: true,
     paused: false,
@@ -308,6 +322,11 @@ async function handleTripStart(
     startLon: 0,
     segments: [],
   });
+  if (!saved) {
+    await widgetLog('trip:start:state_save_failed', 'impossible de persister la sélection');
+    await renderWidget(doRender, 'idle');
+    return;
+  }
 
   await renderWidget(doRender, 'selecting');
 }
@@ -325,7 +344,7 @@ async function handleSelectMode(
   resetTripTracking();
   const now = Date.now();
 
-  await saveManualTripState({
+  const saved = await saveManualTripState({
     active: true,
     selecting: false,
     paused: false,
@@ -335,13 +354,25 @@ async function handleSelectMode(
     segments: [{ start: now }],
     tripMode: mode,
   });
+  if (!saved) {
+    await AsyncStorage.removeItem(TRIP_MODE_KEY).catch(() => {});
+    resetTripTracking();
+    await widgetLog('trip:select_mode:state_save_failed', 'impossible de persister le trajet');
+    await renderWidget(doRender, 'idle');
+    return;
+  }
 
   // CRITIQUE : démarrer le FGS IMMÉDIATEMENT dans la fenêtre d'exemption
   // Android 12+ (~10 s après l'appui widget).
   try {
     await startManualTracking(mode);
   } catch (err) {
+    await clearManualTripState();
+    await AsyncStorage.removeItem(TRIP_MODE_KEY).catch(() => {});
+    resetTripTracking();
     await widgetLog('trip:select_mode:fgs_error', String(err));
+    await renderWidget(doRender, 'idle');
+    return;
   }
   setTripStatus(true);
   loadPlaylist().then(tracks => {
@@ -420,13 +451,15 @@ async function handleTripResume(
 async function handleTripEnd(
   doRender: WidgetTaskHandlerProps['renderWidget'],
 ): Promise<void> {
-  stopTracking().catch(() => {});
+  // Attendre la fin du service avant un éventuel nouveau démarrage.
+  await stopTracking().catch(() => {});
   setTripStatus(false);
   stopCarPlayer();
 
   const manualState = await getManualTripState();
 
   if (!manualState) {
+    await AsyncStorage.removeItem(TRIP_MODE_KEY).catch(() => {});
     await clearManualTripState();
     await renderWidget(doRender, 'idle');
     return;
@@ -444,6 +477,7 @@ async function handleTripEnd(
   const savedMode = manualState.tripMode ?? null;
 
   await clearManualTripState();
+  await AsyncStorage.removeItem(TRIP_MODE_KEY).catch(() => {});
   resetTripTracking();
   await renderWidget(doRender, 'idle');
 
