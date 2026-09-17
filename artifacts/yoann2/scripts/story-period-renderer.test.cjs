@@ -247,11 +247,10 @@ test('family stories render the exact title, selected chapter identities, and pa
   assert.equal(timing.photoPauseSec, 2);
   assert.equal(timing.totalDurationSec, 14);
   assert.equal(timing.photos[0].tripId, 'selected-1');
-  const firstChapterWeights = [4, 3 + Math.sqrt(2)];
   const firstChapterDuration = 2;
   const expectedPhotoSec = 3 +
-    firstChapterDuration * firstChapterWeights[0] / firstChapterWeights.reduce((sum, weight) => sum + weight, 0) +
-    firstChapterDuration * firstChapterWeights[1] / firstChapterWeights.reduce((sum, weight) => sum + weight, 0) / 2;
+    firstChapterDuration / 2 +
+    firstChapterDuration / 2 / 2;
   assert.ok(Math.abs(timing.photos[0].atSec - expectedPhotoSec) < 1e-9,
     'photo anchor is measured on the virtual timeline');
 
@@ -268,7 +267,7 @@ test('family stories render the exact title, selected chapter identities, and pa
   assert.ok(h.canvasText.includes('Anniversaire'));
 });
 
-test('family trips use bounded route weights inside one mixed-distance chapter', async () => {
+test('family trips use elapsed-time weights inside one mixed-distance chapter', async () => {
   const h = makeHarness();
   const mixedTrips = trips(2).map((trip, index) => ({
     ...trip,
@@ -294,9 +293,9 @@ test('family trips use bounded route weights inside one mixed-distance chapter',
   const timing = h.messages.find(message => message.type === 'story_timing');
   const shortTrip = timing.trips.find(trip => trip.id === 'short-trip');
   assert.ok(shortTrip.durationSec >= 3, `short route received ${shortTrip.durationSec}s`);
-  assert.equal(shortTrip.durationSec, 4);
+  assert.equal(shortTrip.durationSec, 6);
   assert.equal(timing.photos[0].tripId, 'short-trip');
-  assert.equal(timing.photos[0].atSec, 13, 'photo stays anchored after the bounded long-route segment');
+  assert.equal(timing.photos[0].atSec, 12, 'photo stays anchored after the equal-duration segment');
 });
 
 test('large exports refresh an idle deadline after every actual chunk', async () => {
