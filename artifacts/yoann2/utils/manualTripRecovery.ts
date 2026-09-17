@@ -3,7 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { Trip, RoutePoint } from '@/types/trips';
 import { genId } from '@/utils/ids';
 import { loadMultiDayPoints } from '@/utils/locationTracking';
-import { computeRouteDistanceKm } from '@/utils/osrmMatching';
+import { computeRouteDistanceKm, matchRouteOSRM } from '@/utils/osrmMatching';
 import { simplifyRoute } from '@/utils/routeSimplification';
 import { getTrips, saveTrip } from '@/utils/tripStorage';
 
@@ -68,6 +68,18 @@ export async function recoverConfiguredManualTrip(): Promise<ManualTripRecoveryR
     // prevents normal background history from becoming a false manual trip.
     if (distanceKm < 20) return { status: 'not_found' };
 
+    let osrmRoute: RoutePoint[] | null = null;
+    try {
+      osrmRoute = await matchRouteOSRM(routePoints);
+    } catch {
+      osrmRoute = null;
+    }
+    const osrmDistanceKm = osrmRoute ? computeRouteDistanceKm(osrmRoute) : null;
+    const osrmIsPlausible =
+      osrmDistanceKm != null &&
+      (osrmDistanceKm >= distanceKm * 0.7 && osrmDistanceKm <= distanceKm * 1.4);
+    const trustedRoute = osrmIsPlausible ? osrmRoute : null;
+
     const trip: Trip = {
       id: genId(),
       startTime: endpoints.first.t ?? RECOVERY.startTime,
@@ -79,8 +91,8 @@ export async function recoverConfiguredManualTrip(): Promise<ManualTripRecoveryR
       startLon: endpoints.first.lng,
       endLat: endpoints.last.lat,
       endLon: endpoints.last.lng,
-      route: simplifyRoute(routePoints),
-      routeSource: 'gps',
+      route: simplifyRoute(trustedRoute ?? routePoints),
+      routeSource: trustedRoute ? 'osrm' : 'gps',
       source: 'manual',
     };
 
