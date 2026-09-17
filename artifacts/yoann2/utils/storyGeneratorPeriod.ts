@@ -441,7 +441,15 @@ export const STORY_PERIOD_JS = `
     // Marge large (voir storyGenerator.ts) : la caméra par trajet peut zoomer très fort
     // (camForTrip, jusqu'à x600), donc une marge de 30% laissait apparaître le fond autour
     // de l'imagerie satellite près des extrémités du tracé.
-    var padLa=(la1-la0)*0.6||0.006,padLn=(ln1-ln0)*0.6||0.006;
+    var rawLa=la1-la0,rawLn=ln1-ln0;
+    var padLa=rawLa*0.6||0.006,padLn=rawLn*0.6||0.006;
+    /* The camera fits the route's long axis. Extend the short axis enough for
+       the satellite mosaic to cover the whole camera viewport, otherwise the
+       route can leave the image and appear to float over the dark background. */
+    var desiredLa=(rawLn*1.45)*(mH/mW);
+    var desiredLn=(rawLa*1.45)*(mW/mH);
+    if(rawLa+2*padLa<desiredLa)padLa=(desiredLa-rawLa)/2;
+    if(rawLn+2*padLn<desiredLn)padLn=(desiredLn-rawLn)/2;
     return{latMin:la0-padLa,latMax:la1+padLa,lngMin:ln0-padLn,lngMax:ln1+padLn};
   }
    var satMosaics=[]; /* un par trajet, volontairement basse résolution si période longue */
@@ -883,27 +891,8 @@ export const STORY_PERIOD_JS = `
     /* Header */
     ctx.fillStyle=THEME.headerBg;ctx.fillRect(0,0,cW,headerH);
     var dispKm=(isEnd?totKm:(accKm[ci]+(trips[ci].distKm||0)*tProg)).toFixed(1);
-    /* Heure temps réel : timestamp GPS exact du point où se trouve le curseur si
-       disponible (trace GPS brute), sinon interpolation uniforme sur la durée
-       du trajet (tracé OSRM synthétique, sans horodatage par point). */
-    var liveTimeStr='';
-     if(!isEnd&&!isOpening){
-      var curMs=null;
-      if(activeRoute&&activeRoute.length>1&&activeRoute[flI]&&activeRoute[flI].t!=null&&activeRoute[Math.min(flI+1,activeRoute.length-1)].t!=null){
-        var ptA=activeRoute[flI],ptB=activeRoute[Math.min(flI+1,activeRoute.length-1)];
-        curMs=ptA.t+(ptB.t-ptA.t)*frI;
-      }else if(trips[ci].startTimeMs){
-        curMs=trips[ci].startTimeMs+(trips[ci].durationMs||0)*tProg;
-      }
-      if(curMs!=null){
-        var cd=new Date(curMs);
-        var hh=cd.getHours(),mm=cd.getMinutes();
-        liveTimeStr=(hh<10?'0':'')+hh+':'+(mm<10?'0':'')+mm;
-      }
-    }
      var activeChapter=familyStory&&!isOpening&&!isEnd&&chapterDefs[chapterForTrip[displayTripIndex]];
-     var chapterCaption=activeChapter?('  ·  '+activeChapter.title):'';
-     var captionTxt=isOpening?'Introduction':isEnd?'R\\xE9capitulatif':trips[ci].note?((VEMO[trips[ci].vehicleType]||'')+'  '+trips[ci].note+chapterCaption):((VEMO[trips[ci].vehicleType]||'')+'  '+trips[ci].dateLabel+(liveTimeStr?'  \\xB7  '+liveTimeStr:'')+chapterCaption);
+     var captionTxt=isOpening?'Introduction':isEnd?'R\\xE9capitulatif':(trips[ci].vehicleLabel||trips[ci].dateLabel);
     if(opts.customName){
       ctx.fillStyle=THEME.titleColor;ctx.font=familyStory?familyFitFont(opts.customName,40,24,640,'bold'):'bold 40px Arial,sans-serif';ctx.textAlign='center';
       ctx.fillText(opts.customName,cW/2,58);
@@ -911,20 +900,22 @@ export const STORY_PERIOD_JS = `
       ctx.fillText(opts.dateRangeLabel||'',cW/2,96);
       ctx.fillStyle=THEME.subColor;ctx.font='24px Arial,sans-serif';
       ctx.fillText(opts.tripCountLabel+'  \\xB7  '+totKm.toFixed(1)+' km',cW/2,132);
-      ctx.fillStyle=THEME.captionColor;ctx.font='20px Arial,sans-serif';
-      ctx.fillText(captionTxt,cW/2,170);
+       ctx.fillStyle=THEME.captionColor;ctx.font='20px Arial,sans-serif';
+       String(captionTxt).split('\\n').forEach(function(line,lineIndex){ctx.fillText(line,cW/2,170+lineIndex*24);});
     } else {
       ctx.fillStyle=THEME.titleColor;ctx.font=familyStory?familyFitFont('\\uD83D\\uDDFA\\uFE0F  '+opts.periodLabel,42,24,640,'bold'):'bold 42px Arial,sans-serif';ctx.textAlign='center';
       ctx.fillText('\\uD83D\\uDDFA\\uFE0F  '+opts.periodLabel,cW/2,65);
       ctx.fillStyle=THEME.subColor;ctx.font='26px Arial,sans-serif';
       ctx.fillText(opts.tripCountLabel+'  \\xB7  '+dispKm+' km',cW/2,105);
-      ctx.fillStyle=THEME.captionColor;ctx.font='22px Arial,sans-serif';
-      ctx.fillText(captionTxt,cW/2,142);
+       ctx.fillStyle=THEME.captionColor;ctx.font='22px Arial,sans-serif';
+       String(captionTxt).split('\\n').forEach(function(line,lineIndex){ctx.fillText(line,cW/2,142+lineIndex*26);});
     }
-    if(familyStory&&!isOpening&&!isEnd&&activeChapter){
-      ctx.fillStyle=THEME.gold;ctx.font=familyFitFont(activeChapter.title,24,16,640,'bold');ctx.textAlign='center';
-      ctx.fillText(activeChapter.title,cW/2,headerH-10);
-    }
+     /* Keep the renderer's legacy direct callers compatible. The period screen
+        supplies vehicleLabel and intentionally omits the chapter title here. */
+     if(familyStory&&!trips[ci].vehicleLabel&&!isOpening&&!isEnd&&activeChapter){
+       ctx.fillStyle=THEME.gold;ctx.font=familyFitFont(activeChapter.title,24,16,640,'bold');ctx.textAlign='center';
+       ctx.fillText(activeChapter.title,cW/2,headerH-10);
+     }
     ctx.strokeStyle=THEME.headerSep;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(0,headerH);ctx.lineTo(cW,headerH);ctx.stroke();
 
     /* Zone carte avec clip + transform caméra */
@@ -1030,11 +1021,6 @@ export const STORY_PERIOD_JS = `
       ctx.fillText((accKm[ci]+(trips[ci].distKm||0)*tProg).toFixed(1)+' km',cW/2,884);
       ctx.fillStyle=THEME.captionColor;ctx.font='26px Arial,sans-serif';
       ctx.fillText('trajet '+(ci+1)+' / '+trips.length+'  \\xB7  '+trips[ci].dateLabel,cW/2,928);
-      if(activeChapter){
-        ctx.fillStyle=THEME.gold;ctx.font='bold 25px Arial,sans-serif';
-        ctx.fillText(activeChapter.title,cW/2,964);
-      }
-
       /* Barre de progression segmentée (1 segment par trajet) */
       var barL=60,barR=660,barY=966,barH=10,barW=barR-barL;
       var bx=barL;

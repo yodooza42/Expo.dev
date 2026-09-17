@@ -45,10 +45,7 @@ function PhotoChoice({ trip, photo, photoKeyValue, included, excluded, disabled,
   };
   return (
     <View style={[s.photoBlock, { borderColor: colors.border }]}>
-      <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: included }}
-        accessibilityLabel={`${included ? 'Exclure' : 'Inclure'} la photo ${effectiveCaption || photo.id}`}
-        testID={`draft-photo-${trip.id}-${photo.id}`} disabled={disabled || !photo.uri || (!included && !excluded)}
-        onPress={onToggle} style={s.photoRow}>
+      <View style={s.photoRow}>
         {!missing ? <Image source={{ uri: photo.uri }} style={s.thumbnail} resizeMode="cover"
           onError={() => setMissing(true)} /> :
           <MaterialCommunityIcons name="image-broken-variant" size={32} color={colors.mutedForeground} />}
@@ -62,9 +59,14 @@ function PhotoChoice({ trip, photo, photoKeyValue, included, excluded, disabled,
                 : excluded ? 'Écartée du souvenir' : 'Doublon non exporté'}
           </Text>
         </View>
-        <MaterialCommunityIcons name={included ? 'checkbox-marked' : 'checkbox-blank-outline'}
-          size={22} color={included ? colors.primary : colors.mutedForeground} />
-      </Pressable>
+        <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: included }}
+          accessibilityLabel={`${included ? 'Exclure' : 'Inclure'} la photo ${effectiveCaption || photo.id}`}
+          testID={`draft-photo-${trip.id}-${photo.id}`} disabled={disabled || !photo.uri || (!included && !excluded)}
+          onPress={onToggle} hitSlop={10} style={s.photoToggle}>
+          <MaterialCommunityIcons name={included ? 'checkbox-marked' : 'checkbox-blank-outline'}
+            size={22} color={included ? colors.primary : colors.mutedForeground} />
+        </Pressable>
+      </View>
       <TextInput
         accessibilityLabel="Commentaire affiché sous la photo dans la vidéo"
         testID={`draft-photo-caption-${trip.id}-${photo.id}`}
@@ -205,6 +207,7 @@ const s = StyleSheet.create({
   trip: { gap: 10, borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 10 },
   photoBlock: { gap: 8, paddingVertical: 8, borderTopWidth: StyleSheet.hairlineWidth },
   photoRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  photoToggle: { padding: 5, margin: -5 },
   thumbnail: { width: 48, height: 56, borderRadius: 6 },
   captionInput: { minHeight: 42, maxHeight: 82, borderWidth: 1, borderRadius: 9, paddingHorizontal: 11, paddingVertical: 9, fontSize: 13, lineHeight: 18, fontFamily: 'Inter_400Regular' },
   notice: { fontSize: 13, lineHeight: 20, fontFamily: 'Inter_500Medium' },

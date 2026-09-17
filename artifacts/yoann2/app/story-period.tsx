@@ -20,6 +20,7 @@ import {
 } from '@/utils/periodStoryDraft';
 import { deleteFamilyEvent, loadFamilyEvents, loadPeriodChoices, saveFamilyEvent, savePeriodChoices } from '@/utils/periodStoryStorage';
 import { getTrips, getVehicleSettings } from '@/utils/tripStorage';
+import { getWalkRoutes } from '@/utils/placesStorage';
 
 const THEMES = [
   { key: 'dark', label: 'Sombre', icon: 'weather-night' },
@@ -61,6 +62,7 @@ export default function StoryPeriodScreen() {
   const [custom, setCustom] = useState(false);
   const [allTrips, setAllTrips] = useState<Trip[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [walkRoutes, setWalkRoutes] = useState<Array<{ id: string; name: string }>>([]);
   const [events, setEvents] = useState<FamilyEvent[]>([]);
   const [choices, setChoices] = useState<StoryDraftChoices>(EMPTY_STORY_CHOICES);
   const [loadedKey, setLoadedKey] = useState('');
@@ -87,10 +89,10 @@ export default function StoryPeriodScreen() {
   useEffect(() => {
     let active = true;
     setLoading(true); setError('');
-    Promise.all([getTrips(), getVehicleSettings(), loadFamilyEvents()]).then(([trips, settings, stored]) => {
+    Promise.all([getTrips(), getVehicleSettings(), loadFamilyEvents(), getWalkRoutes()]).then(([trips, settings, stored, routes]) => {
       if (!active) return;
       setAllTrips([...trips].sort((a, b) => a.startTime - b.startTime));
-      setVehicles(settings); setEvents(stored); setLoading(false);
+       setVehicles(settings); setWalkRoutes(routes); setEvents(stored); setLoading(false);
     }).catch(() => {
       if (active) { setError('Impossible de charger les souvenirs enregistrés. Réessaie sans effacer les données.'); setLoading(false); }
     });
@@ -165,6 +167,28 @@ export default function StoryPeriodScreen() {
       vehicleType: trip => {
         const type = vehicles.find(v => v.id === trip.vehicle)?.type;
         return type === 'walk' ? 'walk' : type === 'moto' ? 'moto' : 'car';
+      },
+      vehicleLabel: trip => {
+        const vehicle = vehicles.find(v => v.id === trip.vehicle);
+        const type = vehicle?.type === 'walk'
+          ? 'walk'
+          : vehicle?.type === 'moto' || trip.vehicle === 'moto'
+            ? 'moto'
+            : 'car';
+        const date = new Date(trip.startTime);
+        const dateLabel = `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')} - ${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth() + 1).padStart(2, '0')}/${date.getFullYear()}`;
+        if (type === 'walk') {
+          const participants = (trip.walkParticipants ?? [])
+            .map(id => vehicle?.walkParticipants?.find(participant => participant.id === id)?.name)
+            .filter((name): name is string => !!name)
+            .join(' · ') || 'Aucun participant';
+          const place = trip.walkRouteId
+            ? walkRoutes.find(route => route.id === trip.walkRouteId)?.name
+            : undefined;
+          return `${dateLabel}\nParticipants balade - ${participants}${place ? ` - ${place}` : ''}`;
+        }
+        const kind = type === 'moto' ? 'Moto' : 'Voiture';
+        return `${kind} - ${vehicle?.name ?? (type === 'moto' ? 'Moto' : 'Voiture')} • ${dateLabel}`;
       },
       dateLabel: trip => new Date(trip.startTime).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }),
       periodLabel: `${formatDate(range.from)} – ${formatDate(range.to)}`,

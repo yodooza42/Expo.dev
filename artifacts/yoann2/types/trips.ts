@@ -7,13 +7,11 @@ export interface RoutePoint {
   t?: number;
 }
 
-/** A photo attached to a trip. New photos are copied into app-private storage. */
+/** A photo referenced from the device gallery (not copied into app storage) and attached to a trip. */
 export interface TripPhoto {
   id: string;
-  /** App-private URI when available; old records may still contain a gallery URI. */
+  /** Gallery/content URI of the original asset — never copied locally. */
   uri: string;
-  /** MediaLibrary asset ID, retained to recover old gallery URIs on Android. */
-  assetId?: string;
   /** Moment the photo was taken (ms epoch), from EXIF/asset metadata when available. */
   takenAt: number;
   /** Optional note shown alongside this photo (e.g. in the Story Période). */

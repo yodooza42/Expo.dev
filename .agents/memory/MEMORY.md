@@ -15,5 +15,4 @@
 - [Widget après long trajet](long-trip-widget-recovery.md) — borner l’historique GPS quotidien et attendre l’arrêt FGS avant de réarmer un trajet, sinon AsyncStorage peut bloquer le widget.
 - [Captures de stories](story-preview-capture.md) — une capture d’iframe animée peut précéder le dessin ; comparer sur un état déterministe sans changer le renderer de l’app.
 - [Ressources des stories](story-resource-budgets.md) — borner les pixels décodés sur toute la période ; tester minuteries et animation avec une horloge commune.
-- [URI photos galerie Android](android-gallery-photo-uris.md) — copier les photos en stockage privé et conserver l’assetId ; les chemins DCIM peuvent renvoyer EACCES plus tard.
 - [Souvenirs mensuels familiaux](monthly-memory-semantics.md) — priorité aux événements saisis ; chronologie par chapitre, choix de montage sans modification des originaux.
