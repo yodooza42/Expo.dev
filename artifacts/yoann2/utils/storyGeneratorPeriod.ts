@@ -279,6 +279,14 @@ export const STORY_PERIOD_JS = `
   var PHOTO_PAUSE_MS=Number.isFinite(requestedPhotoPauseSec)?Math.max(0,requestedPhotoPauseSec*1000):2000;
   var VCL={car:'#2196F3',moto:'#FF9800',walk:'#4CAF50'};
   var VEMO={car:'\\uD83D\\uDE97',moto:'\\uD83C\\uDFCD',walk:'\\uD83D\\uDEB6'};
+   function formatElapsed(ms){
+     var totalSeconds=Math.max(0,Math.floor((Number(ms)||0)/1000));
+     var hours=Math.floor(totalSeconds/3600);
+     var minutes=Math.floor((totalSeconds%3600)/60);
+     var seconds=totalSeconds%60;
+     function pad(value){return value<10?'0'+value:String(value);}
+     return hours>0?pad(hours)+':'+pad(minutes)+':'+pad(seconds):pad(minutes)+':'+pad(seconds);
+   }
 
   /* ── Thème ─────────────────────────────────────────────────────────────
      'dark'/'light' ne changent que la palette. 'satellite' réutilise la palette
@@ -640,14 +648,15 @@ export const STORY_PERIOD_JS = `
   var accKm=[0];
   for(var ti=0;ti<trips.length;ti++)accKm.push(accKm[ti]+(trips[ti].distKm||0));
 
-  /* ── Stats totaux (calculés une fois) ────────────────────────────────── */
-  var cKm=0,mKm=0,wKm=0;
-  for(var ti=0;ti<trips.length;ti++){
-    var dk=trips[ti].distKm||0;
-    if(trips[ti].vehicleType==='moto')mKm+=dk;
-    else if(trips[ti].vehicleType==='walk')wKm+=dk;
-    else cKm+=dk;
-  }
+   function categoryKmAt(activeIndex,activeProgress,complete){
+     var totals={car:0,moto:0,walk:0};
+     for(var categoryIndex=0;categoryIndex<trips.length;categoryIndex++){
+       var categoryFraction=complete?1:categoryIndex<activeIndex?1:categoryIndex===activeIndex?Math.max(0,Math.min(1,activeProgress)):0;
+       var category=trips[categoryIndex].vehicleType==='moto'?'moto':trips[categoryIndex].vehicleType==='walk'?'walk':'car';
+       totals[category]+=(Number(trips[categoryIndex].distKm)||0)*categoryFraction;
+     }
+     return totals;
+   }
 
   /* IMPORTANT : seul DUR (budget réel d'enregistrement) grandit avec les pauses photo.
      animMs reste la durée "virtuelle" d'animation (hors pauses) sur laquelle tStart/tDurOf
@@ -1015,12 +1024,12 @@ export const STORY_PERIOD_JS = `
       ctx.fillText(opts.tripCountLabel+'  ·  '+totKm.toFixed(1)+' km',cW/2,1010);
       ctx.fillText('Introduction',cW/2,1060);
     }else if(!isEnd){
-      /* Phase animation : km courant + infos trajet */
+       /* Phase animation : durée du trajet + infos trajet */
       var col=VCL[trips[ci].vehicleType]||'#2196F3';
       ctx.fillStyle=col;ctx.font='bold 80px Arial,sans-serif';ctx.textAlign='center';
-      ctx.fillText((accKm[ci]+(trips[ci].distKm||0)*tProg).toFixed(1)+' km',cW/2,884);
+       ctx.fillText(formatElapsed((trips[ci].durationMs||0)*tProg),cW/2,884);
       ctx.fillStyle=THEME.captionColor;ctx.font='26px Arial,sans-serif';
-      ctx.fillText('trajet '+(ci+1)+' / '+trips.length+'  \\xB7  '+trips[ci].dateLabel,cW/2,928);
+       ctx.fillText('durée du trajet  \\xB7  trajet '+(ci+1)+' / '+trips.length+'  \\xB7  '+trips[ci].dateLabel,cW/2,928);
       /* Barre de progression segmentée (1 segment par trajet) */
       var barL=60,barR=660,barY=966,barH=10,barW=barR-barL;
       var bx=barL;
@@ -1034,13 +1043,15 @@ export const STORY_PERIOD_JS = `
         bx+=segW;
       }
 
-      /* Légende par véhicule */
-      var lIt=[],lY=1030;
-      if(cKm>0)lIt.push({t:'\\uD83D\\uDE97 '+cKm.toFixed(0)+' km',c:'#2196F3'});
-      if(mKm>0)lIt.push({t:'\\uD83C\\uDFCD '+mKm.toFixed(0)+' km',c:'#FF9800'});
-      if(wKm>0)lIt.push({t:'\\uD83D\\uDEB6 '+wKm.toFixed(0)+' km',c:'#4CAF50'});
-      var iW=cW/(lIt.length||1);
-      for(var si=0;si<lIt.length;si++){ctx.fillStyle=lIt[si].c;ctx.font='24px Arial,sans-serif';ctx.fillText(lIt[si].t,iW*(si+0.5),lY);}
+       /* Kilomètres par catégorie : chaque compteur suit uniquement les trajets déjà vus. */
+       var shownKm=categoryKmAt(ci,tProg,false);
+       var lIt=[
+         {t:'\\uD83D\\uDE97 '+shownKm.car.toFixed(0)+' km',c:'#2196F3'},
+         {t:'\\uD83C\\uDFCD '+shownKm.moto.toFixed(0)+' km',c:'#FF9800'},
+         {t:'\\uD83D\\uDEB6 '+shownKm.walk.toFixed(0)+' km',c:'#4CAF50'},
+       ];
+       var iW=cW/lIt.length;
+       for(var si=0;si<lIt.length;si++){ctx.fillStyle=lIt[si].c;ctx.font='24px Arial,sans-serif';ctx.fillText(lIt[si].t,iW*(si+0.5),1030);}
     } else {
       /* Phase end card : recap complet, fade-in */
       var fa=Math.min(1,endProg*2.2);ctx.globalAlpha=fa;
@@ -1050,16 +1061,19 @@ export const STORY_PERIOD_JS = `
         ctx.fillStyle=THEME.subColor;ctx.font='21px Arial,sans-serif';
         ctx.fillText(opts.dateRangeLabel,cW/2,895);
       }
-      ctx.fillStyle=THEME.gold;ctx.font=familyStory?'bold 72px Arial,sans-serif':'bold 100px Arial,sans-serif';
-      ctx.fillText(totKm.toFixed(0)+' km',cW/2,968);
+       ctx.fillStyle=THEME.gold;ctx.font=familyStory?'bold 72px Arial,sans-serif':'bold 100px Arial,sans-serif';
+       var totalDurationMs=trips.reduce(function(sum,trip){return sum+(Number(trip.durationMs)||0);},0);
+       ctx.fillText(formatElapsed(totalDurationMs),cW/2,968);
       ctx.fillStyle=THEME.subColor;ctx.font=familyStory?'24px Arial,sans-serif':'28px Arial,sans-serif';
-      ctx.fillText(opts.tripCountLabel,cW/2,1012);
+       ctx.fillText('durée totale  ·  '+opts.tripCountLabel,cW/2,1012);
 
       /* Détail par véhicule — apparition décalée */
-      var eIt=[],eY=1082;
-      if(cKm>0)eIt.push({t:'\\uD83D\\uDE97 '+cKm.toFixed(0)+' km',c:'#2196F3'});
-      if(mKm>0)eIt.push({t:'\\uD83C\\uDFCD '+mKm.toFixed(0)+' km',c:'#FF9800'});
-      if(wKm>0)eIt.push({t:'\\uD83D\\uDEB6 '+wKm.toFixed(0)+' km',c:'#4CAF50'});
+       var finalKm=categoryKmAt(0,1,true),eY=1082;
+       var eIt=[
+         {t:'\\uD83D\\uDE97 '+finalKm.car.toFixed(0)+' km',c:'#2196F3'},
+         {t:'\\uD83C\\uDFCD '+finalKm.moto.toFixed(0)+' km',c:'#FF9800'},
+         {t:'\\uD83D\\uDEB6 '+finalKm.walk.toFixed(0)+' km',c:'#4CAF50'},
+       ];
       var eW=cW/(eIt.length||1);
       for(var si=0;si<eIt.length;si++){
         var sf=Math.max(0,Math.min(1,(endProg-0.12-si*0.1)*3));
