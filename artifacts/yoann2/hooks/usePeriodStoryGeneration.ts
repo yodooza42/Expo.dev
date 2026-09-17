@@ -26,6 +26,7 @@ export type GenerationRequest = {
   driveDurLabel: string;
   walkDurLabel: string;
   videoDurationSec: number;
+  photoPauseSecPerPhoto?: number;
   customName?: string;
   dateRangeLabel?: string;
   theme: 'dark' | 'light' | 'satellite';
@@ -264,7 +265,9 @@ export function usePeriodStoryGeneration() {
     const photoCount = request.trips.reduce((n, t) => n + (t.photos?.filter(p => p.routeIndex != null).length ?? 0), 0);
     runRef.current = {
       id, ready: false, injected: false, lastActivity: Date.now(), signal: '',
-      deadline: Date.now() + 90_000 + (request.videoDurationSec + photoCount * 2) * 3000 + photoCount * 20_000,
+      deadline: Date.now() + 90_000 +
+        (request.videoDurationSec + photoCount * (request.photoPauseSecPerPhoto ?? 2)) * 3000 +
+        photoCount * 20_000,
     };
     setJobId(id);
     setPhase('prepare');

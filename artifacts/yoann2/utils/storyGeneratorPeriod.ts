@@ -274,7 +274,8 @@ export const STORY_PERIOD_JS = `
    }catch(setupError){fail('Impossible de préparer la vidéo.');return;}
    try{
   var CAM_SLOWDOWN=50; /* facteur de ralenti du curseur pendant le vol de caméra */
-  var PHOTO_PAUSE_MS=2000;
+  var requestedPhotoPauseSec=Number(opts.photoPauseSecPerPhoto);
+  var PHOTO_PAUSE_MS=Number.isFinite(requestedPhotoPauseSec)?Math.max(0,requestedPhotoPauseSec*1000):2000;
   var VCL={car:'#2196F3',moto:'#FF9800',walk:'#4CAF50'};
   var VEMO={car:'\\uD83D\\uDE97',moto:'\\uD83C\\uDFCD',walk:'\\uD83D\\uDEB6'};
 
@@ -479,8 +480,8 @@ export const STORY_PERIOD_JS = `
 
    /*
     * Family stories have a fixed 3s introduction and a fixed 3s discreet
-    * recap.  videoDurationSec is the complete base duration (before photo
-    * pauses); only the time between those cards is allocated to chapters.
+    * recap. videoDurationSec is the base duration before photo pauses;
+    * photoPauseSecPerPhoto controls the pause used by compressed modes.
     * Legacy requests intentionally keep the old five-second recap and timing
     * formula byte-for-byte in spirit.
     */

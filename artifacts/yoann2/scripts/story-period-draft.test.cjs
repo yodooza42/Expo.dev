@@ -150,7 +150,7 @@ test('draft groups, resolves overrides/conflicts, deduplicates photos and does n
   assert.equal(conflict.chapters[0].eventId, 'e1', 'unresolved conflicts are provisional');
 });
 
-test('timing bounds routes, keeps requested duration readable and pauses exactly two seconds/photo', () => {
+test('auto keeps the full story while a requested duration targets the complete video', () => {
   const built = draft.buildPeriodStoryDraft({
     trips: [trip('a', '2024-08-10', {
       distanceKm: 1,
@@ -160,14 +160,19 @@ test('timing bounds routes, keeps requested duration readable and pauses exactly
     from: new Date(2024, 7, 1),
     to: new Date(2024, 7, 31),
   });
-  const timing = draft.getStoryTiming(built.chapters, 1);
+  const automatic = draft.getStoryTiming(built.chapters);
+  assert.equal(automatic.baseDurationSec, 10);
+  assert.equal(automatic.totalDurationSec, 12);
+
+  const timing = draft.getStoryTiming(built.chapters, 60);
   assert.equal(timing.openingSec, 3);
   assert.equal(timing.recapSec, 3);
   assert.equal(timing.photoPauseSec, 2);
-  assert.equal(timing.baseDurationSec, 10);
-  assert.equal(timing.totalDurationSec, timing.baseDurationSec + 2);
+  assert.equal(timing.photoPausePerPhotoSec, 2);
+  assert.equal(timing.baseDurationSec, 58);
+  assert.equal(timing.totalDurationSec, 60);
   assert.equal(timing.chapters.reduce((sum, chapter) => sum + chapter.durationSec, 0), timing.baseDurationSec - 6);
-  assert.ok(timing.chapters[0].durationSec >= 3 && timing.chapters[0].durationSec <= 8);
+  assert.equal(timing.chapters[0].durationSec, 52);
 });
 
 test('ignored trips and broken route/photo metadata never enter export', () => {

@@ -171,7 +171,8 @@ export default function StoryPeriodScreen() {
       tripCountLabel: `${draft.trips.length} trajets`,
       driveDurLabel: '', walkDurLabel: '',
       customName: draft.title, dateRangeLabel: `${formatDate(range.from)} – ${formatDate(range.to)}`,
-      familyStory: true, chapters: timing.chapters, videoDurationSec: timing.baseDurationSec, theme,
+      familyStory: true, chapters: timing.chapters, videoDurationSec: timing.baseDurationSec,
+      photoPauseSecPerPhoto: timing.photoPausePerPhotoSec, theme,
     });
   }
 
@@ -265,7 +266,7 @@ export default function StoryPeriodScreen() {
           </Pressable>)}
         </View>
         <Text testID="story-timing" style={[s.small, { color: colors.mutedForeground }]}>
-          {`${formatSeconds(timing.baseDurationSec)} de montage + ${timing.photoPauseSec} s de pauses photo (${draft.photoCount} × 2 s) = environ ${formatSeconds(timing.totalDurationSec)}.\nOuverture ${timing.openingSec} s · récap discret ${timing.recapSec} s. Les séquences s’adaptent au contenu ; la durée minimale conserve des trajets lisibles.`}
+          {`${formatSeconds(timing.baseDurationSec)} de montage + ${formatSeconds(timing.photoPauseSec)} de pauses photo (${draft.photoCount} × ${timing.photoPausePerPhotoSec.toFixed(1)} s) = environ ${formatSeconds(timing.totalDurationSec)}.\nOuverture ${timing.openingSec} s · récap discret ${timing.recapSec} s. Auto garde le mois complet ; les durées choisies condensent les trajets pour viser la durée demandée.`}
         </Text>
         <View style={s.row}>{THEMES.map(option => <Pressable key={option.key} disabled={busy}
           onPress={() => { generation.discardResult(); setTheme(option.key); }}

@@ -61,8 +61,10 @@ export interface StoryTimingChapter {
 export interface StoryTiming {
   /** Base video duration, including the opening and recap but excluding photo pauses. */
   baseDurationSec: number;
-  /** Exactly two seconds per included photo. */
+  /** Total time spent on photo pauses. */
   photoPauseSec: number;
+  /** Pause duration used for each included photo. */
+  photoPausePerPhotoSec: number;
   totalDurationSec: number;
   openingSec: number;
   recapSec: number;

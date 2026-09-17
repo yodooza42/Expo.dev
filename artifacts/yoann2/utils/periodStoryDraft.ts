@@ -451,34 +451,52 @@ function routeDurationSec(trip: Trip): number {
 }
 
 /**
- * Allocate animation time while keeping each route between roughly three and
- * eight seconds.  The returned base includes its fixed opening and recap; a
- * requested duration can lengthen the animation, but never shortens it below
- * the readable per-route/chapter minimum.
+ * Allocate animation time. Auto keeps every route readable. A requested
+ * duration is a target for the complete video, including photo pauses; the
+ * short modes deliberately accelerate routes to fit that target.
  */
 export function getStoryTiming(
   chapters: PeriodStoryChapter[],
-  requestedBaseSec?: number,
+  requestedTotalSec?: number,
 ): StoryTiming {
   const safeChapters = Array.isArray(chapters) ? chapters : [];
   const automaticDurations = safeChapters.map(chapter => Math.max(
     3,
     chapter.trips.reduce((sum, trip) => sum + routeDurationSec(trip), 0),
   ));
-  // The requested value is the complete readable base, including the fixed
-  // three-second opening and recap.  Keep at least the automatic route budget
-  // plus those six seconds, then ceil for a clean UI/renderer duration.
   const automaticBase = automaticDurations.reduce((sum, duration) => sum + duration, 0);
-  const requestedAnimation = Number.isFinite(requestedBaseSec) &&
-    (requestedBaseSec ?? 0) > 0
-    ? Math.max(0, requestedBaseSec! - OPENING_SEC - RECAP_SEC)
-    : automaticBase;
-  const baseDurationSec = safeChapters.length === 0
-    ? OPENING_SEC + RECAP_SEC
-    : Math.ceil(Math.max(
-      OPENING_SEC + RECAP_SEC + automaticBase,
-      OPENING_SEC + RECAP_SEC + requestedAnimation,
-    ));
+  const photoCount = safeChapters.reduce(
+    (sum, chapter) => sum + chapter.trips.reduce(
+      (tripSum, trip) => tripSum + (trip.photos?.length ?? 0),
+      0,
+    ),
+    0,
+  );
+  const automaticPhotoPauseSec = photoCount * PHOTO_PAUSE_SEC;
+  const hasRequestedTotal = Number.isFinite(requestedTotalSec) && (requestedTotalSec ?? 0) > 0;
+  let photoPausePerPhotoSec = PHOTO_PAUSE_SEC;
+  let baseDurationSec = OPENING_SEC + RECAP_SEC + automaticBase;
+  if (hasRequestedTotal) {
+    const targetTotalSec = Math.max(OPENING_SEC + RECAP_SEC, Math.ceil(requestedTotalSec!));
+    // Preserve a minimal animation window even if an unusually large number
+    // of photos is selected for a short export. The normal 1/2 min case keeps
+    // the full two-second pause for every photo.
+    const minimumAnimationSec = safeChapters.length > 0 ? 1 : 0;
+    const availableForPhotoPauses = Math.max(
+      0,
+      targetTotalSec - OPENING_SEC - RECAP_SEC - minimumAnimationSec,
+    );
+    photoPausePerPhotoSec = photoCount > 0
+      ? Math.min(PHOTO_PAUSE_SEC, availableForPhotoPauses / photoCount)
+      : PHOTO_PAUSE_SEC;
+    baseDurationSec = safeChapters.length === 0
+      ? OPENING_SEC + RECAP_SEC
+      : Math.max(
+        OPENING_SEC + RECAP_SEC + minimumAnimationSec,
+        targetTotalSec - photoCount * photoPausePerPhotoSec,
+      );
+  }
+  baseDurationSec = Math.ceil(baseDurationSec);
   const targetAnimationSec = Math.max(0, baseDurationSec - OPENING_SEC - RECAP_SEC);
   const scale = automaticBase > 0 ? targetAnimationSec / automaticBase : 0;
 
@@ -498,17 +516,14 @@ export function getStoryTiming(
     timingChapters[timingChapters.length - 1]!.durationSec =
       Math.max(0, targetAnimationSec - allocated);
   }
-  const photoPauseSec = safeChapters.reduce(
-    (sum, chapter) => sum + chapter.trips.reduce(
-      (tripSum, trip) => tripSum + (trip.photos?.length ?? 0),
-      0,
-    ),
-    0,
-  ) * PHOTO_PAUSE_SEC;
+  const photoPauseSec = hasRequestedTotal
+    ? photoCount * photoPausePerPhotoSec
+    : automaticPhotoPauseSec;
 
   return {
     baseDurationSec,
     photoPauseSec,
+    photoPausePerPhotoSec,
     totalDurationSec: baseDurationSec + photoPauseSec,
     openingSec: OPENING_SEC,
     recapSec: RECAP_SEC,
