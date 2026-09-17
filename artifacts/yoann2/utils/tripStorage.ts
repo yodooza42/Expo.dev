@@ -20,12 +20,15 @@ export async function getTrips(): Promise<Trip[]> {
   }
 }
 
-export async function saveTrip(trip: Trip): Promise<void> {
+export async function saveTrip(trip: Trip): Promise<boolean> {
   try {
     const trips = await getTrips();
     trips.push(trip);
     await AsyncStorage.setItem(KEY_TRIPS, JSON.stringify(trips));
-  } catch {}
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export async function updateTrip(id: string, updates: Partial<Trip>): Promise<void> {

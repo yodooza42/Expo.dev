@@ -22,6 +22,7 @@ import { ThemeProvider } from '@/contexts/ThemeContext';
 import type { Trip, Vehicle } from '@/types/trips';
 import { rebuildBackupListFromSAF, runDailyBackupIfNeeded } from '@/utils/backup';
 import { purgeOldData, requestLocationPermissions, startManualTracking, LOCATION_TASK_NAME } from '@/utils/locationTracking';
+import { recoverConfiguredManualTrip } from '@/utils/manualTripRecovery';
 import '@/utils/geoReminderManager'; // enregistre la tâche background geo-reminder
 import { DEPARTURE_CHECK_PREFIX, rescheduleIfNeeded } from '@/utils/departureAlert';
 import { isManualTripActive } from '@/utils/manualTripStorage';
@@ -62,6 +63,7 @@ const queryClient = new QueryClient();
 async function bootstrapLocationTracking() {
   purgeOldData().catch(() => {});
   purgeOldTrips(90).catch(() => {});
+  recoverConfiguredManualTrip().catch(() => {});
 
   try {
     const fg = await import('expo-location').then(m => m.getForegroundPermissionsAsync());
