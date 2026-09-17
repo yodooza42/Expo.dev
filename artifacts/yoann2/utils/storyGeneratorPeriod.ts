@@ -5,7 +5,8 @@
  *  - Phase 1 (0 → vidéoDur-5s) : dot se déplace sur chaque trajet dans l'ordre chrono.
  *    Caméra pré-calculée par trajet : vol fluide (ease in/out, zoom log) vers un cadrage
  *    SERRÉ du trajet actif — même une balade à pied de 500 m remplit l'écran.
- *  - Temps d'écran par trajet ∝ √km : les petits trajets restent visibles.
+ *  - Temps d'écran par trajet ∝ durée réelle : une heure à pied et une heure
+ *    en voiture reçoivent le même temps d'affichage.
  *  - Phase 2 (dernières 5s) : dézoome sur la vue globale + récapitulatif stats.
  *
  * opts = {
@@ -566,26 +567,30 @@ export const STORY_PERIOD_JS = `
        chapterDurations.push(allocatedChapterMs);chapterCursor+=allocatedChapterMs;
      }
    }
-  // Hyperlapse sur les longs trajets (voir storyGenerator.ts) : au-delà de 50km (autoroute),
-  // le temps alloué croît beaucoup plus lentement pour ne pas laisser un long trajet d'autoroute
-  // dominer/traîner en longueur dans le récap ; en dessous de 50km, rythme normal inchangé.
-  function hyperKm(km){var HK=50;return km<=HK?km:HK+(km-HK)*0.25;}
+   /* Every real trip hour is represented by three virtual seconds. This is a
+      weight, so requested 1/2 minute exports can still scale all trips down
+      proportionally while Auto keeps the duration ratio between them. */
+   function tripTimeWeight(trip){
+     var durationMs=Number(trip&&trip.durationMs);
+     return Number.isFinite(durationMs)&&durationMs>=0
+       ? Math.max(1000,(durationMs/3600000)*3000)
+       : 3000;
+   }
    var wts=[],totW=0,tStart=[],tripDurations=[];
    if(familyStory){
      for(var familyChapterIndex=0;familyChapterIndex<chapterDefs.length;familyChapterIndex++){
-       var familyMembers=chapterDefs[familyChapterIndex].members,totalFamilyDistance=0,familyChapterOffset=0;
+        var familyMembers=chapterDefs[familyChapterIndex].members,totalFamilyTime=0,familyChapterOffset=0;
        for(var familyMemberIndex=0;familyMemberIndex<familyMembers.length;familyMemberIndex++){
-         var memberDistance=trips[familyMembers[familyMemberIndex]].distKm;
-         var memberWeight=Number.isFinite(memberDistance)?Math.min(8,3+Math.sqrt(Math.max(0,memberDistance))):3;
-         totalFamilyDistance+=memberWeight;
+          var memberWeight=tripTimeWeight(trips[familyMembers[familyMemberIndex]]);
+          totalFamilyTime+=memberWeight;
        }
-       if(totalFamilyDistance<=0)totalFamilyDistance=familyMembers.length||1;
+        if(totalFamilyTime<=0)totalFamilyTime=familyMembers.length||1;
        for(var familyTripOffset=0;familyTripOffset<familyMembers.length;familyTripOffset++){
-         var familyTripIndex=familyMembers[familyTripOffset],familyDistance=trips[familyTripIndex].distKm;
-         var routeWeight=Number.isFinite(familyDistance)?Math.min(8,3+Math.sqrt(Math.max(0,familyDistance))):3;
+          var familyTripIndex=familyMembers[familyTripOffset];
+          var routeWeight=tripTimeWeight(trips[familyTripIndex]);
          wts[familyTripIndex]=routeWeight;
          tStart[familyTripIndex]=chapterStart[familyChapterIndex]+familyChapterOffset;
-         tripDurations[familyTripIndex]=(chapterDurations[familyChapterIndex]||0)*routeWeight/totalFamilyDistance;
+          tripDurations[familyTripIndex]=(chapterDurations[familyChapterIndex]||0)*routeWeight/totalFamilyTime;
          familyChapterOffset+=tripDurations[familyTripIndex];
        }
      }
@@ -595,7 +600,7 @@ export const STORY_PERIOD_JS = `
      }
      totW=1;
    }else{
-     for(var ti=0;ti<trips.length;ti++){wts.push(Math.sqrt(hyperKm(trips[ti].distKm||0.2)+0.4));totW+=wts[ti];}
+      for(var ti=0;ti<trips.length;ti++){wts.push(tripTimeWeight(trips[ti]));totW+=wts[ti];}
      tStart=[0];
      for(var ti=1;ti<trips.length;ti++)tStart.push(tStart[ti-1]+(wts[ti-1]/totW)*animMs);
      for(var legacyDurationIndex=0;legacyDurationIndex<trips.length;legacyDurationIndex++)tripDurations[legacyDurationIndex]=(wts[legacyDurationIndex]/totW)*animMs;

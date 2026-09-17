@@ -27,6 +27,7 @@ const MONTHS_FR = [
 const PHOTO_PAUSE_SEC = 2;
 const OPENING_SEC = 3;
 const RECAP_SEC = 3;
+const STORY_SEC_PER_TRIP_HOUR = 3;
 
 export const EMPTY_STORY_CHOICES: StoryDraftChoices = {
   excludedTripIds: [],
@@ -444,10 +445,13 @@ export function buildPeriodStoryDraft({
 }
 
 function routeDurationSec(trip: Trip): number {
-  const distance = Number.isFinite(trip.distanceKm) ? Math.max(0, trip.distanceKm) : 0;
-  // Three seconds keeps a short walk readable; the square-root curve gives
-  // long routes more room without allowing one route to dominate a story.
-  return Math.min(8, 3 + Math.sqrt(distance));
+  const durationMs = trip.endTime - trip.startTime;
+  if (Number.isFinite(durationMs) && durationMs >= 0) {
+    // The cursor speed is tied to elapsed trip time, not distance: a one-hour
+    // walk and a one-hour drive each receive three seconds in Auto.
+    return Math.max(1, (durationMs / 3_600_000) * STORY_SEC_PER_TRIP_HOUR);
+  }
+  return STORY_SEC_PER_TRIP_HOUR;
 }
 
 /**

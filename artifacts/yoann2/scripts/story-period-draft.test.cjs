@@ -161,8 +161,8 @@ test('auto keeps the full story while a requested duration targets the complete 
     to: new Date(2024, 7, 31),
   });
   const automatic = draft.getStoryTiming(built.chapters);
-  assert.equal(automatic.baseDurationSec, 10);
-  assert.equal(automatic.totalDurationSec, 12);
+  assert.equal(automatic.baseDurationSec, 9);
+  assert.equal(automatic.totalDurationSec, 11);
 
   const timing = draft.getStoryTiming(built.chapters, 60);
   assert.equal(timing.openingSec, 3);
@@ -173,6 +173,23 @@ test('auto keeps the full story while a requested duration targets the complete 
   assert.equal(timing.totalDurationSec, 60);
   assert.equal(timing.chapters.reduce((sum, chapter) => sum + chapter.durationSec, 0), timing.baseDurationSec - 6);
   assert.equal(timing.chapters[0].durationSec, 52);
+});
+
+test('story timing follows elapsed trip time rather than distance', () => {
+  const car = trip('one-hour-car', '2024-08-10', { distanceKm: 50 });
+  const walk = trip('one-hour-walk', '2024-08-11', { distanceKm: 5 });
+  walk.vehicle = 'walk';
+  const built = draft.buildPeriodStoryDraft({
+    trips: [car, walk],
+    events: [],
+    from: new Date(2024, 7, 1),
+    to: new Date(2024, 7, 31),
+  });
+  const timing = draft.getStoryTiming(built.chapters);
+
+  assert.equal(timing.chapters.length, 2);
+  assert.equal(timing.chapters[0].durationSec, 3);
+  assert.equal(timing.chapters[1].durationSec, 3);
 });
 
 test('ignored trips and broken route/photo metadata never enter export', () => {
