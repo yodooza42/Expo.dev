@@ -367,11 +367,18 @@ async function handleSelectMode(
   try {
     await startManualTracking(mode);
   } catch (err) {
-    await clearManualTripState();
-    await AsyncStorage.removeItem(TRIP_MODE_KEY).catch(() => {});
-    resetTripTracking();
-    await widgetLog('trip:select_mode:fgs_error', String(err));
-    await renderWidget(doRender, 'idle');
+    // Sur certains appareils (notamment Samsung/Android récent), Android
+    // refuse le démarrage du FGS depuis le processus headless du widget,
+    // même après un appui utilisateur. L'état du trajet est déjà persisté :
+    // on le conserve, on ouvre l'app et PlayerScreen relancera le GPS au
+    // premier plan, où le démarrage est autorisé.
+    await widgetLog('trip:select_mode:fgs_deferred', String(err));
+    setTripStatus(true);
+    loadPlaylist().then(tracks => {
+      if (tracks.length) startCarPlaylist(tracks, 0);
+    }).catch(() => {});
+    await renderWidget(doRender, 'active');
+    await Linking.openURL('yoann2:///(tabs)/player').catch(() => {});
     return;
   }
   setTripStatus(true);
