@@ -1,0 +1,107 @@
+diff --git a/android/src/main/java/com/reactnativeandroidwidget/builder/widget/ImageWidget.java b/android/src/main/java/com/reactnativeandroidwidget/builder/widget/ImageWidget.java
+index 8b7558a36b12cb084a7b71860dcb2f73dfa5e985..b7743f6ba9941adb3cede7b5c965f807d2807dcd 100644
+--- a/android/src/main/java/com/reactnativeandroidwidget/builder/widget/ImageWidget.java
++++ b/android/src/main/java/com/reactnativeandroidwidget/builder/widget/ImageWidget.java
+@@ -24,9 +24,19 @@ public class ImageWidget extends BaseWidget<ImageView> {
+ 
+     @Override
+     protected void applyProps() {
+-        Bitmap bitmapFromURL = getBitmapFromURL(props.getMap("image").getString("uri"),
+-            dpToPx(props.getDouble("imageWidth")),
+-            dpToPx(props.getDouble("imageHeight"))
++        int width = 0;
++        int height = 0;
++        if (props.hasKey("imageWidth")) {
++            width = dpToPx(props.getDouble("imageWidth"));
++        }
++        if (props.hasKey("imageHeight")) {
++            height = dpToPx(props.getDouble("imageHeight"));
++        }
++
++        Bitmap bitmapFromURL = getBitmapFromURL(
++            props.getMap("image").getString("uri"),
++            width,
++            height
+         );
+ 
+         RoundedBitmapDrawable bitmapDrawable =
+@@ -37,6 +47,24 @@ public class ImageWidget extends BaseWidget<ImageView> {
+         }
+ 
+         view.setImageDrawable(bitmapDrawable);
++
++        // Set resizeMode
++        if (props.hasKey("resizeMode")) {
++            String mode = props.getString("resizeMode");
++            if ("cover".equals(mode)) {
++                view.setScaleType(ImageView.ScaleType.CENTER_CROP);
++            } else if ("contain".equals(mode)) {
++                view.setScaleType(ImageView.ScaleType.FIT_CENTER);
++            } else if ("stretch".equals(mode)) {
++                view.setScaleType(ImageView.ScaleType.FIT_XY);
++            } else if ("center".equals(mode)) {
++                view.setScaleType(ImageView.ScaleType.CENTER);
++            } else {
++                view.setScaleType(ImageView.ScaleType.CENTER_CROP);
++            }
++        } else {
++            view.setScaleType(ImageView.ScaleType.CENTER_CROP);
++        }
+     }
+ 
+     private Bitmap getBitmapFromURL(String src, int width, int height) {
+@@ -45,7 +73,10 @@ public class ImageWidget extends BaseWidget<ImageView> {
+             if (bitmap == null) {
+                 return null;
+             }
+-            return Bitmap.createScaledBitmap(bitmap, width, height, true);
++            if (width > 0 && height > 0) {
++                return Bitmap.createScaledBitmap(bitmap, width, height, true);
++            }
++            return bitmap;
+         } catch (IOException e) {
+             e.printStackTrace();
+             return null;
+diff --git a/src/widgets/ImageWidget.tsx b/src/widgets/ImageWidget.tsx
+index 055396d7acd98d84ef1d0f8c33e59c5a726d199e..4e312aeb757381e49ebd79f5024506cc2d4159f0 100644
+--- a/src/widgets/ImageWidget.tsx
++++ b/src/widgets/ImageWidget.tsx
+@@ -15,6 +15,7 @@ interface ImageWidgetInternalProps extends CommonInternalProps {
+   imageWidth: number;
+   imageHeight: number;
+   image: Pick<ImageResolvedAssetSource, 'uri'>;
++  resizeMode: string;
+ }
+ 
+ type ImageWidgetStyle = CommonStyleProps;
+@@ -31,11 +32,16 @@ export interface ImageWidgetProps extends ClickActionProps {
+   /**
+    * Width of the image
+    */
+-  imageWidth: number;
++  imageWidth?: number;
+   /**
+    * Height of the image
+    */
+-  imageHeight: number;
++  imageHeight?: number;
++  /**
++   * Resize mode: 'cover' | 'contain' | 'stretch' | 'center' | 'none'
++   * Default: 'cover'
++   */
++  resizeMode?: 'cover' | 'contain' | 'stretch' | 'center' | 'none';
+   /**
+    * Image loaded using `require('./path/to/image')`,
+    * or a path to image starting with "http:", "https:", or "data:/image"
+@@ -57,8 +63,9 @@ ImageWidget.convertProps = (
+   return {
+     ...convertCommonStyle(props.style ?? {}),
+     ...convertClickAction(props),
+-    imageHeight: props.imageHeight,
+-    imageWidth: props.imageWidth,
++    imageHeight: props.imageHeight ?? 0,
++    imageWidth: props.imageWidth ?? 0,
++    resizeMode: props.resizeMode ?? 'cover',
+     image:
+       typeof props.image === 'number'
+         ? Image.resolveAssetSource(props.image)

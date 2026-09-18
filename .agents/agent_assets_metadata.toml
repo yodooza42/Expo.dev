@@ -1,0 +1,555 @@
+uploads = []
+
+[[generated]]
+id = "-GEUASTyfiFaSOi-anujA"
+uri = "file://artifacts/yoann2/assets/images/icon.png"
+type = "image"
+title = "yoann20 app icon golden Y dark"
+
+[[generated]]
+id = "9l2ilcIu-MKI2eMMsdR2x"
+uri = "file://attached_assets/yoann20_wordmark_preview.png"
+type = "image"
+title = "yoann20 wordmark preview dark golden"
+
+[[generated]]
+id = "-WREmhP6Yjn9o9mBpZdnD"
+uri = "file://attached_assets/generated_images/yoann2_logo_01_compass_gps.png"
+type = "image"
+title = "compass GPS badge logo"
+
+[[generated]]
+id = "q161xsrArI74LnE_Npc1_"
+uri = "file://attached_assets/generated_images/yoann2_logo_02_letter_y.png"
+type = "image"
+title = "Y letter geometric logo"
+
+[[generated]]
+id = "6Mr4uRVmu6OYYomOVE9wP"
+uri = "file://attached_assets/generated_images/yoann2_logo_03_gps_loop.png"
+type = "image"
+title = "GPS path loop badge"
+
+[[generated]]
+id = "CC6HfK6PLdWyYbHX5_uXH"
+uri = "file://attached_assets/generated_images/yoann2_logo_04_hex_target.png"
+type = "image"
+title = "hexagonal target badge"
+
+[[generated]]
+id = "Vv5PE9aCxcqAv2WEpxKns"
+uri = "file://attached_assets/generated_images/yoann2_logo_05_trajet.png"
+type = "image"
+title = "trajectory path icon"
+
+[[generated]]
+id = "5JZeQZJ4vrYgqkoIma9_f"
+uri = "file://attached_assets/generated_images/yoann2_logo_y_01_thick.png"
+type = "image"
+title = "Y thick bold lines"
+
+[[generated]]
+id = "pK94RBqNMfBYICCBNhfLV"
+uri = "file://attached_assets/generated_images/yoann2_logo_y_02_circled.png"
+type = "image"
+title = "Y compass in circle"
+
+[[generated]]
+id = "kkqR6cqbqGVIUo37dtLfI"
+uri = "file://attached_assets/generated_images/yoann2_logo_y_03_mountain.png"
+type = "image"
+title = "Y mountain peak shape"
+
+[[generated]]
+id = "r0CUeLSeT7zrO047Ec7RQ"
+uri = "file://attached_assets/generated_images/yoann2_logo_y_04_speed.png"
+type = "image"
+title = "Y speed lines dynamic"
+
+[[generated]]
+id = "4y9mxL7_m1l4YRuoRj8sH"
+uri = "file://attached_assets/generated_images/yoann2_logo_y_05_dotted.png"
+type = "image"
+title = "Y dotted GPS path"
+
+[[generated]]
+id = "-AM4up-HjLum1nDa-0i-Y"
+uri = "file://attached_assets/generated_images/yoann2_logo_phoenix_01_gps.png"
+type = "image"
+title = "phoenix GPS trajectory"
+
+[[generated]]
+id = "S37Qb8DCAGCXjB8IWPdZM"
+uri = "file://attached_assets/generated_images/yoann2_logo_phoenix_02_compass.png"
+type = "image"
+title = "phoenix compass wings"
+
+[[generated]]
+id = "FVyq-2lhfSqhWqOzIVpwA"
+uri = "file://attached_assets/generated_images/yoann2_logo_phoenix_03_dots.png"
+type = "image"
+title = "phoenix GPS dots trail"
+
+[[generated]]
+id = "k6th1FU4ovkntifeNHrmR"
+uri = "file://attached_assets/generated_images/yoann2_logo_phoenix_04_head.png"
+type = "image"
+title = "phoenix head forward arrow"
+
+[[generated]]
+id = "81m-WHfqUpsU2m55KxYqd"
+uri = "file://attached_assets/generated_images/yoann2_logo_phoenix_05_hexagon.png"
+type = "image"
+title = "phoenix Y wings hexagon"
+
+[[generated]]
+id = "4UzgvVVC0JMdgura6I799"
+uri = "file://attached_assets/generated_images/yoann2_logo_app_01_kanban.png"
+type = "image"
+title = "kanban cards checkmark"
+
+[[generated]]
+id = "nx6OTMVqaAIFu-bIByg6N"
+uri = "file://attached_assets/generated_images/yoann2_logo_app_02_calendar.png"
+type = "image"
+title = "calendar page event marker"
+
+[[generated]]
+id = "Q9QJtfhOTY61IuOOGmPLA"
+uri = "file://attached_assets/generated_images/yoann2_logo_app_03_voice.png"
+type = "image"
+title = "microphone voice input"
+
+[[generated]]
+id = "uPgbOAF3Ng5m4psc6fyqH"
+uri = "file://attached_assets/generated_images/yoann2_logo_app_04_checklist.png"
+type = "image"
+title = "hexagonal checklist badge"
+
+[[generated]]
+id = "iW83QdglkvVBxeFMzBppl"
+uri = "file://attached_assets/generated_images/yoann2_logo_app_05_dashboard.png"
+type = "image"
+title = "dashboard 2x2 grid"
+
+[[generated]]
+id = "EDMSxEpSWlW2qvNNluKb_"
+uri = "file://attached_assets/generated_images/yoann2_logo_phoenix_06_tasks.png"
+type = "image"
+title = "phoenix checklist arrows"
+
+[[generated]]
+id = "9LIv1jhsMAFJJwEswEUQl"
+uri = "file://attached_assets/generated_images/yoann2_logo_phoenix_07_calendar.png"
+type = "image"
+title = "phoenix calendar grid wings"
+
+[[generated]]
+id = "6XtwVqVD7ejpH1sXmLiVi"
+uri = "file://attached_assets/generated_images/yoann2_logo_phoenix_08_path.png"
+type = "image"
+title = "phoenix GPS path dots"
+
+[[generated]]
+id = "5kq_sw1PwwQQPgPX49Ud6"
+uri = "file://attached_assets/generated_images/yoann2_logo_phoenix_09_ywings.png"
+type = "image"
+title = "phoenix Y wings arrow"
+
+[[generated]]
+id = "23vGV9RRHtuHBXETsG4MV"
+uri = "file://attached_assets/generated_images/yoann2_logo_phoenix_10_dashboard.png"
+type = "image"
+title = "phoenix dashboard tiles"
+
+[[generated]]
+id = "be06Zqi9pYDrgAfjbAfID"
+uri = "file://attached_assets/generated_images/yoann2_logo_phoenix_06b_clean.png"
+type = "image"
+title = "phoenix clean no arrows"
+
+[[generated]]
+id = "Hf3lxfbVmDRhPLFxMLo7o"
+uri = "file://artifacts/yoann2/assets/images/phoenix-icon-new.png"
+type = "image"
+title = "phoenix-icon-fire"
+
+[[generated]]
+id = "89UBcMoW8WHdIE9bM_CG3"
+uri = "file://artifacts/yoann2/assets/icons/icon-nav.png"
+type = "image"
+title = "navigation bold yellow"
+
+[[generated]]
+id = "WdsTVLAud7J9__ZY2i0a6"
+uri = "file://artifacts/yoann2/assets/icons/icon-play.png"
+type = "image"
+title = "play bold yellow"
+
+[[generated]]
+id = "AlxBUcMyh3lT8CrR6ZAcT"
+uri = "file://artifacts/yoann2/assets/icons/icon-pause.png"
+type = "image"
+title = "pause bold yellow"
+
+[[generated]]
+id = "jXeMJU6quU0s4aO-wXyI4"
+uri = "file://artifacts/yoann2/assets/icons/icon-gas.png"
+type = "image"
+title = "gas pump bold yellow"
+
+[[generated]]
+id = "-AtsgymhrKk04IlV1g2eB"
+uri = "file://artifacts/yoann2/assets/icons/icon-stop.png"
+type = "image"
+title = "stop bold yellow"
+
+[[outputs]]
+id = "XuhJX-lUqYwl5JK9hSvwv"
+uri = "file://artifacts/yoann2/assets/images/icon.png"
+type = "image"
+title = "Nouvelle icône YOANN 2.0 (phénix)"
+logical_id = "3892edc4-d92c-4f61-be8f-9dfabb1e10e5"
+
+[[outputs]]
+id = "ap2fruiuEvJjC_tJswyjd"
+uri = "file://attached_assets/generated_images/yoann2_logo_01_compass_gps.png"
+type = "image"
+title = "#1 — Boussole + GPS"
+logical_id = "c7206282-965b-4cfa-80c4-5b70d2c09453"
+
+[[outputs]]
+id = "h0a_9lTzM972id6nr6JR7"
+uri = "file://attached_assets/generated_images/yoann2_logo_02_letter_y.png"
+type = "image"
+title = "#2 — Lettre Y flèches"
+logical_id = "2e9fb393-9f6f-44b7-b8b0-a1374ef850a9"
+
+[[outputs]]
+id = "Q4hoY9xjn75CuZ85QhmBH"
+uri = "file://attached_assets/generated_images/yoann2_logo_03_gps_loop.png"
+type = "image"
+title = "#3 — Boucle GPS"
+logical_id = "fdfaeb4c-bc2e-475f-bbf4-f3bd93c7c448"
+
+[[outputs]]
+id = "txRfmPQtcw_pTTMH1DYAW"
+uri = "file://attached_assets/generated_images/yoann2_logo_04_hex_target.png"
+type = "image"
+title = "#4 — Hexagone cible"
+logical_id = "12ed59e3-eb8a-442e-ac8f-70b5fe9da59f"
+
+[[outputs]]
+id = "I4Hl4mb1H-64OgPv4GNNb"
+uri = "file://attached_assets/generated_images/yoann2_logo_05_trajet.png"
+type = "image"
+title = "#5 — Trajectoire montante"
+logical_id = "8c95c320-08a0-401c-91f5-e2fb99d3cab7"
+
+[[outputs]]
+id = "CBvK6ToMCyRw1UfY0wzIw"
+uri = "file://attached_assets/generated_images/yoann2_logo_y_01_thick.png"
+type = "image"
+title = "Y-1 — Lignes épaisses"
+logical_id = "4ee1619c-297e-4fa5-bb38-fd1029e26bb3"
+
+[[outputs]]
+id = "tMGxjIED6jwKzjWy9vmxx"
+uri = "file://attached_assets/generated_images/yoann2_logo_y_02_circled.png"
+type = "image"
+title = "Y-2 — Cercle boussole"
+logical_id = "e86a097f-2e2a-44f4-95aa-1179d4e537ac"
+
+[[outputs]]
+id = "e9mnwopvuonR8Soj3kMT0"
+uri = "file://attached_assets/generated_images/yoann2_logo_y_03_mountain.png"
+type = "image"
+title = "Y-3 — Pic montagne"
+logical_id = "c14c5883-89e0-4d7a-a77e-f772041ef96b"
+
+[[outputs]]
+id = "gXBFYMck6wziaV2cp1Z2i"
+uri = "file://attached_assets/generated_images/yoann2_logo_y_04_speed.png"
+type = "image"
+title = "Y-4 — Vitesse dynamique"
+logical_id = "befc9e39-43ab-4e0c-bafc-cac216ca51d7"
+
+[[outputs]]
+id = "TQVl1l1vaQNogXexYtEBS"
+uri = "file://attached_assets/generated_images/yoann2_logo_y_05_dotted.png"
+type = "image"
+title = "Y-5 — Points GPS"
+logical_id = "ffa08068-7da9-47ab-8b26-d5a88071aa91"
+
+[[outputs]]
+id = "2xV7NJcE_Q35mqGlQEW4A"
+uri = "file://attached_assets/generated_images/yoann2_logo_phoenix_01_gps.png"
+type = "image"
+title = "Phoenix-1 — Trajectoire GPS"
+logical_id = "91e18486-05b1-4015-8fdf-f2a5c088d28f"
+
+[[outputs]]
+id = "FNjwZxShlgz39l24_uolF"
+uri = "file://attached_assets/generated_images/yoann2_logo_phoenix_02_compass.png"
+type = "image"
+title = "Phoenix-2 — Ailes boussole"
+logical_id = "85802864-5e62-4dca-8a85-cd39831f7774"
+
+[[outputs]]
+id = "gbWaCIBhU1BaVWHc2ZDgn"
+uri = "file://attached_assets/generated_images/yoann2_logo_phoenix_03_dots.png"
+type = "image"
+title = "Phoenix-3 — Points connectés"
+logical_id = "05db2a83-345c-4ca5-bd63-979272ac3748"
+
+[[outputs]]
+id = "tGOboeIFJAtoETGwAh0hM"
+uri = "file://attached_assets/generated_images/yoann2_logo_phoenix_04_head.png"
+type = "image"
+title = "Phoenix-4 — Tête flèche"
+logical_id = "6e0efbcc-d56b-4660-becb-b163cb922d26"
+
+[[outputs]]
+id = "hdc241eHzUCdwD_-_4DiH"
+uri = "file://attached_assets/generated_images/yoann2_logo_phoenix_05_hexagon.png"
+type = "image"
+title = "Phoenix-5 — Hexagone Y"
+logical_id = "e855974f-2637-413b-8e3c-8c4f43d0736a"
+
+[[outputs]]
+id = "wEOUcBteMFj_uy2a15iLH"
+uri = "file://attached_assets/generated_images/yoann2_logo_app_01_kanban.png"
+type = "image"
+title = "App-1 — Kanban + checkmark"
+logical_id = "df29e7ff-088f-4a1e-823c-19852db9d99c"
+
+[[outputs]]
+id = "5B1mjjoTLt60zG1B3ItyV"
+uri = "file://attached_assets/generated_images/yoann2_logo_app_02_calendar.png"
+type = "image"
+title = "App-2 — Calendrier événement"
+logical_id = "37e1ae09-81fd-4a1f-ad16-43702c6587b7"
+
+[[outputs]]
+id = "TQPZtzfPeiXa1mnLCxdiR"
+uri = "file://attached_assets/generated_images/yoann2_logo_app_03_voice.png"
+type = "image"
+title = "App-3 — Micro voix"
+logical_id = "980e5915-7772-4e93-a257-2f988369e17c"
+
+[[outputs]]
+id = "3Sa02s2WnLy9IMXBSxmtU"
+uri = "file://attached_assets/generated_images/yoann2_logo_app_04_checklist.png"
+type = "image"
+title = "App-4 — Checklist hexagonale"
+logical_id = "73f1c074-8f85-466e-bf47-2b1d7abc8a8b"
+
+[[outputs]]
+id = "dd2TE4uuW1dW13vTV4m1H"
+uri = "file://attached_assets/generated_images/yoann2_logo_app_05_dashboard.png"
+type = "image"
+title = "App-5 — Dashboard 2x2"
+logical_id = "399200ff-6472-46d8-99f2-cbf6aeff6174"
+
+[[outputs]]
+id = "OcpQTj_q_uDK3FjvKyEfP"
+uri = "file://attached_assets/generated_images/yoann2_logo_phoenix_06_tasks.png"
+type = "image"
+title = "Phoenix-6 — Checklist flèches"
+logical_id = "1db93d77-ea1a-474c-bf28-e8a010d33cd8"
+
+[[outputs]]
+id = "vpbFzNrNSiK33MPdfCUFj"
+uri = "file://attached_assets/generated_images/yoann2_logo_phoenix_07_calendar.png"
+type = "image"
+title = "Phoenix-7 — Calendrier ailes"
+logical_id = "be7b60b5-6ac1-4fee-8e02-c866da021c5f"
+
+[[outputs]]
+id = "F2p1t6axAKYuDQJPqZFTC"
+uri = "file://attached_assets/generated_images/yoann2_logo_phoenix_08_path.png"
+type = "image"
+title = "Phoenix-8 — Trajet GPS"
+logical_id = "76c1eadb-0be3-4e5b-8d94-c9b179338341"
+
+[[outputs]]
+id = "AVa9x0EzM2H1CFEBThs4B"
+uri = "file://attached_assets/generated_images/yoann2_logo_phoenix_09_ywings.png"
+type = "image"
+title = "Phoenix-9 — Ailes Y flèche"
+logical_id = "39f28f66-f546-4368-a4a0-88beb188f1f6"
+
+[[outputs]]
+id = "6RYtti58IflXqL3XGoVVg"
+uri = "file://attached_assets/generated_images/yoann2_logo_phoenix_10_dashboard.png"
+type = "image"
+title = "Phoenix-10 — Dashboard tuiles"
+logical_id = "680bcefa-01b6-4eeb-a3da-4fe45a881456"
+
+[[outputs]]
+id = "IFZwVfyGIPmSWSmZ7B0M6"
+uri = "file://attached_assets/generated_images/yoann2_logo_phoenix_06b_clean.png"
+type = "image"
+title = "Phoenix-6 — Version sans flèches"
+logical_id = "113ee29a-fbf2-4c27-9aef-e45f9110a38d"
+
+[[outputs]]
+id = "z-egkBxaTx333CIhUADn4"
+uri = "file://attached_assets/generated_videos/phoenix-splash.mp4"
+type = "video"
+title = "Phénix — vidéo IA 8s (splash)"
+logical_id = "2bc2774a-8ae4-4b41-967c-4af3750c8a0c"
+
+[[outputs]]
+id = "wr0bSbWHvcC07-TmkM0Kq"
+uri = "file://artifacts/yoann2/assets/images/phoenix-icon-new.png"
+type = "image"
+title = "Nouveau logo phénix"
+logical_id = "68b3890b-4b9f-4d6f-b748-90755f1b8dde"
+
+[[outputs]]
+id = "gWScSTrUaj-EHLfQ-10MS"
+uri = "file://artifacts/yoann2/assets/images/phoenix-wordmark.png"
+type = "image"
+title = "Logo YOANN 2.0 complet"
+logical_id = "fa6040b3-c290-4300-ade4-203b4a86cc72"
+
+[[outputs]]
+id = "97rCGPCGrSh0PeB4qmD8d"
+uri = "file://attached_assets/phoenix-splash-preview.png"
+type = "image"
+title = "Splash screen complet — état final (après la vidéo)"
+logical_id = "0b78d511-c156-4b9e-ab4d-ccd2a8499b49"
+
+[[outputs]]
+id = "B20R4x70VbcjlesKYZwX1"
+uri = "file://attached_assets/phoenix-splash-v2-preview.png"
+type = "image"
+title = "Splash final — phénix dézoomé + texte sous les pattes"
+logical_id = "3f6c4334-3cd4-4113-bec8-1b60f6554941"
+
+[[outputs]]
+id = "lMZNqEQgglfEwhmu12cR0"
+uri = "file://attached_assets/splash-sequence.png"
+type = "image"
+title = "Séquence splash complète"
+logical_id = "2491ece4-3ce6-4d38-8b43-d89f939ebfbf"
+
+[[outputs]]
+id = "oYJbz75bW1RxFh8tpi3Be"
+uri = "file://attached_assets/generated_videos/phoenix-flies-yoann2-text.mp4"
+type = "video"
+title = "Suite phénix — YOANN 2.0 en braises (8s)"
+logical_id = "e9dfbfcb-57c8-42ca-b672-698d15389e37"
+
+[[outputs]]
+id = "WSFIr83AyutnXABjiMwDH"
+uri = "file://attached_assets/splash_preview_contain.jpg"
+type = "image"
+title = "Aperçu splash — dernière frame, centré + fond noir (simulation contain)"
+logical_id = "df334e58-9a5d-4886-8ce1-ff42275b83fe"
+
+[[outputs]]
+id = "5TWd2m3TLPBbQJpCot9IA"
+uri = "file://attached_assets/frame_2s.jpg"
+type = "image"
+title = "2s"
+logical_id = "e2b6d5e2-0246-4b03-9600-63e56de5bff2"
+
+[[outputs]]
+id = "CBAyhmZrFkfPJ4XkWHuAk"
+uri = "file://attached_assets/frame_3s.jpg"
+type = "image"
+title = "3s"
+logical_id = "eb51ac86-e50b-401e-a65f-dd9eeb0d51f2"
+
+[[outputs]]
+id = "7uTq-EZDqHboTC4Bn4Kug"
+uri = "file://attached_assets/frame_4s.jpg"
+type = "image"
+title = "4s"
+logical_id = "b32bad45-13f7-43ae-b6ba-f016a7d68a54"
+
+[[outputs]]
+id = "7Fk5WhTvvTaLo282_N0pr"
+uri = "file://attached_assets/frame_5s.jpg"
+type = "image"
+title = "5s"
+logical_id = "81a632a7-f2e2-40c4-8f77-26892d7088b9"
+
+[[outputs]]
+id = "sq3ML6-m_SUtmx9y6JZ4P"
+uri = "file://attached_assets/frame_6s.jpg"
+type = "image"
+title = "6s"
+logical_id = "25e736b9-928e-475d-95e7-b11f8163201b"
+
+[[outputs]]
+id = "kSTAuVd_CSz7_M1AxO38D"
+uri = "file://attached_assets/frame_7s.jpg"
+type = "image"
+title = "7s"
+logical_id = "75eaaf40-8bc1-4b05-ae11-036bc0cdbbbf"
+
+[[outputs]]
+id = "xCWylxL3YJyMCH_p-CoMe"
+uri = "file://attached_assets/frame_8s.jpg"
+type = "image"
+title = "8s"
+logical_id = "600441f2-f20b-4033-8042-b9e03db65412"
+
+[[outputs]]
+id = "p_55zQW9Lz0w1gqcFtldG"
+uri = "file://attached_assets/frame_9s.jpg"
+type = "image"
+title = "9s (fin)"
+logical_id = "21bab0ce-f0b8-4de2-813b-e472e4bd0fcd"
+
+[[outputs]]
+id = "XiEYR9POwIOIaNOj4uww9"
+uri = "file://attached_assets/mockup_s25.png"
+type = "image"
+title = "Dernière frame splash — mockup S25 Ultra"
+logical_id = "f7936d7e-efcb-45b3-a24e-15cec08bbe0d"
+
+[[outputs]]
+id = "DM7Dpw8308dXLv9jDXZzt"
+uri = "file://attached_assets/mockup_new_1s.png"
+type = "image"
+title = "1s — début"
+logical_id = "0d8d1329-5881-40aa-a346-8f89991818f5"
+
+[[outputs]]
+id = "x0iy0hvHwH3zToWA17Kea"
+uri = "file://attached_assets/mockup_new_4s.png"
+type = "image"
+title = "4s — milieu"
+logical_id = "d9b07d4d-adb1-444b-9a0d-6d075802ffdf"
+
+[[outputs]]
+id = "6qetgH4NG_30UJsqx6Het"
+uri = "file://attached_assets/mockup_new_8s.png"
+type = "image"
+title = "8s — fin"
+logical_id = "01b81f06-e3b2-4d41-9bb6-23baa82893af"
+
+[[outputs]]
+id = "D46myCHV1zYRH3ZBOvS6U"
+uri = "file://attached_assets/backup_merged_2026-07-09.json"
+type = "unspecified"
+title = "backup_merged_2026-07-09.json"
+logical_id = "16155831-c7a6-4c07-9915-9c745bd943db"
+
+[[outputs]]
+id = "sRNf13MBVeLp1L2td6rvk"
+uri = "file://screenshots/stories-comparaison.jpg"
+type = "image"
+title = "Stories — actuel et trois propositions"
+description = "Comparaison visuelle sur une balade d’exemple : sport, carnet de voyage et carte épurée. Aucune modification des stories de l’application."
+logical_id = "82b69489-9393-4108-b9bb-e52c79c670c0"
+content_hash = "sha256:8dda003c2b8da9c81eabe5193029fa02bf39025232c4490cb6f3a7d72e9ede38"
+size = 388753
+mtime_ms = 1789076122632
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:afa5c5e0-5de2-424a-8554-0e30d20ab9d3/82b69489-9393-4108-b9bb-e52c79c670c0/f00a2ebb-3e04-4c2d-b5da-e7ff3295760a"
+storage_version_token = "1789076172035817"
+content_type = "image/jpeg"

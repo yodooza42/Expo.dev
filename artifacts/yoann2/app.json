@@ -1,0 +1,133 @@
+{
+  "expo": {
+    "name": "Yoann2.0",
+    "slug": "yoann-20",
+    "owner": "yo3007s-team",
+    "version": "1.0.107",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "yoann2",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": false
+    },
+    "android": {
+      "backgroundColor": "#121212",
+      "package": "com.yoann2.app",
+      "versionCode": 107,
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_LOCATION",
+        "android.permission.FOREGROUND_SERVICE_DATA_SYNC",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.WAKE_LOCK",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
+        "android.permission.ACCESS_MEDIA_LOCATION",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_MEDIA_VIDEO",
+        "android.permission.READ_MEDIA_AUDIO"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/images/icon.png"
+    },
+    "plugins": [
+      [
+        "expo-video",
+        {
+          "supportsBackgroundPlayback": true
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Yoann2.0 accède à votre position pour afficher votre tracé du jour.",
+          "locationAlwaysAndWhenInUsePermission": "Yoann2.0 enregistre votre position en arrière-plan pour le journal de déplacements.",
+          "isAndroidBackgroundLocationEnabled": true,
+          "isIosBackgroundLocationEnabled": true
+        }
+      ],
+      [
+        "expo-router",
+        {
+          "origin": "https://replit.com/"
+        }
+      ],
+      "expo-font",
+      "expo-web-browser",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/icon.png",
+          "color": "#FFC107",
+          "sounds": []
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Yoann2.0 accède à votre galerie pour les photos de projets.",
+          "cameraPermission": "Yoann2.0 accède à la caméra pour prendre des photos de projets."
+        }
+      ],
+      [
+        "react-native-android-widget",
+        {
+          "widgets": [
+            {
+              "name": "TodoWidget",
+              "label": "Yoann2.0",
+              "minWidth": "180dp",
+              "minHeight": "50dp",
+              "targetCellWidth": 4,
+              "targetCellHeight": 1,
+              "resizeMode": "none",
+              "description": "Tâches, rendez-vous et navigation",
+              "updatePeriodMillis": 1800000
+            }
+          ]
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "minSdkVersion": 26
+          }
+        }
+      ],
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Yoann2.0 accède à votre galerie pour sauvegarder les screenshots.",
+          "savePhotosPermission": "Yoann2.0 sauvegarde des photos dans votre galerie.",
+          "isAccessMediaLocationEnabled": true
+        }
+      ],
+      "./plugins/with-large-heap",
+      "./plugins/with-navigation-app",
+      "./plugins/withNotifeeManifest",
+      "@react-native-community/datetimepicker"
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": false
+    },
+    "extra": {
+      "router": {
+        "origin": "https://replit.com/"
+      },
+      "eas": {
+        "projectId": "123f87a4-0fe7-4f38-9f47-659eb26fd300"
+      }
+    }
+  }
+}

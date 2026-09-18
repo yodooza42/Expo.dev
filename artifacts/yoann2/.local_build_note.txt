@@ -1,0 +1,5 @@
+Build 43 — versionCode 43
+- SAF external photo storage (utils/photoStorage.ts)
+- quality 1.0 fix
+- slug: yoann-20, owner: yozvfkzucbzbc, projectId: 6774b277-b066-4921-bcbb-b88f0959acb4
+Build: 98afef8c-e440-46c0-9c40-9fea5ca4a01d

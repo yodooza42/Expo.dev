@@ -1,0 +1,32 @@
+# Exclude git history — not needed for the build
+.git
+
+# Exclude unrelated artifacts — only yoann2 is built here
+artifacts/api-server
+artifacts/mockup-sandbox
+
+# Exclude all node_modules — EAS installs from scratch
+node_modules
+**/node_modules
+
+# Exclude lib packages — yoann2 has no @workspace/* deps
+lib/
+
+# Exclude scripts package — not needed for mobile build
+scripts/
+
+# Exclude local/editor/CI files
+.local
+.agents
+**/.expo
+**/dist
+**/*.tsbuildinfo
+
+# Exclude conversation assets, screenshots, patches
+attached_assets
+screenshots
+patches
+skills-lock.json
+
+# Exclude root cache
+.cache

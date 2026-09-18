@@ -1,0 +1,18 @@
+- [EAS build git lock workaround](eas-build-git-lock.md) — prefix `GIT_OPTIONAL_LOCKS=0` to run `eas-cli build`; use global binary `/home/runner/workspace/.config/npm/node_global/bin/eas` + grep -m1 "See logs" to exit quickly.
+- [EAS Build fix — yoann2](eas-build-fix.md) — account `yoann420-team`/`yoann-20` projectId `4c6f8706-6d85-44d4-aeea-9c1edf3be837`, profile `production`; stpyoann a son propre projectId `5b936768-…` mais quota free épuisé. Token inline dans workflow command (pas dans app.json).
+- [expo-file-system legacy import](expo-file-system-legacy.md) — dans SDK 54, expo-file-system@19 supprime `documentDirectory` du default export. Utiliser `expo-file-system/legacy` pour accéder à l'ancienne API (documentDirectory, copyAsync, etc.).
+- [expo-video timeUpdate payload](expo-video-timeupdate.md) — `TimeUpdateEventPayload` n'a PAS de champ `duration`. Utiliser `player.duration` directement (propriété de l'instance VideoPlayer).
+- [Expo Android crash diagnosis](expo-android-crash-diagnosis.md) — splash-then-close = uncaught JS error in index.js/root render before React; Reanimated 4 requires New Arch.
+- [react-native-android-widget color format](rn-android-widget-colors.md) — use 6-digit `#RRGGBB` hex only; 8-digit `#AARRGGBB` is Android format (alpha first), not CSS.
+- [react-native-android-widget style API constraints](rn-android-widget-styles.md) — FlexWidgetStyle: use `flexGap` not `gap`; no `flexWrap`, no percentage widths.
+- [RNTP incompatible New Architecture](rntp-new-arch-crash.md) — react-native-track-player 4.1.2 incompatible New Architecture/Bridgeless (RN 0.81+) — l'import JS crashe au module load. Utiliser expo-location FGS à la place.
+- [trip notification non-swipeable — expo-location FGS](trip-notification-fgs.md) — piloter la notification du FGS expo-location (startLocationUpdatesAsync patch les options in-place) plutôt qu'un FGS notifee séparé. notifee shortService/dataSync tué par Samsung One UI 7. Export patchLocationFgsNotification depuis locationTracking.ts.
+- [Expo config plugin — expo/config-plugins](expo-config-plugin-import.md) — utiliser require('expo/config-plugins') pas require('@expo/config-plugins') dans les plugins du projet yoann2.
+- [EAS build command — global eas binary](eas-build-global-binary.md) — npx eas-cli timeout (424MB archive). Utiliser le binaire global directement : `/home/runner/workspace/.config/npm/node_global/bin/eas build ... 2>&1 | grep -m1 "See logs"`.
+- [EAS build — NE JAMAIS lancer sans autorisation explicite](eas-build-no-auto.md) — ne JAMAIS déclencher un build EAS sans que l'utilisateur le demande explicitement. Les quotas sont limités et précieux.
+- [Walk route — skip OSRM, use GPS fine epsilon](walk-route-osrm-skip.md) — OSRM snape sur les routes voiture; pour les balades utiliser GPS + EPSILON_DEG_WALK (~4 m) depuis routeSimplification.ts.
+- [Widget trip live refresh](widget-trip-refresh.md) — appeler updateTodoWidget() throttlé (30 s) depuis la tâche GPS locationTracking.ts pour que km/durée se mettent à jour pendant un trajet.
+- [Widget après long trajet](long-trip-widget-recovery.md) — borner l’historique GPS quotidien et attendre l’arrêt FGS avant de réarmer un trajet, sinon AsyncStorage peut bloquer le widget.
+- [Captures de stories](story-preview-capture.md) — une capture d’iframe animée peut précéder le dessin ; comparer sur un état déterministe sans changer le renderer de l’app.
+- [Ressources des stories](story-resource-budgets.md) — borner les pixels décodés sur toute la période ; tester minuteries et animation avec une horloge commune.
+- [Souvenirs mensuels familiaux](monthly-memory-semantics.md) — priorité aux événements saisis ; chronologie par chapitre, choix de montage sans modification des originaux.

@@ -1,0 +1,15 @@
+.story-directions-reference {
+  width: 360px;
+  height: 640px;
+  margin: 0;
+  overflow: hidden;
+  background: #0a0b0e;
+}
+
+.story-directions-reference__frame {
+  display: block;
+  width: 360px;
+  height: 640px;
+  border: 0;
+  background: #0a0b0e;
+}
