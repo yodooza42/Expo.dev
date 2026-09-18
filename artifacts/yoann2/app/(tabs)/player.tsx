@@ -25,7 +25,9 @@ import {
   savePlaylist,
   type Track,
 } from '@/utils/playlistStorage';
-import { getTripDistKm } from '@/utils/locationTracking';
+import * as Location from 'expo-location';
+import { getTripDistKm, LOCATION_TASK_NAME, startManualTracking } from '@/utils/locationTracking';
+import { useFocusEffect } from 'expo-router';
 
 function fmt(ms: number): string {
   const s = Math.floor(ms / 1000);
@@ -52,6 +54,25 @@ export default function PlayerScreen() {
   const [importing, setImporting] = useState(false);
   const [tripInfo,  setTripInfo]  = useState<{ km: number; duration: string } | null>(null);
   const barWidth = useRef(0);
+
+  useFocusEffect(useCallback(() => {
+    let cancelled = false;
+    const ensureForegroundGps = async () => {
+      const state = await getManualTripState().catch(() => null);
+      if (cancelled || !state?.active || state.paused) return;
+
+      const running = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME)
+        .catch(() => false);
+      if (!running && !cancelled) {
+        await startManualTracking().catch(() => {});
+      }
+    };
+
+    ensureForegroundGps().catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []));
 
   useEffect(() => {
     loadPlaylist().then(tracks => {
