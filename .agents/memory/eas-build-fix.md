@@ -12,3 +12,7 @@ L'autre compte `yo1907cjeicjebfs-team` avait aussi un projet nommé `yoann-20` (
 **Cause racine** : un secret EXPO_TOKEN périmé (pointant vers yo1907cjeicjebfs-team) restait actif malgré la soumission répétée de nouveaux tokens — `eas whoami` continuait de renvoyer le même compte tant que l'utilisateur n'avait pas explicitement supprimé l'ancien secret du même nom. Un `eas whoami` qui renvoie systématiquement le même compte malgré des tokens "différents" soumis doit faire suspecter un ancien secret encore actif, pas une erreur de copier-coller côté utilisateur.
 
 **Comment appliquer** : pour un build depuis GitHub, vérifier que `expo.extra.eas.projectId` correspond au projet sélectionné dans expo.dev avant de relancer le build. Les champs `owner` et `projectId` doivent viser le même projet Expo.
+
+Le projet utilise `cli.appVersionSource: "local"` afin que la version et le `versionCode` déclarés dans `app.json` restent la source de vérité pour les APK internes.
+
+**Pourquoi :** les builds quotidiens doivent conserver le versionnement explicitement déclaré dans le dépôt plutôt que dépendre d'un compteur EAS distant.
