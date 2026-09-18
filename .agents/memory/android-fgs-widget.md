@@ -28,3 +28,17 @@ avec les nouvelles options.
 moins de kill batterie du FGS GPS. Complémentaire : `activityType:
 AutomotiveNavigation` + `pausesUpdatesAutomatically: false` dans les options
 expo-location, et exemption d'optimisation batterie côté utilisateur.
+
+## Règle 4 — Repli obligatoire sur Samsung récent
+Sur certains Samsung/Android récents, `expo-location` peut encore refuser
+`startLocationUpdatesAsync` depuis le processus headless du widget avec
+`Foreground service cannot be started when the application is in the background`,
+même après un appui widget. Conserver l'état du trajet, ouvrir l'application et
+relancer le démarrage GPS depuis un écran au premier plan.
+
+**Pourquoi :** la fenêtre d'exemption Android n'est pas toujours propagée au
+processus headless utilisé par `react-native-android-widget`.
+
+**Comment appliquer :** ne pas effacer le trajet sur cette erreur ; rendre le
+widget actif, ouvrir l'écran de trajet et vérifier `hasStartedLocationUpdatesAsync`
+avant de relancer `startManualTracking()` au premier plan.
