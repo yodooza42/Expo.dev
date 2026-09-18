@@ -16,3 +16,4 @@
 - [Captures de stories](story-preview-capture.md) — une capture d’iframe animée peut précéder le dessin ; comparer sur un état déterministe sans changer le renderer de l’app.
 - [Ressources des stories](story-resource-budgets.md) — borner les pixels décodés sur toute la période ; tester minuteries et animation avec une horloge commune.
 - [Souvenirs mensuels familiaux](monthly-memory-semantics.md) — priorité aux événements saisis ; chronologie par chapitre, choix de montage sans modification des originaux.
+- [Push GitHub via connecteur](github-push-via-connector.md) — la connexion OAuth et `git push` sont séparés ; pour un dépôt vide, initialiser puis créer l’arbre via l’API avec débit limité.
