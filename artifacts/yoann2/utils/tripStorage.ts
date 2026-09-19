@@ -41,6 +41,44 @@ export async function updateTrip(id: string, updates: Partial<Trip>): Promise<vo
   } catch {}
 }
 
+/**
+ * Keep the denormalized route labels in sync when a known place is renamed.
+ * The place ID remains the source of identity; the stored address is only a
+ * fallback for older trips or when the place is later removed.
+ */
+export async function renamePlaceInTrips(placeId: string, newName: string): Promise<void> {
+  try {
+    const trips = await getTrips();
+    let changed = false;
+    const updated = trips.map(trip => {
+      let next = trip;
+
+      if (trip.startPlaceId === placeId && trip.startAddress !== newName) {
+        next = { ...next, startAddress: newName };
+      }
+      if (trip.endPlaceId === placeId && next.endAddress !== newName) {
+        next = { ...next, endAddress: newName };
+      }
+
+      if (trip.intermediates?.some(stop => stop.placeId === placeId && stop.name !== newName)) {
+        next = {
+          ...next,
+          intermediates: trip.intermediates.map(stop =>
+            stop.placeId === placeId ? { ...stop, name: newName } : stop,
+          ),
+        };
+      }
+
+      if (next !== trip) changed = true;
+      return next;
+    });
+
+    if (changed) {
+      await AsyncStorage.setItem(KEY_TRIPS, JSON.stringify(updated));
+    }
+  } catch {}
+}
+
 export async function deleteTrip(id: string): Promise<void> {
   try {
     const trips = await getTrips();

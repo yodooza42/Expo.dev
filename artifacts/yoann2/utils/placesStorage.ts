@@ -3,6 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { KnownPlace, PlaceCategory, WalkRoute } from '@/types/places';
 import { DEFAULT_PLACE_CATEGORIES } from '@/types/places';
 import { haversineKm } from '@/utils/haversine';
+import { renamePlaceInTrips } from '@/utils/tripStorage';
 
 const KEY_CATEGORIES    = '@yoann2_place_categories';
 const KEY_PLACES        = '@yoann2_known_places';
@@ -59,9 +60,13 @@ export async function saveKnownPlace(place: KnownPlace): Promise<void> {
   try {
     const places = await getKnownPlaces();
     const idx = places.findIndex(p => p.id === place.id);
+    const previousName = idx >= 0 ? places[idx]?.name : undefined;
     if (idx >= 0) places[idx] = place;
     else places.push(place);
     await AsyncStorage.setItem(KEY_PLACES, JSON.stringify(places));
+    if (previousName !== undefined && previousName !== place.name) {
+      await renamePlaceInTrips(place.id, place.name);
+    }
   } catch {}
 }
 
