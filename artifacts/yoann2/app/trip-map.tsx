@@ -23,6 +23,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import WebView from 'react-native-webview';
 import Svg, {
@@ -70,8 +71,6 @@ function fmtDuration(ms: number): string {
 
 // ── Edit-address modal ─────────────────────────────────────────────────────────
 
-const DEFAULT_SUGGESTIONS = ['Maison', 'Travail', 'Chez les parents', 'Gym', 'École'];
-
 // ── Thème visuel de la carte (Story) ───────────────────────────────────────────
 type StoryTheme = 'dark' | 'light' | 'satellite';
 const STORY_THEMES: { key: StoryTheme; label: string; icon: React.ComponentProps<typeof MaterialCommunityIcons>['name'] }[] = [
@@ -85,6 +84,7 @@ function EditAddressModal({
   label,
   initialValue,
   suggestions,
+  knownPlaces,
   colors,
   onCancel,
   onSave,
@@ -94,6 +94,7 @@ function EditAddressModal({
   label: string;
   initialValue: string;
   suggestions: string[];
+  knownPlaces: KnownPlace[];
   colors: ReturnType<typeof useColors>;
   onCancel: () => void;
   onSave: (value: string) => void;
@@ -101,6 +102,14 @@ function EditAddressModal({
 }) {
   const [text, setText] = useState(initialValue);
   const inputRef = useRef<TextInput>(null);
+  const normalizedQuery = text.trim().toLowerCase();
+  const filteredSuggestions = suggestions
+    .filter(name => {
+      const place = knownPlaces.find(p => p.name === name);
+      const searchable = `${name} ${place?.address ?? ''}`.toLowerCase();
+      return !normalizedQuery || searchable.includes(normalizedQuery);
+    })
+    .slice(0, 8);
 
   useEffect(() => {
     if (visible) {
@@ -115,13 +124,9 @@ function EditAddressModal({
   }
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="fade"
-      onRequestClose={onCancel}
-    >
-      <Pressable style={editStyles.overlay} onPress={onCancel}>
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
+      <KeyboardAvoidingView behavior="padding" style={editStyles.overlay}>
+        <Pressable style={StyleSheet.absoluteFillObject} onPress={onCancel} />
         <Pressable style={[editStyles.sheet, { backgroundColor: colors.card }]}>
           <Text style={[editStyles.title, { color: colors.foreground }]}>
             Modifier le lieu
@@ -129,52 +134,76 @@ function EditAddressModal({
           <Text style={[editStyles.sublabel, { color: colors.mutedForeground }]}>
             {label}
           </Text>
-          {suggestions.length > 0 && (
+          <View
+            style={[
+              editStyles.inputRow,
+              {
+                borderColor: colors.border,
+                backgroundColor: colors.background,
+              },
+            ]}
+          >
+            <MaterialCommunityIcons name="magnify" size={19} color={colors.mutedForeground} />
+            <TextInput
+              ref={inputRef}
+              value={text}
+              onChangeText={setText}
+              placeholder="Rechercher un lieu enregistré…"
+              placeholderTextColor={colors.mutedForeground}
+              style={[editStyles.input, { color: colors.foreground }]}
+              returnKeyType="done"
+              onSubmitEditing={handleSave}
+              autoCorrect={false}
+              autoCapitalize="sentences"
+            />
+          </View>
+          {filteredSuggestions.length > 0 && (
             <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={editStyles.chipsRow}
+              style={editStyles.suggestionsList}
+              contentContainerStyle={editStyles.suggestionsContent}
+              showsVerticalScrollIndicator={false}
+              nestedScrollEnabled
               keyboardShouldPersistTaps="handled"
             >
-              {suggestions.map(s => (
+              {filteredSuggestions.map(name => {
+                const place = knownPlaces.find(p => p.name === name);
+                const address = place?.address ?? (place ? `${place.lat}, ${place.lng}` : '');
+                const selected = text.trim() === name;
+                return (
                 <Pressable
-                  key={s}
-                  onPress={() => { setText(s); onChipUsed(s); }}
-                  style={[
-                    editStyles.chip,
+                  key={place?.id ?? name}
+                  onPress={() => { setText(name); onChipUsed(name); inputRef.current?.focus(); }}
+                  style={({ pressed }) => [
+                    editStyles.suggestionRow,
                     {
-                      backgroundColor: text === s ? colors.primary : colors.muted,
-                      borderColor: text === s ? colors.primary : colors.border,
+                      backgroundColor: selected ? colors.primary + '22' : colors.muted,
+                      borderColor: selected ? colors.primary : colors.border,
                     },
+                    pressed && { opacity: 0.7 },
                   ]}
                 >
-                  <Text
-                    style={[
-                      editStyles.chipText,
-                      { color: text === s ? '#000' : colors.mutedForeground },
-                    ]}
-                  >
-                    {s}
-                  </Text>
+                  <MaterialCommunityIcons name="map-marker" size={17} color={selected ? colors.primary : colors.mutedForeground} />
+                  <View style={editStyles.suggestionInfo}>
+                    <Text style={[editStyles.suggestionName, { color: colors.foreground }]} numberOfLines={1}>
+                      {name}
+                    </Text>
+                    {!!address && (
+                      <Text style={[editStyles.suggestionAddress, { color: colors.mutedForeground }]} numberOfLines={1}>
+                        {address}
+                      </Text>
+                    )}
+                  </View>
+                  {selected && <MaterialCommunityIcons name="check" size={18} color={colors.primary} />}
                 </Pressable>
-              ))}
+                );
+              })}
             </ScrollView>
           )}
-          <TextInput
-            ref={inputRef}
-            value={text}
-            onChangeText={setText}
-            placeholder="Ex : Bureau, Chez les parents…"
-            placeholderTextColor={colors.mutedForeground}
-            style={[editStyles.input, {
-              color: colors.foreground,
-              borderColor: colors.border,
-              backgroundColor: colors.background,
-            }]}
-            returnKeyType="done"
-            onSubmitEditing={handleSave}
-            autoCorrect={false}
-          />
+          {normalizedQuery.length > 0 && filteredSuggestions.length === 0 && (
+            <Text style={[editStyles.noSuggestion, { color: colors.mutedForeground }]}>
+              Aucun lieu enregistré correspondant. Vous pouvez tout de même saisir un lieu libre.
+            </Text>
+          )}
           <View style={editStyles.actions}>
             <Pressable
               onPress={onCancel}
@@ -190,7 +219,7 @@ function EditAddressModal({
             </Pressable>
           </View>
         </Pressable>
-      </Pressable>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -211,22 +240,43 @@ const editStyles = StyleSheet.create({
   },
   title: { fontSize: 16, fontFamily: 'Inter_600SemiBold' },
   sublabel: { fontSize: 12, fontFamily: 'Inter_400Regular' },
-  input: {
+  inputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     borderWidth: 1,
     borderRadius: 10,
     paddingHorizontal: 14,
+    minHeight: 48,
+    gap: 8,
+  },
+  input: {
+    flex: 1,
     paddingVertical: 10,
     fontSize: 15,
     fontFamily: 'Inter_400Regular',
   },
-  chipsRow: { flexDirection: 'row', gap: 8, paddingVertical: 2 },
-  chip: {
-    paddingHorizontal: 14,
+  suggestionsList: {
+    maxHeight: 190,
+    borderRadius: 10,
+  },
+  suggestionsContent: {
+    gap: 6,
+    paddingVertical: 2,
+  },
+  suggestionRow: {
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+    paddingHorizontal: 11,
     paddingVertical: 7,
-    borderRadius: 20,
+    borderRadius: 10,
     borderWidth: 1,
   },
-  chipText: { fontSize: 13, fontFamily: 'Inter_500Medium' },
+  suggestionInfo: { flex: 1, gap: 2 },
+  suggestionName: { fontSize: 13, fontFamily: 'Inter_600SemiBold' },
+  suggestionAddress: { fontSize: 11, fontFamily: 'Inter_400Regular' },
+  noSuggestion: { fontSize: 11, lineHeight: 16, fontFamily: 'Inter_400Regular' },
   actions: { flexDirection: 'row', gap: 10, justifyContent: 'flex-end' },
   btn: {
     paddingHorizontal: 18,
@@ -1777,7 +1827,8 @@ export default function TripMapScreen() {
         visible={editingField !== null}
         label={editingLabel}
         initialValue={editingInitial}
-        suggestions={sortSuggestionsByUsage(knownPlaces.map(p => p.name), DEFAULT_SUGGESTIONS, addressUsage)}
+        suggestions={sortSuggestionsByUsage(knownPlaces.map(p => p.name), [], addressUsage)}
+        knownPlaces={knownPlaces}
         colors={colors}
         onCancel={() => setEditingField(null)}
         onSave={handleSaveAddress}
