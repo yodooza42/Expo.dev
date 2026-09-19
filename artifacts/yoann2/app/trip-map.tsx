@@ -1827,7 +1827,8 @@ export default function TripMapScreen() {
         visible={editingField !== null}
         label={editingLabel}
         initialValue={editingInitial}
-        suggestions={sortSuggestionsByUsage(knownPlaces.map(p => p.name), DEFAULT_SUGGESTIONS, addressUsage)}
+        suggestions={sortSuggestionsByUsage(knownPlaces.map(p => p.name), [], addressUsage)}
+        knownPlaces={knownPlaces}
         colors={colors}
         onCancel={() => setEditingField(null)}
         onSave={handleSaveAddress}
