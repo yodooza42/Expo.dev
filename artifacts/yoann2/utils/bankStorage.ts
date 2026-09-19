@@ -100,6 +100,40 @@ export async function setSavingsBalance(balance: number): Promise<void> {
   await AsyncStorage.setItem(KEYS.SAVINGS_BALANCE, String(balance));
 }
 
+/**
+ * Executes a transfer between the current account and savings.
+ * The bank transaction is deliberately recorded for both directions so the
+ * current-account balance and the savings history stay in sync.
+ */
+export async function executeSavingsTransfer(
+  direction: 'to' | 'from',
+  amount: number,
+  options?: { label?: string; date?: string; note?: string },
+): Promise<BankTransaction> {
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new Error('Savings transfer amount must be positive');
+  }
+
+  const savings = await getSavingsBalance();
+  const label = options?.label
+    || (direction === 'to' ? 'Virement vers épargne' : 'Virement depuis épargne');
+
+  await setSavingsBalance(
+    direction === 'to'
+      ? savings + amount
+      : Math.max(0, savings - amount),
+  );
+
+  return addTransaction({
+    type: direction === 'to' ? 'transfer_to_savings' : 'transfer_from_savings',
+    amount,
+    label,
+    category: 'Épargne',
+    date: options?.date ?? new Date().toISOString(),
+    note: options?.note,
+  });
+}
+
 export function computeCurrentBalance(txs: BankTransaction[]): number {
   return txs
     .filter(tx => !tx.hidden)
@@ -167,20 +201,11 @@ export async function processRecurringTransfers(): Promise<number> {
     let nextDate = new Date(rec.nextDate);
     while (nextDate <= now) {
       const label = rec.label || (rec.direction === 'to' ? 'Virement épargne auto' : 'Virement depuis épargne auto');
-      await addTransaction({
-        type: rec.direction === 'to' ? 'transfer_to_savings' : 'transfer_from_savings',
-        amount: rec.amount,
+      await executeSavingsTransfer(rec.direction, rec.amount, {
         label,
-        category: 'Épargne',
         date: nextDate.toISOString(),
         note: `Récurrent · ${rec.frequency === 'monthly' ? 'mensuel' : 'hebdomadaire'}`,
       });
-      const savings = await getSavingsBalance();
-      await setSavingsBalance(
-        rec.direction === 'to'
-          ? savings + rec.amount
-          : Math.max(0, savings - rec.amount)
-      );
       nextDate = nextOccurrence(nextDate, rec.frequency);
       executed++;
     }
