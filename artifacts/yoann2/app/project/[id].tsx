@@ -29,7 +29,7 @@ import { useApp } from '@/contexts/AppContext';
 import { useColors } from '@/hooks/useColors';
 import type { ProjectStatus, Task } from '@/types';
 import { BankTransaction, CategoryConfig, getCategoryConfigs } from '@/utils/bankStorage';
-import { hasExternalPhotos, recoverPhotosFromExternal, resolveProjectDirForBatch, savePhotoToProject } from '@/utils/photoStorage';
+import { hasExternalPhotos, recoverPhotosFromExternal, savePhotoToProject } from '@/utils/photoStorage';
 
 const { width } = Dimensions.get('window');
 
@@ -102,6 +102,16 @@ export default function ProjectDetailScreen() {
   const [canRecover, setCanRecover] = useState(false);
   const [recovering, setRecovering] = useState(false);
 
+  useEffect(() => {
+    if (tab !== 'photos' || !projectMaybe) { setCanRecover(false); return; }
+    let mounted = true;
+    const currentProject = projectMaybe;
+    hasExternalPhotos(currentProject.name).then(v => {
+      if (mounted) setCanRecover(v && currentProject.photos.length === 0);
+    });
+    return () => { mounted = false; };
+  }, [tab, projectMaybe]);
+
   if (!projectMaybe) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -159,14 +169,20 @@ export default function ProjectDetailScreen() {
         },
       },
       {
-        text: 'Galerie (multi-sélection)',
+        text: 'Galerie (associer sans copier)',
         onPress: async () => {
-          const r = await ImagePicker.launchImageLibraryAsync({ quality: 0.7, allowsMultipleSelection: true });
+          const r = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ['images'],
+            allowsMultipleSelection: true,
+            quality: 1,
+          });
           if (!r.canceled) {
-            const locals = await Promise.all(r.assets.map(a => persistPhoto(a.uri)));
-            updateProject(project.id, { photos: [...project.photos, ...locals] });
-            const batchDir = await resolveProjectDirForBatch(project.name);
-            r.assets.forEach(a => savePhotoToProject(a.uri, project.name, a.fileName, batchDir));
+            const newUris = r.assets
+              .map(asset => asset.uri)
+              .filter(uri => !project.photos.includes(uri));
+            if (newUris.length > 0) {
+              updateProject(project.id, { photos: [...project.photos, ...newUris] });
+            }
           }
         },
       },
@@ -234,13 +250,6 @@ export default function ProjectDetailScreen() {
       Alert.alert('Aucune photo', 'Aucune image trouvée dans le dossier externe du projet.');
     }
   }
-
-  useEffect(() => {
-    if (tab !== 'photos' || !project) { setCanRecover(false); return; }
-    let mounted = true;
-    hasExternalPhotos(project.name).then(v => { if (mounted) setCanRecover(v && project.photos.length === 0); });
-    return () => { mounted = false; };
-  }, [tab, project]);
 
   function openEditExpense(e: BankTransaction) {
     setEditingExpense(e);
