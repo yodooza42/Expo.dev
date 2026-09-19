@@ -1,5 +1,5 @@
 - [EAS build git lock workaround](eas-build-git-lock.md) — prefix `GIT_OPTIONAL_LOCKS=0` to run `eas-cli build`; use global binary `/home/runner/workspace/.config/npm/node_global/bin/eas` + grep -m1 "See logs" to exit quickly.
-- [EAS Build fix — yoann2](eas-build-fix.md) — account `yoann420-team`/`yoann-20` projectId `4c6f8706-6d85-44d4-aeea-9c1edf3be837`, profile `production`; stpyoann a son propre projectId `5b936768-…` mais quota free épuisé. Token inline dans workflow command (pas dans app.json).
+- [EAS Build fix — yoann2](eas-build-fix.md) — le build GitHub doit utiliser l’identifiant Expo actuellement associé au dépôt dans `app.json`.
 - [expo-file-system legacy import](expo-file-system-legacy.md) — dans SDK 54, expo-file-system@19 supprime `documentDirectory` du default export. Utiliser `expo-file-system/legacy` pour accéder à l'ancienne API (documentDirectory, copyAsync, etc.).
 - [expo-video timeUpdate payload](expo-video-timeupdate.md) — `TimeUpdateEventPayload` n'a PAS de champ `duration`. Utiliser `player.duration` directement (propriété de l'instance VideoPlayer).
 - [Expo Android crash diagnosis](expo-android-crash-diagnosis.md) — splash-then-close = uncaught JS error in index.js/root render before React; Reanimated 4 requires New Arch.
@@ -16,3 +16,5 @@
 - [Captures de stories](story-preview-capture.md) — une capture d’iframe animée peut précéder le dessin ; comparer sur un état déterministe sans changer le renderer de l’app.
 - [Ressources des stories](story-resource-budgets.md) — borner les pixels décodés sur toute la période ; tester minuteries et animation avec une horloge commune.
 - [Souvenirs mensuels familiaux](monthly-memory-semantics.md) — priorité aux événements saisis ; chronologie par chapitre, choix de montage sans modification des originaux.
+- [Push GitHub via connecteur](github-push-via-connector.md) — la connexion OAuth et `git push` sont séparés ; pour un dépôt vide, initialiser puis créer l’arbre via l’API avec débit limité.
+- [Virements épargne centralisés](savings-transfer-consistency.md) — les virements manuels et automatiques doivent partager la même écriture solde épargne + transaction courant.
