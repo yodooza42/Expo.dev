@@ -337,7 +337,12 @@ function PlaceModal({
           </Pressable>
 
           <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Catégorie</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.categoryScroll}
+            contentContainerStyle={styles.categoryScrollContent}
+          >
             <View style={{ flexDirection: 'row', gap: 8 }}>
               {categories.map(cat => {
                 const sel = catId === cat.id;
@@ -1051,11 +1056,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 5,
     paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingVertical: 9,
+    minHeight: 40,
     borderRadius: 8,
     borderWidth: 1,
   },
-  catChipTxt: { fontSize: 12, fontFamily: 'Inter_500Medium' },
+  catChipTxt: { fontSize: 13, fontFamily: 'Inter_500Medium' },
+  categoryScroll: {
+    height: 48,
+    marginBottom: 12,
+  },
+  categoryScrollContent: {
+    alignItems: 'center',
+    paddingVertical: 4,
+  },
 
   iconOption: {
     width: 40,
