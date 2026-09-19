@@ -1,7 +1,9 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Haptics from 'expo-haptics';
+import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
+import * as MediaLibrary from 'expo-media-library';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useMemo, useState } from 'react';
@@ -19,6 +21,7 @@ import {
 } from 'react-native';
 
 import { BottomSheet } from '@/components/BottomSheet';
+import { GalleryPhotoPicker } from '@/components/GalleryPhotoPicker';
 import { PriorityBadge } from '@/components/PriorityBadge';
 import { useApp } from '@/contexts/AppContext';
 import { useColors } from '@/hooks/useColors';
@@ -40,6 +43,16 @@ const EISENHOWER_COLORS: Record<string, string> = {
   do_now: '#F44336', schedule: '#2196F3', delegate: '#FF9800', eliminate: '#9E9E9E',
 };
 
+function parseFrenchDate(value: string): Date | null {
+  const parts = value.split('/');
+  if (parts.length === 3) {
+    const parsed = new Date(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0]));
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
 export default function TaskDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const colors = useColors();
@@ -50,6 +63,7 @@ export default function TaskDetailScreen() {
   const project = taskMaybe ? projects.find(p => p.id === taskMaybe.projectId) : null;
 
   const [photoViewIdx, setPhotoViewIdx] = useState<number | null>(null);
+  const [galleryPickerVisible, setGalleryPickerVisible] = useState(false);
 
   async function handleDeletePhoto(uri: string, idx: number) {
     Alert.alert('Supprimer la photo', 'Cette photo sera définitivement supprimée.', [
@@ -90,6 +104,27 @@ export default function TaskDetailScreen() {
   }
   const task = taskMaybe;
   const streak = computeStreak(task, tasks);
+  const photoReferenceDate = task.status === 'done' && task.completedAt
+    ? parseFrenchDate(task.completedAt)
+    : parseFrenchDate(task.dueDate);
+
+  function addTaskPhotoUris(uris: string[]) {
+    const newUris = uris.filter(uri => !task.photos.includes(uri));
+    if (newUris.length > 0) updateTask(task.id, { photos: [...task.photos, ...newUris] });
+  }
+
+  async function browseAllTaskPhotos() {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsMultipleSelection: true,
+      quality: 1,
+    });
+    if (!result.canceled) addTaskPhotoUris(result.assets.map(asset => asset.uri));
+  }
+
+  function addGalleryTaskPhotos(assets: MediaLibrary.Asset[]) {
+    addTaskPhotoUris(assets.map(asset => asset.uri));
+  }
 
   async function handleSetGeoReminder() {
     setSettingGeo(true);
@@ -458,9 +493,18 @@ export default function TaskDetailScreen() {
             </View>
           </View>
 
-          {task.photos.length > 0 && (
-            <View>
-              <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Photos</Text>
+          <View>
+            <View style={styles.sectionHeader}>
+              <Text style={[styles.sectionTitle, { color: colors.foreground, marginBottom: 0 }]}>Photos</Text>
+              <Pressable
+                onPress={() => setGalleryPickerVisible(true)}
+                style={[styles.addPhotoInline, { backgroundColor: colors.primary + '18', borderColor: colors.primary + '40' }]}
+              >
+                <MaterialCommunityIcons name="image-plus-outline" size={16} color={colors.primary} />
+                <Text style={[styles.addExpLabel, { color: colors.primary }]}>Ajouter</Text>
+              </Pressable>
+            </View>
+            {task.photos.length > 0 ? (
               <View style={styles.photoGrid}>
                 {task.photos.map((uri, idx) => (
                   <View key={idx} style={styles.photoThumb}>
@@ -477,8 +521,12 @@ export default function TaskDetailScreen() {
                   </View>
                 ))}
               </View>
-            </View>
-          )}
+            ) : (
+              <Text style={[styles.emptyExp, { color: colors.mutedForeground }]}>
+                Aucune photo liée à cette tâche
+              </Text>
+            )}
+          </View>
 
           {/* ── Rappel de lieu ── */}
           <View>
@@ -607,6 +655,15 @@ export default function TaskDetailScreen() {
         </View>
       </Modal>
 
+      <GalleryPhotoPicker
+        visible={galleryPickerVisible}
+        title="Photos de la tâche"
+        referenceDate={photoReferenceDate}
+        onClose={() => setGalleryPickerVisible(false)}
+        onAddAssets={addGalleryTaskPhotos}
+        onBrowseAll={browseAllTaskPhotos}
+      />
+
       <BottomSheet visible={addExpVisible} onClose={() => setAddExpVisible(false)} title="Nouvelle dépense" avoidKeyboard>
             <Text style={[styles.sheetSub, { color: colors.mutedForeground }]}>
               Sera automatiquement ajoutée au projet « {project?.name ?? '...'} »
@@ -706,6 +763,7 @@ const styles = StyleSheet.create({
   photoThumb: { width: THUMB, height: THUMB, borderRadius: 10, overflow: 'hidden', position: 'relative' },
   photoImg: { width: '100%', height: '100%' },
   photoRemove: { position: 'absolute', top: 4, right: 4, zIndex: 10 },
+  addPhotoInline: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 10, borderWidth: 1 },
   photoModal: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   photoClose: { position: 'absolute', top: 60, right: 20, zIndex: 10 },
   photoFull: { width, height: width * 1.2 },
