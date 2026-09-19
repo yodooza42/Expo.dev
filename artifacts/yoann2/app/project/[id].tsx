@@ -102,6 +102,16 @@ export default function ProjectDetailScreen() {
   const [canRecover, setCanRecover] = useState(false);
   const [recovering, setRecovering] = useState(false);
 
+  useEffect(() => {
+    if (tab !== 'photos' || !projectMaybe) { setCanRecover(false); return; }
+    let mounted = true;
+    const currentProject = projectMaybe;
+    hasExternalPhotos(currentProject.name).then(v => {
+      if (mounted) setCanRecover(v && currentProject.photos.length === 0);
+    });
+    return () => { mounted = false; };
+  }, [tab, projectMaybe]);
+
   if (!projectMaybe) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -161,7 +171,11 @@ export default function ProjectDetailScreen() {
       {
         text: 'Galerie (associer sans copier)',
         onPress: async () => {
-          const r = await ImagePicker.launchImageLibraryAsync({ quality: 0.7, allowsMultipleSelection: true });
+          const r = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ['images'],
+            allowsMultipleSelection: true,
+            quality: 1,
+          });
           if (!r.canceled) {
             const newUris = r.assets
               .map(asset => asset.uri)
@@ -236,13 +250,6 @@ export default function ProjectDetailScreen() {
       Alert.alert('Aucune photo', 'Aucune image trouvée dans le dossier externe du projet.');
     }
   }
-
-  useEffect(() => {
-    if (tab !== 'photos' || !project) { setCanRecover(false); return; }
-    let mounted = true;
-    hasExternalPhotos(project.name).then(v => { if (mounted) setCanRecover(v && project.photos.length === 0); });
-    return () => { mounted = false; };
-  }, [tab, project]);
 
   function openEditExpense(e: BankTransaction) {
     setEditingExpense(e);
