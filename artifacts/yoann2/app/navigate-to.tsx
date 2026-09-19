@@ -1,9 +1,10 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   FlatList,
   Pressable,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -28,10 +29,18 @@ interface PlaceItem {
   lng: number;
 }
 
+function normalizeSearchValue(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLocaleLowerCase('fr-FR');
+}
+
 export default function NavigateToPage() {
   const router = useRouter();
   const [items, setItems] = useState<PlaceItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
 
   const load = useCallback(async () => {
     try {
@@ -61,17 +70,52 @@ export default function NavigateToPage() {
     await openNavigation(item.lat, item.lng);
   }, []);
 
+  const filteredItems = useMemo(() => {
+    const query = normalizeSearchValue(search.trim());
+    if (!query) return items;
+    return items.filter(item =>
+      normalizeSearchValue(`${item.name} ${item.address}`).includes(query),
+    );
+  }, [items, search]);
+
   return (
     <View style={styles.container}>
       <SubPageHeader title="🧭 Naviguer vers" />
+
+      <View style={styles.searchBar}>
+        <MaterialCommunityIcons name="magnify" size={21} color={MUTED} />
+        <TextInput
+          value={search}
+          onChangeText={setSearch}
+          placeholder="Rechercher un lieu"
+          placeholderTextColor={MUTED}
+          style={styles.searchInput}
+          autoCapitalize="none"
+          autoCorrect={false}
+          returnKeyType="search"
+          accessibilityLabel="Rechercher un lieu"
+          testID="navigate-to-search"
+        />
+        {search.length > 0 && (
+          <Pressable
+            onPress={() => setSearch('')}
+            hitSlop={8}
+            accessibilityLabel="Effacer la recherche"
+          >
+            <MaterialCommunityIcons name="close-circle" size={18} color={MUTED} />
+          </Pressable>
+        )}
+      </View>
 
       {loading ? (
         <Text style={styles.empty}>Chargement...</Text>
       ) : items.length === 0 ? (
         <Text style={styles.empty}>Aucune adresse enregistrée</Text>
+      ) : filteredItems.length === 0 ? (
+        <Text style={styles.empty}>Aucun lieu ne correspond à « {search.trim()} »</Text>
       ) : (
         <FlatList
-          data={items}
+          data={filteredItems}
           keyExtractor={i => i.id}
           contentContainerStyle={styles.list}
           renderItem={({ item }) => (
@@ -133,6 +177,26 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '600',
     color: TEXT,
+  },
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginHorizontal: 12,
+    marginTop: 12,
+    paddingHorizontal: 12,
+    minHeight: 44,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#2A2A2A',
+    backgroundColor: CARD,
+  },
+  searchInput: {
+    flex: 1,
+    minHeight: 42,
+    paddingVertical: 0,
+    color: TEXT,
+    fontSize: 14,
   },
   list: {
     paddingHorizontal: 12,
