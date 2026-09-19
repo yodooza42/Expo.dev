@@ -260,6 +260,7 @@ function RootLayoutNav() {
         <Stack.Screen name="trip/new" options={{ headerShown: false, presentation: 'modal' }} />
         <Stack.Screen name="expense-stats" options={{ headerShown: false, presentation: 'card' }} />
         <Stack.Screen name="market-manager" options={{ headerShown: false, presentation: 'card' }} />
+        <Stack.Screen name="savings-manager" options={{ headerShown: false, presentation: 'card' }} />
         <Stack.Screen name="shopping-list" options={{ headerShown: false, presentation: 'card' }} />
       </Stack>
       <TripTagModal trip={pendingTrip} vehicles={vehicles} onTag={handleTag} />
