@@ -29,7 +29,7 @@ import { useApp } from '@/contexts/AppContext';
 import { useColors } from '@/hooks/useColors';
 import type { ProjectStatus, Task } from '@/types';
 import { BankTransaction, CategoryConfig, getCategoryConfigs } from '@/utils/bankStorage';
-import { hasExternalPhotos, recoverPhotosFromExternal, resolveProjectDirForBatch, savePhotoToProject } from '@/utils/photoStorage';
+import { hasExternalPhotos, recoverPhotosFromExternal, savePhotoToProject } from '@/utils/photoStorage';
 
 const { width } = Dimensions.get('window');
 
@@ -159,14 +159,16 @@ export default function ProjectDetailScreen() {
         },
       },
       {
-        text: 'Galerie (multi-sélection)',
+        text: 'Galerie (associer sans copier)',
         onPress: async () => {
           const r = await ImagePicker.launchImageLibraryAsync({ quality: 0.7, allowsMultipleSelection: true });
           if (!r.canceled) {
-            const locals = await Promise.all(r.assets.map(a => persistPhoto(a.uri)));
-            updateProject(project.id, { photos: [...project.photos, ...locals] });
-            const batchDir = await resolveProjectDirForBatch(project.name);
-            r.assets.forEach(a => savePhotoToProject(a.uri, project.name, a.fileName, batchDir));
+            const newUris = r.assets
+              .map(asset => asset.uri)
+              .filter(uri => !project.photos.includes(uri));
+            if (newUris.length > 0) {
+              updateProject(project.id, { photos: [...project.photos, ...newUris] });
+            }
           }
         },
       },
