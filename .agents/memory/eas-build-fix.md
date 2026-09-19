@@ -3,7 +3,7 @@ name: EAS build fix - yoann2 (final)
 description: Historique et résolution du blocage multi-comptes Expo pour le build EAS Android de yoann2.
 ---
 
-**État actuel** : le projet Expo relié au build GitHub de yoann2 utilise l'ID `123f87a4-0fe7-4f38-9f47-659eb26fd300`. `app.json` doit utiliser cet ID.
+**État actuel** : le projet Expo relié au build GitHub de yoann2 utilise l'ID `123f87a4-0fe7-4f38-9f47-659eb26fd300` sous l'organisation `yo3007s-team`. `app.json` doit utiliser cet ID et cet owner.
 
 L'ancien ID `e83ed211-253b-4ab4-a344-ddd7e0ab049c` provoque l'erreur `eas.projectId does not match the current project id` avec le projet GitHub actuel.
 
