@@ -2,6 +2,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
+import * as MediaLibrary from 'expo-media-library';
 import { resolveProjectDirForBatch, sanitize, savePhotoToProject, taskFolderName } from '@/utils/photoStorage';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -20,6 +21,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useApp } from '@/contexts/AppContext';
+import { GalleryPhotoPicker } from '@/components/GalleryPhotoPicker';
 import { useColors } from '@/hooks/useColors';
 import { SubPageHeader } from '@/components/SubPageHeader';
 import type { Priority, RecurrenceType, TaskStatus } from '@/types';
@@ -80,6 +82,7 @@ export default function NewTaskScreen() {
   const [photos, setPhotos] = useState<string[]>(existing?.photos ?? []);
   const [recurrence, setRecurrence] = useState<RecurrenceType>(existing?.recurrence ?? null);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [galleryPickerVisible, setGalleryPickerVisible] = useState(false);
 
   const topPad = Platform.OS === 'web' ? 67 : insets.top;
 
@@ -164,21 +167,33 @@ export default function NewTaskScreen() {
         },
       },
       {
-        text: 'Galerie',
+        text: 'Galerie (associer sans copier)',
         onPress: async () => {
-          const r = await ImagePicker.launchImageLibraryAsync({ quality: 1, allowsMultipleSelection: true });
-          if (!r.canceled) {
-            const permanents = await Promise.all(r.assets.map(a => persistPhoto(a.uri)));
-            setPhotos(prev => [...prev, ...permanents]);
-            // Resolve the project folder once for the whole batch — avoids
-            // repeated SAF directory creation that produces duplicate folders.
-            const batchDir = await resolveProjectDirForBatch(projectName, taskFolder);
-            r.assets.forEach(a => savePhotoToProject(a.uri, projectName, a.fileName, batchDir, taskFolder));
-          }
+          setGalleryPickerVisible(true);
         },
       },
       { text: 'Annuler', style: 'cancel' },
     ]);
+  }
+
+  function addTaskPhotoUris(uris: string[]) {
+    setPhotos(previous => {
+      const existingUris = new Set(previous);
+      return [...previous, ...uris.filter(uri => !existingUris.has(uri))];
+    });
+  }
+
+  async function browseAllTaskPhotos() {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsMultipleSelection: true,
+      quality: 1,
+    });
+    if (!result.canceled) addTaskPhotoUris(result.assets.map(asset => asset.uri));
+  }
+
+  function addGalleryTaskPhotos(assets: MediaLibrary.Asset[]) {
+    addTaskPhotoUris(assets.map(asset => asset.uri));
   }
 
   function ScoreSelector({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
@@ -390,6 +405,15 @@ export default function NewTaskScreen() {
           </View>
         </View>
       </ScrollView>
+
+      <GalleryPhotoPicker
+        visible={galleryPickerVisible}
+        title="Photos de la tâche"
+        referenceDate={dueDate.trim() ? parseFrDate(dueDate) : null}
+        onClose={() => setGalleryPickerVisible(false)}
+        onAddAssets={addGalleryTaskPhotos}
+        onBrowseAll={browseAllTaskPhotos}
+      />
     </View>
   );
 }

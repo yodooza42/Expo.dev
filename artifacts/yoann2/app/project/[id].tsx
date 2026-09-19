@@ -3,6 +3,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
 import { Image } from 'expo-image';
 import * as Haptics from 'expo-haptics';
+import * as MediaLibrary from 'expo-media-library';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
@@ -22,6 +23,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BottomSheet } from '@/components/BottomSheet';
+import { GalleryPhotoPicker } from '@/components/GalleryPhotoPicker';
 import { PriorityBadge } from '@/components/PriorityBadge';
 import { ProgressBar } from '@/components/ProgressBar';
 import { TaskCard } from '@/components/TaskCard';
@@ -101,6 +103,7 @@ export default function ProjectDetailScreen() {
   const [exporting, setExporting] = useState(false);
   const [canRecover, setCanRecover] = useState(false);
   const [recovering, setRecovering] = useState(false);
+  const [galleryPickerVisible, setGalleryPickerVisible] = useState(false);
 
   useEffect(() => {
     if (tab !== 'photos' || !projectMaybe) { setCanRecover(false); return; }
@@ -171,23 +174,31 @@ export default function ProjectDetailScreen() {
       {
         text: 'Galerie (associer sans copier)',
         onPress: async () => {
-          const r = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ['images'],
-            allowsMultipleSelection: true,
-            quality: 1,
-          });
-          if (!r.canceled) {
-            const newUris = r.assets
-              .map(asset => asset.uri)
-              .filter(uri => !project.photos.includes(uri));
-            if (newUris.length > 0) {
-              updateProject(project.id, { photos: [...project.photos, ...newUris] });
-            }
-          }
+          setGalleryPickerVisible(true);
         },
       },
       { text: 'Annuler', style: 'cancel' },
     ]);
+  }
+
+  function addProjectPhotoUris(uris: string[]) {
+    const newUris = uris.filter(uri => !project.photos.includes(uri));
+    if (newUris.length > 0) {
+      updateProject(project.id, { photos: [...project.photos, ...newUris] });
+    }
+  }
+
+  async function browseAllProjectPhotos() {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsMultipleSelection: true,
+      quality: 1,
+    });
+    if (!result.canceled) addProjectPhotoUris(result.assets.map(asset => asset.uri));
+  }
+
+  function addGalleryProjectPhotos(assets: MediaLibrary.Asset[]) {
+    addProjectPhotoUris(assets.map(asset => asset.uri));
   }
 
   function openPhoto(idx: number) {
@@ -855,6 +866,15 @@ export default function ProjectDetailScreen() {
           )}
         </View>
       </ScrollView>
+
+      <GalleryPhotoPicker
+        visible={galleryPickerVisible}
+        title="Photos du projet"
+        referenceDate={new Date(project.dueDate)}
+        onClose={() => setGalleryPickerVisible(false)}
+        onAddAssets={addGalleryProjectPhotos}
+        onBrowseAll={browseAllProjectPhotos}
+      />
 
       {/* Expense modal */}
       <BottomSheet
