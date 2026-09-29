@@ -180,6 +180,7 @@ const LEAFLET_BASE_CSS = `
   #map.dark-tiles .leaflet-tile-pane{filter:invert(.92) hue-rotate(180deg) saturate(.72) brightness(.9) contrast(.92)}
   .leaflet-control-attribution{background:rgba(255,255,255,.82)!important;color:#222!important;font:9px/1.25 sans-serif!important}
   .leaflet-control-attribution a{color:#155b8c!important}
+  .leaflet-top.leaflet-right{top:160px}
   .leaflet-control-zoom{margin:12px!important}
   .leaflet-control-zoom a{background:#1E1E1E!important;color:#FFF!important;border-color:#333!important}`;
 
@@ -221,7 +222,8 @@ function buildMapHtml(
 <body>
 <div id="map"></div>
 <script>
-var map=L.map('map',{zoomControl:true,attributionControl:true});
+var map=L.map('map',{zoomControl:true,attributionControl:false});
+L.control.attribution({position:'topright'}).addTo(map);
 ${TILE_THEME_JS}
 _applyMapTheme('${mapTheme}');
 
@@ -368,7 +370,8 @@ function buildReplayHtml(points: LocationPoint[], mapTheme: MapTheme = 'dark'): 
 <div id="map"></div>
 <div id="replay-time"></div>
 <script>
-var map=L.map('map',{zoomControl:true,attributionControl:true});
+var map=L.map('map',{zoomControl:true,attributionControl:false});
+L.control.attribution({position:'topright'}).addTo(map);
 ${TILE_THEME_JS}
 _applyMapTheme('${mapTheme}');
 
