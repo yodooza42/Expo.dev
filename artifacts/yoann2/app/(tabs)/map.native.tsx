@@ -145,15 +145,25 @@ const MAP_THEMES: { key: MapTheme; label: string; icon: React.ComponentProps<typ
 // Injecté dans le HTML Leaflet : bascule la tuile de fond sans recharger la page.
 const TILE_THEME_JS = `
 var TILE_URLS={
-  dark:'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-  light:'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+  dark:'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+  light:'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
   satellite:'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+};
+var TILE_ATTRIBUTIONS={
+  dark:'Sources: Esri, HERE, Garmin, USGS, Intermap, INCREMENT P, NRCan, Esri Japan, METI, Esri China (Hong Kong), Esri Korea, Esri (Thailand), NGCC, &copy; OpenStreetMap contributors, and the GIS User Community',
+  light:'Sources: Esri, HERE, Garmin, USGS, Intermap, INCREMENT P, NRCan, Esri Japan, METI, Esri China (Hong Kong), Esri Korea, Esri (Thailand), NGCC, &copy; OpenStreetMap contributors, and the GIS User Community',
+  satellite:'Source: Esri, Vantor, Earthstar Geographics, and the GIS User Community'
 };
 var _curTileLayer=null;
 function _applyMapTheme(theme){
   var url=TILE_URLS[theme]||TILE_URLS.dark;
   if(_curTileLayer)map.removeLayer(_curTileLayer);
-  _curTileLayer=L.tileLayer(url,{maxZoom:19,maxNativeZoom:theme==='satellite'?19:19}).addTo(map);
+  map.getContainer().classList.toggle('dark-tiles',theme==='dark');
+  _curTileLayer=L.tileLayer(url,{
+    maxZoom:19,
+    maxNativeZoom:19,
+    attribution:TILE_ATTRIBUTIONS[theme]||TILE_ATTRIBUTIONS.dark
+  }).addTo(map);
 }
 window.setMapTheme=function(theme){_applyMapTheme(theme);};
 `;
@@ -167,6 +177,10 @@ const LEAFLET_BASE_CSS = `
   *{margin:0;padding:0;box-sizing:border-box}
   body{background:#121212}
   #map{width:100vw;height:100vh}
+  #map.dark-tiles .leaflet-tile-pane{filter:invert(.92) hue-rotate(180deg) saturate(.72) brightness(.9) contrast(.92)}
+  .leaflet-control-attribution{background:rgba(255,255,255,.82)!important;color:#222!important;font:9px/1.25 sans-serif!important}
+  .leaflet-control-attribution a{color:#155b8c!important}
+  .leaflet-top.leaflet-right{top:160px}
   .leaflet-control-zoom{margin:12px!important}
   .leaflet-control-zoom a{background:#1E1E1E!important;color:#FFF!important;border-color:#333!important}`;
 
@@ -209,6 +223,7 @@ function buildMapHtml(
 <div id="map"></div>
 <script>
 var map=L.map('map',{zoomControl:true,attributionControl:false});
+L.control.attribution({position:'topright'}).addTo(map);
 ${TILE_THEME_JS}
 _applyMapTheme('${mapTheme}');
 
@@ -356,6 +371,7 @@ function buildReplayHtml(points: LocationPoint[], mapTheme: MapTheme = 'dark'): 
 <div id="replay-time"></div>
 <script>
 var map=L.map('map',{zoomControl:true,attributionControl:false});
+L.control.attribution({position:'topright'}).addTo(map);
 ${TILE_THEME_JS}
 _applyMapTheme('${mapTheme}');
 

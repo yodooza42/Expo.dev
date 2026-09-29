@@ -65,13 +65,25 @@ function buildPickerHtml(cLat: number, cLng: number, hasPin: boolean): string {
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<style>*{margin:0;padding:0;box-sizing:border-box}body{background:#121212}#map{width:100vw;height:100vh}.leaflet-control-zoom a{background:#1E1E1E!important;color:#FFF!important;border-color:#333!important}</style>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#121212}
+#map{width:100vw;height:100vh}
+.leaflet-tile-pane{filter:invert(.92) hue-rotate(180deg) saturate(.72) brightness(.9) contrast(.92)}
+.leaflet-control-attribution{background:rgba(255,255,255,.82)!important;color:#222!important;font:9px/1.25 sans-serif!important}
+.leaflet-control-attribution a{color:#155b8c!important}
+.leaflet-control-zoom a{background:#1E1E1E!important;color:#FFF!important;border-color:#333!important}
+</style>
 </head>
 <body>
 <div id="map"></div>
 <script>
-var map=L.map('map',{zoomControl:true,attributionControl:false});
-L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{maxZoom:19}).addTo(map);
+var map=L.map('map',{zoomControl:true,attributionControl:true});
+L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',{
+  maxZoom:19,
+  maxNativeZoom:19,
+  attribution:'Sources: Esri, HERE, Garmin, USGS, Intermap, INCREMENT P, NRCan, Esri Japan, METI, Esri China (Hong Kong), Esri Korea, Esri (Thailand), NGCC, &copy; OpenStreetMap contributors, and the GIS User Community'
+}).addTo(map);
 map.setView([${lat},${lng}],${zoom});
 var marker=null;
 function send(lat,lng){if(window.ReactNativeWebView){window.ReactNativeWebView.postMessage(JSON.stringify({type:'pick',lat:lat,lng:lng}));}}
