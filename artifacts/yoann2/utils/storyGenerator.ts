@@ -212,7 +212,33 @@ window.generateStory=function(opts){
   var pts=opts.points;
   var totalMs=pts.length>0?(pts[pts.length-1].ms||0):0;
   if(!totalMs)totalMs=opts.durationSec*1000;
+  var hasStoryTimeline=pts.length>1&&isFinite(pts[0].storyMs)&&isFinite(pts[pts.length-1].storyMs);
+  var totalStoryMs=hasStoryTimeline?pts[pts.length-1].storyMs:totalMs;
   var totalKm=pts.length>0?pts[pts.length-1].km:opts.distKm;
+
+  function interpolateTimeline(inputMs,inputKey,outputKey){
+    if(!pts||!pts.length)return inputMs;
+    if(inputMs<=pts[0][inputKey])return pts[0][outputKey];
+    if(inputMs>=pts[pts.length-1][inputKey])return pts[pts.length-1][outputKey];
+    var lo=0,hi=pts.length-1;
+    while(lo<hi-1){
+      var mid=Math.floor((lo+hi)/2);
+      if(pts[mid][inputKey]<=inputMs)lo=mid;else hi=mid;
+    }
+    var span=pts[hi][inputKey]-pts[lo][inputKey]||1;
+    var fraction=(inputMs-pts[lo][inputKey])/span;
+    return pts[lo][outputKey]+(pts[hi][outputKey]-pts[lo][outputKey])*fraction;
+  }
+  function getRealMsAtStoryMs(storyMs){
+    return hasStoryTimeline
+      ?interpolateTimeline(storyMs,'storyMs','ms')
+      :storyMs;
+  }
+  function getStoryMsAtRealMs(realMs){
+    return hasStoryTimeline
+      ?interpolateTimeline(realMs,'ms','storyMs')
+      :realMs;
+  }
 
   // km position at elapsed time (interpolated, pauses = km stays flat)
   function getKmAtMs(timeMs){
@@ -299,7 +325,8 @@ window.generateStory=function(opts){
     var kmRaw=routeCumKm[fi]+(routeCumKm[Math.min(fi+1,route.length-1)]-routeCumKm[fi])*fr;
     var km=kmRaw*dScale;
     var ms=getMsAtKm(km);
-    var aProgAt=totalMs>0?Math.min(1,ms/totalMs):0;
+    var storyMs=getStoryMsAtRealMs(ms);
+    var aProgAt=totalStoryMs>0?Math.min(1,storyMs/totalStoryMs):0;
     return{note:p.note||'',src:p.img,imgEl:null,triggered:false,absAEl:aProgAt*animMs};
   }).sort(function(a,b){return a.absAEl-b.absAEl;});
   var totalPauseMs=photoMarkers.length*PHOTO_PAUSE_MS;
@@ -387,7 +414,7 @@ window.generateStory=function(opts){
     }
     var vEl=Math.max(0,el-pauseConsumedMs);
     var aProg=Math.min(1,vEl/animMs);
-    var currentMs=aProg*totalMs;
+    var currentMs=getRealMsAtStoryMs(aProg*totalStoryMs);
 
     // Déclenchement d'une pause photo : dès que l'instant absolu (vEl) d'une photo pas
     // encore montrée est atteint.

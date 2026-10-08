@@ -43,6 +43,7 @@ import type { Trip, RoutePoint, Vehicle } from '@/types/trips';
 import type { PlaceCategory } from '@/types/places';
 import { getPlaceCategories, saveKnownPlace } from '@/utils/placesStorage';
 import { reverseGeocode } from '@/utils/geocoding';
+import { compressStoryStationaryTime } from '@/utils/storyPlaybackTimeline';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -1494,14 +1495,22 @@ export default function MapScreen() {
 
     // Distance GPS brute (peut être gonflée par le bruit) → normaliser sur la vraie distance du trajet
     let rawCumDist = 0;
-    const rawChartPts: Array<{ km: number; spd: number; alt: number | null }> = [];
+    const t0ms = sampled[0]?.timestamp ?? 0;
+    const rawChartPts: Array<{ km: number; ms: number; spd: number; alt: number | null }> = [];
     for (let i = 0; i < sampled.length; i++) {
       if (i > 0) rawCumDist += haversineKm(sampled[i - 1]!.lat, sampled[i - 1]!.lng, sampled[i]!.lat, sampled[i]!.lng);
-      rawChartPts.push({ km: rawCumDist, spd: sampled[i]!.speedKmh ?? 0, alt: sampled[i]!.altitudeM ?? null });
+      rawChartPts.push({
+        km: rawCumDist,
+        ms: sampled[i]!.timestamp - t0ms,
+        spd: sampled[i]!.speedKmh ?? 0,
+        alt: sampled[i]!.altitudeM ?? null,
+      });
     }
     const actualDistKm = selectedTrip.distanceKm;
     const distScale = rawCumDist > 0 ? actualDistKm / rawCumDist : 1;
-    const chartPts = rawChartPts.map(p => ({ ...p, km: parseFloat((p.km * distScale).toFixed(3)) }));
+    const chartPts = compressStoryStationaryTime(
+      rawChartPts.map(p => ({ ...p, km: parseFloat((p.km * distScale).toFixed(3)) })),
+    );
 
     const speeds = tripPoints.map(p => p.speedKmh ?? 0);
     const maxSpeed = Math.max(...speeds, 1);
@@ -1530,6 +1539,7 @@ export default function MapScreen() {
       dateLabel,
       timeLabel,
       distKm: parseFloat(actualDistKm.toFixed(1)),
+      durationSec: Math.round(durationMs / 1000),
       durationLabel,
       maxSpeed,
       gainM: Math.round(gainM),

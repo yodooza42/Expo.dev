@@ -59,6 +59,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { loadMultiDayPoints } from '@/utils/locationTracking';
 import type { LocationPoint } from '@/utils/locationTracking';
 import { buildStoryHtml } from '@/utils/storyGenerator';
+import { compressStoryStationaryTime } from '@/utils/storyPlaybackTimeline';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
@@ -839,7 +840,9 @@ export default function TripMapScreen() {
       });
     }
     const distScale = rawCumDist > 0 ? trip.distanceKm / rawCumDist : 1;
-    const chartPts = rawChartPts.map(p => ({ ...p, km: parseFloat((p.km * distScale).toFixed(3)) }));
+    const chartPts = compressStoryStationaryTime(
+      rawChartPts.map(p => ({ ...p, km: parseFloat((p.km * distScale).toFixed(3)) })),
+    );
 
     const maxSpeed = Math.max(...tripLocPts.map(p => p.speedKmh ?? 0), 1);
     const alts = tripLocPts.map(p => p.altitudeM).filter((a): a is number => a != null);
