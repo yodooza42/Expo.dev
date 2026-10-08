@@ -212,7 +212,10 @@ window.generateStory=function(opts){
   var pts=opts.points;
   var totalMs=pts.length>0?(pts[pts.length-1].ms||0):0;
   if(!totalMs)totalMs=opts.durationSec*1000;
-  var hasStoryTimeline=pts.length>1&&isFinite(pts[0].storyMs)&&isFinite(pts[pts.length-1].storyMs);
+  var hasStoryTimeline=pts.length>1
+    &&isFinite(pts[0].storyMs)
+    &&isFinite(pts[pts.length-1].storyMs)
+    &&pts[pts.length-1].storyMs>pts[0].storyMs;
   var totalStoryMs=hasStoryTimeline?pts[pts.length-1].storyMs:totalMs;
   var totalKm=pts.length>0?pts[pts.length-1].km:opts.distKm;
 
