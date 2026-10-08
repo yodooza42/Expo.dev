@@ -30,7 +30,7 @@ test('compresses a long stationary interval only on the story timeline', () => {
 
   assert.equal(result[2].ms, points[2].ms);
   assert.equal(result[2].km, points[2].km);
-  assert.ok(Math.abs(result[2].storyMs - (60_000 + 6_000_000 / 26)) < 1);
+  assert.ok(Math.abs(result[2].storyMs - (60_000 + 1_000 * 6 / 26)) < 1);
   assert.equal(result[3].storyMs, 61_000);
   assert.equal(result[4].storyMs, 121_000);
   assert.equal(points[3].ms, 27 * 60_000, 'the source trip data is not mutated');
