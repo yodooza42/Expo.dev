@@ -59,7 +59,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { loadMultiDayPoints } from '@/utils/locationTracking';
 import type { LocationPoint } from '@/utils/locationTracking';
 import { buildStoryHtml } from '@/utils/storyGenerator';
-import { compressStoryStationaryTime } from '@/utils/storyPlaybackTimeline';
+import { buildStoryPlaybackTimeline } from '@/utils/storyPlaybackTimeline';
+import type { StoryPause } from '@/utils/storyPlaybackTimeline';
+import { StoryPauseCaptionModal } from '@/components/StoryPauseCaptionModal';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
@@ -439,6 +441,10 @@ export default function TripMapScreen() {
 
   const [scrubTs, setScrubTs] = useState<number | null>(null);
   const [storyModalVisible, setStoryModalVisible] = useState(false);
+  const [pauseCaptionModalVisible, setPauseCaptionModalVisible] = useState(false);
+  const [pauseCaptionPauses, setPauseCaptionPauses] = useState<StoryPause[]>([]);
+  const [pauseCaptionDrafts, setPauseCaptionDrafts] = useState<string[]>([]);
+  const [pendingStoryDuration, setPendingStoryDuration] = useState<number | undefined>();
 
   const [photoModalOpen, setPhotoModalOpen] = useState(false);
   const [addingPhotos, setAddingPhotos] = useState(false);
@@ -798,7 +804,7 @@ export default function TripMapScreen() {
     }
   }, []);
 
-  const handleGenerateStory = useCallback(async (durationOverride?: number) => {
+  const handleGenerateStory = useCallback(async (durationOverride?: number, pauseCaptions?: string[]) => {
     if (!trip || isGeneratingStory) return;
 
     // Route : tracé stocké ou tracé GPS déjà chargé dans tripLocPts
@@ -814,18 +820,6 @@ export default function TripMapScreen() {
       return;
     }
 
-    // Photos ancrées sur le tracé (comme la Story Période) : encodées en data URI
-    const anchoredPhotos = (trip.photos ?? []).filter(p => p.routeIndex != null && route.length > 1);
-    const photos = (await Promise.all(anchoredPhotos.map(async p => {
-      const dataUri = await photoToDataUri(p.uri);
-      if (!dataUri) return null;
-      return { img: dataUri, note: p.note, frac: (p.routeIndex! / (route.length - 1)) };
-    }))).filter((p): p is { img: string; note: string | undefined; frac: number } => p != null);
-
-    setIsGeneratingStory(true);
-    setStoryProgress(0);
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-
     // Réutilise tripLocPts (déjà filtré + samplé — mêmes données que les charts affichés)
     let rawCumDist = 0;
     const t0ms = tripLocPts.length > 0 ? tripLocPts[0]!.timestamp : 0;
@@ -840,9 +834,29 @@ export default function TripMapScreen() {
       });
     }
     const distScale = rawCumDist > 0 ? trip.distanceKm / rawCumDist : 1;
-    const chartPts = compressStoryStationaryTime(
+    const playbackTimeline = buildStoryPlaybackTimeline(
       rawChartPts.map(p => ({ ...p, km: parseFloat((p.km * distScale).toFixed(3)) })),
     );
+    const chartPts = playbackTimeline.points;
+    if (pauseCaptions === undefined && playbackTimeline.pauses.length > 0) {
+      setPendingStoryDuration(durationOverride);
+      setPauseCaptionPauses(playbackTimeline.pauses);
+      setPauseCaptionDrafts(playbackTimeline.pauses.map(() => ''));
+      setPauseCaptionModalVisible(true);
+      return;
+    }
+
+    setIsGeneratingStory(true);
+    setStoryProgress(0);
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+    // Photos ancrées sur le tracé (comme la Story Période) : encodées en data URI
+    const anchoredPhotos = (trip.photos ?? []).filter(p => p.routeIndex != null && route.length > 1);
+    const photos = (await Promise.all(anchoredPhotos.map(async p => {
+      const dataUri = await photoToDataUri(p.uri);
+      if (!dataUri) return null;
+      return { img: dataUri, note: p.note, frac: (p.routeIndex! / (route.length - 1)) };
+    }))).filter((p): p is { img: string; note: string | undefined; frac: number } => p != null);
 
     const maxSpeed = Math.max(...tripLocPts.map(p => p.speedKmh ?? 0), 1);
     const alts = tripLocPts.map(p => p.altitudeM).filter((a): a is number => a != null);
@@ -898,6 +912,12 @@ export default function TripMapScreen() {
       walkParticipants: walkStoryParticipants,
       walkSpotName: walkStorySpot,
       photos,
+      pauseCards: playbackTimeline.pauses.map((pause, index) => ({
+        storyStartMs: pause.storyStartMs,
+        storyEndMs: pause.storyEndMs,
+        durationMs: pause.durationMs,
+        caption: pauseCaptions?.[index]?.trim() ?? '',
+      })),
       theme: storyTheme,
     };
 
@@ -1773,6 +1793,24 @@ export default function TripMapScreen() {
           </View>
         </Pressable>
       </Modal>
+
+      <StoryPauseCaptionModal
+        visible={pauseCaptionModalVisible}
+        pauses={pauseCaptionPauses}
+        drafts={pauseCaptionDrafts}
+        accentColor={vehColor}
+        cardColor={colors.card}
+        borderColor={colors.border}
+        textColor={colors.foreground}
+        mutedColor={colors.mutedForeground}
+        onChange={(index, value) => setPauseCaptionDrafts(current => current.map((draft, i) => i === index ? value : draft))}
+        onCancel={() => setPauseCaptionModalVisible(false)}
+        onContinue={() => {
+          const captions = [...pauseCaptionDrafts];
+          setPauseCaptionModalVisible(false);
+          void handleGenerateStory(pendingStoryDuration, captions);
+        }}
+      />
 
       {/* Note d'une photo */}
       <Modal visible={photoNoteEditId !== null} transparent animationType="fade" onRequestClose={() => setPhotoNoteEditId(null)}>

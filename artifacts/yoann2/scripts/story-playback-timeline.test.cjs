@@ -15,7 +15,16 @@ vm.runInNewContext(`(function(module,exports){${compiled}\n})(testModule,testMod
   testModule,
   exports: testModule.exports,
 });
-const { compressStoryStationaryTime } = testModule.exports;
+const { buildStoryPlaybackTimeline, compressStoryStationaryTime } = testModule.exports;
+const storySource = fs.readFileSync(path.join(ROOT, 'utils/storyGenerator.ts'), 'utf8');
+const storyCompiled = ts.transpileModule(storySource, {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
+}).outputText;
+const storyModule = { exports: {} };
+vm.runInNewContext(`(function(module,exports){${storyCompiled}\n})(storyModule,storyModule.exports);`, {
+  storyModule,
+  exports: storyModule.exports,
+});
 
 test('compresses a long stationary interval only on the story timeline', () => {
   const points = [
@@ -30,10 +39,16 @@ test('compresses a long stationary interval only on the story timeline', () => {
 
   assert.equal(result[2].ms, points[2].ms);
   assert.equal(result[2].km, points[2].km);
-  assert.ok(Math.abs(result[2].storyMs - (60_000 + 1_000 * 6 / 26)) < 1);
-  assert.equal(result[3].storyMs, 61_000);
-  assert.equal(result[4].storyMs, 121_000);
+  assert.ok(Math.abs(result[2].storyMs - (60_000 + 2_200 * 6 / 26)) < 1);
+  assert.equal(result[3].storyMs, 62_200);
+  assert.equal(result[4].storyMs, 122_200);
   assert.equal(points[3].ms, 27 * 60_000, 'the source trip data is not mutated');
+
+  const timeline = buildStoryPlaybackTimeline(points);
+  assert.equal(timeline.pauses.length, 1);
+  assert.equal(timeline.pauses[0].durationMs, 26 * 60_000);
+  assert.equal(timeline.pauses[0].storyStartMs, 60_000);
+  assert.equal(timeline.pauses[0].storyEndMs, 62_200);
 });
 
 test('leaves short stops and moving intervals at their real pace', () => {
@@ -57,4 +72,8 @@ test('leaves short stops and moving intervals at their real pace', () => {
     compressStoryStationaryTime(slowMovement).map(point => point.storyMs),
     slowMovement.map(point => point.ms),
   );
+});
+
+test('story renderer script remains valid JavaScript for the WebView', () => {
+  assert.doesNotThrow(() => new Function(storyModule.exports.STORY_GENERATE_JS));
 });

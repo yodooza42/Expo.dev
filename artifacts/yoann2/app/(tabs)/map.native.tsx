@@ -43,7 +43,9 @@ import type { Trip, RoutePoint, Vehicle } from '@/types/trips';
 import type { PlaceCategory } from '@/types/places';
 import { getPlaceCategories, saveKnownPlace } from '@/utils/placesStorage';
 import { reverseGeocode } from '@/utils/geocoding';
-import { compressStoryStationaryTime } from '@/utils/storyPlaybackTimeline';
+import { buildStoryPlaybackTimeline } from '@/utils/storyPlaybackTimeline';
+import type { StoryPause } from '@/utils/storyPlaybackTimeline';
+import { StoryPauseCaptionModal } from '@/components/StoryPauseCaptionModal';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -1052,6 +1054,9 @@ export default function MapScreen() {
   const [isGeneratingStory, setIsGeneratingStory] = useState(false);
   const [storyProgress, setStoryProgress]         = useState(0);
   const storyChunksRef = useRef<{mime: string; chunks: string[]; total: number}>({mime: 'video/mp4', chunks: [], total: 0});
+  const [pauseCaptionModalVisible, setPauseCaptionModalVisible] = useState(false);
+  const [pauseCaptionPauses, setPauseCaptionPauses] = useState<StoryPause[]>([]);
+  const [pauseCaptionDrafts, setPauseCaptionDrafts] = useState<string[]>([]);
 
   // ── Replay state ────────────────────────────────────────────────────────────
   const [replayMode, setReplayMode]           = useState(false);
@@ -1474,7 +1479,7 @@ export default function MapScreen() {
   const selectedTrip = selectedTripId ? (dayTrips.find(t => t.id === selectedTripId) ?? null) : null;
   const selectedTripColor = vehicleInfoFromList(selectedTrip?.vehicle ?? null, vehicles).color;
 
-  const handleGenerateStory = useCallback(() => {
+  const handleGenerateStory = useCallback((pauseCaptions?: string[]) => {
     if (!selectedTrip || tripPoints.length < 2 || isGeneratingStory) return;
 
     // ── Route : tracé propre stocké (OSRM ou GPS simplifié), fallback GPS brut ──
@@ -1508,9 +1513,16 @@ export default function MapScreen() {
     }
     const actualDistKm = selectedTrip.distanceKm;
     const distScale = rawCumDist > 0 ? actualDistKm / rawCumDist : 1;
-    const chartPts = compressStoryStationaryTime(
+    const playbackTimeline = buildStoryPlaybackTimeline(
       rawChartPts.map(p => ({ ...p, km: parseFloat((p.km * distScale).toFixed(3)) })),
     );
+    const chartPts = playbackTimeline.points;
+    if (pauseCaptions === undefined && playbackTimeline.pauses.length > 0) {
+      setPauseCaptionPauses(playbackTimeline.pauses);
+      setPauseCaptionDrafts(playbackTimeline.pauses.map(() => ''));
+      setPauseCaptionModalVisible(true);
+      return;
+    }
 
     const speeds = tripPoints.map(p => p.speedKmh ?? 0);
     const maxSpeed = Math.max(...speeds, 1);
@@ -1547,6 +1559,12 @@ export default function MapScreen() {
       maxAlt,
       hasAlt: alts.length > 0,
       points: chartPts,
+      pauseCards: playbackTimeline.pauses.map((pause, index) => ({
+        storyStartMs: pause.storyStartMs,
+        storyEndMs: pause.storyEndMs,
+        durationMs: pause.durationMs,
+        caption: pauseCaptions?.[index]?.trim() ?? '',
+      })),
       route,
     };
 
@@ -1910,7 +1928,7 @@ export default function MapScreen() {
                   </Pressable>
                   <Pressable
                     style={[styles.tripStoryBtn, { borderColor: selectedTripColor, opacity: isGeneratingStory ? 0.5 : 1 }]}
-                    onPress={handleGenerateStory}
+                    onPress={() => handleGenerateStory()}
                     disabled={isGeneratingStory}
                   >
                     <MaterialCommunityIcons name="instagram" size={13} color={selectedTripColor} />
@@ -2056,6 +2074,23 @@ export default function MapScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+      <StoryPauseCaptionModal
+        visible={pauseCaptionModalVisible}
+        pauses={pauseCaptionPauses}
+        drafts={pauseCaptionDrafts}
+        accentColor={selectedTripColor}
+        cardColor={colors.card}
+        borderColor={colors.border}
+        textColor={colors.foreground}
+        mutedColor={colors.mutedForeground}
+        onChange={(index, value) => setPauseCaptionDrafts(current => current.map((draft, i) => i === index ? value : draft))}
+        onCancel={() => setPauseCaptionModalVisible(false)}
+        onContinue={() => {
+          const captions = [...pauseCaptionDrafts];
+          setPauseCaptionModalVisible(false);
+          handleGenerateStory(captions);
+        }}
+      />
     </View>
   );
 }

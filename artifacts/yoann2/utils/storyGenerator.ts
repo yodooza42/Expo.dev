@@ -304,6 +304,8 @@ window.generateStory=function(opts){
   var animMs=((opts.videoDurationSec||18)*1000)/hyperSpeed,t0=null,lastRep=0;
   var maxSpd=opts.maxSpeed||1;
   var altSpan=Math.max(opts.maxAlt-opts.minAlt,1);
+  var pauseCards=opts.pauseCards||[];
+  var pauseCardDisplayMs=Math.min(2500,animMs/Math.max(1,pauseCards.length));
 
   // ── Photos ancrées (comme la Story Période) ──────────────────────────────────
   // opts.photos: [{img, note, frac}] — frac = position (0..1) le long du tableau
@@ -417,7 +419,8 @@ window.generateStory=function(opts){
     }
     var vEl=Math.max(0,el-pauseConsumedMs);
     var aProg=Math.min(1,vEl/animMs);
-    var currentMs=getRealMsAtStoryMs(aProg*totalStoryMs);
+    var currentStoryMs=aProg*totalStoryMs;
+    var currentMs=getRealMsAtStoryMs(currentStoryMs);
 
     // Déclenchement d'une pause photo : dès que l'instant absolu (vEl) d'une photo pas
     // encore montrée est atteint.
@@ -546,6 +549,23 @@ window.generateStory=function(opts){
     ctx.beginPath();ctx.arc(dotX,dotY,4/cam.zoom,0,Math.PI*2);ctx.fillStyle='#FFFFFF';ctx.fill();
 
     ctx.restore(); // fin clip + caméra
+
+    // Pause raccourcie : un carton indique la durée réelle et la légende facultative.
+    for(var pci=0;pci<pauseCards.length;pci++){
+      var pauseCard=pauseCards[pci];
+      var pauseCardStartEl=totalStoryMs>0?(pauseCard.storyStartMs/totalStoryMs)*animMs:0;
+      if(vEl>=pauseCardStartEl&&vEl<pauseCardStartEl+pauseCardDisplayMs){
+        ctx.fillStyle='rgba(12,15,20,0.9)';ctx.fillRect(68,610,584,104);
+        ctx.strokeStyle=opts.color+'AA';ctx.lineWidth=2;ctx.strokeRect(68,610,584,104);
+        ctx.textAlign='center';ctx.fillStyle=opts.color;ctx.font='bold 25px Arial,sans-serif';
+        ctx.fillText('PAUSE DE '+Math.max(1,Math.round(pauseCard.durationMs/60000))+' MIN',cW/2,650);
+        if(pauseCard.caption){
+          ctx.fillStyle='#FFFFFF';ctx.font='24px Arial,sans-serif';
+          ctx.fillText(pauseCard.caption,cW/2,689,cW-150);
+        }
+        break;
+      }
+    }
 
     // Scale bar — seulement quand la vue est dézoomée (sinon échelle fausse)
     if(cam.zoom<1.15){

@@ -6,20 +6,35 @@ type StoryTimelinePoint = {
 type StationaryInterval = {
   startMs: number;
   endMs: number;
+  km: number;
 };
 
 const MIN_STATIONARY_DURATION_MS = 5 * 60_000;
 const MAX_STATIONARY_SPEED_KMH = 1;
-const STORY_STATIONARY_DURATION_MS = 1_000;
+const STORY_STATIONARY_DURATION_MS = 2_200;
+
+export type StoryPause = StationaryInterval & {
+  durationMs: number;
+  storyStartMs: number;
+  storyEndMs: number;
+};
+
+export interface StoryPlaybackTimeline<T extends StoryTimelinePoint> {
+  points: Array<T & { storyMs: number }>;
+  pauses: StoryPause[];
+}
 
 /**
  * Add a story-only time axis that caps long periods with almost no distance
  * progress. The original elapsed time and distance remain untouched.
  */
-export function compressStoryStationaryTime<T extends StoryTimelinePoint>(
+export function buildStoryPlaybackTimeline<T extends StoryTimelinePoint>(
   points: readonly T[],
-): Array<T & { storyMs: number }> {
-  const identityTimeline = () => points.map(point => ({ ...point, storyMs: point.ms }));
+): StoryPlaybackTimeline<T> {
+  const identityTimeline = (): StoryPlaybackTimeline<T> => ({
+    points: points.map(point => ({ ...point, storyMs: point.ms })),
+    pauses: [],
+  });
   if (points.length < 2) return identityTimeline();
 
   for (let i = 0; i < points.length; i++) {
@@ -47,7 +62,7 @@ export function compressStoryStationaryTime<T extends StoryTimelinePoint>(
       && distanceKm >= 0
       && averageSpeedKmh <= MAX_STATIONARY_SPEED_KMH
     ) {
-      stationaryIntervals.push({ startMs: start.ms, endMs: end.ms });
+      stationaryIntervals.push({ startMs: start.ms, endMs: end.ms, km: start.km });
     }
   };
 
@@ -75,9 +90,21 @@ export function compressStoryStationaryTime<T extends StoryTimelinePoint>(
 
   if (stationaryIntervals.length === 0) return identityTimeline();
 
+  let pauseRemovedMs = 0;
+  const pauses = stationaryIntervals.map(interval => {
+    const durationMs = interval.endMs - interval.startMs;
+    const storyStartMs = interval.startMs - pauseRemovedMs;
+    pauseRemovedMs += durationMs - STORY_STATIONARY_DURATION_MS;
+    return {
+      ...interval,
+      durationMs,
+      storyStartMs,
+      storyEndMs: storyStartMs + STORY_STATIONARY_DURATION_MS,
+    };
+  });
   let intervalIndex = 0;
   let removedMs = 0;
-  return points.map(point => {
+  const timedPoints = points.map(point => {
     while (
       intervalIndex < stationaryIntervals.length
       && point.ms >= stationaryIntervals[intervalIndex]!.endMs
@@ -100,4 +127,11 @@ export function compressStoryStationaryTime<T extends StoryTimelinePoint>(
 
     return { ...point, storyMs: point.ms - removedMs };
   });
+  return { points: timedPoints, pauses };
+}
+
+export function compressStoryStationaryTime<T extends StoryTimelinePoint>(
+  points: readonly T[],
+): Array<T & { storyMs: number }> {
+  return buildStoryPlaybackTimeline(points).points;
 }
