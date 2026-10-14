@@ -8,7 +8,11 @@ description: How to authenticate and run the Android APK build for the yoann2 Ex
 Run from `artifacts/yoann2`. eas-cli is installed globally. The `apk` profile in `eas.json` is internal-distribution, `buildType: apk`.
 
 Command that works:
-`EAS_NO_VCS=1 eas build --platform android --profile apk --non-interactive --no-wait`
+`EAS_NO_VCS=1 GIT_OPTIONAL_LOCKS=0 /home/runner/workspace/.config/npm/node_global/bin/eas build --platform android --profile apk --non-interactive --no-wait`
+
+Use the existing global CLI rather than `npx eas-cli`.
+
+**Why:** Resolving the CLI through npx has timed out in this environment; the installed global CLI submits builds directly.
 
 **Auth:** EAS authenticates via the `EXPO_TOKEN` **secret** (account `yoann42`). 
 **Why:** A token pasted into chat is NOT stored anywhere the shell can read it — `setEnvVars` cannot set secrets, so you must use the environment-secrets `requestEnvVar` secure field. After it's added, new shells get `$EXPO_TOKEN` automatically; verify with `eas whoami`.
