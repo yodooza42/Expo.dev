@@ -563,6 +563,36 @@ export default function TripsScreen() {
           </Pressable>
         ))}
 
+        <Pressable onPress={() => router.push('/activity-map')} style={[styles.dashCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <View style={[styles.dashCardIcon, { backgroundColor: colors.primary + '18' }]}>
+            <MaterialCommunityIcons name="map-outline" size={22} color={colors.primary} />
+          </View>
+          <View style={{ flex: 1, gap: 3 }}>
+            <Text style={[styles.dashCardTitle, { color: colors.foreground }]}>Carte des activités</Text>
+            <Text style={[styles.dashCardSub, { color: colors.mutedForeground }]}>Marche, course, vélo, kayak · filtres par participant</Text>
+          </View>
+          <MaterialCommunityIcons name="chevron-right" size={18} color={colors.mutedForeground} />
+        </Pressable>
+
+        {/* ── Mes Trajets — lien vers la liste ── */}
+        <Pressable
+          onPress={() => { Haptics.selectionAsync(); router.push('/trip-list' as any); }}
+          style={[styles.dashCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+        >
+          <View style={[styles.dashCardIcon, { backgroundColor: colors.primary + '18' }]}>
+            <MaterialCommunityIcons name="map-legend" size={22} color={colors.primary} />
+          </View>
+          <View style={{ flex: 1, gap: 3 }}>
+            <Text style={[styles.dashCardTitle, { color: colors.foreground }]}>Mes Trajets</Text>
+            <Text style={[styles.dashCardSub, { color: colors.mutedForeground }]}>
+              {activeCats.length} catégorie{activeCats.length !== 1 ? 's' : ''}
+              {pending.length > 0 ? `  ·  ${pending.length} à taguer` : ''}
+              {uncategorized.length > 0 && pending.length === 0 ? `  ·  ${uncategorized.length} non groupé${uncategorized.length > 1 ? 's' : ''}` : ''}
+            </Text>
+          </View>
+          <MaterialCommunityIcons name="chevron-right" size={18} color={colors.mutedForeground} />
+        </Pressable>
+
         {/* ── Ce mois ── */}
         {hasMonthData && (
           <View style={styles.section}>
@@ -614,36 +644,6 @@ export default function TripsScreen() {
             </View>
           </View>
         )}
-
-        <Pressable onPress={() => router.push('/activity-map')} style={[styles.dashCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <View style={[styles.dashCardIcon, { backgroundColor: colors.primary + '18' }]}>
-            <MaterialCommunityIcons name="map-outline" size={22} color={colors.primary} />
-          </View>
-          <View style={{ flex: 1, gap: 3 }}>
-            <Text style={[styles.dashCardTitle, { color: colors.foreground }]}>Carte des activités</Text>
-            <Text style={[styles.dashCardSub, { color: colors.mutedForeground }]}>Marche, course, vélo, kayak · filtres par participant</Text>
-          </View>
-          <MaterialCommunityIcons name="chevron-right" size={18} color={colors.mutedForeground} />
-        </Pressable>
-
-        {/* ── Mes Trajets — lien vers la liste ── */}
-        <Pressable
-          onPress={() => { Haptics.selectionAsync(); router.push('/trip-list' as any); }}
-          style={[styles.dashCard, { backgroundColor: colors.card, borderColor: colors.border }]}
-        >
-          <View style={[styles.dashCardIcon, { backgroundColor: colors.primary + '18' }]}>
-            <MaterialCommunityIcons name="map-legend" size={22} color={colors.primary} />
-          </View>
-          <View style={{ flex: 1, gap: 3 }}>
-            <Text style={[styles.dashCardTitle, { color: colors.foreground }]}>Mes Trajets</Text>
-            <Text style={[styles.dashCardSub, { color: colors.mutedForeground }]}>
-              {activeCats.length} catégorie{activeCats.length !== 1 ? 's' : ''}
-              {pending.length > 0 ? `  ·  ${pending.length} à taguer` : ''}
-              {uncategorized.length > 0 && pending.length === 0 ? `  ·  ${uncategorized.length} non groupé${uncategorized.length > 1 ? 's' : ''}` : ''}
-            </Text>
-          </View>
-          <MaterialCommunityIcons name="chevron-right" size={18} color={colors.mutedForeground} />
-        </Pressable>
 
         {/* ── Rappels assurance ── */}
         {insuranceAlerts.length > 0 && (
