@@ -63,7 +63,7 @@ export function CustomTabBar({ state, navigation }: TabBarProps) {
         {state.routes
           .filter((route: any) => !HIDDEN_TABS.includes(route.name))
           .map((route: any) => {
-            const isFocused  = currentRouteName === route.name;
+            const isFocused  = currentRouteName === route.name || (currentRouteName === 'index' && route.name === 'accueil');
             const isHomeTab  = route.name === 'accueil';
             const iconColor  = isHomeTab
               ? '#FFFFFF'

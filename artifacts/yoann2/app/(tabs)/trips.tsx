@@ -16,6 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useColors } from '@/hooks/useColors';
 import type { Trip, TripCategory, Vehicle } from '@/types/trips';
+import { ACTIVITIES, activityForTrip, activityMilestones, filterActivities } from '@/utils/activities';
 import { getCategories } from '@/utils/tripCategories';
 import { tripEvents } from '@/utils/tripEvents';
 import { pH } from '@/styles/header';
@@ -183,6 +184,14 @@ export default function TripsScreen() {
 
   // ── Derived data ─────────────────────────────────────────────────────────────
   const mk = useMemo(currentMonthKey, []);
+  const monthActivities = useMemo(() => filterActivities(trips, settings, 'all', 'all').filter(trip => {
+    const date = new Date(trip.startTime);
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}` === mk;
+  }), [trips, settings, mk]);
+  const milestones = useMemo(() => {
+    const [year, month] = mk.split('-').map(Number);
+    return activityMilestones(trips, settings, year!, month! - 1);
+  }, [trips, settings, mk]);
 
   const thisMonth = useMemo(() => {
     const vehicleMap = new Map(settings.map(v => [v.id, v]));
@@ -408,7 +417,7 @@ export default function TripsScreen() {
   const motoColor = '#FF9800';
   const walkColor = '#4CAF50';
   const monthLabel = currentMonthLabel();
-  const hasMonthData = thisMonth.car.count > 0 || thisMonth.moto.count > 0 || spotsBalades.count > 0;
+  const hasMonthData = thisMonth.car.count > 0 || thisMonth.moto.count > 0 || spotsBalades.count > 0 || monthActivities.length > 0;
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
@@ -561,6 +570,15 @@ export default function TripsScreen() {
             <View style={[styles.monthCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <Text style={[styles.monthLabel, { color: colors.foreground }]}>{monthLabel}</Text>
               <View style={styles.monthRows}>
+                {ACTIVITIES.map(activity => {
+                  const matching = monthActivities.filter(trip => activityForTrip(trip, settings) === activity.key);
+                  if (!matching.length) return null;
+                  return <View key={activity.key} style={styles.monthRow}>
+                    <MaterialCommunityIcons name={activity.icon} size={14} color={activity.color} />
+                    <Text style={[styles.monthVehicle, { color: colors.foreground }]}>{activity.label} · {matching.reduce((sum, trip) => sum + trip.distanceKm, 0).toFixed(1)} km</Text>
+                    <Text style={[styles.monthCount, { color: colors.mutedForeground }]}>{matching.length} sortie{matching.length > 1 ? 's' : ''}</Text>
+                  </View>;
+                })}
                 {thisMonth.car.count > 0 && (
                   <View style={styles.monthRow}>
                     <MaterialCommunityIcons name="car" size={14} color={carColor} />
@@ -588,9 +606,25 @@ export default function TripsScreen() {
                   </View>
                 )}
               </View>
+              {milestones.length > 0 && <View style={{ gap: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, paddingTop: 12 }}>
+                <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold' }}>Jalons du mois</Text>
+                <Text style={{ color: colors.mutedForeground, fontSize: 11 }}>Calculés sur l’historique enregistré.</Text>
+                {milestones.map(milestone => <Text key={milestone.id} style={{ color: colors.foreground, fontSize: 13 }}>• {milestone.label}</Text>)}
+              </View>}
             </View>
           </View>
         )}
+
+        <Pressable onPress={() => router.push('/activity-map')} style={[styles.dashCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <View style={[styles.dashCardIcon, { backgroundColor: colors.primary + '18' }]}>
+            <MaterialCommunityIcons name="map-outline" size={22} color={colors.primary} />
+          </View>
+          <View style={{ flex: 1, gap: 3 }}>
+            <Text style={[styles.dashCardTitle, { color: colors.foreground }]}>Carte des activités</Text>
+            <Text style={[styles.dashCardSub, { color: colors.mutedForeground }]}>Marche, course, vélo, kayak · filtres par participant</Text>
+          </View>
+          <MaterialCommunityIcons name="chevron-right" size={18} color={colors.mutedForeground} />
+        </Pressable>
 
         {/* ── Mes Trajets — lien vers la liste ── */}
         <Pressable

@@ -46,6 +46,7 @@ import { reverseGeocode } from '@/utils/geocoding';
 import { buildStoryPlaybackTimeline } from '@/utils/storyPlaybackTimeline';
 import type { StoryPause } from '@/utils/storyPlaybackTimeline';
 import { StoryPauseCaptionModal } from '@/components/StoryPauseCaptionModal';
+import { activityForTrip, activityInfo } from '@/utils/activities';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -1543,7 +1544,8 @@ export default function MapScreen() {
     const dateLabel = `${DAYS[startDate.getDay()]} ${startDate.getDate()} ${MONTHS[startDate.getMonth()]}`;
     const fmtH = (d: Date) => `${String(d.getHours()).padStart(2, '0')}h${String(d.getMinutes()).padStart(2, '0')}`;
     const timeLabel = `${fmtH(startDate)} → ${fmtH(new Date(selectedTrip.endTime))}`;
-    const vehicleEmoji = vehicleInfoFromList(selectedTrip.vehicle, vehicles).emoji;
+    const activityKind = activityForTrip(selectedTrip, vehicles);
+    const vehicleEmoji = activityKind ? activityInfo(activityKind).emoji : vehicleInfoFromList(selectedTrip.vehicle, vehicles).emoji;
 
     const opts = {
       color: selectedTripColor,
@@ -1566,6 +1568,8 @@ export default function MapScreen() {
         caption: pauseCaptions?.[index]?.trim() ?? '',
       })),
       route,
+      momentCards: (selectedTrip.activityMoments ?? []).filter(moment => !moment.photoId && moment.note && moment.routeIndex != null && moment.routeIndex < route.length)
+        .map(moment => ({ caption: moment.note, frac: moment.routeIndex! / (route.length - 1) })),
     };
 
     setIsGeneratingStory(true);

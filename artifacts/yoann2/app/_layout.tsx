@@ -8,7 +8,7 @@ import {
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import * as IntentLauncher from 'expo-intent-launcher';
 import * as Notifications from 'expo-notifications';
-import { useRouter, Stack } from 'expo-router';
+import { useRouter, usePathname, Stack } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, AppState, Platform } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -94,6 +94,10 @@ async function bootstrapLocationTracking() {
 
 function RootLayoutNav() {
   const router = useRouter();
+  const pathname = usePathname();
+  const currentPath = useRef(pathname);
+  currentPath.current = pathname;
+  const openedReview = useRef<string | null>(null);
   const [pendingTrip, setPendingTrip] = useState<Trip | null>(null);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const checkingRef = useRef(false);
@@ -103,8 +107,14 @@ function RootLayoutNav() {
     checkingRef.current = true;
     try {
       const trips = await getTrips();
-      const first = trips.find(t => t.vehicle === null) ?? null;
+      const first = trips.find(t => t.vehicle === null && !t.activityType) ?? null;
       setPendingTrip(first);
+      const review = trips.filter(t => t.activityReview === 'pending' && (t.vehicle !== null || t.activityType))
+        .sort((a, b) => b.endTime - a.endTime)[0];
+      if (!first && review && currentPath.current !== '/activity-review' && openedReview.current !== review.id) {
+        openedReview.current = review.id;
+        router.push({ pathname: '/activity-review', params: { id: review.id } });
+      }
     } catch {
       // ignore
     } finally {
@@ -258,6 +268,9 @@ function RootLayoutNav() {
         <Stack.Screen name="project-reports" options={{ headerShown: false, presentation: 'modal' }} />
         <Stack.Screen name="project-report/[id]" options={{ headerShown: false, presentation: 'card' }} />
         <Stack.Screen name="trip/new" options={{ headerShown: false, presentation: 'modal' }} />
+        <Stack.Screen name="activity-review" options={{ headerShown: false, presentation: 'modal', gestureEnabled: false }} />
+        <Stack.Screen name="activity-map" options={{ headerShown: false, presentation: 'card' }} />
+        <Stack.Screen name="activity-start" options={{ headerShown: false, presentation: 'card' }} />
         <Stack.Screen name="expense-stats" options={{ headerShown: false, presentation: 'card' }} />
         <Stack.Screen name="market-manager" options={{ headerShown: false, presentation: 'card' }} />
         <Stack.Screen name="savings-manager" options={{ headerShown: false, presentation: 'card' }} />

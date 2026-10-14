@@ -378,14 +378,14 @@ async function handleSelectMode(
       if (tracks.length) startCarPlaylist(tracks, 0);
     }).catch(() => {});
     await renderWidget(doRender, 'active');
-    await Linking.openURL('yoann2:///(tabs)/player').catch(() => {});
+    await Linking.openURL(mode === 'balade' ? 'yoann2:///activity-start' : 'yoann2:///(tabs)/player').catch(() => {});
     return;
   }
   setTripStatus(true);
   loadPlaylist().then(tracks => {
     if (tracks.length) startCarPlaylist(tracks, 0);
   }).catch(() => {});
-  Linking.openURL('yoann2:///(tabs)/player').catch(() => {});
+  Linking.openURL(mode === 'balade' ? 'yoann2:///activity-start' : 'yoann2:///(tabs)/player').catch(() => {});
 
   await maybeSuggestBatteryOptimization();
   await renderWidget(doRender, 'active');
@@ -573,6 +573,11 @@ async function handleTripEnd(
     route: finalRoute,
     routeSource: trustedOsrmRoute ? 'osrm' : 'gps',
     source: 'manual',
+    ...(isWalkMode ? {
+      activityType: manualState.activityType ?? 'walk',
+      walkParticipants: manualState.walkParticipants ?? [],
+      activityReview: 'pending' as const,
+    } : {}),
   };
 
   // Pré-assigne le véhicule selon le mode widget — évite le prompt "Quel véhicule?"
@@ -608,18 +613,29 @@ async function handleTripEnd(
       (await reverseGeocode(trip.endLat!, trip.endLon!).catch(() => null)) ?? undefined;
   }
 
-  await saveTrip(trip);
+  const saved = await saveTrip(trip);
+  if (!saved) {
+    // Keep the stopped session recoverable; never open a questionnaire for an unsaved trip.
+    if (!(await getManualTripState())) await saveManualTripState({ ...manualState, paused: true, segments });
+    await Notifications.scheduleNotificationAsync({
+      content: { title: 'Trajet non enregistré', body: 'Réessaie de terminer le trajet. Les données GPS sont conservées.' },
+      trigger: null,
+    }).catch(() => {});
+    await renderWidget(doRender, 'paused');
+    return;
+  }
 
-  // Ouvre directement la page du trajet balade pour choisir les participants
+  const completedUrl = savedMode === 'balade' ? `/activity-review?id=${trip.id}` : `/trip-map?id=${trip.id}`;
+  // Android may defer this opening; the notification and persisted review flag are fallbacks.
   if (savedMode === 'balade') {
-    Linking.openURL(`yoann2:///trip-map?id=${trip.id}`).catch(() => {});
+    Linking.openURL(`yoann2://${completedUrl}`).catch(() => {});
   }
 
   await Notifications.scheduleNotificationAsync({
     content: {
-      title: 'Trajet terminé — Yoann 2.0',
-      body: `${trip.distanceKm.toFixed(1)} km`,
-      data: { url: `/trip-map?id=${trip.id}`, type: 'trip_completed' },
+      title: savedMode === 'balade' ? 'Activité terminée — Yoann 2.0' : 'Trajet terminé — Yoann 2.0',
+      body: `${trip.distanceKm.toFixed(1)} km${savedMode === 'balade' ? ' · Ajouter un souvenir ou passer' : ''}`,
+      data: { url: completedUrl, type: 'trip_completed' },
     },
     trigger: null,
   }).catch(() => {});

@@ -1,5 +1,18 @@
 export type VehicleType = 'car' | 'moto' | 'ignored';
 
+export type ActivityKind = 'walk' | 'run' | 'bike' | 'kayak';
+export type ActivityFeeling = 'relaxed' | 'sporty' | 'hard';
+
+export interface ActivityMoment {
+  id: string;
+  note: string;
+  routeIndex?: number;
+  lat?: number;
+  lng?: number;
+  timestamp?: number;
+  photoId?: string;
+}
+
 export interface RoutePoint {
   lat: number;
   lng: number;
@@ -74,6 +87,14 @@ export interface Trip {
   photos?: TripPhoto[];
   /** Trip caption/note — shown in place of the date label in the Story Période when set. */
   note?: string;
+  /** Legacy walk trips remain walking activities when this field is absent. */
+  activityType?: ActivityKind;
+  activityTitle?: string;
+  activityFeeling?: ActivityFeeling;
+  activityFavorite?: boolean;
+  activityMoments?: ActivityMoment[];
+  /** Only newly finished activities are queued; historical trips are never prompted. */
+  activityReview?: 'pending' | 'completed' | 'skipped';
 }
 
 /** A user-defined free group that can contain trips with any itinerary. */

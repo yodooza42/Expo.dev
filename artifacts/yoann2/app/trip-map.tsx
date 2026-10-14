@@ -3,7 +3,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import * as MediaLibrary from 'expo-media-library';
 import * as Sharing from 'expo-sharing';
 import { captureRef } from 'react-native-view-shot';
@@ -62,6 +62,8 @@ import { buildStoryHtml } from '@/utils/storyGenerator';
 import { buildStoryPlaybackTimeline } from '@/utils/storyPlaybackTimeline';
 import type { StoryPause } from '@/utils/storyPlaybackTimeline';
 import { StoryPauseCaptionModal } from '@/components/StoryPauseCaptionModal';
+import { ActivityDetails } from '@/components/ActivityDetails';
+import { activityForTrip, activityInfo } from '@/utils/activities';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
@@ -877,10 +879,11 @@ export default function TripMapScreen() {
     const timeLabel = `${fmtH(startDate)} → ${fmtH(new Date(trip.endTime))}`;
 
     const veh = vehicles.find(v => v.id === trip.vehicle);
+    const activityKind = activityForTrip(trip, vehicles);
     const vehicleColor = veh?.type === 'walk' ? '#4CAF50'
       : veh?.type === 'moto' || trip.vehicle === 'moto' ? '#FF9800'
       : '#2196F3';
-    const vehicleEmoji = veh?.type === 'moto' || trip.vehicle === 'moto' ? '🏍'
+    const vehicleEmoji = activityKind ? activityInfo(activityKind).emoji : veh?.type === 'moto' || trip.vehicle === 'moto' ? '🏍'
       : veh?.type === 'walk' ? '🚶' : '🚗';
 
     const isWalk = veh?.type === 'walk';
@@ -907,11 +910,13 @@ export default function TripMapScreen() {
       points: chartPts,
       route,
       videoDurationSec: durationOverride ?? storyDuration,
-      showPace: isWalk && speedUnitPace,
+      showPace: isWalk && (activityKind === 'walk' || activityKind === 'run') && speedUnitPace,
       isWalk,
       walkParticipants: walkStoryParticipants,
       walkSpotName: walkStorySpot,
       photos,
+      momentCards: (trip.activityMoments ?? []).filter(moment => !moment.photoId && moment.note && moment.routeIndex != null && moment.routeIndex < route.length)
+        .map(moment => ({ caption: moment.note, frac: moment.routeIndex! / (route.length - 1) })),
       pauseCards: playbackTimeline.pauses.map((pause, index) => ({
         storyStartMs: pause.storyStartMs,
         storyEndMs: pause.storyEndMs,
@@ -1060,8 +1065,10 @@ export default function TripMapScreen() {
       .finally(() => setLoadingRoute(false));
   }
 
-  useEffect(() => {
+  useFocusEffect(useCallback(() => {
+    let active = true;
     Promise.all([getTrips(), getVehicleSettings()]).then(([trips, v]) => {
+      if (!active) return;
       const found = trips.find(t => t.id === id) ?? null;
       setTrip(found);
       setTripNoteDraft(found?.note ?? '');
@@ -1073,12 +1080,14 @@ export default function TripMapScreen() {
         found &&
         found.source === 'manual' &&
         (!found.route || found.route.length < 2) &&
-        found.startLat && found.startLon && found.endLat && found.endLon
+        found.startLat && found.startLon && found.endLat && found.endLon &&
+        !activityForTrip(found, v)
       ) {
         fetchOsrmRoute(found);
       }
     });
-  }, [id]);
+    return () => { active = false; };
+  }, [id]));
 
   async function handleSaveAddress(value: string) {
     if (!trip || !editingField) return;
@@ -1124,7 +1133,7 @@ export default function TripMapScreen() {
     setAddressUsage(prev => ({ ...prev, [name]: (prev[name] ?? 0) + 1 }));
   }
 
-  const isWalkTrip = !!trip && vehicles.some(v => v.id === trip.vehicle && v.type === 'walk');
+  const isWalkTrip = !!trip && activityForTrip(trip, vehicles) !== null;
 
   const handleRegenGpsRoute = useCallback(async () => {
     if (!trip || regenGpsLoading) return;
@@ -1431,6 +1440,7 @@ export default function TripMapScreen() {
             </View>
           )}
 
+          <ActivityDetails trip={trip} vehicles={vehicles} onEdit={screenshotMode ? undefined : () => router.push(`/activity-review?id=${trip.id}` as any)} />
           {/* Address banner */}
           {isWalkTrip ? (
             <View style={[styles.addrBannerCol, { borderBottomColor: colors.border }]}>

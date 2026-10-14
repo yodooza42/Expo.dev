@@ -19,7 +19,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { genId } from '@/utils/ids';
 import type { KnownPlace, WalkRoute } from '@/types/places';
-import type { RoutePoint, Vehicle } from '@/types/trips';
+import type { ActivityKind, RoutePoint, Vehicle } from '@/types/trips';
+import { ACTIVITIES } from '@/utils/activities';
+import { tripEvents } from '@/utils/tripEvents';
 import { findNearestPlace, getKnownPlaces, getWalkRoutes } from '@/utils/placesStorage';
 import { simplifyRoute } from '@/utils/routeSimplification';
 import { getVehicleSettings, saveTrip, updateTrip } from '@/utils/tripStorage';
@@ -189,6 +191,7 @@ export default function NewTripScreen() {
   const [walkDuration, setWalkDuration] = useState('');
   const [walkDistanceKm, setWalkDistanceKm] = useState('');
   const [walkRouteId, setWalkRouteId] = useState<string | null>(null);
+  const [activityKind, setActivityKind] = useState<ActivityKind>('walk');
   const [walkRoutes, setWalkRoutes] = useState<WalkRoute[]>([]);
 
   // ── Waypoint state ─────────────────────────────────────────────────────────
@@ -383,8 +386,9 @@ export default function NewTripScreen() {
     const durationMs = (dur.h * 60 + dur.m) * 60_000;
     setSaving(true);
     try {
-      await saveTrip({
-        id: genId(),
+      const activityId = genId();
+      const saved = await saveTrip({
+        id: activityId,
         startTime: startMs,
         endTime: startMs + durationMs,
         distanceKm: distKm,
@@ -392,10 +396,14 @@ export default function NewTripScreen() {
         walkParticipants: walkParticipantIds.length > 0 ? walkParticipantIds : undefined,
         pointCount: 0,
         source: 'manual',
+        activityType: activityKind,
+        activityReview: 'pending',
         ...(walkRouteId ? { walkRouteId } : {}),
       });
+      if (!saved) throw new Error('La sauvegarde a échoué.');
+      tripEvents.emitTripUpdated();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      router.back();
+      router.replace({ pathname: '/activity-review', params: { id: activityId } });
     } catch {
       Alert.alert('Erreur', 'Impossible de sauvegarder la balade.');
     } finally {
@@ -650,6 +658,20 @@ export default function NewTripScreen() {
           </View>
         </View>
 
+        {selectedVehicle?.type === 'walk' && (
+          <View style={styles.section}>
+            <Text style={[styles.label, { color: colors.mutedForeground }]}>TYPE D’ACTIVITÉ</Text>
+            <View style={styles.vehicleRow}>
+              {ACTIVITIES.map(activity => (
+                <Pressable key={activity.key} onPress={() => setActivityKind(activity.key)}
+                  style={[styles.vehicleChip, { backgroundColor: activityKind === activity.key ? colors.primary : colors.card, borderColor: activityKind === activity.key ? colors.primary : colors.border }]}>
+                  <MaterialCommunityIcons name={activity.icon} size={16} color={activityKind === activity.key ? colors.primaryForeground : colors.foreground} />
+                  <Text style={{ color: activityKind === activity.key ? colors.primaryForeground : colors.foreground }}>{activity.label}</Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+        )}
         {/* Walk participants */}
         {selectedVehicle?.type === 'walk' && (selectedVehicle.walkParticipants ?? []).length > 0 && (
           <View style={styles.section}>

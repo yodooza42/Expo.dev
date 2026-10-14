@@ -31,14 +31,19 @@ export async function saveTrip(trip: Trip): Promise<boolean> {
   }
 }
 
-export async function updateTrip(id: string, updates: Partial<Trip>): Promise<void> {
+export async function updateTrip(id: string, updates: Partial<Trip>, strict = false): Promise<void> {
   try {
     const trips = await getTrips();
     const idx = trips.findIndex(t => t.id === id);
-    if (idx === -1) return;
+    if (idx === -1) {
+      if (strict) throw new Error('Ce trajet est introuvable.');
+      return;
+    }
     trips[idx] = { ...trips[idx]!, ...updates };
     await AsyncStorage.setItem(KEY_TRIPS, JSON.stringify(trips));
-  } catch {}
+  } catch (error) {
+    if (strict) throw error;
+  }
 }
 
 /**

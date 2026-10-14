@@ -428,7 +428,7 @@ export default function VehicleSettingsScreen() {
           <View style={styles.section}>
             <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>TYPE</Text>
             <View style={styles.typeRow}>
-              {([['car', 'car', 'Voiture'], ['moto', 'motorbike', 'Moto'], ['other', 'car-outline', 'Autre'], ['walk', 'walk', 'Balade']] as const).map(([t, icon, label]) => {
+              {([['car', 'car', 'Voiture'], ['moto', 'motorbike', 'Moto'], ['other', 'car-outline', 'Autre'], ['walk', 'walk', 'Activités']] as const).map(([t, icon, label]) => {
                 const tc = t === 'moto' ? '#FF9800' : t === 'walk' ? '#4CAF50' : '#2196F3';
                 return (
                   <Pressable
@@ -1124,7 +1124,7 @@ export default function VehicleSettingsScreen() {
             />
             <Text style={[styles.fieldLabel, { color: colors.mutedForeground, marginTop: 8 }]}>Type</Text>
             <View style={[styles.typeRow, { flexWrap: 'wrap' }]}>
-              {([['car', 'car', 'Voiture', '#2196F3'], ['moto', 'motorbike', 'Moto', '#FF9800'], ['other', 'car-outline', 'Autre', '#9E9E9E'], ['walk', 'walk', 'Balade', '#4CAF50']] as const).map(([t, icon, label, tc]) => (
+              {([['car', 'car', 'Voiture', '#2196F3'], ['moto', 'motorbike', 'Moto', '#FF9800'], ['other', 'car-outline', 'Autre', '#9E9E9E'], ['walk', 'walk', 'Activités', '#4CAF50']] as const).map(([t, icon, label, tc]) => (
                 <Pressable
                   key={t}
                   onPress={() => setNewVehicleType(t)}

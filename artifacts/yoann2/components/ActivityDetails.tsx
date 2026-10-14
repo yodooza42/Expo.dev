@@ -1,0 +1,33 @@
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import React from 'react';
+import { Image, Pressable, Text, View } from 'react-native';
+import { useColors } from '@/hooks/useColors';
+import type { Trip, Vehicle } from '@/types/trips';
+import { activityForTrip, activityInfo } from '@/utils/activities';
+import { ACTIVITY_FEELINGS } from '@/utils/activityReview';
+
+export function ActivityDetails({ trip, vehicles, onEdit }: { trip: Trip; vehicles: Vehicle[]; onEdit?: () => void }) {
+  const colors = useColors();
+  const kind = activityForTrip(trip, vehicles);
+  if (!kind) return null;
+  const activity = activityInfo(kind);
+  const feeling = ACTIVITY_FEELINGS.find(item => item.key === trip.activityFeeling)?.label;
+  return <View style={{ padding: 16, gap: 10, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+      <MaterialCommunityIcons name={activity.icon} size={22} color={activity.color} />
+      <View style={{ flex: 1 }}>
+        <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 16 }}>{trip.activityFavorite ? '★ ' : ''}{trip.activityTitle || activity.label}</Text>
+        <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>{activity.label}{feeling ? ` · ${feeling}` : ''}</Text>
+      </View>
+      {onEdit && <Pressable onPress={onEdit} hitSlop={10}><Text style={{ color: colors.primary }}>Souvenirs</Text></Pressable>}
+    </View>
+    {(trip.activityMoments ?? []).map(moment => {
+      const photo = trip.photos?.find(item => item.id === moment.photoId);
+      return <View key={moment.id} style={{ gap: 5 }}>
+        {photo && <Image source={{ uri: photo.uri }} style={{ height: 150, width: '100%', borderRadius: 10 }} />}
+        <Text style={{ color: colors.foreground }}>{moment.note || 'Photo de la sortie'}</Text>
+        {moment.lat != null && moment.lng != null && <Text style={{ color: colors.mutedForeground, fontSize: 11 }}>Souvenir placé sur le parcours</Text>}
+      </View>;
+    })}
+  </View>;
+}

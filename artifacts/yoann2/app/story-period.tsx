@@ -1,4 +1,5 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { activityForTrip, activityInfo } from '@/utils/activities';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
@@ -185,7 +186,8 @@ export default function StoryPeriodScreen() {
           const place = trip.walkRouteId
             ? walkRoutes.find(route => route.id === trip.walkRouteId)?.name
             : undefined;
-          return `${dateLabel}\nParticipants balade - ${participants}${place ? ` - ${place}` : ''}`;
+          const kind = activityForTrip(trip, vehicles) ?? 'walk';
+          return `${trip.activityTitle ? `${trip.activityTitle}\n` : ''}${dateLabel}\n${activityInfo(kind).label} - ${participants}${place ? ` - ${place}` : ''}`;
         }
         const kind = type === 'moto' ? 'Moto' : 'Voiture';
         return `${kind} - ${vehicle?.name ?? (type === 'moto' ? 'Moto' : 'Voiture')} • ${dateLabel}`;

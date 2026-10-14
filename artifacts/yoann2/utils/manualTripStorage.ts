@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import type { ActivityKind } from '@/types/trips';
 
 const KEY = '@yoann2_manual_trip';
 
@@ -16,6 +17,8 @@ export interface ManualTripState {
   selecting?: boolean;
   /** Mode de trajet choisi. */
   tripMode?: 'voiture' | 'moto' | 'balade' | null;
+  activityType?: ActivityKind;
+  walkParticipants?: string[];
   startTime: number;
   startLat: number;
   startLon: number;
@@ -34,6 +37,8 @@ export async function getManualTripState(): Promise<ManualTripState | null> {
       paused: parsed.paused ?? false,
       selecting: parsed.selecting ?? false,
       tripMode: parsed.tripMode ?? null,
+      activityType: ['walk', 'run', 'bike', 'kayak'].includes(parsed.activityType ?? '') ? parsed.activityType : undefined,
+      walkParticipants: Array.isArray(parsed.walkParticipants) ? parsed.walkParticipants.filter(id => typeof id === 'string') : undefined,
       startTime: parsed.startTime ?? Date.now(),
       startLat: parsed.startLat ?? 0,
       startLon: parsed.startLon ?? 0,
