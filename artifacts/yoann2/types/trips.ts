@@ -4,6 +4,8 @@ export type ActivityKind = 'walk' | 'run' | 'bike' | 'kayak';
 export type ActivityFeeling = 'relaxed' | 'sporty' | 'hard';
 
 export interface ActivityMoment {
+  /** Distinguish real time/GPS matching from an estimate or a manual correction. */
+  placementMethod?: 'time' | 'gps' | 'estimated' | 'manual';
   id: string;
   note: string;
   routeIndex?: number;
@@ -27,6 +29,8 @@ export interface TripPhoto {
   uri: string;
   /** Moment the photo was taken (ms epoch), from EXIF/asset metadata when available. */
   takenAt: number;
+  /** True when camera metadata is unavailable; never use this fallback for automatic positioning. */
+  takenAtEstimated?: boolean;
   /** Optional note shown alongside this photo (e.g. in the Story Période). */
   note?: string;
   /**

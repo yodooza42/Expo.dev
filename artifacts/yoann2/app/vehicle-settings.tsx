@@ -1,6 +1,6 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
@@ -30,6 +30,7 @@ import { addTransaction } from '@/utils/bankStorage';
 import { computeOdometer, getTrips, getVehicleSettings, saveVehicleSettings, recalibrateOdometer, lastOdometerRecalStatus } from '@/utils/tripStorage';
 import { getWalkRoutes } from '@/utils/placesStorage';
 import { genId } from '@/utils/ids';
+import { activityForTrip, activityInfo } from '@/utils/activities';
 
 // ── Local types ───────────────────────────────────────────────────────────────
 type VehicleTab = 'general' | 'maintenance' | 'insurance' | 'participants' | 'stats';
@@ -129,6 +130,13 @@ export default function VehicleSettingsScreen() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // Refresh edited activity types on return without replacing unsaved vehicle settings.
+  useFocusEffect(useCallback(() => {
+    let active = true;
+    getTrips().then(items => { if (active) setTrips(items); });
+    return () => { active = false; };
+  }, []));
 
   // Fallback selectedId if the currently selected vehicle no longer exists
   useEffect(() => {
@@ -911,6 +919,7 @@ export default function VehicleSettingsScreen() {
                         {visiblePastTrips.has(p.id) && (
                           <>
                             {visible.map(t => {
+                              const activity = activityInfo(activityForTrip(t, vehicles) ?? 'walk');
                               const allParticipantDetails = (t.walkParticipants ?? [])
                                 .map(pid => (selected.walkParticipants ?? []).find(wp => wp.id === pid))
                                 .filter((wp): wp is NonNullable<typeof wp> => !!wp);
@@ -920,8 +929,8 @@ export default function VehicleSettingsScreen() {
                                   onPress={() => { router.push({ pathname: '/trip-map', params: { id: t.id, backLabel: 'Véhicules', participantName: p.name } } as any); }}
                                   style={[styles.pastTripRow, { borderColor: colors.border }]}
                                 >
-                                  <View style={[styles.pastTripIcon, { backgroundColor: '#4CAF5022' }]}>
-                                    <MaterialCommunityIcons name="walk" size={14} color="#4CAF50" />
+                                  <View style={[styles.pastTripIcon, { backgroundColor: activity.color + '22' }]}>
+                                    <MaterialCommunityIcons name={activity.icon} size={14} color={activity.color} />
                                   </View>
                                   <View style={{ flex: 1 }}>
                                     <Text style={[styles.pastTripDate, { color: colors.foreground }]}>{fmtWeekdayShort(t.startTime)}</Text>

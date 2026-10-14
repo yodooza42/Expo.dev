@@ -1,10 +1,12 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import * as MediaLibrary from 'expo-media-library';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, BackHandler, Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, BackHandler, Image, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ActivityMapView from '@/components/ActivityMapView';
+import { ActivityPhotoPicker } from '@/components/ActivityPhotoPicker';
 import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
 import { useColors } from '@/hooks/useColors';
 import type { ActivityFeeling, ActivityKind, Trip, TripPhoto, Vehicle } from '@/types/trips';
@@ -12,6 +14,9 @@ import { ACTIVITIES, activityForTrip } from '@/utils/activities';
 import { activityMapHtml } from '@/utils/activityMapHtml';
 import { ACTIVITY_FEELINGS, activityReviewPatch, type MomentDraft } from '@/utils/activityReview';
 import { genId } from '@/utils/ids';
+import { fmtHHMM, fmtWeekdayShort } from '@/utils/date';
+import { loadMultiDayPoints } from '@/utils/locationTracking';
+import { locatePhotoOnTrip, photoTakenAt, type PhotoGpsPoint, type PhotoPlacement } from '@/utils/tripPhotoPlacement';
 import { tripEvents } from '@/utils/tripEvents';
 import { getTrips, getVehicleSettings, updateTrip } from '@/utils/tripStorage';
 
@@ -36,6 +41,13 @@ export default function ActivityReviewScreen() {
   const [momentPhoto, setMomentPhoto] = useState<TripPhoto>();
   const [pointIndex, setPointIndex] = useState<number>();
   const [pickingPoint, setPickingPoint] = useState(false);
+  const [photoPickerVisible, setPhotoPickerVisible] = useState(false);
+  const [photoPickerMode, setPhotoPickerMode] = useState<'moment' | 'batch'>('moment');
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const photoBusyRef = useRef(false);
+  const gpsPromise = useRef<Promise<PhotoGpsPoint[]>>(Promise.resolve([]));
+  const [photoPlacement, setPhotoPlacement] = useState<PhotoPlacement>();
+  const [placementStatus, setPlacementStatus] = useState<PhotoPlacement['method'] | 'unknown' | 'unplaced'>();
   const [saving, setSaving] = useState(false);
   const busy = useRef(false);
   const originalPhotoIds = useRef<string[]>([]);
@@ -47,6 +59,7 @@ export default function ActivityReviewScreen() {
       setTrip(found);
       setVehicles(settings);
       if (found) {
+        gpsPromise.current = loadMultiDayPoints(found.startTime, found.endTime).catch(() => []);
         setKind(activityForTrip(found, settings) ?? 'walk');
         setParticipants(found.walkParticipants ?? []);
         setTitle(found.activityTitle ?? '');
@@ -62,6 +75,10 @@ export default function ActivityReviewScreen() {
   }, [id]);
   const leave = useCallback(async (skip: boolean) => {
     if (!trip || busy.current) return;
+    if (!skip && photoBusyRef.current) {
+      Alert.alert('Photo en cours', 'Attends la fin du chargement de la photo avant d’enregistrer.');
+      return;
+    }
     busy.current = true;
     setSaving(true);
     try {
@@ -89,34 +106,111 @@ export default function ActivityReviewScreen() {
     return () => listener.remove();
   }, [leave]);
   const people = vehicles.find(vehicle => vehicle.id === trip?.vehicle)?.walkParticipants ?? [];
-  const html = useMemo(() => trip ? activityMapHtml([trip], vehicles, colors.background, true) : '', [trip, vehicles, colors.background]);
+  const html = useMemo(() => {
+    if (!trip) return '';
+    const selected = photoPlacement ?? (pointIndex == null ? undefined : trip.route?.[pointIndex]);
+    return activityMapHtml([{ ...trip, activityType: kind, activityMoments: moments }], vehicles, colors.background, true, selected);
+  }, [trip, vehicles, colors.background, kind, moments, pointIndex, photoPlacement]);
   const startMoment = (existing?: MomentDraft) => {
+    if (photoBusyRef.current) return;
     setMomentId(existing?.id ?? genId());
     setMomentNote(existing?.note ?? '');
     setMomentPhoto(existing?.photo);
-    setPointIndex(existing?.routeIndex ?? (trip?.route?.length ? trip.route.length - 1 : undefined));
+    setPointIndex(existing ? existing.routeIndex : (trip?.route?.length ? trip.route.length - 1 : undefined));
+    setPhotoPlacement(existing?.lat != null && existing.lng != null ? {
+      routeIndex: existing.routeIndex, lat: existing.lat, lng: existing.lng,
+      timestamp: existing.timestamp ?? trip?.endTime ?? Date.now(), method: existing.placementMethod ?? 'manual',
+    } : undefined);
+    setPlacementStatus(existing?.photo?.takenAtEstimated ? 'unknown' : existing?.placementMethod);
     setPickingPoint(false);
     setMomentEditing(true);
   };
-  const pickPhoto = async () => {
+  const preparePhoto = async (uri: string, takenAt?: number, photoId?: string) => {
+    if (!trip) throw new Error('Activité introuvable.');
+    const gps = await gpsPromise.current;
+    const placement = takenAt == null ? undefined : locatePhotoOnTrip(trip, takenAt, gps);
+    const photo: TripPhoto = {
+      id: photoId ?? genId(), uri, takenAt: takenAt ?? trip.endTime,
+      takenAtEstimated: takenAt == null,
+    };
+    return { photo, placement };
+  };
+  const attachPhoto = async (uri: string, takenAt?: number) => {
+    const { photo, placement } = await preparePhoto(uri, takenAt, momentPhoto?.id);
+    setMomentPhoto(photo);
+    setPointIndex(placement?.routeIndex);
+    setPhotoPlacement(placement);
+    setPlacementStatus(takenAt == null ? 'unknown' : placement?.method ?? 'unplaced');
+    setPickingPoint((trip?.route?.length ?? 0) >= 2);
+  };
+  const readPhotoTime = async (asset: { assetId?: string | null; exif?: Record<string, unknown> | null; creationTime?: number }) => {
+    let exif = asset.exif;
+    let creationTime = asset.creationTime;
+    if (asset.assetId && Platform.OS !== 'web') {
+      try {
+        const info = await MediaLibrary.getAssetInfoAsync(asset.assetId, { shouldDownloadFromNetwork: false });
+        if (info.exif && typeof info.exif === 'object' && !Array.isArray(info.exif)) exif = info.exif as Record<string, unknown>;
+        creationTime = info.creationTime || creationTime;
+      } catch { /* EXIF from the picker or the gallery's epoch timestamp can still be used. */ }
+    }
+    return photoTakenAt(exif, creationTime);
+  };
+  const addPhotoBatch = async (assets: Array<{ uri: string; takenAt?: number }>) => {
+    const existing = new Set(moments.flatMap(moment => moment.photo ? [moment.photo.uri] : []));
+    const drafts: MomentDraft[] = [];
+    for (const asset of assets) {
+      if (existing.has(asset.uri)) continue;
+      const { photo, placement } = await preparePhoto(asset.uri, asset.takenAt);
+      drafts.push({
+        id: genId(), note: '', photo, routeIndex: placement?.routeIndex, lat: placement?.lat, lng: placement?.lng,
+        timestamp: asset.takenAt ?? trip?.endTime, placementMethod: placement?.method,
+      });
+      existing.add(asset.uri);
+    }
+    if (!drafts.length) {
+      Alert.alert('Photos déjà ajoutées', 'Ces photos ont déjà un souvenir dans cette activité.');
+      return;
+    }
+    drafts.sort((a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0));
+    setMoments(previous => [...previous, ...drafts.filter(draft => !previous.some(moment => moment.photo?.uri === draft.photo?.uri))]);
+  };
+  const pickSuggestedPhotos = async (assets: MediaLibrary.Asset[]) => {
+    if (photoBusyRef.current) return;
+    photoBusyRef.current = true; setPhotoBusy(true);
     try {
-      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!permission.granted) {
-        Alert.alert('Accès aux photos', 'Autorise l’accès à la galerie pour joindre une photo.');
-        return;
-      }
-      const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 1 });
+      const chosen: Array<{ uri: string; takenAt?: number }> = [];
+      for (const asset of assets) chosen.push({ uri: asset.uri, takenAt: await readPhotoTime({ assetId: asset.id, creationTime: asset.creationTime }) });
+      if (photoPickerMode === 'batch') await addPhotoBatch(chosen);
+      else if (chosen[0]) await attachPhoto(chosen[0].uri, chosen[0].takenAt);
+      setPhotoPickerVisible(false);
+    } catch { Alert.alert('Photo indisponible', 'Impossible de joindre cette photo. Tu peux réessayer ou ouvrir toute la galerie.'); }
+    finally { photoBusyRef.current = false; setPhotoBusy(false); }
+  };
+  const pickPhoto = async () => {
+    if (photoBusyRef.current) return;
+    photoBusyRef.current = true; setPhotoBusy(true); setPhotoPickerVisible(false);
+    try {
+      // The system photo picker also works without broad gallery access.
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'], quality: 1, exif: true, allowsMultipleSelection: photoPickerMode === 'batch',
+      });
       if (!result.canceled && result.assets[0]) {
-        setMomentPhoto({ id: momentPhoto?.id ?? genId(), uri: result.assets[0].uri, takenAt: trip?.endTime ?? Date.now() });
+        const chosen: Array<{ uri: string; takenAt?: number }> = [];
+        for (const asset of result.assets) chosen.push({ uri: asset.uri, takenAt: await readPhotoTime(asset) });
+        if (photoPickerMode === 'batch') await addPhotoBatch(chosen);
+        else if (chosen[0]) await attachPhoto(chosen[0].uri, chosen[0].takenAt);
       }
     } catch { Alert.alert('Photo indisponible', 'Impossible d’ouvrir la galerie. Tu peux ajouter un souvenir sans photo.'); }
+    finally { photoBusyRef.current = false; setPhotoBusy(false); }
   };
   const addMoment = () => {
-    if (!trip || !momentId || (!momentNote.trim() && !momentPhoto)) return;
+    if (!trip || !momentId || photoBusyRef.current || (!momentNote.trim() && !momentPhoto)) return;
     const point = pointIndex == null ? undefined : trip.route?.[pointIndex];
     const draft: MomentDraft = {
       id: momentId, note: momentNote.trim(), photo: momentPhoto, routeIndex: point ? pointIndex : undefined,
-      lat: point?.lat, lng: point?.lng, timestamp: point?.t ?? trip.endTime,
+      lat: photoPlacement?.lat ?? point?.lat, lng: photoPlacement?.lng ?? point?.lng,
+      timestamp: momentPhoto && !momentPhoto.takenAtEstimated ? momentPhoto.takenAt : photoPlacement?.timestamp ?? point?.t ?? trip.endTime,
+      placementMethod: photoPlacement?.method,
     };
     setMoments(items => [...items.filter(item => item.id !== draft.id), draft]);
     setMomentEditing(false);
@@ -171,37 +265,59 @@ export default function ActivityReviewScreen() {
         {moments.map(moment => <View key={moment.id} style={[s.moment, { borderColor: colors.border }]}>
           {moment.photo && <Image source={{ uri: moment.photo.uri }} style={s.photo} />}
           <Text style={{ color: colors.foreground }}>{moment.note || 'Photo de la sortie'}</Text>
+          {moment.photo && <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>{moment.photo.takenAtEstimated ? 'Date de prise inconnue' : `${fmtWeekdayShort(moment.photo.takenAt)} · ${fmtHHMM(moment.photo.takenAt)}`}</Text>}
+          {moment.placementMethod === 'estimated' && <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>Position estimée · modifiable sur la carte</Text>}
+          {moment.photo && (moment.lat == null || moment.lng == null) && <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>Photo sans emplacement automatique</Text>}
           <View style={s.row}>
-            <Pressable onPress={() => startMoment(moment)}><Text style={{ color: colors.primary }}>Modifier</Text></Pressable>
-            <Pressable onPress={() => setMoments(items => items.filter(item => item.id !== moment.id))}><Text style={{ color: colors.mutedForeground }}>Supprimer</Text></Pressable>
+            <Pressable disabled={photoBusy} onPress={() => startMoment(moment)}><Text style={{ color: colors.primary }}>Modifier</Text></Pressable>
+            <Pressable disabled={photoBusy} onPress={() => setMoments(items => items.filter(item => item.id !== moment.id))}><Text style={{ color: colors.mutedForeground }}>Supprimer</Text></Pressable>
           </View>
         </View>)}
-        {!momentEditing ? <Pressable testID="add-activity-moment" onPress={() => startMoment()} style={[s.button, { borderColor: colors.border }]}>
+        {!momentEditing && <Pressable disabled={photoBusy} onPress={() => { setPhotoPickerMode('batch'); setPhotoPickerVisible(true); }} style={[s.button, { borderColor: colors.border }]}>
+          <Text style={{ color: colors.primary }}>Photos prises pendant l’activité</Text>
+          <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>Sélectionne les photos à ajouter automatiquement sur le parcours.</Text>
+        </Pressable>}
+        {!momentEditing ? <Pressable testID="add-activity-moment" disabled={photoBusy} onPress={() => startMoment()} style={[s.button, { borderColor: colors.border }]}>
           <Text style={{ color: colors.primary }}>Ajouter une photo ou un moment</Text>
         </Pressable> : <View style={[s.moment, { borderColor: colors.border }]}>
           <TextInput testID="activity-moment-note" value={momentNote} onChangeText={setMomentNote} maxLength={120}
             placeholder="Ex. Pause goûter au bord de l’eau" placeholderTextColor={colors.mutedForeground} style={inputStyle} />
           {momentPhoto && <Image source={{ uri: momentPhoto.uri }} style={s.photo} />}
           <View style={s.row}>
-            <Pressable onPress={() => { void pickPhoto(); }}><Text style={{ color: colors.primary }}>{momentPhoto ? 'Changer la photo' : 'Joindre une photo'}</Text></Pressable>
-            {momentPhoto && <Pressable onPress={() => setMomentPhoto(undefined)}><Text style={{ color: colors.mutedForeground }}>Retirer</Text></Pressable>}
+            <Pressable disabled={photoBusy} onPress={() => { setPhotoPickerMode('moment'); setPhotoPickerVisible(true); }}><Text style={{ color: colors.primary }}>{momentPhoto ? 'Changer la photo' : 'Joindre une photo'}</Text></Pressable>
+            {momentPhoto && <Pressable disabled={photoBusy} onPress={() => { setMomentPhoto(undefined); setPlacementStatus(undefined); }}><Text style={{ color: colors.mutedForeground }}>Retirer</Text></Pressable>}
           </View>
+          {photoBusy && <ActivityIndicator color={colors.primary} />}
+          {momentPhoto && !momentPhoto.takenAtEstimated && <Text style={{ color: colors.mutedForeground }}>Photo : {fmtWeekdayShort(momentPhoto.takenAt)} · {fmtHHMM(momentPhoto.takenAt)}</Text>}
+          {placementStatus === 'unknown' && <Text style={{ color: colors.mutedForeground }}>{(trip.route?.length ?? 0) >= 2 ? 'Date de prise inconnue : choisis le lieu sur la carte.' : 'Date de prise inconnue : pas de placement automatique.'}</Text>}
+          {placementStatus === 'unplaced' && <Text style={{ color: colors.mutedForeground }}>{(trip.route?.length ?? 0) >= 2 ? 'Photo hors de la plage horaire du trajet : placement manuel nécessaire.' : 'Pas de tracé disponible pour placer automatiquement cette photo.'}</Text>}
+          {placementStatus === 'estimated' && <Text style={{ color: colors.mutedForeground }}>Placement estimé d’après l’heure : les points du tracé n’ont pas d’horodatage GPS.</Text>}
+          {(placementStatus === 'gps' || placementStatus === 'time') && <Text style={{ color: colors.mutedForeground }}>Position retrouvée grâce à l’heure de la photo et aux points GPS du trajet.</Text>}
           {(trip.route?.length ?? 0) >= 2 ? <>
-            <Pressable onPress={() => setPickingPoint(value => !value)}>
-              <Text style={{ color: colors.primary }}>Lieu : {pointIndex === trip.route!.length - 1 ? 'arrivée' : 'point choisi sur le parcours'} · modifier</Text>
+            <Pressable disabled={photoBusy} onPress={() => setPickingPoint(value => !value)}>
+              <Text style={{ color: colors.primary }}>Lieu : {pointIndex == null ? 'non placé' : placementStatus && placementStatus !== 'manual' && placementStatus !== 'unknown' ? 'position automatique' : pointIndex === trip.route!.length - 1 ? 'arrivée' : 'point choisi sur le parcours'} · modifier</Text>
             </Pressable>
             {pickingPoint && <>
               <Text style={{ color: colors.mutedForeground }}>Touche le parcours pour placer ce souvenir.</Text>
               <View style={{ height: 240 }}><ActivityMapView html={html} onPointPress={index => {
-                if (trip.route?.[index]) setPointIndex(index);
+                if (photoBusyRef.current) return;
+                const point = trip.route?.[index];
+                if (!point) return;
+                setPointIndex(index);
+                setPhotoPlacement({
+                  routeIndex: index, lat: point.lat, lng: point.lng,
+                  timestamp: point.t ?? trip.startTime + (index / (trip.route!.length - 1)) * (trip.endTime - trip.startTime),
+                  method: 'manual',
+                });
+                setPlacementStatus('manual');
               }} /></View>
             </>}
           </> : <Text style={{ color: colors.mutedForeground }}>Sans tracé GPS : le souvenir sera enregistré sans lieu.</Text>}
           <View style={s.row}>
-            <Pressable testID="confirm-activity-moment" onPress={addMoment} disabled={!momentNote.trim() && !momentPhoto}>
+            <Pressable testID="confirm-activity-moment" onPress={addMoment} disabled={photoBusy || (!momentNote.trim() && !momentPhoto)}>
               <Text style={{ color: momentNote.trim() || momentPhoto ? colors.primary : colors.mutedForeground }}>Ajouter ce souvenir</Text>
             </Pressable>
-            <Pressable onPress={() => { setMomentEditing(false); setPickingPoint(false); }}><Text style={{ color: colors.mutedForeground }}>Annuler</Text></Pressable>
+            <Pressable disabled={photoBusy} onPress={() => { setMomentEditing(false); setPickingPoint(false); }}><Text style={{ color: colors.mutedForeground }}>Annuler</Text></Pressable>
           </View>
         </View>}
         <Pressable testID="save-activity-review" disabled={saving} onPress={() => { void leave(false); }}
@@ -210,6 +326,12 @@ export default function ActivityReviewScreen() {
         </Pressable>
         <Pressable disabled={saving} onPress={() => { void leave(true); }} style={s.button}><Text style={{ color: colors.mutedForeground }}>Passer sans rien ajouter</Text></Pressable>
       </KeyboardAwareScrollViewCompat>}
+      {trip && <ActivityPhotoPicker
+        visible={photoPickerVisible} startTime={trip.startTime} endTime={trip.endTime} busy={photoBusy} multiple={photoPickerMode === 'batch'}
+        onClose={() => { if (!photoBusyRef.current) setPhotoPickerVisible(false); }}
+        onPick={assets => { void pickSuggestedPhotos(assets); }}
+        onBrowse={() => { void pickPhoto(); }}
+      />}
   </View>;
 }
 

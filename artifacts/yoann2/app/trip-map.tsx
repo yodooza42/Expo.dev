@@ -40,7 +40,7 @@ import { BottomSheet } from '@/components/BottomSheet';
 import { TripMapView } from '@/components/TripMapView';
 import { useColors } from '@/hooks/useColors';
 import type { KnownPlace, PlaceCategory, WalkRoute } from '@/types/places';
-import type { RoutePoint, Trip, TripPhoto, Vehicle, WalkParticipant } from '@/types/trips';
+import type { ActivityKind, RoutePoint, Trip, TripPhoto, Vehicle, WalkParticipant } from '@/types/trips';
 import { simplifyRoute, EPSILON_DEG_WALK } from '@/utils/routeSimplification';
 import {
   getAddressUsage,
@@ -63,7 +63,9 @@ import { buildStoryPlaybackTimeline } from '@/utils/storyPlaybackTimeline';
 import type { StoryPause } from '@/utils/storyPlaybackTimeline';
 import { StoryPauseCaptionModal } from '@/components/StoryPauseCaptionModal';
 import { ActivityDetails } from '@/components/ActivityDetails';
+import { ActivityTypePicker } from '@/components/ActivityTypePicker';
 import { activityForTrip, activityInfo } from '@/utils/activities';
+import { locatePhotoOnTrip, parseExifDate } from '@/utils/tripPhotoPlacement';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
@@ -427,6 +429,9 @@ export default function TripMapScreen() {
   const [addressUsage, setAddressUsage] = useState<Record<string, number>>({});
   const [pickingRoute, setPickingRoute] = useState(false);
   const [pickingParticipants, setPickingParticipants] = useState(false);
+  const [pickingActivity, setPickingActivity] = useState(false);
+  const [savingActivityType, setSavingActivityType] = useState(false);
+  const activityTypeSavingRef = useRef(false);
 
   const [dtPickerStep, setDtPickerStep] = useState<'date' | 'startTime' | 'endTime' | null>(null);
   const [draftStart, setDraftStart] = useState<Date>(new Date());
@@ -588,43 +593,16 @@ export default function TripMapScreen() {
     setScrubTs(pt ? pt.timestamp : null);
   }, []);
 
-  const parseExifDate = (raw?: string): number | null => {
-    if (!raw) return null;
-    // EXIF DateTimeOriginal format: "YYYY:MM:DD HH:MM:SS"
-    const m = /^(\d{4}):(\d{2}):(\d{2}) (\d{2}):(\d{2}):(\d{2})/.exec(raw);
-    if (!m) return null;
-    const [, y, mo, d, h, mi, s] = m;
-    const t = new Date(Number(y), Number(mo) - 1, Number(d), Number(h), Number(mi), Number(s)).getTime();
-    return Number.isFinite(t) ? t : null;
-  };
-
   /**
    * Déduit automatiquement la position d'une photo sur le tracé à partir de son heure de
    * prise de vue (EXIF/asset) : on la compare aux horodatages GPS réels des points du
-   * tracé quand ils existent (trace brute), sinon on interpole uniformément entre le
-   * début et la fin du trajet (tracé OSRM/manuel, sans horodatage par point).
+   * tracé quand ils existent, puis aux GPS bruts, sinon on estime entre le
+   * début et la fin du trajet (tracé OSRM/manuel sans GPS horodaté).
    * Retourne `undefined` si l'heure de la photo tombe hors de la fenêtre du trajet.
    */
   const computeRouteIndexFromTime = useCallback((t: Trip, takenAt: number): number | undefined => {
-    const route = t.route;
-    if (!route || route.length < 2) return undefined;
-    const margin = 5 * 60 * 1000; // tolère 5 min hors bornes (imprécision d'horloge photo/GPS)
-    if (takenAt < t.startTime - margin || takenAt > t.endTime + margin) return undefined;
-    const hasTimestamps = route.some(p => p.t != null);
-    if (hasTimestamps) {
-      let bestIdx = 0, bestDiff = Infinity;
-      route.forEach((p, i) => {
-        if (p.t == null) return;
-        const diff = Math.abs(p.t - takenAt);
-        if (diff < bestDiff) { bestDiff = diff; bestIdx = i; }
-      });
-      return bestIdx;
-    }
-    const dur = t.endTime - t.startTime;
-    if (dur <= 0) return undefined;
-    const frac = Math.max(0, Math.min(1, (takenAt - t.startTime) / dur));
-    return Math.round(frac * (route.length - 1));
-  }, []);
+    return locatePhotoOnTrip(t, takenAt, tripLocPts)?.routeIndex;
+  }, [tripLocPts]);
 
   /** Ouvre la galerie et ajoute la/les photo(s) choisies ; leur position sur le trajet est
    *  déduite automatiquement de leur heure de prise de vue (EXIF), sauf `forceRouteIndex`
@@ -1135,6 +1113,29 @@ export default function TripMapScreen() {
 
   const isWalkTrip = !!trip && activityForTrip(trip, vehicles) !== null;
 
+  async function handlePickActivityType(kind: ActivityKind) {
+    if (!trip || !isWalkTrip || activityTypeSavingRef.current) return;
+    if (activityForTrip(trip, vehicles) === kind) {
+      setPickingActivity(false);
+      return;
+    }
+    const tripId = trip.id;
+    activityTypeSavingRef.current = true;
+    setSavingActivityType(true);
+    try {
+      await updateTrip(tripId, { activityType: kind }, true);
+      setTrip(current => current?.id === tripId ? { ...current, activityType: kind } : current);
+      setPickingActivity(false);
+      tripEvents.emitTripUpdated();
+      void Haptics.selectionAsync();
+    } catch {
+      Alert.alert('Erreur', 'Le changement de type d’activité n’a pas été enregistré. Réessaie.');
+    } finally {
+      activityTypeSavingRef.current = false;
+      setSavingActivityType(false);
+    }
+  }
+
   const handleRegenGpsRoute = useCallback(async () => {
     if (!trip || regenGpsLoading) return;
     setRegenGpsLoading(true);
@@ -1280,7 +1281,7 @@ export default function TripMapScreen() {
       })()}
 
       {/* Map — 40% fixed height — swipe horizontal pour naviguer entre trajets */}
-      <View style={{ width: MAP_W, height: MAP_H, overflow: 'hidden' }} {...swipePan.panHandlers}>
+      <View style={{ width: MAP_W, height: MAP_H, flexShrink: 0, overflow: 'hidden' }} {...swipePan.panHandlers}>
         {loading ? (
           <View style={styles.center}><ActivityIndicator color="#FFC107" /></View>
         ) : (() => {
@@ -1358,9 +1359,14 @@ export default function TripMapScreen() {
         )}
       </View>
 
-      {/* Fixed info + charts panel — no scroll */}
+      {/* The map stays fixed; memories and statistics share a bounded scroll area. */}
       {trip && (
-        <View style={{ paddingHorizontal: 16, paddingTop: 4 }}>
+        <ScrollView
+          style={{ flex: 1, minHeight: 0 }}
+          contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 4, paddingBottom: insets.bottom + 16 }}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+        >
           {/* Note de trajet — remplace le libellé date dans la Story Période */}
           {!screenshotMode && (
             noteEditing ? (
@@ -1440,7 +1446,12 @@ export default function TripMapScreen() {
             </View>
           )}
 
-          <ActivityDetails trip={trip} vehicles={vehicles} onEdit={screenshotMode ? undefined : () => router.push(`/activity-review?id=${trip.id}` as any)} />
+          <ActivityDetails
+            trip={trip}
+            vehicles={vehicles}
+            onSelectType={screenshotMode ? undefined : () => setPickingActivity(true)}
+            onEdit={screenshotMode ? undefined : () => router.push(`/activity-review?id=${trip.id}` as any)}
+          />
           {/* Address banner */}
           {isWalkTrip ? (
             <View style={[styles.addrBannerCol, { borderBottomColor: colors.border }]}>
@@ -1586,7 +1597,7 @@ export default function TripMapScreen() {
               {hasAltData && <TripAltitudeChart points={tripLocPts} color={vehColor} onScrub={handleChartScrub} externalScrubTs={scrubTs} />}
             </>
           )}
-        </View>
+        </ScrollView>
       )}
 
       {/* Story progress */}
@@ -1873,6 +1884,13 @@ export default function TripMapScreen() {
       </Modal>
 
       <WalkRoutePickerModal visible={pickingRoute} routes={walkRoutes} currentId={trip?.walkRouteId} colors={colors} onClose={() => setPickingRoute(false)} onPick={handlePickWalkRoute} />
+      <ActivityTypePicker
+        visible={pickingActivity}
+        current={trip ? activityForTrip(trip, vehicles) : null}
+        busy={savingActivityType}
+        onClose={() => { if (!activityTypeSavingRef.current) setPickingActivity(false); }}
+        onPick={handlePickActivityType}
+      />
       <WalkParticipantPickerModal visible={pickingParticipants} allParticipants={allWalkParticipants} selectedIds={walkParticipantIds} colors={colors} onClose={() => setPickingParticipants(false)} onToggle={handleToggleParticipant} />
       <EditAddressModal
         visible={editingField !== null}

@@ -30,9 +30,10 @@ function load(relative) {
   cache.set(relative, mod.exports);
   return mod.exports;
 }
-const { activityForTrip, filterActivities, activityMilestones } = load('utils/activities.ts');
+const { activityForTrip, activityInfo, filterActivities, activityMilestones } = load('utils/activities.ts');
 const { activityReviewPatch } = load('utils/activityReview.ts');
 const { activityMapHtml } = load('utils/activityMapHtml.ts');
+const { parseExifDate, photoTakenAt, locatePhotoOnTrip } = load('utils/tripPhotoPlacement.ts');
 const { updateTrip, getTrips } = load('utils/tripStorage.ts');
 const { saveManualTripState, getManualTripState } = load('utils/manualTripStorage.ts');
 const vehicles = [
@@ -45,6 +46,150 @@ const trip = (id, time, km, extra = {}) => ({
 });
 const june = new Date(2026, 5, 10).getTime();
 const july = new Date(2026, 6, 10).getTime();
+
+test('photo times come from valid EXIF including timezone offsets, then gallery metadata', () => {
+  assert.equal(parseExifDate('2026:10:14 09:48:00', '+02:00'), Date.parse('2026-10-14T07:48:00Z'));
+  assert.equal(parseExifDate('2026-10-14T07:48:00Z'), Date.parse('2026-10-14T07:48:00Z'));
+  assert.equal(photoTakenAt({ DateTimeOriginal: '2026:02:30 10:00:00' }, june), june);
+  assert.equal(photoTakenAt({ DateTimeOriginal: '2026:10:14 09:48:00', OffsetTimeOriginal: '+02:00' }, june), Date.parse('2026-10-14T07:48:00Z'));
+  assert.equal(photoTakenAt(null, june), june);
+  assert.equal(photoTakenAt({ DateTimeOriginal: '2026:10:14 09:48:00' }, june), june);
+  assert.equal(photoTakenAt(null, NaN), undefined);
+  assert.equal(photoTakenAt(null, 0), undefined);
+});
+test('photo positions prefer real route clocks, retaining time through long stops and midnight', () => {
+  const original = trip('timed', june, 5, { route: [
+    { lat: 45, lng: 1, t: june },
+    { lat: 45.01, lng: 1.01, t: june + 60000 },
+    { lat: 45.02, lng: 1.02, t: june + 3600000 },
+  ] });
+  const before = JSON.stringify(original);
+  const position = locatePhotoOnTrip(original, june + 2 * 60000);
+  assert.equal(position.routeIndex, 1);
+  assert.equal(position.method, 'time');
+  assert.equal(position.timestamp, june + 2 * 60000);
+  assert.equal(JSON.stringify(original), before);
+  const start = Date.parse('2026-10-13T23:50:00Z'), end = Date.parse('2026-10-14T00:10:00Z');
+  const overnight = { ...original, startTime: start, endTime: end, route: [
+    { lat: 45, lng: 1, t: start }, { lat: 45.01, lng: 1, t: Date.parse('2026-10-14T00:00:00Z') }, { lat: 45.02, lng: 1, t: end },
+  ] };
+  assert.equal(locatePhotoOnTrip(overnight, Date.parse('2026-10-14T00:00:10Z')).routeIndex, 1);
+});
+test('untimed routes use the recorded GPS position before resorting to a marked estimate', () => {
+  const original = trip('raw-gps', june, 5, { route: [
+    { lat: 45, lng: 1 }, { lat: 45.01, lng: 1.01 }, { lat: 45.02, lng: 1.02 },
+  ] });
+  const time = june + 48 * 60000;
+  const gps = [
+    { lat: 45, lng: 1, timestamp: june },
+    { lat: 45.0101, lng: 1.0101, timestamp: time },
+    { lat: 45.02, lng: 1.02, timestamp: original.endTime },
+  ];
+  const position = locatePhotoOnTrip(original, time, gps);
+  assert.equal(position.method, 'gps');
+  assert.equal(position.routeIndex, 1);
+  assert.equal(position.lat, 45.0101);
+  assert.equal(locatePhotoOnTrip(original, time).method, 'estimated');
+  assert.equal(locatePhotoOnTrip(original, time).routeIndex, 2);
+  assert.equal(locatePhotoOnTrip(original, original.endTime + 6 * 60000, gps), undefined);
+  assert.equal(locatePhotoOnTrip(original, NaN, gps), undefined);
+  assert.equal(locatePhotoOnTrip({ ...original, route: [] }, time, gps), undefined);
+});
+test('automatic photo anchors survive saving; manual anchors can replace their location without changing photo time', () => {
+  const original = trip('anchored', june, 5, { route: [
+    { lat: 45, lng: 1, t: june }, { lat: 45.01, lng: 1.01, t: june + 60000 }, { lat: 45.02, lng: 1.02, t: june + 3600000 },
+  ] });
+  const takenAt = june + 2 * 60000;
+  const placement = locatePhotoOnTrip(original, takenAt);
+  const draft = {
+    kind: 'bike', participants: ['a'], title: '', favorite: false, note: '', originalPhotoIds: [],
+    moments: [{ id: 'auto', note: 'Break', ...placement, photo: { id: 'photo', uri: 'gallery', takenAt } }],
+  };
+  const patch = activityReviewPatch(original, draft);
+  assert.equal(patch.photos[0].routeIndex, 1);
+  assert.equal(patch.photos[0].takenAt, takenAt);
+  assert.equal(patch.activityMoments[0].timestamp, takenAt);
+  assert.equal(patch.activityMoments[0].lat, 45.01);
+  const manual = activityReviewPatch(original, { ...draft, moments: [{ ...draft.moments[0], routeIndex: 2, lat: 45.02, lng: 1.02 }] });
+  assert.equal(manual.photos[0].routeIndex, 2);
+  assert.equal(manual.photos[0].takenAt, takenAt);
+  const html = activityMapHtml([original], vehicles, '#101010', true, placement);
+  assert.ok(html.includes('var selectedPoint={"lat":45.01,"lng":1.01}'));
+  assert.doesNotThrow(() => new Function(html.match(/<script>([\s\S]*?)<\/script>/)[1]));
+});
+test('the review screen adds batches without duplicates, preserves unknown dates and supports manual photo correction', async () => {
+  const current = trip('batch', june, 5, { route: [
+    { lat: 45, lng: 1 }, { lat: 45.01, lng: 1.01 }, { lat: 45.02, lng: 1.02 },
+  ] });
+  const source = ts.createSourceFile('activity-review.tsx', fs.readFileSync(path.join(ROOT, 'app/activity-review.tsx'), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const names = ['preparePhoto', 'attachPhoto', 'addPhotoBatch', 'addMoment'];
+  const declarations = new Map();
+  function find(node) {
+    if (ts.isVariableDeclaration(node) && names.includes(node.name.getText(source))) declarations.set(node.name.getText(source), node.getText(source));
+    ts.forEachChild(node, find);
+  }
+  find(source);
+  assert.equal(declarations.size, names.length);
+  let counter = 0;
+  const context = {
+    trip: current, moments: [], momentId: 'editable', momentNote: 'A caption', momentPhoto: undefined,
+    pointIndex: undefined, photoPlacement: undefined, placementStatus: undefined,
+    photoBusyRef: { current: false }, gpsPromise: { current: Promise.resolve([
+      { lat: 45, lng: 1, timestamp: june }, { lat: 45.01, lng: 1.01, timestamp: june + 48 * 60000 },
+      { lat: 45.02, lng: 1.02, timestamp: current.endTime },
+    ]) },
+    locatePhotoOnTrip, genId: () => `photo-draft-${++counter}`, Alert: { alert: () => {} },
+    setMoments: update => { context.moments = update(context.moments); },
+    setMomentPhoto: value => { context.momentPhoto = value; },
+    setPointIndex: value => { context.pointIndex = value; },
+    setPhotoPlacement: value => { context.photoPlacement = value; },
+    setPlacementStatus: value => { context.placementStatus = value; },
+    setPickingPoint: () => {}, setMomentEditing: () => {},
+  };
+  const code = ts.transpileModule(
+    [...declarations.values()].map(declaration => `const ${declaration};`).join('\n') + `\nglobalThis.actions = {${names.join(',')}};`,
+    { compilerOptions: { target: ts.ScriptTarget.ES2020 } },
+  ).outputText;
+  vm.runInNewContext(code, context);
+  const takenAt = june + 48 * 60000;
+  await context.actions.addPhotoBatch([{ uri: 'one', takenAt }, { uri: 'one', takenAt }, { uri: 'two' }]);
+  assert.equal(context.moments.length, 2);
+  const automatic = context.moments.find(moment => moment.photo.uri === 'one');
+  assert.equal(automatic.routeIndex, 1);
+  assert.equal(automatic.timestamp, takenAt);
+  assert.equal(automatic.placementMethod, 'gps');
+  const unknown = context.moments.find(moment => moment.photo.uri === 'two');
+  assert.equal(unknown.photo.takenAtEstimated, true);
+  assert.equal(unknown.routeIndex, undefined);
+  assert.equal(unknown.lat, undefined);
+  await context.actions.addPhotoBatch([{ uri: 'one', takenAt }]);
+  assert.equal(context.moments.length, 2);
+  await context.actions.attachPhoto('editable-photo', takenAt);
+  assert.equal(context.pointIndex, 1);
+  context.pointIndex = 2;
+  context.photoPlacement = { routeIndex: 2, lat: 45.02, lng: 1.02, timestamp: current.endTime, method: 'manual' };
+  context.actions.addMoment();
+  const manual = context.moments.find(moment => moment.id === 'editable');
+  assert.equal(manual.routeIndex, 2);
+  assert.equal(manual.timestamp, takenAt);
+  assert.equal(manual.photo.takenAt, takenAt);
+  assert.equal(manual.placementMethod, 'manual');
+});
+
+test('past activity badges follow each trip type and keep legacy walking badges', () => {
+  const original = trip('editable', june, 5);
+  for (const [kind, icon, color] of [
+    ['walk', 'walk', '#4CAF50'],
+    ['run', 'run', '#FF9800'],
+    ['bike', 'bike', '#2196F3'],
+    ['kayak', 'kayaking', '#009688'],
+  ]) {
+    const metadata = activityInfo(activityForTrip({ ...original, activityType: kind }, vehicles) ?? 'walk');
+    assert.equal(metadata.icon, icon);
+    assert.equal(metadata.color, color);
+  }
+  assert.equal(activityInfo(activityForTrip(original, vehicles)).icon, 'walk');
+});
 
 test('legacy walks are walking activities without changing their data', () => {
   const original = trip('legacy', june, 5);
@@ -110,6 +255,59 @@ test('skipping persists just the review status; strict writes expose missing tri
   await assert.rejects(updateTrip('skip', { activityTitle: 'Lost' }, true), /disk full/);
   writeError = false;
   assert.equal((await getTrips())[0].activityTitle, undefined);
+});
+test('quick type selection persists only the type and keeps the picker open on write failure', async () => {
+  const original = trip('quick-type', june, 8, {
+    activityTitle: 'Family outing', note: 'A note', walkParticipants: ['a', 'b'],
+    photos: [{ id: 'photo', uri: 'gallery', takenAt: june }],
+    activityMoments: [{ id: 'moment', note: 'Break', photoId: 'photo', routeIndex: 1 }],
+  });
+  storage.set('@yoann2_trips', JSON.stringify([original]));
+  // Exercise the screen's actual handler without mounting native map modules.
+  const source = ts.createSourceFile('trip-map.tsx', fs.readFileSync(path.join(ROOT, 'app/trip-map.tsx'), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  let handler;
+  function find(node) {
+    if (ts.isFunctionDeclaration(node) && node.name?.text === 'handlePickActivityType') handler = node;
+    ts.forEachChild(node, find);
+  }
+  find(source);
+  assert.ok(handler);
+  const context = {
+    trip: original, vehicles, isWalkTrip: true, activityTypeSavingRef: { current: false },
+    open: true, busy: false, events: 0, alerts: [],
+    activityForTrip, updateTrip,
+    setTrip: updater => { context.trip = updater(context.trip); },
+    setPickingActivity: value => { context.open = value; },
+    setSavingActivityType: value => { context.busy = value; },
+    tripEvents: { emitTripUpdated: () => { context.events++; } },
+    Haptics: { selectionAsync: async () => {} },
+    Alert: { alert: (...args) => { context.alerts.push(args); } },
+  };
+  const code = ts.transpileModule(handler.getText(source), {
+    compilerOptions: { target: ts.ScriptTarget.ES2020 },
+  }).outputText;
+  vm.runInNewContext(code, context);
+  for (const kind of ['run', 'bike', 'kayak', 'walk']) {
+    context.open = true;
+    await context.handlePickActivityType(kind);
+    assert.deepEqual(JSON.parse(JSON.stringify((await getTrips())[0])), { ...original, activityType: kind });
+    assert.equal(context.trip.activityType, kind);
+    assert.equal(context.open, false);
+    assert.equal(context.busy, false);
+  }
+  assert.equal(context.events, 4);
+  context.open = true;
+  writeError = true;
+  try { await context.handlePickActivityType('bike'); } finally { writeError = false; }
+  assert.equal(context.open, true);
+  assert.equal(context.trip.activityType, 'walk');
+  assert.equal((await getTrips())[0].activityType, 'walk');
+  assert.equal(context.alerts.length, 1);
+  assert.equal(context.busy, false);
+  assert.equal(context.activityTypeSavingRef.current, false);
+  await context.handlePickActivityType('bike');
+  assert.equal(context.trip.activityType, 'bike');
+  assert.equal(context.open, false);
 });
 test('activity configuration survives manual-session reload', async () => {
   await saveManualTripState({

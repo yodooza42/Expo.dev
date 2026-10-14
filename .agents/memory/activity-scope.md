@@ -20,3 +20,9 @@ Les jalons personnels doivent être intégrés au bilan mensuel existant. Ne pas
 **Why:** L’utilisateur a choisi « Dans bilan mensuel » pour les jalons, « Pas besoin » pour un nouveau bilan et « Bof, pas utile » pour les parcours à refaire.
 
 **How to apply:** Enrichir la vue mensuelle existante plutôt que multiplier les écrans ou ajouter des fonctionnalités de parcours réutilisables.
+
+Les photos des souvenirs doivent être proposées pendant la fenêtre de l’activité et placées selon leur date/heure de prise et les points GPS, comme les photos de trajet. Garder une correction manuelle.
+
+**Why:** L’utilisateur a demandé le même fonctionnement que l’ajout des photos de trajet, plutôt qu’un placement initial systématique à l’arrivée.
+
+**How to apply:** Partager les règles de placement entre les deux parcours. Signaler les estimations lorsque le GPS horodaté manque ; une date inconnue ne doit jamais déclencher un placement automatique.

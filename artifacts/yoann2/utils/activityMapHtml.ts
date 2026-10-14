@@ -7,7 +7,7 @@ export interface ActivityMapProps {
   onPointPress?: (routeIndex: number) => void;
 }
 
-export function activityMapHtml(trips: Trip[], vehicles: Vehicle[], background: string, selectable = false): string {
+export function activityMapHtml(trips: Trip[], vehicles: Vehicle[], background: string, selectable = false, selectedPoint?: { lat: number; lng: number }): string {
   const routes = trips.map(trip => {
     const route = trip.route ?? [];
     const step = Math.max(1, Math.ceil(route.length / 400));
@@ -23,6 +23,9 @@ export function activityMapHtml(trips: Trip[], vehicles: Vehicle[], background: 
     };
   }).filter(route => route.points.length >= 2);
   const data = JSON.stringify(routes).replace(/</g, '\\u003c');
+  const selected = JSON.stringify(selectedPoint && Number.isFinite(selectedPoint.lat) && Number.isFinite(selectedPoint.lng)
+    && Math.abs(selectedPoint.lat) <= 90 && Math.abs(selectedPoint.lng) <= 180
+    ? { lat: selectedPoint.lat, lng: selectedPoint.lng } : null);
   return `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <style>html,body,#map{height:100%;margin:0;background:${background}}.leaflet-control-attribution{font-size:9px}</style></head>
@@ -41,6 +44,8 @@ route.moments.forEach(function(moment){var label=document.createElement('span');
 });
 if(bounds.length)map.fitBounds(bounds,{padding:[24,24],maxZoom:16});
 var chosen=null;
+var selectedPoint=${selected};
+if(selectedPoint)chosen=L.circleMarker([selectedPoint.lat,selectedPoint.lng],{radius:9,color:'#FFFFFF',fillColor:'#2196F3',fillOpacity:1}).addTo(map);
 if(${selectable})map.on('click',function(event){
 var nearest=null;var distance=Infinity;
 routes.forEach(function(route){route.points.forEach(function(point){var delta=map.distance(event.latlng,[point.lat,point.lng]);if(delta<distance){distance=delta;nearest=point;}});});
