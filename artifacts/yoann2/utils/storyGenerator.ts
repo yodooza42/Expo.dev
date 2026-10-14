@@ -332,7 +332,7 @@ window.generateStory=function(opts){
     var ms=getMsAtKm(km);
     var storyMs=getStoryMsAtRealMs(ms);
     var aProgAt=totalStoryMs>0?Math.min(1,storyMs/totalStoryMs):0;
-    return{note:p.note||'',src:p.img,imgEl:null,triggered:false,absAEl:aProgAt*animMs};
+    return{note:p.note||'',src:p.img,lat:p.lat,lng:p.lng,imgEl:null,triggered:false,absAEl:aProgAt*animMs};
   }).sort(function(a,b){return a.absAEl-b.absAEl;});
   var momentMarkers=(opts.momentCards||[]).map(function(moment){
     var index=Math.max(0,Math.min(1,moment.frac))*(route.length-1);
@@ -449,6 +449,9 @@ window.generateStory=function(opts){
     // laisse le trajet visuellement "coupé" juste avant la destination.
     var exactIdx=aProg>=0.999?route.length-1:getRouteIdxAtKm(curKm);
     var dotP=posAtIdx(exactIdx);
+    if(pauseActive&&Number.isFinite(pauseActive.marker.lat)&&Number.isFinite(pauseActive.marker.lng)){
+      dotP={lat:pauseActive.marker.lat,lng:pauseActive.marker.lng};
+    }
     var dotX=projX(dotP.lng),dotY=projY(dotP.lat);
 
     // ── Update caméra (lerp doux, zoom en log) ───────────────────────────────

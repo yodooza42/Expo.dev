@@ -18,6 +18,8 @@ interface Props {
   scrubPoint?: { lat: number; lng: number };
   /** Route indices of already-anchored photo markers — rendered as small pins */
   photoMarkerIndices?: number[];
+  /** Stable geographic positions, including manual corrections off the simplified trace. */
+  photoMarkers?: Array<{ lat: number; lng: number }>;
   /** When true, tapping the map selects the nearest route point via onSelectPoint. */
   selectMode?: boolean;
   /** Called with the nearest route index when the user taps the map in selectMode. */
@@ -42,7 +44,7 @@ function pickScaleKm(totalWidthKm: number, drawW: number, maxFrac = 0.28): { km:
 
 export function TripMapView({
   route, width, height, bgColor = '#1A1A1A', lineColor = '#FFC107', waypoints, scrubPoint,
-  photoMarkerIndices, selectMode, onSelectPoint,
+  photoMarkerIndices, photoMarkers, selectMode, onSelectPoint,
 }: Props) {
   const { pointsStr, startX, startY, endX, endY, toX, toY, scale } = useMemo(() => {
     if (!route || route.length < 2) return { pointsStr: '', startX: 0, startY: 0, endX: 0, endY: 0, toX: () => 0, toY: () => 0, scale: null };
@@ -134,8 +136,7 @@ export function TripMapView({
         opacity={0.9}
       />
       {/* Photo markers already anchored on this route */}
-      {photoMarkerIndices?.map((idx, i) => {
-        const p = route[Math.max(0, Math.min(idx, route.length - 1))]!;
+      {(photoMarkers ?? photoMarkerIndices?.flatMap(idx => route[idx] ? [route[idx]!] : []))?.map((p, i) => {
         const cx = toX(p.lng), cy = toY(p.lat);
         return (
           <React.Fragment key={`pm-${i}`}>

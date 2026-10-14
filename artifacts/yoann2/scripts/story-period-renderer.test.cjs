@@ -16,7 +16,8 @@ function makeHarness(imageMode = 'ok', recorderSupported = true, exportBytes = 3
   const messages = [], timers = [], rafs = [], images = [], canvasText = [];
   const readerPending = [];
   let timerId = 0, clock = 0, activeTiles = 0, maxTiles = 0, recorderStarts = 0, imageLoads = 0;
-  const ctx2d = new Proxy({ drawImage(image) { if (image?.invalid) throw new Error('empty image source'); }, fillText(value) { canvasText.push(String(value)); } }, { get: (target, key) => key in target ? target[key] : key === 'createRadialGradient'
+  const arcs = [];
+  const ctx2d = new Proxy({ arc(x, y, radius) { arcs.push({ x, y, radius }); }, drawImage(image) { if (image?.invalid) throw new Error('empty image source'); }, fillText(value) { canvasText.push(String(value)); } }, { get: (target, key) => key in target ? target[key] : key === 'createRadialGradient'
     ? () => ({ addColorStop() {} }) : () => {} });
   class ImageMock {
     constructor() { this.onload = this.onerror = null; this.naturalWidth = 256; this.naturalHeight = 256; images.push(this); }
@@ -79,7 +80,7 @@ function makeHarness(imageMode = 'ok', recorderSupported = true, exportBytes = 3
   };
   vm.runInNewContext(renderer.replace('var SAT_MOSAIC_TIMEOUT=7000;', `var SAT_MOSAIC_TIMEOUT=${mosaicTimeout};`), sandbox);
   return {
-    messages, images, canvasText, get starts() { return recorderStarts; }, get maxTiles() { return maxTiles; }, get imageLoads() { return imageLoads; },
+    messages, images, canvasText, arcs, get starts() { return recorderStarts; }, get maxTiles() { return maxTiles; }, get imageLoads() { return imageLoads; },
     runTimers(maxDelay) { for (const t of timers.filter(t => t.live && t.delay <= maxDelay)) { t.live = false; t.fn(); } },
     runFrame(ms) { clock = ms; const fn = rafs.shift(); if (fn) fn(ms); },
     advanceTo(ms) {
@@ -104,6 +105,31 @@ function trips(count) {
 async function settle(rounds = 100) {
   for (let i = 0; i < rounds; i++) await new Promise(resolve => setImmediate(resolve));
 }
+
+test('photo pause renders the true memory location rather than its simplified endpoint anchor', async () => {
+  const h = makeHarness();
+  const selected = trips(1);
+  const [start, end] = selected[0].route;
+  selected[0].photos = [{
+    img: 'data:image/jpeg;base64,AA==', frac: 0, note: 'Midpoint',
+    lat: (start.lat + end.lat) / 2, lng: (start.lng + end.lng) / 2,
+  }];
+  h.window.generatePeriodStory({
+    jobId: 'midpoint', trips: selected, theme: 'dark', videoDurationSec: 10, photoPauseSecPerPhoto: 2,
+  });
+  await settle();
+  h.runFrame(1);
+  h.arcs.length = 0;
+  h.runFrame(501);
+  // Destination, departure and moving dot all use the same camera zoom, so
+  // compare their centers without duplicating the renderer's map projection.
+  const destination = h.arcs.at(-5);
+  const departure = h.arcs.at(-4);
+  const dot = h.arcs.at(-1);
+  assert.ok(destination && departure && dot);
+  assert.ok(Math.abs(dot.x - (destination.x + departure.x) / 2) < 1e-6);
+  assert.ok(Math.abs(dot.y - (destination.y + departure.y) / 2) < 0.01);
+});
 
 test('56 satellite mosaics are sequential and tile fetches stay bounded', async () => {
   const h = makeHarness();

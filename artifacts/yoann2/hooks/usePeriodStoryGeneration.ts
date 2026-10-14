@@ -311,7 +311,8 @@ export function usePeriodStoryGeneration() {
           }
           if (runRef.current?.id !== id) return;
           runRef.current.lastActivity = Date.now();
-          photos.push({ img, note: photo.note, frac: Math.max(0, Math.min(1, photo.routeIndex / (route.length - 1))) });
+          photos.push({ img, note: photo.note, lat: photo.lat, lng: photo.lng,
+            frac: Math.max(0, Math.min(1, photo.routeIndex / (route.length - 1))) });
         }
         const tripId = trip.id;
         const chapterIndex = request.chapters?.findIndex(chapter => chapter.tripIds.includes(tripId)) ?? -1;

@@ -34,6 +34,8 @@ const { activityForTrip, activityInfo, filterActivities, activityMilestones } = 
 const { activityReviewPatch } = load('utils/activityReview.ts');
 const { activityMapHtml } = load('utils/activityMapHtml.ts');
 const { parseExifDate, photoTakenAt, locatePhotoOnTrip } = load('utils/tripPhotoPlacement.ts');
+const { remapTripMemories } = load('utils/tripMemoryRemapping.ts');
+const { simplifyRoute } = load('utils/routeSimplification.ts');
 const { updateTrip, getTrips } = load('utils/tripStorage.ts');
 const { saveManualTripState, getManualTripState } = load('utils/manualTripStorage.ts');
 const vehicles = [
@@ -46,6 +48,284 @@ const trip = (id, time, km, extra = {}) => ({
 });
 const june = new Date(2026, 5, 10).getTime();
 const july = new Date(2026, 6, 10).getTime();
+
+test('regenerated GPS remaps linked photos and moments together without changing content or clocks', () => {
+  const takenAt = june + 1800000;
+  const original = trip('regen', june, 5, {
+    note: 'Trip note', walkParticipants: ['a', 'dog'],
+    photos: [{ id: 'p', uri: 'content://original', takenAt, note: 'Photo note', routeIndex: 1 }],
+    activityMoments: [{ id: 'm', photoId: 'p', note: 'Memory note', timestamp: takenAt,
+      routeIndex: 1, lat: 45.01, lng: 1.01, placementMethod: 'time' }],
+  });
+  const before = JSON.stringify(original);
+  const route = [
+    { lat: 45, lng: 1, t: june }, { lat: 45.005, lng: 1.005, t: june + 600000 },
+    { lat: 45.01, lng: 1.01, t: takenAt }, { lat: 45.02, lng: 1.02, t: original.endTime },
+  ];
+  const patch = remapTripMemories(original, route);
+  for (const item of [patch.photos[0], patch.activityMoments[0]]) {
+    assert.equal(item.routeIndex, 2);
+    assert.equal(item.lat, route[2].lat);
+    assert.equal(item.lng, route[2].lng);
+    assert.equal(item.placementMethod, 'time');
+  }
+  assert.equal(patch.photos[0].takenAt, takenAt);
+  assert.equal(patch.photos[0].uri, 'content://original');
+  assert.equal(patch.photos[0].note, 'Photo note');
+  assert.equal(patch.activityMoments[0].timestamp, takenAt);
+  assert.equal(patch.activityMoments[0].note, 'Memory note');
+  assert.equal(JSON.stringify(original), before);
+  assert.deepEqual(Object.keys(patch).sort(), ['activityMoments', 'photos']);
+  const html = activityMapHtml([{ ...original, ...patch, route }], vehicles, '#101010', true, patch.activityMoments[0]);
+  const payload = JSON.parse(html.match(/var routes=(.*);var map=/)[1]);
+  assert.equal(payload[0].moments[0].lat, patch.photos[0].lat);
+  assert.ok(html.includes('var selectedPoint={"lat":45.01,"lng":1.01}'));
+});
+
+test('removed GPS points get valid replacement anchors and real clocks survive simplification', () => {
+  const route = [
+    { lat: 45, lng: 1, t: june }, { lat: 45.01, lng: 1.01, t: june + 1800000 },
+    { lat: 45.02, lng: 1.02, t: june + 3600000 },
+  ];
+  const newRoute = simplifyRoute(route);
+  assert.equal(newRoute.length, 2);
+  assert.equal(newRoute[1].t, june + 3600000);
+  const original = trip('removed', june, 5, { route,
+    photos: [{ id: 'p', uri: 'gallery', takenAt: june + 2000000, routeIndex: 1,
+      lat: 45.01, lng: 1.01, placementMethod: 'time' }],
+    activityMoments: [{ id: 'note', note: 'Break', timestamp: june + 2000000, routeIndex: 1,
+      lat: 45.01, lng: 1.01, placementMethod: 'time' }],
+  });
+  const patch = remapTripMemories(original, newRoute);
+  for (const item of [patch.photos[0], patch.activityMoments[0]]) {
+    assert.equal(item.routeIndex, 1);
+    assert.equal(item.lat, route[1].lat);
+    assert.equal(item.lng, route[1].lng);
+  }
+});
+
+test('automatic remapping uses raw GPS on untimed regenerated routes, with explicit estimates otherwise', () => {
+  const takenAt = june + 3000000;
+  const original = trip('raw-remap', june, 5, {
+    photos: [{ id: 'p', uri: 'gallery', takenAt, placementMethod: 'gps', routeIndex: 1 }],
+  });
+  const route = [{ lat: 45, lng: 1 }, { lat: 45.01, lng: 1 }, { lat: 45.02, lng: 1 }];
+  const gps = [{ lat: 45.0101, lng: 1, timestamp: takenAt }];
+  const actual = remapTripMemories(original, route, gps).photos[0];
+  assert.equal(actual.routeIndex, 1);
+  assert.equal(actual.placementMethod, 'gps');
+  assert.equal(actual.lat, gps[0].lat);
+  const estimate = remapTripMemories(original, route).photos[0];
+  assert.equal(estimate.routeIndex, 2);
+  assert.equal(estimate.placementMethod, 'estimated');
+});
+
+test('a midpoint memory on a long straight trace keeps its raw GPS coordinates after simplification', () => {
+  const rawRoute = [
+    { lat: 45, lng: 1, t: june }, { lat: 45.05, lng: 1.05, t: june + 1800000 },
+    { lat: 45.10, lng: 1.10, t: june + 3600000 },
+  ];
+  const original = trip('straight-midpoint', june, 15, {
+    route: rawRoute,
+    photos: [{ id: 'p', uri: 'gallery', takenAt: june + 1800000, routeIndex: 1, placementMethod: 'time' }],
+    activityMoments: [{ id: 'm', photoId: 'p', note: 'Middle', timestamp: june + 1800000,
+      routeIndex: 1, lat: 45.05, lng: 1.05, placementMethod: 'time' }],
+  });
+  const route = simplifyRoute(rawRoute);
+  assert.equal(route.length, 2);
+  const gps = rawRoute.map(({ lat, lng, t }) => ({ lat, lng, timestamp: t }));
+  const patch = remapTripMemories(original, route, gps);
+  for (const item of [patch.photos[0], patch.activityMoments[0]]) {
+    assert.ok(item.routeIndex >= 0 && item.routeIndex < route.length);
+    assert.equal(item.lat, rawRoute[1].lat);
+    assert.equal(item.lng, rawRoute[1].lng);
+    assert.equal(item.placementMethod, 'time');
+    assert.notEqual(item.lat, route[item.routeIndex].lat);
+  }
+  const html = activityMapHtml([{ ...original, route, ...patch }], vehicles, '#101010', true, patch.activityMoments[0]);
+  assert.ok(html.includes('var selectedPoint={"lat":45.05,"lng":1.05}'));
+  const afterGpsExpiry = remapTripMemories({ ...original, route, ...patch }, route);
+  assert.equal(afterGpsExpiry.photos[0].lat, 45.05);
+  assert.equal(afterGpsExpiry.activityMoments[0].lng, 1.05);
+});
+
+test('loop remapping keeps automatic capture time and manual old-anchor time distinct', () => {
+  const crossing = { lat: 45, lng: 1 };
+  const route = [
+    { ...crossing, t: june }, { lat: 45.01, lng: 1.01, t: june + 600000 },
+    { ...crossing, t: june + 1800000 }, { lat: 45.02, lng: 1.02, t: june + 2400000 },
+    { ...crossing, t: june + 3600000 },
+  ];
+  const original = trip('loop', june, 5, { route,
+    photos: [{ id: 'auto', uri: 'auto', takenAt: june + 3600000, routeIndex: 0, placementMethod: 'time' },
+      { id: 'manual', uri: 'manual', takenAt: june, routeIndex: 4, ...crossing, placementMethod: 'manual' }],
+    activityMoments: [{ id: 'm', note: 'Return', timestamp: june, photoId: 'manual',
+      routeIndex: 4, ...crossing, placementMethod: 'manual' }],
+  });
+  const newRoute = [route[0], route[1], route[2], { lat: 45.015, lng: 1.015, t: june + 2100000 }, route[3], route[4]];
+  const patch = remapTripMemories(original, newRoute);
+  assert.equal(patch.photos[0].routeIndex, 5);
+  assert.equal(patch.photos[1].routeIndex, 5);
+  assert.equal(patch.photos[1].takenAt, june);
+  assert.equal(patch.activityMoments[0].timestamp, june);
+  assert.equal(patch.activityMoments[0].routeIndex, 5);
+  // Without clocks, disambiguate repeated positions by old route progress.
+  const untimed = remapTripMemories({ ...original, route: route.map(({ t, ...p }) => p) },
+    newRoute.map(({ t, ...p }) => p));
+  assert.equal(untimed.photos[1].routeIndex, 5);
+});
+
+test('manual and legacy positions remain geographic even when their point disappears', () => {
+  const original = trip('manual', june, 5, {
+    photos: [{ id: 'p', uri: 'original', takenAt: june, routeIndex: 1 }],
+    activityMoments: [{ id: 'm', note: 'Correction', photoId: 'p', timestamp: june,
+      lat: 45.0103, lng: 1.0103, routeIndex: 1, placementMethod: 'manual' }],
+  });
+  const route = [{ lat: 45, lng: 1, t: june }, { lat: 45.02, lng: 1.02, t: original.endTime }];
+  const patch = remapTripMemories(original, route);
+  for (const item of [patch.photos[0], patch.activityMoments[0]]) {
+    assert.equal(item.lat, 45.0103);
+    assert.equal(item.lng, 1.0103);
+    assert.equal(item.routeIndex, 1);
+    assert.equal(item.placementMethod, 'manual');
+  }
+  const legacy = remapTripMemories({ ...original, activityMoments: undefined }, route).photos[0];
+  assert.equal(legacy.lat, original.route[1].lat);
+  assert.equal(legacy.routeIndex, 1);
+  assert.equal(legacy.placementMethod, 'manual');
+  // A legacy photo correction made separately must not revert to its old moment.
+  const corrected = remapTripMemories({ ...original, photos: [{ ...original.photos[0], routeIndex: 0 }],
+    activityMoments: [{ ...original.activityMoments[0], placementMethod: 'time' }] }, route);
+  assert.equal(corrected.photos[0].routeIndex, 0);
+  assert.equal(corrected.activityMoments[0].lat, 45);
+});
+
+test('a legacy trip-map photo move wins over an earlier manual Activity Review position', () => {
+  const original = trip('legacy-two-corrections', june, 5, {
+    route: [
+      { lat: 45, lng: 1, t: june }, { lat: 45.01, lng: 1.01, t: june + 1800000 },
+      { lat: 45.02, lng: 1.02, t: june + 3600000 },
+    ],
+    // Old trip-map code moved only this index after the manual review placement.
+    photos: [{ id: 'p', uri: 'content://original', takenAt: june + 1800000, note: 'Caption', routeIndex: 2 }],
+    activityMoments: [{ id: 'm', photoId: 'p', note: 'Manual review note',
+      timestamp: june + 1800000, routeIndex: 1, lat: 45.01, lng: 1.01, placementMethod: 'manual' }],
+  });
+  const newRoute = [
+    original.route[0], { lat: 45.005, lng: 1.006, t: june + 600000 },
+    original.route[1], { lat: 45.015, lng: 1.016, t: june + 2400000 }, original.route[2],
+  ];
+  const patch = remapTripMemories(original, newRoute);
+  for (const item of [patch.photos[0], patch.activityMoments[0]]) {
+    assert.equal(item.routeIndex, 4);
+    assert.equal(item.lat, original.route[2].lat);
+    assert.equal(item.lng, original.route[2].lng);
+    assert.equal(item.placementMethod, 'manual');
+  }
+  assert.equal(patch.photos[0].takenAt, june + 1800000);
+  assert.equal(patch.photos[0].note, 'Caption');
+  assert.equal(patch.photos[0].uri, 'content://original');
+  assert.equal(patch.activityMoments[0].timestamp, june + 1800000);
+  assert.equal(patch.activityMoments[0].note, 'Manual review note');
+  // Repeating regeneration must not restore the obsolete review placement.
+  const repeated = remapTripMemories({ ...original, route: newRoute, ...patch }, original.route);
+  assert.equal(repeated.photos[0].routeIndex, 2);
+  assert.equal(repeated.activityMoments[0].routeIndex, 2);
+});
+
+test('unknown photo dates never position photos using takenAt or the linked default timestamp', () => {
+  const original = trip('unknown', june, 5, {
+    photos: [{ id: 'unknown', uri: 'gallery', takenAt: june + 3600000, takenAtEstimated: true }],
+    activityMoments: [{ id: 'unknown-memory', note: 'Unknown', photoId: 'unknown', timestamp: june + 3600000 }],
+  });
+  const route = [{ lat: 45, lng: 1, t: june }, { lat: 45.01, lng: 1.01, t: original.endTime }];
+  const patch = remapTripMemories(original, route);
+  assert.equal(patch.photos[0].routeIndex, undefined);
+  assert.equal(patch.activityMoments[0].routeIndex, undefined);
+  assert.equal(patch.photos[0].takenAtEstimated, true);
+  assert.equal(patch.photos[0].takenAt, original.endTime);
+  assert.equal(patch.activityMoments[0].timestamp, original.endTime);
+  const invalid = remapTripMemories({ ...original, photos: [
+    { id: 'bad', uri: 'gallery', takenAt: NaN, routeIndex: 999 },
+  ] }, route);
+  assert.equal(invalid.photos[0].routeIndex, undefined);
+});
+
+test('GPS regeneration saves the remapped route and memories atomically and leaves UI intact on save failure', async () => {
+  const original = trip('handler', june, 5, {
+    photos: [{ id: 'p', uri: 'gallery', takenAt: june, placementMethod: 'time' }],
+  });
+  const source = ts.createSourceFile('trip-map.tsx', fs.readFileSync(path.join(ROOT, 'app/trip-map.tsx'), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  let declaration;
+  function find(node) {
+    if (ts.isVariableDeclaration(node) && node.name.getText(source) === 'handleRegenGpsRoute') declaration = node;
+    ts.forEachChild(node, find);
+  }
+  find(source);
+  assert.ok(declaration);
+  const points = [
+    { lat: 45, lng: 1, timestamp: june }, { lat: 45.01, lng: 1.015, timestamp: june + 1800000 },
+    { lat: 45.02, lng: 1.02, timestamp: original.endTime },
+  ];
+  const context = {
+    trip: original, regenGpsLoading: false, isWalkTrip: true, EPSILON_DEG_WALK: 0.000036,
+    useCallback: fn => fn, loadMultiDayPoints: async () => points, filterGpsOutliers: p => p,
+    simplifyRoute, remapTripMemories, computeRouteDistanceKm: () => 5,
+    setRegenGpsLoading: value => { context.regenGpsLoading = value; },
+    setTrip: update => { context.trip = update(context.trip); },
+    updateTrip: async (id, patch) => { if (context.fail) throw new Error('disk full'); context.saved = patch; },
+    tripEvents: { emitTripUpdated: () => {} }, Haptics: { notificationAsync: async () => {}, NotificationFeedbackType: { Success: 'success' } },
+    Alert: { alert: () => {} }, fail: true,
+  };
+  vm.runInNewContext(ts.transpileModule(`var ${declaration.getText(source)}`, {
+    compilerOptions: { target: ts.ScriptTarget.ES2020 },
+  }).outputText, context);
+  await context.handleRegenGpsRoute();
+  assert.equal(context.trip, original);
+  assert.equal(context.regenGpsLoading, false);
+  context.fail = false;
+  await context.handleRegenGpsRoute();
+  assert.equal(context.saved.route[1].t, points[1].timestamp);
+  assert.equal(context.saved.photos[0].routeIndex, 0);
+  assert.equal(context.trip.photos[0].takenAt, june);
+  assert.equal(context.trip.route, context.saved.route);
+});
+
+test('a trip-map manual photo correction updates its linked memory without changing content or timestamps', async () => {
+  const original = trip('manual-handler', june, 5, {
+    photos: [{ id: 'p', uri: 'gallery', takenAt: june, note: 'Photo caption', routeIndex: 0 }],
+    activityMoments: [{ id: 'm', photoId: 'p', note: 'Moment caption', timestamp: june,
+      routeIndex: 0, lat: 45, lng: 1, placementMethod: 'time' }],
+  });
+  const source = ts.createSourceFile('trip-map.tsx', fs.readFileSync(path.join(ROOT, 'app/trip-map.tsx'), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  let declaration;
+  function find(node) {
+    if (ts.isVariableDeclaration(node) && node.name.getText(source) === 'handleMapPointSelected') declaration = node;
+    ts.forEachChild(node, find);
+  }
+  find(source);
+  const context = {
+    trip: original, repositioningPhotoId: 'p', useCallback: fn => fn,
+    setPhotoSelectMode: () => {}, setRepositioningPhotoId: () => {},
+    handleAddPhotos: () => { throw new Error('must reposition, not add'); },
+    updateTrip: async (id, patch) => { context.saved = patch; },
+    setTrip: next => { context.trip = next; },
+  };
+  vm.runInNewContext(ts.transpileModule(`var ${declaration.getText(source)}`, {
+    compilerOptions: { target: ts.ScriptTarget.ES2020 },
+  }).outputText, context);
+  await context.handleMapPointSelected(1);
+  for (const item of [context.saved.photos[0], context.saved.activityMoments[0]]) {
+    assert.equal(item.routeIndex, 1);
+    assert.equal(item.lat, original.route[1].lat);
+    assert.equal(item.lng, original.route[1].lng);
+    assert.equal(item.placementMethod, 'manual');
+  }
+  assert.equal(context.saved.photos[0].takenAt, june);
+  assert.equal(context.saved.photos[0].note, 'Photo caption');
+  assert.equal(context.saved.activityMoments[0].timestamp, june);
+  assert.equal(context.saved.activityMoments[0].note, 'Moment caption');
+});
 
 test('photo times come from valid EXIF including timezone offsets, then gallery metadata', () => {
   assert.equal(parseExifDate('2026:10:14 09:48:00', '+02:00'), Date.parse('2026-10-14T07:48:00Z'));

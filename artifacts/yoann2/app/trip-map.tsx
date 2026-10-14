@@ -65,7 +65,8 @@ import { StoryPauseCaptionModal } from '@/components/StoryPauseCaptionModal';
 import { ActivityDetails } from '@/components/ActivityDetails';
 import { ActivityTypePicker } from '@/components/ActivityTypePicker';
 import { activityForTrip, activityInfo } from '@/utils/activities';
-import { locatePhotoOnTrip, parseExifDate } from '@/utils/tripPhotoPlacement';
+import { locatePhotoOnTrip, photoTakenAt } from '@/utils/tripPhotoPlacement';
+import { remapTripMemories } from '@/utils/tripMemoryRemapping';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
@@ -593,17 +594,6 @@ export default function TripMapScreen() {
     setScrubTs(pt ? pt.timestamp : null);
   }, []);
 
-  /**
-   * Déduit automatiquement la position d'une photo sur le tracé à partir de son heure de
-   * prise de vue (EXIF/asset) : on la compare aux horodatages GPS réels des points du
-   * tracé quand ils existent, puis aux GPS bruts, sinon on estime entre le
-   * début et la fin du trajet (tracé OSRM/manuel sans GPS horodaté).
-   * Retourne `undefined` si l'heure de la photo tombe hors de la fenêtre du trajet.
-   */
-  const computeRouteIndexFromTime = useCallback((t: Trip, takenAt: number): number | undefined => {
-    return locatePhotoOnTrip(t, takenAt, tripLocPts)?.routeIndex;
-  }, [tripLocPts]);
-
   /** Ouvre la galerie et ajoute la/les photo(s) choisies ; leur position sur le trajet est
    *  déduite automatiquement de leur heure de prise de vue (EXIF), sauf `forceRouteIndex`
    *  fourni explicitement (repositionnement manuel). */
@@ -625,21 +615,25 @@ export default function TripMapScreen() {
     try {
       const newPhotos: TripPhoto[] = [];
       for (const asset of result.assets) {
-        let takenAt = parseExifDate(asset.exif?.['DateTimeOriginal'] as string | undefined)
-          ?? parseExifDate(asset.exif?.['DateTime'] as string | undefined);
-        if (takenAt == null && asset.assetId) {
+        let creationTime: number | undefined;
+        if (asset.assetId) {
           try {
             const info = await MediaLibrary.getAssetInfoAsync(asset.assetId);
-            if (info.creationTime) takenAt = info.creationTime;
+            creationTime = info.creationTime;
           } catch {}
         }
-        takenAt = takenAt ?? Date.now();
-        const routeIndex = forceRouteIndex ?? computeRouteIndexFromTime(trip, takenAt);
+        const takenAt = photoTakenAt(asset.exif, creationTime);
+        const placement = takenAt == null ? undefined : locatePhotoOnTrip(trip, takenAt, tripLocPts);
+        const routeIndex = forceRouteIndex ?? placement?.routeIndex;
+        const point = routeIndex == null ? undefined : trip.route?.[routeIndex];
         newPhotos.push({
           id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
           uri: asset.uri,
-          takenAt,
+          takenAt: takenAt ?? Date.now(),
+          takenAtEstimated: takenAt == null,
           routeIndex,
+          lat: point?.lat, lng: point?.lng,
+          placementMethod: forceRouteIndex != null ? 'manual' : placement?.method,
         });
       }
       const merged = [...(trip.photos ?? []), ...newPhotos]
@@ -653,7 +647,7 @@ export default function TripMapScreen() {
     } finally {
       setAddingPhotos(false);
     }
-  }, [trip, addingPhotos, computeRouteIndexFromTime]);
+  }, [trip, addingPhotos, tripLocPts]);
 
   /** Ouvre un sélecteur maison listant en priorité les photos prises pendant le trajet
    *  (déduites de leur date de création vs. la fenêtre horaire du trajet), impossible à
@@ -705,12 +699,15 @@ export default function TripMapScreen() {
     try {
       const chosen = galleryAssets.filter(a => gallerySelected.has(a.id));
       const newPhotos: TripPhoto[] = chosen.map(a => {
-        const takenAt = a.creationTime || Date.now();
+        const takenAt = photoTakenAt(null, a.creationTime);
+        const placement = takenAt == null ? undefined : locatePhotoOnTrip(trip, takenAt, tripLocPts);
+        const point = placement?.routeIndex == null ? undefined : trip.route?.[placement.routeIndex];
         return {
           id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
           uri: a.uri,
-          takenAt,
-          routeIndex: computeRouteIndexFromTime(trip, takenAt),
+          takenAt: takenAt ?? Date.now(), takenAtEstimated: takenAt == null,
+          routeIndex: placement?.routeIndex, placementMethod: placement?.method,
+          lat: point?.lat, lng: point?.lng,
         };
       });
       const merged = [...(trip.photos ?? []), ...newPhotos]
@@ -722,7 +719,7 @@ export default function TripMapScreen() {
     } finally {
       setAddingPhotos(false);
     }
-  }, [trip, galleryAssets, gallerySelected, computeRouteIndexFromTime]);
+  }, [trip, galleryAssets, gallerySelected, tripLocPts]);
 
   const handleRemovePhoto = useCallback(async (photoId: string) => {
     if (!trip) return;
@@ -743,10 +740,15 @@ export default function TripMapScreen() {
   const handleMapPointSelected = useCallback(async (idx: number) => {
     setPhotoSelectMode(false);
     if (repositioningPhotoId && trip) {
-      const next = (trip.photos ?? []).map(p => p.id === repositioningPhotoId ? { ...p, routeIndex: idx } : p)
+      const point = trip.route?.[idx];
+      if (!point) return;
+      const placement = { routeIndex: idx, lat: point.lat, lng: point.lng, placementMethod: 'manual' as const };
+      const next = (trip.photos ?? []).map(p => p.id === repositioningPhotoId ? { ...p, ...placement } : p)
         .sort((a, b) => (a.routeIndex ?? Infinity) - (b.routeIndex ?? Infinity) || a.takenAt - b.takenAt);
-      setTrip({ ...trip, photos: next });
-      await updateTrip(trip.id, { photos: next });
+      const patch = { photos: next, activityMoments: trip.activityMoments?.map(moment =>
+        moment.photoId === repositioningPhotoId ? { ...moment, ...placement } : moment) };
+      await updateTrip(trip.id, patch, true);
+      setTrip({ ...trip, ...patch });
       setRepositioningPhotoId(null);
       return;
     }
@@ -835,8 +837,8 @@ export default function TripMapScreen() {
     const photos = (await Promise.all(anchoredPhotos.map(async p => {
       const dataUri = await photoToDataUri(p.uri);
       if (!dataUri) return null;
-      return { img: dataUri, note: p.note, frac: (p.routeIndex! / (route.length - 1)) };
-    }))).filter((p): p is { img: string; note: string | undefined; frac: number } => p != null);
+      return { img: dataUri, note: p.note, lat: p.lat, lng: p.lng, frac: (p.routeIndex! / (route.length - 1)) };
+    }))).filter((p): p is { img: string; note: string | undefined; lat: number | undefined; lng: number | undefined; frac: number } => p != null);
 
     const maxSpeed = Math.max(...tripLocPts.map(p => p.speedKmh ?? 0), 1);
     const alts = tripLocPts.map(p => p.altitudeM).filter((a): a is number => a != null);
@@ -1148,7 +1150,7 @@ export default function TripMapScreen() {
         Alert.alert('Tracé GPS', 'Pas assez de points GPS pour ce trajet.');
         return;
       }
-      const gpsRoute = filtered.map(p => ({ lat: p.lat, lng: p.lng }));
+      const gpsRoute = filtered.map(p => ({ lat: p.lat, lng: p.lng, t: p.timestamp }));
       const newRoute: RoutePoint[] = simplifyRoute(
         gpsRoute,
         isWalkTrip ? EPSILON_DEG_WALK : undefined,
@@ -1158,9 +1160,10 @@ export default function TripMapScreen() {
         routeSource: 'gps',
         distanceKm: Math.round(computeRouteDistanceKm(gpsRoute) * 100) / 100,
         pointCount: filtered.length,
+        ...remapTripMemories(trip, newRoute, filtered),
       };
+      await updateTrip(trip.id, patch, true);
       setTrip(prev => prev ? { ...prev, ...patch } : prev);
-      await updateTrip(trip.id, patch);
       tripEvents.emitTripUpdated();
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch {
@@ -1312,7 +1315,11 @@ export default function TripMapScreen() {
               lineColor={trip?.source === 'manual' ? '#2196F3' : '#FFC107'}
               waypoints={intermediateWaypoints.length > 0 ? intermediateWaypoints : undefined}
               scrubPoint={scrubMapPoint}
-              photoMarkerIndices={trip?.photos?.map(p => p.routeIndex).filter((i): i is number => i != null)}
+              photoMarkers={trip?.photos?.flatMap(photo => {
+                const point = photo.lat != null && photo.lng != null ? { lat: photo.lat, lng: photo.lng }
+                  : photo.routeIndex == null ? undefined : trip.route?.[photo.routeIndex];
+                return point ? [point] : [];
+              })}
               selectMode={photoSelectMode}
               onSelectPoint={handleMapPointSelected}
             />

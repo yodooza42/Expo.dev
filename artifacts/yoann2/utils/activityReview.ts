@@ -23,7 +23,8 @@ export function activityReviewPatch(current: Trip, draft: ActivityReviewDraft): 
   const ownedIds = new Set([...draft.originalPhotoIds, ...draft.moments.flatMap(moment => moment.photo ? [moment.photo.id] : [])]);
   const photos = (current.photos ?? []).filter(photo => !ownedIds.has(photo.id));
   const moments = draft.moments.map(({ photo, ...moment }) => {
-    if (photo) photos.push({ ...photo, note: moment.note || undefined, routeIndex: moment.routeIndex });
+    if (photo) photos.push({ ...photo, note: moment.note || undefined, routeIndex: moment.routeIndex,
+      lat: moment.lat, lng: moment.lng, placementMethod: moment.placementMethod });
     return { ...moment, photoId: photo?.id };
   });
   return {

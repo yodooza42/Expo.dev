@@ -316,7 +316,7 @@ export const STORY_PERIOD_JS = `
   var photoMarkersRaw=[]; /* [{tripIdx, note, frac, src}] — position absolue calculée plus bas, une fois tStart/tDurOf connus */
   for(var pti=0;pti<trips.length;pti++){
     var tps=(trips[pti].photos||[]).slice().sort(function(a,b){return a.frac-b.frac;});
-    for(var pj=0;pj<tps.length;pj++)photoMarkersRaw.push({tripIdx:pti,note:tps[pj].note||'',frac:tps[pj].frac,src:tps[pj].img,imgEl:null,triggered:false});
+    for(var pj=0;pj<tps.length;pj++)photoMarkersRaw.push({tripIdx:pti,note:tps[pj].note||'',frac:tps[pj].frac,src:tps[pj].img,lat:tps[pj].lat,lng:tps[pj].lng,imgEl:null,triggered:false});
   }
   var totalPauseMs=photoMarkersRaw.length*PHOTO_PAUSE_MS;
 
@@ -674,7 +674,7 @@ export const STORY_PERIOD_JS = `
      absolue est immédiatement éligible. Les limites d'un chapitre restent donc indépendantes
      du temps ajouté par les photos. */
   var photoMarkers=photoMarkersRaw.map(function(m){
-    return{tripIdx:m.tripIdx,note:m.note,frac:m.frac,src:m.src,imgEl:null,triggered:false,
+    return{tripIdx:m.tripIdx,note:m.note,frac:m.frac,src:m.src,lat:m.lat,lng:m.lng,imgEl:null,triggered:false,
       absAEl:(familyStory?FAMILY_OPENING_MS:0)+tStart[m.tripIdx]+m.frac*tDurOf(m.tripIdx)};
   }).sort(function(a,b){return a.absAEl-b.absAEl;});
   if(familyStory){
@@ -997,6 +997,9 @@ export const STORY_PERIOD_JS = `
         var cpI=Math.min(flI,rr.length-2),cpF=Math.min(exI-cpI,1);
         var cpA=rr[cpI],cpB=rr[Math.min(cpI+1,rr.length-1)];
         dLn=cpA.lng+(cpB.lng-cpA.lng)*cpF;dLa=cpA.lat+(cpB.lat-cpA.lat)*cpF;
+      }
+      if(pauseActive&&Number.isFinite(pauseActive.marker.lat)&&Number.isFinite(pauseActive.marker.lng)){
+        dLn=pauseActive.marker.lng;dLa=pauseActive.marker.lat;
       }
       var pulse=1+0.22*Math.sin(el/150);
       ctx.beginPath();ctx.arc(pX(dLn),pY(dLa),20*pulse/cam.zoom,0,Math.PI*2);ctx.fillStyle=col+'26';ctx.fill();

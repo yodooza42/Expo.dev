@@ -204,7 +204,7 @@ function inferRouteIndex(trip: Trip, photo: TripPhoto): number | undefined {
   const route = trip.route;
   if (!validRoute(route)) return undefined;
 
-  if (Number.isFinite(photo.takenAt)) {
+  if (!photo.takenAtEstimated && Number.isFinite(photo.takenAt)) {
     const timestamped = route
       .map((point, index) => ({ index, t: point.t }))
       .filter((point): point is { index: number; t: number } => Number.isFinite(point.t));

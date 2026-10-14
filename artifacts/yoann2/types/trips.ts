@@ -24,6 +24,10 @@ export interface RoutePoint {
 
 /** A photo referenced from the device gallery (not copied into app storage) and attached to a trip. */
 export interface TripPhoto {
+  /** Geographic placement, independent of the simplified route's point sequence. */
+  lat?: number;
+  lng?: number;
+  placementMethod?: ActivityMoment['placementMethod'];
   id: string;
   /** Gallery/content URI of the original asset — never copied locally. */
   uri: string;
@@ -35,8 +39,7 @@ export interface TripPhoto {
   note?: string;
   /**
    * Index into this trip's `route` array anchoring the photo to a specific GPS point,
-   * chosen by tapping a point on the trip map. Becomes stale/ignored if the route is
-   * later re-simplified or regenerated (point count/order changes) — not auto-migrated.
+   * Remapped when the trace changes; manual placements keep their geographic position.
    */
   routeIndex?: number;
 }
