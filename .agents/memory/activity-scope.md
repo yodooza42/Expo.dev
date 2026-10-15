@@ -21,6 +21,12 @@ La carte des sorties doit permettre de filtrer par type d’activité et partici
 
 **How to apply:** Garder le questionnaire facultatif et préserver le trajet enregistré lorsqu’il est passé. Ne pas obliger à saisir des souvenirs pendant le suivi GPS.
 
+Dans le détail d’un trajet, les photos et messages des souvenirs doivent venir après les statistiques et graphiques.
+
+**Why:** L’utilisateur trouve cet ordre plus pratique pour consulter les mesures avant les souvenirs.
+
+**How to apply:** Préserver cette priorité lors des changements de présentation, quel que soit le nombre de souvenirs.
+
 Les jalons personnels doivent être intégrés au bilan mensuel existant. Ne pas ajouter de nouveau bilan séparé ni de gestion de parcours favoris à refaire.
 
 **Why:** L’utilisateur a choisi « Dans bilan mensuel » pour les jalons, « Pas besoin » pour un nouveau bilan et « Bof, pas utile » pour les parcours à refaire.

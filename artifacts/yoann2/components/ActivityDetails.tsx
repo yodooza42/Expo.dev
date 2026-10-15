@@ -36,7 +36,15 @@ export function ActivityDetails({ trip, vehicles, onEdit, onSelectType }: {
       </Pressable>
       {onEdit && <Pressable onPress={onEdit} hitSlop={10}><Text style={{ color: colors.primary }}>Souvenirs</Text></Pressable>}
     </View>
-    {(trip.activityMoments ?? []).map(moment => {
+  </View>;
+}
+
+export function ActivityMemories({ trip, vehicles }: { trip: Trip; vehicles: Vehicle[] }) {
+  const colors = useColors();
+  if (!activityForTrip(trip, vehicles) || !trip.activityMoments?.length) return null;
+  return <View style={{ padding: 16, gap: 10, borderTopWidth: 1, borderTopColor: colors.border }}>
+    <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 16 }}>Souvenirs</Text>
+    {trip.activityMoments.map(moment => {
       const photo = trip.photos?.find(item => item.id === moment.photoId);
       return <View key={moment.id} style={{ gap: 5 }}>
         {photo && <Image source={{ uri: photo.uri }} style={{ height: 150, width: '100%', borderRadius: 10 }} />}

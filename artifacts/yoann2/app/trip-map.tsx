@@ -62,7 +62,7 @@ import { buildStoryHtml } from '@/utils/storyGenerator';
 import { buildStoryPlaybackTimeline } from '@/utils/storyPlaybackTimeline';
 import type { StoryPause } from '@/utils/storyPlaybackTimeline';
 import { StoryPauseCaptionModal } from '@/components/StoryPauseCaptionModal';
-import { ActivityDetails } from '@/components/ActivityDetails';
+import { ActivityDetails, ActivityMemories } from '@/components/ActivityDetails';
 import { ActivityTypePicker } from '@/components/ActivityTypePicker';
 import { activityForTrip, activityInfo } from '@/utils/activities';
 import { locatePhotoOnTrip, photoTakenAt } from '@/utils/tripPhotoPlacement';
@@ -1605,6 +1605,7 @@ export default function TripMapScreen() {
               {hasAltData && <TripAltitudeChart points={tripLocPts} color={vehColor} onScrub={handleChartScrub} externalScrubTs={scrubTs} />}
             </>
           )}
+          <ActivityMemories trip={trip} vehicles={vehicles} />
         </ScrollView>
       )}
 
