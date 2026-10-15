@@ -15,11 +15,12 @@ type Props = {
   onChange: (index: number, value: string) => void;
   onCancel: () => void;
   onContinue: () => void;
+  onHidePauses: () => void;
 };
 
 export function StoryPauseCaptionModal({
   visible, pauses, drafts, accentColor, cardColor, borderColor, textColor, mutedColor,
-  onChange, onCancel, onContinue,
+  onChange, onCancel, onContinue, onHidePauses,
 }: Props) {
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
@@ -29,8 +30,15 @@ export function StoryPauseCaptionModal({
             Ajouter un souvenir aux pauses ?
           </Text>
           <Text style={{ color: mutedColor, fontSize: 13, fontFamily: 'Inter_400Regular', marginBottom: 14 }}>
-            La story signalera chaque pause détectée. Le message est facultatif et ne sera pas enregistré sur le trajet.
+            Tu peux afficher les pauses avec un message facultatif, ou les masquer. Les temps d’arrêt restent accélérés et le trajet ne sera pas modifié.
           </Text>
+          <Pressable
+            accessibilityRole="button"
+            onPress={onHidePauses}
+            style={{ paddingVertical: 12, paddingHorizontal: 12, alignItems: 'center', borderRadius: 10, borderWidth: 1, borderColor: accentColor, marginBottom: 14 }}
+          >
+            <Text style={{ color: accentColor, fontFamily: 'Inter_600SemiBold', textAlign: 'center' }}>Ne pas afficher les pauses</Text>
+          </Pressable>
           <ScrollView keyboardShouldPersistTaps="handled" style={{ flexGrow: 0, flexShrink: 1, maxHeight: 420 }}>
             {pauses.map((pause, index) => (
               <View key={`${pause.startMs}-${index}`} style={{ marginBottom: 14 }}>

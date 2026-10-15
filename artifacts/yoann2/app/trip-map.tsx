@@ -786,7 +786,7 @@ export default function TripMapScreen() {
     }
   }, []);
 
-  const handleGenerateStory = useCallback(async (durationOverride?: number, pauseCaptions?: string[]) => {
+  const handleGenerateStory = useCallback(async (durationOverride?: number, pauseCaptions?: string[], showPauseCards = true) => {
     if (!trip || isGeneratingStory) return;
 
     // Route : tracé stocké ou tracé GPS déjà chargé dans tripLocPts
@@ -820,7 +820,7 @@ export default function TripMapScreen() {
       rawChartPts.map(p => ({ ...p, km: parseFloat((p.km * distScale).toFixed(3)) })),
     );
     const chartPts = playbackTimeline.points;
-    if (pauseCaptions === undefined && playbackTimeline.pauses.length > 0) {
+    if (showPauseCards && pauseCaptions === undefined && playbackTimeline.pauses.length > 0) {
       setPendingStoryDuration(durationOverride);
       setPauseCaptionPauses(playbackTimeline.pauses);
       setPauseCaptionDrafts(playbackTimeline.pauses.map(() => ''));
@@ -897,12 +897,12 @@ export default function TripMapScreen() {
       photos,
       momentCards: (trip.activityMoments ?? []).filter(moment => !moment.photoId && moment.note && moment.routeIndex != null && moment.routeIndex < route.length)
         .map(moment => ({ caption: moment.note, frac: moment.routeIndex! / (route.length - 1) })),
-      pauseCards: playbackTimeline.pauses.map((pause, index) => ({
+      pauseCards: showPauseCards ? playbackTimeline.pauses.map((pause, index) => ({
         storyStartMs: pause.storyStartMs,
         storyEndMs: pause.storyEndMs,
         durationMs: pause.durationMs,
         caption: pauseCaptions?.[index]?.trim() ?? '',
-      })),
+      })) : [],
       theme: storyTheme,
     };
 
@@ -1833,6 +1833,10 @@ export default function TripMapScreen() {
         mutedColor={colors.mutedForeground}
         onChange={(index, value) => setPauseCaptionDrafts(current => current.map((draft, i) => i === index ? value : draft))}
         onCancel={() => setPauseCaptionModalVisible(false)}
+        onHidePauses={() => {
+          setPauseCaptionModalVisible(false);
+          void handleGenerateStory(pendingStoryDuration, [], false);
+        }}
         onContinue={() => {
           const captions = [...pauseCaptionDrafts];
           setPauseCaptionModalVisible(false);

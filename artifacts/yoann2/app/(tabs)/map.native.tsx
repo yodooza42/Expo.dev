@@ -1480,7 +1480,7 @@ export default function MapScreen() {
   const selectedTrip = selectedTripId ? (dayTrips.find(t => t.id === selectedTripId) ?? null) : null;
   const selectedTripColor = vehicleInfoFromList(selectedTrip?.vehicle ?? null, vehicles).color;
 
-  const handleGenerateStory = useCallback((pauseCaptions?: string[]) => {
+  const handleGenerateStory = useCallback((pauseCaptions?: string[], showPauseCards = true) => {
     if (!selectedTrip || tripPoints.length < 2 || isGeneratingStory) return;
 
     // ── Route : tracé propre stocké (OSRM ou GPS simplifié), fallback GPS brut ──
@@ -1518,7 +1518,7 @@ export default function MapScreen() {
       rawChartPts.map(p => ({ ...p, km: parseFloat((p.km * distScale).toFixed(3)) })),
     );
     const chartPts = playbackTimeline.points;
-    if (pauseCaptions === undefined && playbackTimeline.pauses.length > 0) {
+    if (showPauseCards && pauseCaptions === undefined && playbackTimeline.pauses.length > 0) {
       setPauseCaptionPauses(playbackTimeline.pauses);
       setPauseCaptionDrafts(playbackTimeline.pauses.map(() => ''));
       setPauseCaptionModalVisible(true);
@@ -1561,12 +1561,12 @@ export default function MapScreen() {
       maxAlt,
       hasAlt: alts.length > 0,
       points: chartPts,
-      pauseCards: playbackTimeline.pauses.map((pause, index) => ({
+      pauseCards: showPauseCards ? playbackTimeline.pauses.map((pause, index) => ({
         storyStartMs: pause.storyStartMs,
         storyEndMs: pause.storyEndMs,
         durationMs: pause.durationMs,
         caption: pauseCaptions?.[index]?.trim() ?? '',
-      })),
+      })) : [],
       route,
       momentCards: (selectedTrip.activityMoments ?? []).filter(moment => !moment.photoId && moment.note && moment.routeIndex != null && moment.routeIndex < route.length)
         .map(moment => ({ caption: moment.note, frac: moment.routeIndex! / (route.length - 1) })),
@@ -2089,6 +2089,10 @@ export default function MapScreen() {
         mutedColor={colors.mutedForeground}
         onChange={(index, value) => setPauseCaptionDrafts(current => current.map((draft, i) => i === index ? value : draft))}
         onCancel={() => setPauseCaptionModalVisible(false)}
+        onHidePauses={() => {
+          setPauseCaptionModalVisible(false);
+          handleGenerateStory([], false);
+        }}
         onContinue={() => {
           const captions = [...pauseCaptionDrafts];
           setPauseCaptionModalVisible(false);

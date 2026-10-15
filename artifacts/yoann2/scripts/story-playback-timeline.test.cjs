@@ -77,3 +77,58 @@ test('leaves short stops and moving intervals at their real pace', () => {
 test('story renderer script remains valid JavaScript for the WebView', () => {
   assert.doesNotThrow(() => new Function(storyModule.exports.STORY_GENERATE_JS));
 });
+
+for (const file of ['app/trip-map.tsx', 'app/(tabs)/map.native.tsx']) {
+  test(`${file}: hiding pauses exports no cards and keeps the compressed timeline`, () => {
+    const source = fs.readFileSync(path.join(ROOT, file), 'utf8');
+    const tree = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+    let cardsExpression;
+    let hideCallback;
+    function visit(node) {
+      if (ts.isPropertyAssignment(node) && node.name.getText(tree) === 'pauseCards') {
+        cardsExpression = node.initializer.getText(tree);
+      }
+      if (ts.isJsxAttribute(node) && node.name.getText(tree) === 'onHidePauses') {
+        hideCallback = node.initializer.expression.getText(tree);
+      }
+      ts.forEachChild(node, visit);
+    }
+    visit(tree);
+    assert.ok(cardsExpression);
+    assert.ok(hideCallback);
+    const timeline = buildStoryPlaybackTimeline([
+      { ms: 0, km: 0 },
+      { ms: 60_000, km: 0.2 },
+      { ms: 27 * 60_000, km: 0.2 },
+      { ms: 28 * 60_000, km: 0.4 },
+    ]);
+    const before = JSON.stringify(timeline);
+    assert.equal(timeline.pauses.length, 1);
+    function evaluate(expression, context) {
+      const js = ts.transpileModule(`(${expression})`, {
+        compilerOptions: { target: ts.ScriptTarget.ES2020 },
+      }).outputText;
+      return vm.runInNewContext(js, context);
+    }
+    const context = { playbackTimeline: timeline, pauseCaptions: ['  Pause plage  '] };
+    const visible = evaluate(cardsExpression, { ...context, showPauseCards: true });
+    assert.equal(visible.length, 1);
+    assert.equal(visible[0].caption, 'Pause plage');
+    const hidden = evaluate(cardsExpression, { ...context, showPauseCards: false });
+    assert.equal(hidden.length, 0, 'no pause duration or caption goes to the renderer');
+    assert.equal(JSON.stringify(timeline), before);
+    assert.ok(timeline.points.at(-1).storyMs < timeline.points.at(-1).ms);
+
+    let closed = false;
+    let args;
+    evaluate(hideCallback, {
+      pendingStoryDuration: 45,
+      setPauseCaptionModalVisible: value => { closed = value === false; },
+      handleGenerateStory: (...values) => { args = values; },
+    })();
+    assert.equal(closed, true);
+    assert.equal(JSON.stringify(args), file === 'app/trip-map.tsx'
+      ? JSON.stringify([45, [], false])
+      : JSON.stringify([[], false]));
+  });
+}
