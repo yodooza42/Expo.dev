@@ -4,6 +4,7 @@ import * as TaskManager from 'expo-task-manager';
 
 import { autoBackup } from '@/utils/locationBackup';
 import { haversineKm } from '@/utils/haversine';
+import { activitySpeedLimit } from '@/utils/activitySpeedStats';
 import { updateTodoWidget } from '@/widgets/updateWidget';
 
 export { haversineKm };
@@ -241,7 +242,6 @@ const MAX_SPEED_MS = 55.56; // 200 km/h
 // Mode balade (piéton) — précision et seuils réduits
 const WALKING_MAX_ACCURACY_METERS = 20;
 const WALKING_MIN_DISTANCE_METERS = 1.5;
-const WALKING_MAX_SPEED_MS = 6; // ~22 km/h max pour un piéton / jogger
 
 export type GpsInterval = {
   label: string;
@@ -436,7 +436,7 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
 
   // ── Vérification trajet manuel (une seule lecture par batch) ─────────────────
   const manualRaw = await AsyncStorage.getItem('@yoann2_manual_trip').catch(() => null);
-  type ManualRaw = { active?: boolean; paused?: boolean; startTime?: number; segments?: { start: number; end?: number }[] };
+  type ManualRaw = { active?: boolean; paused?: boolean; activityType?: string; startTime?: number; segments?: { start: number; end?: number }[] };
   const manualParsed: ManualRaw | null = manualRaw ? (JSON.parse(manualRaw) as ManualRaw) : null;
   const manualActive = manualParsed?.active === true;
   const manualPaused = manualParsed?.paused === true;
@@ -446,7 +446,7 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
   const isWalkingMode = tripModeRaw === 'balade';
   const effectiveMaxAccuracy = isWalkingMode ? WALKING_MAX_ACCURACY_METERS : MAX_ACCURACY_METERS;
   const effectiveMinDistance = isWalkingMode ? WALKING_MIN_DISTANCE_METERS : MIN_DISTANCE_METERS;
-  const effectiveMaxSpeed   = isWalkingMode ? WALKING_MAX_SPEED_MS        : MAX_SPEED_MS;
+  const effectiveMaxSpeed = isWalkingMode ? activitySpeedLimit(manualParsed?.activityType) / 3.6 : MAX_SPEED_MS;
 
   // ── Récupération distance si process JS redémarré (foreground service vivant) ─
   if (manualActive && !_tripDistLoaded) {
@@ -467,13 +467,16 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
 
     // 1. Precision filter: skip points with degraded horizontal accuracy
     if (accuracy != null && accuracy > effectiveMaxAccuracy) continue;
+    if (isWalkingMode && speedMs != null && speedMs > effectiveMaxSpeed) continue;
 
     // 2. Distance filter: skip micro-movements
     if (lastValid) {
       const distM = haversineKm(lastValid.lat, lastValid.lng, lat, lng) * 1000;
       const timeS = (timestamp - lastValid.timestamp) / 1000;
 
-      if (distM < effectiveMinDistance) continue;
+      // Keep a low-rate stationary heartbeat for movement/pause statistics.
+      // Otherwise a genuine stop is indistinguishable from a lost GPS signal.
+      if (distM < effectiveMinDistance && !(isWalkingMode && manualActive && !manualPaused && timeS >= 15)) continue;
       // 3. Speed sanity filter: skip physically impossible jumps
       if (timeS > 0 && distM / timeS > effectiveMaxSpeed) continue;
     }
@@ -501,7 +504,8 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
       )?.start ?? manualParsed?.startTime ?? 0;
 
       if (lastValid.timestamp >= activeSegStart) {
-        _tripDistKm += haversineKm(lastValid.lat, lastValid.lng, lat, lng);
+        const distanceKm = haversineKm(lastValid.lat, lastValid.lng, lat, lng);
+        if (distanceKm * 1000 >= effectiveMinDistance) _tripDistKm += distanceKm;
       }
 
       // Durée active = somme des segments (pauses exclues)

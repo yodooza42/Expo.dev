@@ -575,6 +575,7 @@ async function handleTripEnd(
     source: 'manual',
     ...(isWalkMode ? {
       activityType: manualState.activityType ?? 'walk',
+      activitySegments: segments.map(segment => ({ ...segment })),
       walkParticipants: manualState.walkParticipants ?? [],
       activityReview: 'pending' as const,
     } : {}),

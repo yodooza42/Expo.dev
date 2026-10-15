@@ -96,6 +96,8 @@ export interface Trip {
   note?: string;
   /** Legacy walk trips remain walking activities when this field is absent. */
   activityType?: ActivityKind;
+  /** Active GPS phases; gaps are explicit manual pauses (legacy trips may omit this). */
+  activitySegments?: Array<{ start: number; end?: number }>;
   activityTitle?: string;
   activityFeeling?: ActivityFeeling;
   activityFavorite?: boolean;

@@ -53,6 +53,7 @@ import {
 import { tripEvents } from '@/utils/tripEvents';
 import { getTrips, getVehicleSettings, updateTrip } from '@/utils/tripStorage';
 import { fmtDayLong, fmtHHMM } from '@/utils/date';
+import { activitySpeedStats, filterActivitySpeedPoints } from '@/utils/activitySpeedStats';
 import { haversineKm } from '@/utils/haversine';
 import { computeRouteDistanceKm } from '@/utils/osrmMatching';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -441,6 +442,8 @@ export default function TripMapScreen() {
   const [storyDuration, setStoryDuration] = useState<10 | 20 | 30 | 60>(20);
   const [storyTheme, setStoryTheme] = useState<StoryTheme>('dark');
   const [tripLocPts, setTripLocPts] = useState<LocationPoint[]>([]);
+  // Statistics use every stored sample, never the ~200-point drawing subset.
+  const [tripStatsPoints, setTripStatsPoints] = useState<LocationPoint[]>([]);
   const [speedUnitPace, setSpeedUnitPace] = useState(false);
   const [chartLoading, setChartLoading] = useState(false);
   const [chartRefreshKey, setChartRefreshKey] = useState(0);
@@ -840,7 +843,10 @@ export default function TripMapScreen() {
       return { img: dataUri, note: p.note, lat: p.lat, lng: p.lng, frac: (p.routeIndex! / (route.length - 1)) };
     }))).filter((p): p is { img: string; note: string | undefined; lat: number | undefined; lng: number | undefined; frac: number } => p != null);
 
-    const maxSpeed = Math.max(...tripLocPts.map(p => p.speedKmh ?? 0), 1);
+    const storyActivity = activityForTrip(trip, vehicles);
+    const maxSpeed = storyActivity
+      ? activitySpeedStats(tripStatsPoints, storyActivity, trip.startTime, trip.endTime, trip.activitySegments).maxSpeed
+      : Math.max(...tripLocPts.map(p => p.speedKmh ?? 0), 1);
     const alts = tripLocPts.map(p => p.altitudeM).filter((a): a is number => a != null);
     const minAlt = alts.length > 0 ? Math.min(...alts) : 0;
     const maxAlt = alts.length > 0 ? Math.max(...alts) : 0;
@@ -907,7 +913,7 @@ export default function TripMapScreen() {
     };
 
     storyWebViewRef.current?.injectJavaScript(`(function(){window.generateStory(${JSON.stringify(opts)});})();true;`);
-  }, [trip, vehicles, walkRoutes, isGeneratingStory, storyDuration, storyTheme, tripLocPts, photoToDataUri, speedUnitPace]);
+  }, [trip, vehicles, walkRoutes, isGeneratingStory, storyDuration, storyTheme, tripLocPts, tripStatsPoints, photoToDataUri, speedUnitPace]);
 
   function handleOpenDtPicker() {
     if (!trip) return;
@@ -971,19 +977,24 @@ export default function TripMapScreen() {
     if (!trip) return;
     setChartLoading(true);
     setTripLocPts([]);
+    setTripStatsPoints([]);
+    let cancelled = false;
     void (async () => {
       try {
         const gpsPoints = await loadMultiDayPoints(trip.startTime, trip.endTime);
         const tripPoints = filterGpsOutliers(
           gpsPoints.filter(p => p.timestamp >= trip.startTime && p.timestamp <= trip.endTime)
         );
+        if (cancelled) return;
+        setTripStatsPoints(tripPoints);
         if (tripPoints.length < 2) { setChartLoading(false); return; }
         const step = Math.max(1, Math.floor(tripPoints.length / 200));
         const sampled = tripPoints.filter((_, i) => i % step === 0 || i === tripPoints.length - 1);
         setTripLocPts(sampled);
       } catch { /* no GPS data */ }
-      setChartLoading(false);
+      if (!cancelled) setChartLoading(false);
     })();
+    return () => { cancelled = true; };
   }, [trip?.id, chartRefreshKey]);
 
   // ── Injection de données test (vitesse + altitude) ────────────────────────
@@ -1601,7 +1612,7 @@ export default function TripMapScreen() {
             </View>
           ) : (
             <>
-              <TripSpeedChart points={tripLocPts} color={vehColor} onScrub={handleChartScrub} externalScrubTs={scrubTs} isWalk={isWalkTrip} speedUnitPace={speedUnitPace} onToggleUnit={handleToggleSpeedUnit} />
+              <TripSpeedChart points={tripLocPts} statsPoints={tripStatsPoints} color={vehColor} onScrub={handleChartScrub} externalScrubTs={scrubTs} isWalk={isWalkTrip} speedUnitPace={speedUnitPace} onToggleUnit={handleToggleSpeedUnit} activityKind={activityForTrip(trip, vehicles)} startTime={trip.startTime} endTime={trip.endTime} activitySegments={trip.activitySegments} />
               {hasAltData && <TripAltitudeChart points={tripLocPts} color={vehColor} onScrub={handleChartScrub} externalScrubTs={scrubTs} />}
             </>
           )}
@@ -2001,6 +2012,11 @@ function TripSpeedChart({
   isWalk = false,
   speedUnitPace = false,
   onToggleUnit,
+  activityKind,
+  startTime,
+  endTime,
+  statsPoints,
+  activitySegments,
 }: {
   points: LocationPoint[];
   color: string;
@@ -2009,6 +2025,11 @@ function TripSpeedChart({
   isWalk?: boolean;
   speedUnitPace?: boolean;
   onToggleUnit?: () => void;
+  activityKind?: ActivityKind | null;
+  startTime: number;
+  endTime: number;
+  statsPoints: LocationPoint[];
+  activitySegments?: Trip['activitySegments'];
 }) {
   const colors = useColors();
   const [scrubX, setScrubX] = useState<number | null>(null);
@@ -2017,7 +2038,8 @@ function TripSpeedChart({
   const showPace = isWalk && speedUnitPace;
 
   const chartData = useMemo(() => {
-    const pts = filterGpsOutliers(points.filter(p => p.speedKmh != null && (p.speedKmh as number) >= 0));
+    const usable = activityKind ? points : points.filter(p => p.speedKmh != null && (p.speedKmh as number) >= 0);
+    const pts = activityKind ? filterActivitySpeedPoints(usable, activityKind) : filterGpsOutliers(usable);
     if (pts.length < 2) return null;
 
     let cumDist = 0;
@@ -2029,21 +2051,23 @@ function TripSpeedChart({
       data.push({
         km: cumDist,
         ms: pts[i]!.timestamp - t0,
-        spd: pts[i]!.speedKmh ?? 0,
+        spd: pts[i]!.speedKmh ?? haversineKm(pts[i - 1]!.lat, pts[i - 1]!.lng, pts[i]!.lat, pts[i]!.lng) * 3_600_000 / (pts[i]!.timestamp - pts[i - 1]!.timestamp),
         lat: pts[i]!.lat, lng: pts[i]!.lng,
         ts: pts[i]!.timestamp,
       });
     }
 
-    const rawMaxSpd = Math.max(...data.map(d => d.spd), 0.1);
+    const activityStats = activityKind ? activitySpeedStats(statsPoints, activityKind, startTime, endTime, activitySegments) : null;
+    const rawMaxSpd = activityStats?.maxSpeed ?? Math.max(...data.map(d => d.spd), 0.1);
     const spdScale = Math.ceil(rawMaxSpd / 10) * 10; // pour l'axe Y seulement
     const totalKm = Math.max(cumDist, 0.001);
     const totalMs = Math.max(pts[pts.length - 1]!.timestamp - t0, 1);
     const durationMs = totalMs;
 
-    // Moyenne vitesse sur les points en mouvement (> 0.5 km/h) — plus représentatif pour balades
+    // Activities: distance divided by moving time from full GPS samples.
+    // Keep the existing vehicle calculation unchanged.
     const movingPts = data.filter(d => d.spd > 0.5);
-    const avgSpdMoving = movingPts.length > 0
+    const avgSpdMoving = activityStats ? activityStats.averageMovingKmh : movingPts.length > 0
       ? movingPts.reduce((s, d) => s + d.spd, 0) / movingPts.length
       : data.reduce((s, d) => s + d.spd, 0) / data.length;
 
@@ -2052,8 +2076,8 @@ function TripSpeedChart({
     const maxPaceVal = movingPts.length > 0 ? Math.max(...movingPts.map(d => 60 / d.spd)) : 30;
     const avgPace = avgSpdMoving > 0.5 ? 60 / avgSpdMoving : 0;
 
-    return { data, spdScale, rawMaxSpd, avgSpdMoving, totalKm, totalMs, durationMs, minPace, maxPaceVal, avgPace };
-  }, [points]);
+    return { data, spdScale: Math.max(10, spdScale), rawMaxSpd, avgSpdMoving, totalKm, totalMs, durationMs, minPace, maxPaceVal, avgPace, activityStats };
+  }, [points, statsPoints, activityKind, startTime, endTime, activitySegments]);
 
   const findNearest = useCallback((x: number, cData: typeof chartData, timeAxis: boolean) => {
     if (!cData) return null;
@@ -2225,10 +2249,10 @@ function TripSpeedChart({
       ) : (
         <Pressable
           onPress={isWalk ? onToggleUnit : undefined}
-          style={{ flexDirection: 'row', gap: 20, paddingHorizontal: 2, paddingTop: 2 }}
+          style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 20, paddingHorizontal: 2, paddingTop: 2 }}
         >
           <View>
-            <Text style={{ color: '#555', fontSize: 9, fontFamily: 'Inter_400Regular', textTransform: 'uppercase', letterSpacing: 0.8 }}>MOY</Text>
+            <Text style={{ color: '#555', fontSize: 9, fontFamily: 'Inter_400Regular', textTransform: 'uppercase', letterSpacing: 0.8 }}>{activityKind ? 'MOY · MOUVEMENT' : 'MOY'}</Text>
             <Text style={{ color: colors.foreground, fontSize: 14, fontFamily: 'Inter_700Bold' }}>
               {showPace ? `${formatPace(avgSpdMoving)} /km` : `${avgSpdMoving.toFixed(1)} km/h`}
             </Text>
@@ -2242,8 +2266,8 @@ function TripSpeedChart({
             </Text>
           </View>
           <View>
-            <Text style={{ color: '#555', fontSize: 9, fontFamily: 'Inter_400Regular', textTransform: 'uppercase', letterSpacing: 0.8 }}>DURÉE</Text>
-            <Text style={{ color: colors.foreground, fontSize: 14, fontFamily: 'Inter_700Bold' }}>{fmtChartDur(durationMs)}</Text>
+            <Text style={{ color: '#555', fontSize: 9, fontFamily: 'Inter_400Regular', textTransform: 'uppercase', letterSpacing: 0.8 }}>{activityKind ? 'TOTAL' : 'DURÉE'}</Text>
+            <Text style={{ color: colors.foreground, fontSize: 14, fontFamily: 'Inter_700Bold' }}>{fmtChartDur(chartData.activityStats?.totalMs ?? durationMs)}</Text>
           </View>
           {isWalk && (
             <View style={{ marginLeft: 'auto', justifyContent: 'center' }}>
@@ -2253,6 +2277,18 @@ function TripSpeedChart({
             </View>
           )}
         </Pressable>
+      )}
+      {chartData.activityStats && (
+        <View style={{ paddingTop: 12, gap: 6 }}>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 16 }}>
+            <Text style={{ color: colors.foreground, fontSize: 13 }}>En mouvement : {fmtChartDur(chartData.activityStats.movingMs)}</Text>
+            <Text style={{ color: colors.foreground, fontSize: 13 }}>Pauses : {fmtChartDur(chartData.activityStats.pauseMs)}</Text>
+          </View>
+          <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>
+            Durées estimées à partir du GPS.
+            {chartData.activityStats.unknownMs > 1000 ? ` GPS incomplet : ${fmtChartDur(chartData.activityStats.unknownMs)} non classées.` : ''}
+          </Text>
+        </View>
       )}
     </View>
   );

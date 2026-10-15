@@ -15,6 +15,12 @@ Les icônes et couleurs d’une sortie doivent refléter son activité réelle (
 
 **How to apply:** Lors d’une évolution des activités, vérifier aussi les trajets récents et les lignes des groupes et parcours. Garder les compteurs globaux distincts des badges de sorties individuelles.
 
+Les limites de plausibilité GPS demandées sont : marche 21 km/h, course 40 km/h, vélo 75 km/h et kayak 15 km/h. Les statistiques doivent distinguer durée totale, mouvement et pauses.
+
+**Why:** L’utilisateur a fixé ces valeurs après avoir constaté un maximum vélo de 22 km/h dans l’application contre 38,1 km/h sur Garmin ; l’ancien filtre commun aux balades supprimait des points rapides.
+
+**How to apply:** Adapter les limites au type réel, sans forcer la vitesse maximale affichée à cette limite. Une coupure GPS n’est pas automatiquement une pause ; les anciens points écartés ne sont pas récupérables.
+
 La carte des sorties doit permettre de filtrer par type d’activité et participants. Les moments, photos et informations de souvenir se proposent à la fin de l’activité, dans un questionnaire simple avec un bouton « Passer » facile d’accès.
 
 **Why:** L’utilisateur a validé la carte et a demandé que les propositions de souvenirs arrivent à la fin, pas pendant la sortie.
