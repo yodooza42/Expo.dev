@@ -49,6 +49,52 @@ const trip = (id, time, km, extra = {}) => ({
 const june = new Date(2026, 5, 10).getTime();
 const july = new Date(2026, 6, 10).getTime();
 
+test('Mes Trajets uses each activity icon and color in recent and grouped rows', () => {
+  const file = fs.readFileSync(path.join(ROOT, 'app/trip-list.tsx'), 'utf8');
+  const source = ts.createSourceFile('trip-list.tsx', file, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const row = source.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'TripRow');
+  assert.ok(row);
+  const statements = [...row.body.statements];
+  const last = statements.findIndex(node => ts.isVariableStatement(node)
+    && node.declarationList.declarations.some(decl => decl.name.getText(source) === 'vehicleColor'));
+  assert.ok(last >= 0);
+  const prefix = statements.slice(0, last + 1).map(node => node.getText(source)).join('\n');
+  const compiled = ts.transpileModule(
+    `function appearance(trip, vehicles, colors) { ${prefix}; return { icon: vehicleIcon, color: vehicleColor }; }`,
+    { compilerOptions: { target: ts.ScriptTarget.ES2020 } },
+  ).outputText;
+  const colors = { primary: '#FFCC00', mutedForeground: '#888888' };
+  const appearance = value => vm.runInNewContext(`${compiled}; appearance(trip, vehicles, colors)`, {
+    trip: value, vehicles, colors, activityForTrip, activityInfo,
+    useRouter: () => ({}), useState: value => [value, () => {}],
+  });
+  for (const kind of ['walk', 'run', 'bike', 'kayak']) {
+    const actual = appearance(trip(kind, june, 5, { activityType: kind }));
+    const expected = activityInfo(kind);
+    assert.equal(actual.icon, expected.icon);
+    assert.equal(actual.color, expected.color);
+  }
+  assert.equal(appearance(trip('legacy', june, 5)).icon, 'walk');
+  assert.equal(appearance(trip('unknown', june, 5, { activityType: 'unknown' })).icon, 'walk');
+  assert.equal(appearance(trip('car', june, 5, { vehicle: 'car', activityType: 'bike' })).icon, 'car');
+  assert.equal(appearance(trip('moto', june, 5, { vehicle: 'moto' })).icon, 'motorbike');
+  assert.equal(appearance(trip('ignored', june, 5, { vehicle: 'ignored', activityType: 'bike' })).icon, 'close-circle-outline');
+  assert.equal(appearance(trip('pending', june, 5, { vehicle: null })).color, colors.primary);
+  assert.ok(row.getText(source).includes('name={vehicleIcon as any}'), 'the rendered badge uses the resolved icon');
+  assert.ok(row.getText(source).includes('color={vehicleColor}'), 'the rendered badge uses the resolved color');
+  let usages = 0;
+  function check(node) {
+    if (ts.isJsxSelfClosingElement(node) && node.tagName.getText(source) === 'TripRow') {
+      usages++;
+      assert.ok(node.attributes.properties.some(attr => attr.name?.getText(source) === 'vehicles'),
+        'all row variants must receive vehicle settings for legacy activity fallback');
+    }
+    ts.forEachChild(node, check);
+  }
+  check(source);
+  assert.ok(usages >= 4, 'recent, category, label and route groups share this row');
+});
+
 test('regenerated GPS remaps linked photos and moments together without changing content or clocks', () => {
   const takenAt = june + 1800000;
   const original = trip('regen', june, 5, {

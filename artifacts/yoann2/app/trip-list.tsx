@@ -20,6 +20,7 @@ import { useColors } from '@/hooks/useColors';
 import type { WalkRoute } from '@/types/places';
 import type { Trip, TripCategory, TripLabel, Vehicle, VehicleType } from '@/types/trips';
 import { fmtHHMM, fmtWeekdayShort } from '@/utils/date';
+import { activityForTrip, activityInfo } from '@/utils/activities';
 import {
   createCategoryAndGroupSimilar,
   deleteCategoryAndUnlink,
@@ -525,17 +526,19 @@ function TripRow({
 
   const vehicleObj = vehicles?.find(v => v.id === trip.vehicle);
   const isWalk = vehicleObj?.type === 'walk';
+  const activityKind = activityForTrip(trip, vehicles ?? []);
+  const activity = activityKind ? activityInfo(activityKind) : null;
 
   const vehicleIcon =
     trip.vehicle === 'car' ? 'car' :
     trip.vehicle === 'moto' ? 'motorbike' :
     trip.vehicle === 'ignored' ? 'close-circle-outline' :
-    isWalk ? 'walk' : 'tag-outline';
+    activity ? activity.icon : 'tag-outline';
 
   const vehicleColor =
     trip.vehicle === 'car' ? carColor :
     trip.vehicle === 'moto' ? motoColor :
-    isWalk ? walkColor :
+    activity ? activity.color :
     isPending ? colors.primary : colors.mutedForeground;
 
   const walkParticipantDetails = isWalk && trip.walkParticipants?.length
@@ -600,9 +603,9 @@ function TripRow({
       </View>
       {isWalk && !compact && trip.walkRouteId && walkRouteMap?.get(trip.walkRouteId) ? (
         <View style={styles.tripAddrRow}>
-          <View style={[styles.walkRouteChip, { backgroundColor: '#4CAF5018' }]}>
-            <MaterialCommunityIcons name="walk" size={11} color="#4CAF50" />
-            <Text style={[styles.walkRouteChipText, { color: '#4CAF50' }]}>
+          <View style={[styles.walkRouteChip, { backgroundColor: (activity?.color ?? walkColor) + '18' }]}>
+            <MaterialCommunityIcons name={activity?.icon ?? 'walk'} size={11} color={activity?.color ?? walkColor} />
+            <Text style={[styles.walkRouteChipText, { color: activity?.color ?? walkColor }]}>
               {walkRouteMap.get(trip.walkRouteId)}
             </Text>
           </View>

@@ -1371,6 +1371,7 @@ export default function TripMapScreen() {
         <ScrollView
           style={{ flex: 1, minHeight: 0 }}
           contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 4, paddingBottom: insets.bottom + 16 }}
+          removeClippedSubviews={false}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
         >
@@ -1915,7 +1916,25 @@ export default function TripMapScreen() {
         onChipUsed={handleChipUsed}
       />
 
-      <WebView ref={storyWebViewRef} source={{ html: storyHtml }} onMessage={handleStoryWebViewMessage} javaScriptEnabled mediaPlaybackRequiresUserAction={false} style={styles.storyWebView} />
+      {/* Android's WebView adds a flex:1 container. Keep the entire renderer out
+          of normal layout, not just its inner native WebView. */}
+      <View
+        style={styles.storyWebView}
+        collapsable={false}
+        pointerEvents="none"
+        accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
+      >
+        <WebView
+          ref={storyWebViewRef}
+          source={{ html: storyHtml }}
+          onMessage={handleStoryWebViewMessage}
+          javaScriptEnabled
+          mediaPlaybackRequiresUserAction={false}
+          containerStyle={{ flex: 0, width: 1, height: 1 }}
+          style={{ flex: 0, width: 1, height: 1 }}
+        />
+      </View>
     </View>
   );
 }
@@ -2617,9 +2636,12 @@ const styles = StyleSheet.create({
   },
   storyWebView: {
     position: 'absolute',
+    top: 0,
+    left: 0,
     width: 1,
     height: 1,
     opacity: 0,
+    overflow: 'hidden',
   },
   scrollContent: {
     paddingHorizontal: 20,
