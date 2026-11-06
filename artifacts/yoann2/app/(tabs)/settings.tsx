@@ -35,6 +35,7 @@ import { importBackupFromFile, listBackups, rebuildBackupListFromSAF, restoreBac
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { reconfigureStorage, recoverAllPhotosFromExternal, SAF_ROOT_KEY } from '@/utils/photoStorage';
 import { mergeRecoveredPhotoUris } from '@/utils/photoReferences';
+import { recoverTripPhotos } from '@/utils/tripPhotoRecovery';
 import { photoProtectionEvents, photoProtectionStatus } from '@/utils/photoProtection';
 import { CategoryConfig, DEFAULT_EXPENSE_CATEGORY_CONFIGS, getCategoryConfigs, saveCategoryConfigs } from '@/utils/bankStorage';
 import { genId } from '@/utils/ids';
@@ -267,7 +268,7 @@ export default function SettingsScreen() {
     }
     setRecoveringAll(true);
     try {
-    const names = projects.map(p => p.name);
+    const names = [...new Set([...projects.map(p => p.name), 'Trajets'])];
     const report = await recoverAllPhotosFromExternal(names);
     const recovered = report.projects;
     const projectUpdates = new Map<string, string[]>();
@@ -314,7 +315,11 @@ export default function SettingsScreen() {
     for (const [id, photos] of projectUpdates) updateProject(id, { photos });
     for (const [id, photos] of taskUpdates) updateTask(id, { photos });
 
-    const total = totalProject + totalTask;
+    const tripRecovery = await recoverTripPhotos(recovered);
+    const total = totalProject + totalTask + tripRecovery.repaired;
+    const missingTrips = tripRecovery.missing
+      ? `\n\n${tripRecovery.missing} photo(s) de trajet restent inaccessibles : aucune copie correspondante lisible n’a été retrouvée. Les liens, légendes et positions ont été conservés. Vérifie le dossier Yoann2.0/Photos/Trajets ; le JSON seul ne contient pas les images.`
+      : '';
     const issues = report.errors.length
       ? `\n\nRécupération partielle : ${report.errors.length} erreur(s).\n${report.errors.slice(0, 2).join('\n')}`
       : '';
@@ -322,13 +327,13 @@ export default function SettingsScreen() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       Alert.alert(
         'Photos récupérées',
-        `${total} photo${total > 1 ? 's' : ''} ajoutée${total > 1 ? 's' : ''} ou réparée${total > 1 ? 's' : ''} (${totalProject} projet / ${totalTask} tâches).${issues}`
+        `${total} photo${total > 1 ? 's' : ''} ajoutée${total > 1 ? 's' : ''} ou réparée${total > 1 ? 's' : ''} (${totalProject} projet / ${totalTask} tâches / ${tripRecovery.repaired} trajets).${issues}${missingTrips}`
       );
     } else {
-      Alert.alert(report.errors.length ? 'Accès incomplet' : report.scannedImages ? 'Photos déjà liées' : 'Aucune image trouvée',
+      Alert.alert(report.errors.length ? 'Accès incomplet' : tripRecovery.missing ? 'Photos de trajets non retrouvées' : report.scannedImages ? 'Photos déjà liées' : 'Aucune image trouvée',
         report.scannedImages
-          ? `${report.scannedImages} image(s) trouvée(s). Aucun nouveau lien à ajouter.${issues}`
-          : `Aucune image lisible dans les dossiers parcourus. Vérifie que le dossier Yoann2.0 sélectionné contient bien Photos et ses images. La sauvegarde JSON contient les liens, pas les fichiers.${issues}`);
+          ? `${report.scannedImages} image(s) trouvée(s). Aucun nouveau lien à ajouter.${issues}${missingTrips}`
+          : `Aucune image lisible dans les dossiers parcourus. Vérifie que le dossier Yoann2.0 sélectionné contient bien Photos et ses images. La sauvegarde JSON contient les liens, pas les fichiers.${issues}${missingTrips}`);
     }
     } catch (error) {
       Alert.alert('Récupération impossible', error instanceof Error ? error.message : 'Impossible de lire les photos.');
@@ -584,7 +589,7 @@ export default function SettingsScreen() {
         <SettingRow
           icon="image-multiple"
           label={recoveringAll ? 'Récupération en cours…' : 'Récupérer toutes les photos'}
-          sublabel="Copier les images du dossier Yoann2.0/Photos vers tous les projets"
+          sublabel="Réparer les photos des projets, tâches et trajets depuis Yoann2.0/Photos"
           onPress={handleRecoverAllPhotos}
           colors={colors}
         />

@@ -283,6 +283,70 @@ test('automatic protection covers projects, tasks and trip photos without changi
   cleanup();
 });
 
+test('reinstall recovery scans trip folders and repairs exact links, preserving all photo metadata', async () => {
+  const env = environment();
+  const root = doc('Photos/Trajets');
+  const folder = doc('Photos/Trajets/manual_123');
+  const image = doc('Photos/Trajets/manual_123/saved.jpeg');
+  env.folders.set(doc('Photos'), [root]);
+  env.folders.set(root, [folder]);
+  env.folders.set(folder, [image]);
+  env.files.set(image, 'original-photo-bytes');
+  const original = {
+    id: 'p1', uri: 'file:///old-install/photo_vault/saved.jpeg',
+    takenAt: 123456, routeIndex: 7, lat: 45, lng: 1, note: 'Pause plage', placementMethod: 'manual',
+  };
+  let trip = { id: 'manual_123', photos: [original] };
+  let emissions = 0;
+  env.overrides['@/utils/tripStorage'] = {
+    getTrips: async () => [trip],
+    updateTrip: async (id, patch, strict) => {
+      assert.equal(strict, true);
+      trip = { ...trip, ...patch };
+    },
+  };
+  env.overrides['@/utils/tripEvents'] = {
+    tripEvents: { emitTripUpdated: () => { emissions++; } },
+  };
+  const scan = await env.load('utils/photoStorage.ts').recoverAllPhotosFromExternal(['Trajets']);
+  assert.equal(scan.scannedImages, 1);
+  const recovery = env.load('utils/tripPhotoRecovery.ts');
+  const result = await recovery.recoverTripPhotos(scan.projects);
+  assert.equal(result.repaired, 1);
+  assert.equal(result.missing, 0);
+  assert.equal(emissions, 1);
+  assert.equal(env.files.get(trip.photos[0].uri), 'original-photo-bytes');
+  assert.equal(JSON.stringify({ ...trip.photos[0], uri: original.uri }), JSON.stringify(original));
+  assert.equal((await recovery.recoverTripPhotos(scan.projects)).repaired, 0);
+});
+
+test('trip recovery never guesses another trip, duplicates, or a photo without its bytes', async () => {
+  const env = environment();
+  const photo = { id: 'p', uri: 'file:///deleted/a.jpeg', takenAt: 1, note: 'kept' };
+  const one = 'file:///recovered/one/a.jpeg';
+  const two = 'file:///recovered/two/a.jpeg';
+  env.files.set(one, 'one');
+  env.files.set(two, 'different');
+  let writes = 0;
+  env.overrides['@/utils/tripStorage'] = {
+    getTrips: async () => [{ id: 'mine', photos: [photo] }],
+    updateTrip: async () => { writes++; },
+  };
+  env.overrides['@/utils/tripEvents'] = { tripEvents: { emitTripUpdated: () => {} } };
+  const recovery = env.load('utils/tripPhotoRecovery.ts');
+  const ambiguous = await recovery.repairTripPhotos([photo], [one, two, 'file:///missing/a.jpeg']);
+  assert.equal(ambiguous.replacements.size, 0);
+  assert.equal(ambiguous.missing, 1);
+  const wrongTrip = await recovery.recoverTripPhotos([{
+    projectName: 'Trajets', projectUris: [], taskFolders: [
+      { folderName: 'someone_else', taskId: null, uris: [one] },
+    ],
+  }]);
+  assert.equal(wrongTrip.repaired, 0);
+  assert.equal(wrongTrip.missing, 1);
+  assert.equal(writes, 0);
+});
+
 test('the actual photo component tries alternatives then displays an explicit unavailable tile', async () => {
   const text = fs.readFileSync(path.join(ROOT, 'components/ProjectPhoto.tsx'), 'utf8');
   const ast = ts.createSourceFile('photo.tsx', text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);

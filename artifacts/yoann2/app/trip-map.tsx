@@ -41,6 +41,7 @@ import { TripMapView } from '@/components/TripMapView';
 import { useColors } from '@/hooks/useColors';
 import type { KnownPlace, PlaceCategory, WalkRoute } from '@/types/places';
 import type { ActivityKind, RoutePoint, Trip, TripPhoto, Vehicle, WalkParticipant } from '@/types/trips';
+import { ProjectPhoto } from '@/components/ProjectPhoto';
 import { simplifyRoute, EPSILON_DEG_WALK } from '@/utils/routeSimplification';
 import {
   getAddressUsage,
@@ -1360,7 +1361,7 @@ export default function TripMapScreen() {
           >
             {trip?.photos && trip.photos.length > 0 ? (
               <>
-                <RNImage source={{ uri: trip.photos[0]!.uri }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+                <ProjectPhoto uri={trip.photos[0]!.uri} style={{ width: '100%', height: '100%' }} />
                 {trip.photos.length > 1 && (
                   <View style={{
                     position: 'absolute', right: 2, bottom: 2, backgroundColor: 'rgba(0,0,0,0.7)',
@@ -1648,7 +1649,7 @@ export default function TripMapScreen() {
                   style={photoModalStyles.thumbWrap}
                   onPress={() => { setPhotoNoteEditId(photo.id); setPhotoNoteDraft(photo.note ?? ''); }}
                 >
-                  <RNImage source={{ uri: photo.uri }} style={photoModalStyles.thumb} resizeMode="cover" />
+                  <ProjectPhoto uri={photo.uri} style={photoModalStyles.thumb} />
                   {photo.routeIndex == null && (
                     <View style={photoModalStyles.noPosBadge}>
                       <MaterialCommunityIcons name="map-marker-off-outline" size={11} color="#fff" />
