@@ -46,12 +46,12 @@ export function buildProjectJournal(projects: Project[], tasks: Task[], choices:
   const selectedProjects = projects.filter(p => choices.projectIds.includes(p.id));
   const projectById = new Map(selectedProjects.map(p => [p.id, p]));
   const candidates: JournalEntry[] = [];
-  const undated: Array<{ id: string; kind: 'task' | 'project'; title: string }> = [];
+  const undated: Array<{ id: string; kind: 'task' | 'project'; title: string; photoCount: number }> = [];
   function add(item: Task | Project, kind: 'task' | 'project', project: Project) {
     if (item.status !== 'done') return;
     const title = 'title' in item ? item.title : item.name;
     const date = item.completedAt ? parseCompletionDate(item.completedAt) : null;
-    if (!date) { undated.push({ id: item.id, kind, title }); return; }
+    if (!date) { undated.push({ id: item.id, kind, title, photoCount: item.photos.length }); return; }
     const dateKey = journalDateKey(date);
     if (dateKey < choices.from || dateKey > choices.to) return;
     const id = `${kind}:${item.id}`;
@@ -77,6 +77,9 @@ export function buildProjectJournal(projects: Project[], tasks: Task[], choices:
     ...e, photos: e.photos.filter(photo => !choices.excludedPhotoIds.includes(photo.id)),
   }));
   const photoCount = entries.reduce((sum, entry) => sum + entry.photos.length, 0);
+  const availablePhotos = candidates.reduce((sum, entry) => sum + entry.photos.length, 0);
+  const undatedPhotos = undated.reduce((sum, item) => sum + item.photoCount, 0);
+  const excludedPhotos = availablePhotos - photoCount;
   const secondsPerPhoto = journalPace(choices.pace);
   const duration = journalDuration(entries, secondsPerPhoto);
   let error = '';
@@ -93,5 +96,5 @@ export function buildProjectJournal(projects: Project[], tasks: Task[], choices:
     projectNames: selectedProjects.map(p => p.name), entryCount: entries.length,
     photoCount, secondsPerPhoto, entries,
   };
-  return { candidates, entries, undated, photoCount, duration, error, request };
+  return { candidates, entries, undated, photoCount, availablePhotos, excludedPhotos, undatedPhotos, duration, error, request };
 }

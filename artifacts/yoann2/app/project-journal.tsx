@@ -157,6 +157,24 @@ export default function ProjectJournalScreen() {
           <Text style={[s.body, { color: c.mutedForeground }]}>
             Décoche une étape ou une photo, puis personnalise les légendes. Cela ne change jamais les originaux.
           </Text>
+          {journal.photoCount === 0 && (journal.availablePhotos > 0 || journal.undatedPhotos > 0) && (
+            <View style={[s.notice, { borderColor: c.primary }]}>
+              <Text style={[s.body, { color: c.foreground }]}>Aucune photo sélectionnée pour la vidéo.</Text>
+              {journal.excludedPhotos > 0 && <>
+                <Text style={[s.small, { color: c.mutedForeground }]}>
+                  {journal.excludedPhotos} photo(s) des étapes de cette période sont décochées, ou leur étape est décochée.
+                </Text>
+                {button('Réintégrer ces étapes et photos', () => change({
+                  ...choices,
+                  excludedEntryIds: choices.excludedEntryIds.filter(id => !journal.candidates.some(entry => entry.id === id && entry.photos.length > 0)),
+                  excludedPhotoIds: choices.excludedPhotoIds.filter(id => !journal.candidates.some(entry => entry.photos.some(photo => photo.id === id))),
+                }))}
+              </>}
+              {journal.undatedPhotos > 0 && <Text style={[s.small, { color: c.mutedForeground }]}>
+                {journal.undatedPhotos} photo(s) appartiennent à des éléments terminés sans date de fin réelle. Renseigne leur date dans la liste ci-dessous pour les ajouter chronologiquement.
+              </Text>}
+            </View>
+          )}
           <Text style={[s.small, { color: c.mutedForeground }]}>Un carnet peut contenir jusqu’à 60 photos et 80 étapes, pour 10 minutes maximum.</Text>
           {journal.candidates.map((entry, index) => <JournalEntryEditor key={entry.id} entry={entry} number={index + 1}
             choices={choices} expanded={expanded === entry.id} onExpand={() => setExpanded(expanded === entry.id ? null : entry.id)} onChange={change} />)}
@@ -181,6 +199,19 @@ export default function ProjectJournalScreen() {
           <Text style={[s.body, { color: c.mutedForeground }]}>
             {journal.entries.length} étapes · {journal.photoCount} photos · environ {timeLabel(journal.duration)}
           </Text>
+          {journal.photoCount === 0 && (
+            <View style={[s.notice, { borderColor: c.primary }]}>
+              <Text style={[s.body, { color: c.foreground }]}>Cette vidéo sera sans photo.</Text>
+              <Text style={[s.small, { color: c.mutedForeground }]}>
+                {journal.undatedPhotos > 0
+                  ? `${journal.undatedPhotos} photo(s) sont sur des éléments sans date de fin réelle. Leur date limite affichée dans l’historique ne suffit pas pour dater la réalisation.`
+                  : journal.excludedPhotos > 0
+                    ? `${journal.excludedPhotos} photo(s) ou leurs étapes sont décochées dans le montage.`
+                    : 'Vérifie la période et les projets choisis, ainsi que les photos des étapes retenues.'}
+              </Text>
+              {button('Retour au montage', () => setStep(1))}
+            </View>
+          )}
           <Text style={[s.small, { color: c.mutedForeground }]}>
             Vidéo verticale 720 × 1280 · papier à petits carreaux · sans musique. Les photos gardent leur cadrage.
             {'\n'}Garde l’application ouverte pendant l’export. MP4 si l’appareil le permet, sinon WebM. Le partage reste manuel.
@@ -188,10 +219,12 @@ export default function ProjectJournalScreen() {
         </>}
         {journal.undated.length > 0 && <View style={[s.notice, { borderColor: c.border }]}>
           <Text style={[s.label, { color: c.foreground }]}>{journal.undated.length} élément(s) terminé(s) sans date de fin</Text>
-          <Text style={[s.small, { color: c.mutedForeground }]}>Ils ne sont pas placés arbitrairement dans le carnet. Renseigne leur date réelle pour les inclure.</Text>
+          <Text style={[s.small, { color: c.mutedForeground }]}>
+            Ils ne sont pas placés arbitrairement dans le carnet. L’historique peut afficher leur date limite, mais ce n’est pas leur date de réalisation. Renseigne leur vraie date de fin pour les inclure{journal.undatedPhotos > 0 ? ` avec leurs ${journal.undatedPhotos} photo(s)` : ''}.
+          </Text>
           {(showUndated ? journal.undated : journal.undated.slice(0, 5)).map(item => <Pressable key={`${item.kind}:${item.id}`}
             onPress={() => router.push({ pathname: item.kind === 'task' ? '/task/new' : '/project/new', params: { id: item.id } })}>
-            <Text style={[s.small, { color: c.primary }]}>{item.title} · préciser la date</Text>
+            <Text style={[s.small, { color: c.primary }]}>{item.title} · préciser la date{item.photoCount ? ` · ${item.photoCount} photo(s)` : ''}</Text>
           </Pressable>)}
           {journal.undated.length > 5 && <Pressable onPress={() => setShowUndated(value => !value)}>
             <Text style={[s.small, { color: c.primary }]}>{showUndated ? 'Réduire la liste' : `Voir les ${journal.undated.length - 5} autres éléments`}</Text>

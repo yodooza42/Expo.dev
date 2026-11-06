@@ -38,6 +38,10 @@ test('multiple projects and inclusive local completion dates produce chronologic
   assert.equal(output.photoCount, 3);
   assert.equal(output.undated.length, 1);
   assert.equal(output.undated[0].id, 'unknown');
+  assert.equal(output.undated[0].photoCount, 1);
+  assert.equal(output.undatedPhotos, 1);
+  assert.equal(output.availablePhotos, 3);
+  assert.equal(output.excludedPhotos, 0);
   assert.equal(output.error, '');
   assert.equal(JSON.stringify({ projects, tasks }), before);
   const oneDay = journal.buildProjectJournal(projects, tasks, { ...choices(), from: '2026-04-05', to: '2026-04-05' });
@@ -52,9 +56,21 @@ test('project selection, excluded entries/photos and independent captions never 
   assert.equal(output.entries[0].caption, 'Nouvelle légende');
   assert.equal(output.entries[0].photos.length, 1);
   assert.equal(output.entries[0].photos[0].caption, 'Détail photo');
+  assert.equal(output.availablePhotos, 3);
+  assert.equal(output.excludedPhotos, 2, 'counts both a hidden photo and the album of a hidden step');
   assert.equal(tasks[0].notes, 'Note originale');
   assert.equal(tasks[0].photos.length, 2);
   assert.equal(journal.buildProjectJournal(projects, tasks, { ...chosen, excludedPhotoIds: [] }).photoCount, 2);
+});
+test('missing completion date never substitutes the due date even when the task has photos', () => {
+  const onlyUndated = {
+    ...tasks[2], dueDate: '06/04/2026', photos: ['file://still-here'],
+  };
+  const output = journal.buildProjectJournal(projects, [onlyUndated], choices());
+  assert.equal(output.photoCount, 1, 'the separately completed project album is still available');
+  assert.equal(output.undatedPhotos, 1);
+  assert.equal(output.undated[0].photoCount, 1);
+  assert.ok(!output.entries.some(entry => entry.id === 'task:unknown'));
 });
 test('empty/invalid ranges, malformed drafts and oversized selections fail explicitly without truncation', () => {
   assert.ok(journal.buildProjectJournal(projects, tasks, { ...choices(), from: '2026-05-01', to: '2026-04-01' }).error);
