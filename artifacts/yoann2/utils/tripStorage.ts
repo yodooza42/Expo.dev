@@ -6,6 +6,15 @@ const KEY_TRIPS = '@yoann2_trips';
 const KEY_VEHICLE_SETTINGS = '@yoann2_vehicle_settings';
 const KEY_MIGRATION_GHOST_V1 = '@yoann2_migration_ghost_clean_v1';
 
+// All read/modify/write operations share a queue. Functional patches are
+// evaluated inside it, so a recovery/undo never commits a stale photos array.
+let writes: Promise<unknown> = Promise.resolve();
+function serializeWrite<T>(operation: () => Promise<T>): Promise<T> {
+  const next = writes.then(operation);
+  writes = next.catch(() => {});
+  return next;
+}
+
 export const DEFAULT_VEHICLES: Vehicle[] = [
   { id: 'car',  name: 'Doblo', type: 'car',  costPerKm: 0.15, odometerBaseKm: 0, maintenanceItems: [] },
   { id: 'moto', name: 'Msx',   type: 'moto', costPerKm: 0.10, odometerBaseKm: 0, maintenanceItems: [] },
@@ -22,25 +31,30 @@ export async function getTrips(): Promise<Trip[]> {
 
 export async function saveTrip(trip: Trip): Promise<boolean> {
   try {
-    const trips = await getTrips();
-    trips.push(trip);
-    await AsyncStorage.setItem(KEY_TRIPS, JSON.stringify(trips));
-    return true;
+    return await serializeWrite(async () => {
+      const trips = await getTrips();
+      trips.push(trip);
+      await AsyncStorage.setItem(KEY_TRIPS, JSON.stringify(trips));
+      return true;
+    });
   } catch {
     return false;
   }
 }
 
-export async function updateTrip(id: string, updates: Partial<Trip>, strict = false): Promise<void> {
+export async function updateTrip(id: string, updates: Partial<Trip> | ((current: Trip) => Partial<Trip>), strict = false): Promise<void> {
   try {
-    const trips = await getTrips();
-    const idx = trips.findIndex(t => t.id === id);
-    if (idx === -1) {
-      if (strict) throw new Error('Ce trajet est introuvable.');
-      return;
-    }
-    trips[idx] = { ...trips[idx]!, ...updates };
-    await AsyncStorage.setItem(KEY_TRIPS, JSON.stringify(trips));
+    await serializeWrite(async () => {
+      const trips = await getTrips();
+      const idx = trips.findIndex(t => t.id === id);
+      if (idx === -1) {
+        if (strict) throw new Error('Ce trajet est introuvable.');
+        return;
+      }
+      const patch = typeof updates === 'function' ? updates(trips[idx]!) : updates;
+      trips[idx] = { ...trips[idx]!, ...patch };
+      await AsyncStorage.setItem(KEY_TRIPS, JSON.stringify(trips));
+    });
   } catch (error) {
     if (strict) throw error;
   }
@@ -53,41 +67,45 @@ export async function updateTrip(id: string, updates: Partial<Trip>, strict = fa
  */
 export async function renamePlaceInTrips(placeId: string, newName: string): Promise<void> {
   try {
-    const trips = await getTrips();
-    let changed = false;
-    const updated = trips.map(trip => {
-      let next = trip;
+    await serializeWrite(async () => {
+      const trips = await getTrips();
+      let changed = false;
+      const updated = trips.map(trip => {
+        let next = trip;
 
-      if (trip.startPlaceId === placeId && trip.startAddress !== newName) {
-        next = { ...next, startAddress: newName };
-      }
-      if (trip.endPlaceId === placeId && next.endAddress !== newName) {
-        next = { ...next, endAddress: newName };
-      }
+        if (trip.startPlaceId === placeId && trip.startAddress !== newName) {
+          next = { ...next, startAddress: newName };
+        }
+        if (trip.endPlaceId === placeId && next.endAddress !== newName) {
+          next = { ...next, endAddress: newName };
+        }
 
-      if (trip.intermediates?.some(stop => stop.placeId === placeId && stop.name !== newName)) {
-        next = {
-          ...next,
-          intermediates: trip.intermediates.map(stop =>
-            stop.placeId === placeId ? { ...stop, name: newName } : stop,
-          ),
-        };
-      }
+        if (trip.intermediates?.some(stop => stop.placeId === placeId && stop.name !== newName)) {
+          next = {
+            ...next,
+            intermediates: trip.intermediates.map(stop =>
+              stop.placeId === placeId ? { ...stop, name: newName } : stop,
+            ),
+          };
+        }
 
-      if (next !== trip) changed = true;
-      return next;
+        if (next !== trip) changed = true;
+        return next;
+      });
+
+      if (changed) {
+        await AsyncStorage.setItem(KEY_TRIPS, JSON.stringify(updated));
+      }
     });
-
-    if (changed) {
-      await AsyncStorage.setItem(KEY_TRIPS, JSON.stringify(updated));
-    }
   } catch {}
 }
 
 export async function deleteTrip(id: string): Promise<void> {
   try {
-    const trips = await getTrips();
-    await AsyncStorage.setItem(KEY_TRIPS, JSON.stringify(trips.filter(t => t.id !== id)));
+    await serializeWrite(async () => {
+      const trips = await getTrips();
+      await AsyncStorage.setItem(KEY_TRIPS, JSON.stringify(trips.filter(t => t.id !== id)));
+    });
   } catch {}
 }
 
@@ -232,12 +250,14 @@ export async function saveVehicleSettings(settings: VehicleSettings): Promise<vo
 
 export async function purgeOldTrips(maxAgeDays: number): Promise<void> {
   try {
-    const cutoff = Date.now() - maxAgeDays * 24 * 60 * 60 * 1000;
-    const trips = await getTrips();
-    const kept = trips.filter(t => t.endTime >= cutoff);
-    if (kept.length !== trips.length) {
-      await AsyncStorage.setItem(KEY_TRIPS, JSON.stringify(kept));
-    }
+    await serializeWrite(async () => {
+      const cutoff = Date.now() - maxAgeDays * 24 * 60 * 60 * 1000;
+      const trips = await getTrips();
+      const kept = trips.filter(t => t.endTime >= cutoff);
+      if (kept.length !== trips.length) {
+        await AsyncStorage.setItem(KEY_TRIPS, JSON.stringify(kept));
+      }
+    });
   } catch {}
 }
 
@@ -296,23 +316,25 @@ function cleanRoute(route: RoutePoint[]): RoutePoint[] {
  */
 export async function migrateCleanGhostRoutes(): Promise<void> {
   try {
-    const done = await AsyncStorage.getItem(KEY_MIGRATION_GHOST_V1);
-    if (done === 'done') return;
+    await serializeWrite(async () => {
+      const done = await AsyncStorage.getItem(KEY_MIGRATION_GHOST_V1);
+      if (done === 'done') return;
 
-    const trips = await getTrips();
-    let changed = false;
-    const cleaned = trips.map(trip => {
-      if (!trip.route || trip.route.length < 3) return trip;
-      const newRoute = cleanRoute(trip.route);
-      if (newRoute.length === trip.route.length) return trip;
-      changed = true;
-      return { ...trip, route: newRoute };
+      const trips = await getTrips();
+      let changed = false;
+      const cleaned = trips.map(trip => {
+        if (!trip.route || trip.route.length < 3) return trip;
+        const newRoute = cleanRoute(trip.route);
+        if (newRoute.length === trip.route.length) return trip;
+        changed = true;
+        return { ...trip, route: newRoute };
+      });
+
+      if (changed) {
+        await AsyncStorage.setItem(KEY_TRIPS, JSON.stringify(cleaned));
+      }
+      await AsyncStorage.setItem(KEY_MIGRATION_GHOST_V1, 'done');
     });
-
-    if (changed) {
-      await AsyncStorage.setItem(KEY_TRIPS, JSON.stringify(cleaned));
-    }
-    await AsyncStorage.setItem(KEY_MIGRATION_GHOST_V1, 'done');
   } catch {
     // Non-fatal — will retry on next launch
   }

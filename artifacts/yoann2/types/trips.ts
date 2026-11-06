@@ -1,3 +1,5 @@
+import type { TripPhotoRecoveryEntry } from './tripPhotoRecovery';
+
 export type VehicleType = 'car' | 'moto' | 'ignored';
 
 export type ActivityKind = 'walk' | 'run' | 'bike' | 'kayak';
@@ -24,6 +26,8 @@ export interface RoutePoint {
 
 /** A trip souvenir whose original gallery metadata is separate from its protected file. */
 export interface TripPhoto {
+  /** Revision of the source link, independent of caption/placement edits. */
+  recoveryRevision?: string;
   /** Geographic placement, independent of the simplified route's point sequence. */
   lat?: number;
   lng?: number;
@@ -61,6 +65,8 @@ export interface RouteSegment {
 }
 
 export interface Trip {
+  /** Local audit trail, saved atomically with the repaired photo link. */
+  photoRecoveryHistory?: TripPhotoRecoveryEntry[];
   id: string;
   startTime: number;
   endTime: number;

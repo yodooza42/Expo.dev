@@ -302,6 +302,7 @@ test('reinstall recovery scans trip folders and repairs exact links, preserving 
     getTrips: async () => [trip],
     updateTrip: async (id, patch, strict) => {
       assert.equal(strict, true);
+      if (typeof patch === 'function') patch = patch(trip);
       trip = { ...trip, ...patch };
     },
   };
@@ -356,6 +357,7 @@ test('explicit gallery relink protects bytes and retains latest caption, positio
     getTrips: async () => [trip],
     updateTrip: async (id, patch, strict) => {
       assert.equal(strict, true);
+      if (typeof patch === 'function') patch = patch(trip);
       writes++;
       trip = { ...trip, ...patch };
     },

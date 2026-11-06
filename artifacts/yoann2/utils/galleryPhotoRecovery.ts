@@ -56,7 +56,7 @@ export async function applyGalleryCandidate(
   }
   const { uri, ...metadata } = resolved;
   await relinkTripPhoto(item.tripId, item.photoId, uri, {
-    metadata, isCurrent, expectedUri: item.original.uri,
+    metadata, isCurrent, expectedUri: item.original.uri, expectedPhoto: item.original, automatic,
   });
 }
 
@@ -65,6 +65,8 @@ export async function searchGalleryTripPhotos(options: {
   isCurrent: () => boolean;
   progress: (message: string) => void;
   onReport?: (report: GalleryRecoveryReport) => void;
+  /** After undo, let the user choose again; never reapply the rejected match automatically. */
+  manualOnly?: boolean;
 }): Promise<GalleryRecoveryReport> {
   if (Platform.OS === 'web') throw new Error('La recherche dans la galerie est disponible dans l’application sur le téléphone.');
   const { isCurrent, progress } = options;
@@ -169,12 +171,15 @@ export async function searchGalleryTripPhotos(options: {
     item.candidates = rankGalleryCandidates(item, [...assets.values()]);
     if (!item.candidates.length) item.status = 'missing';
   }
-  const automatic = automaticGalleryMatches(cases, complete);
+  const automatic = automaticGalleryMatches(cases, complete && !options.manualOnly);
   options.onReport?.({ ...report });
   for (const item of cases) {
     active(isCurrent);
     const candidate = automatic.get(item.key);
     if (!candidate) continue;
+    // An undone match is disputed, even in a later session/search.
+    if (trips.find(trip => trip.id === item.tripId)?.photoRecoveryHistory
+      ?.some(entry => entry.photoId === item.photoId && entry.undoneAt != null)) continue;
     progress(`Rattachement certain ${report.automaticallyRepaired + 1}/${automatic.size}…`);
     try {
       await applyGalleryCandidate(item, candidate, isCurrent, true);

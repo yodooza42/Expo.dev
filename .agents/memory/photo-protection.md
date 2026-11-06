@@ -26,3 +26,9 @@ Pour les photos de trajets, privilégier la recherche de correspondances dans le
 **Why:** L’utilisateur préfère ce fonctionnement à une resélection manuelle de chaque original dans toute la galerie.
 
 **How to apply:** Ne pas transformer une ancienne heure d’import estimée en preuve de prise de vue. Les rafales, plusieurs souvenirs concurrents et une galerie partiellement accessible imposent une confirmation, sans modifier les légendes ni les placements existants.
+
+Après l’annulation d’un rattachement, les recherches ultérieures doivent demander une confirmation pour ce souvenir, même si une correspondance paraît certaine.
+
+**Why:** Une annulation remet en cause la correspondance ; réappliquer automatiquement le même résultat rendrait la correction de l’utilisateur inutile.
+
+**How to apply:** Conserver cette prudence après fermeture de l’écran. Permettre une nouvelle sélection explicite, sans supprimer les sources ni les copies de la correspondance annulée.

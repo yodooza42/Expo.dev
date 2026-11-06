@@ -24,12 +24,15 @@ export function GalleryPhotoRecoverySheet({ visible, onClose, tripId }: { visibl
   const cancelRef = useRef(rec.cancel);
   cancelRef.current = rec.cancel;
   useEffect(() => () => cancelRef.current(), []);
+  const loadHistory = rec.loadHistory;
+  useEffect(() => { if (visible) void loadHistory(); }, [visible, loadHistory]);
+  const [historyLimit, setHistoryLimit] = useState(PAGE);
 
   const close = () => { if (rec.phase === 'scanning' || rec.phase === 'applying') rec.cancel(); onClose(); };
   const report = rec.report;
   const review = report?.cases.filter(c => c.status === 'pending' || c.status === 'missing') ?? [];
   const settled = report?.cases.filter(c => c.status === 'repaired' || c.status === 'skipped') ?? [];
-  const busy = rec.phase === 'scanning' || rec.phase === 'applying';
+  const busy = rec.phase === 'scanning' || rec.phase === 'applying' || rec.phase === 'undoing';
   const activeCase = review.find(item => item.key === activeKey) ?? review[0];
   const activeIndex = activeCase ? review.indexOf(activeCase) : -1;
   const t = { fg: colors.foreground, mu: colors.mutedForeground, pr: colors.primary };
@@ -72,6 +75,21 @@ export function GalleryPhotoRecoverySheet({ visible, onClose, tripId }: { visibl
             <Pressable onPress={() => { void rec.manageAccess().catch(() => {}); }} testID="recovery-permission-settings">
               <Text style={[styles.link, { color: t.pr }]}>Ouvrir les autorisations</Text>
             </Pressable>
+          </View>
+        )}
+
+        {rec.undoNotice && (
+          <View style={[styles.box, { borderColor: colors.border }]}>
+            <Text style={[styles.body, { color: t.fg }]}>
+              Rattachement annulé. Aucune photo ni copie n’a été supprimée.
+            </Text>
+            {rec.undoNotice.missing && <>
+              <Text style={[styles.small, { color: t.mu }]}>L’ancien lien est toujours inaccessible. Choisis une autre correspondance ; aucun rattachement automatique ne sera refait pour ce souvenir.</Text>
+              <Pressable testID="recovery-reselect" accessibilityRole="button" disabled={busy}
+                onPress={() => { void rec.start({ tripId: rec.undoNotice!.tripId, manualOnly: true }); }}>
+                <Text style={[styles.link, { color: t.pr }]}>Choisir une autre photo</Text>
+              </Pressable>
+            </>}
           </View>
         )}
 
@@ -129,6 +147,44 @@ export function GalleryPhotoRecoverySheet({ visible, onClose, tripId }: { visibl
             )}
           </>
         )}
+        {rec.history.length > 0 && (
+          <View style={{ gap: 8 }}>
+            <Text style={[styles.section, { color: t.mu }]}>HISTORIQUE LOCAL DES RATTACHEMENTS</Text>
+            <Text style={[styles.small, { color: t.mu }]}>Annuler rétablit l’ancien lien sans toucher aux légendes, dates, positions ou fichiers.</Text>
+            {rec.history.slice(0, historyLimit).map(item => (
+              <View key={item.entry.id} style={[styles.box, { borderColor: colors.border }]}>
+                <Text numberOfLines={2} style={[styles.body, { color: t.fg }]}>{item.entry.context.note || 'Photo sans légende'}</Text>
+                <Text style={[styles.small, { color: t.mu }]}>
+                  {fmt(item.entry.repairedAt)} · {item.entry.context.automatic ? 'Automatique' : 'Choisie'}
+                </Text>
+                <Text numberOfLines={1} style={[styles.small, { color: t.mu }]}>{item.entry.after.galleryMetadata?.filename || 'Photo rattachée'}</Text>
+                {item.entry.undoneAt != null ? (
+                  <Text style={[styles.small, { color: t.mu }]}>Annulé le {fmt(item.entry.undoneAt)}</Text>
+                ) : item.canUndo ? (
+                  <Pressable testID={`recovery-undo-${item.entry.id}`} accessibilityRole="button"
+                    accessibilityLabel="Annuler ce rattachement" disabled={busy}
+                    onPress={() => Alert.alert('Annuler ce rattachement ?', 'L’ancien lien sera rétabli, même s’il est inaccessible. Les originaux et les copies seront conservés.', [
+                      { text: 'Garder', style: 'cancel' },
+                      { text: 'Annuler le rattachement', onPress: () => { void rec.undo(item); } },
+                    ])}>
+                    <Text style={[styles.link, { color: busy ? t.mu : t.pr }]}>Annuler le rattachement</Text>
+                  </Pressable>
+                ) : <Text style={[styles.small, { color: t.mu }]}>Source modifiée ou souvenir supprimé : annulation indisponible.</Text>}
+                {item.needsSelection && (
+                  <Pressable testID={`recovery-reselect-${item.entry.id}`} accessibilityRole="button" disabled={busy}
+                    onPress={() => { void rec.start({ tripId: item.tripId, manualOnly: true }); }}>
+                    <Text style={[styles.link, { color: busy ? t.mu : t.pr }]}>Ancien lien inaccessible : choisir une autre photo</Text>
+                  </Pressable>
+                )}
+              </View>
+            ))}
+            {rec.history.length > historyLimit && (
+              <Pressable testID="recovery-more-history" onPress={() => setHistoryLimit(value => value + PAGE)}>
+                <Text style={[styles.link, { color: t.pr }]}>Voir les rattachements précédents</Text>
+              </Pressable>
+            )}
+          </View>
+        )}
       </ScrollView>
 
       {(rec.phase === 'idle' || rec.phase === 'error' || rec.phase === 'done' || rec.phase === 'ready') && (
@@ -139,7 +195,7 @@ export function GalleryPhotoRecoverySheet({ visible, onClose, tripId }: { visibl
           </Text>
         </Pressable>
       )}
-      {busy && (
+      {busy && rec.phase !== 'undoing' && (
         <Pressable testID="recovery-cancel" accessibilityRole="button" onPress={rec.cancel}
           style={[styles.primary, { backgroundColor: colors.muted }]}>
           <Text style={[styles.btnText, { color: t.fg }]}>Annuler</Text>
@@ -179,7 +235,7 @@ function CaseCard({ c, onChoose, onSkip, disabled }: { c: GalleryRecoveryCase; o
 
   const confirm = () => {
     if (!sel) return;
-    Alert.alert('Remplacer le lien ?', `Utiliser « ${sel.filename} » (${fmt(sel.takenAt)}) pour cette photo ? L'original reste sauvegardé.`, [
+    Alert.alert('Remplacer le lien ?', `Utiliser « ${sel.filename} » (${fmt(sel.takenAt)}) pour cette photo ? Les fichiers existants sont conservés ; tu pourras annuler ce rattachement depuis l’historique local.`, [
       { text: 'Annuler', style: 'cancel' },
       { text: 'Confirmer', onPress: () => { void onChoose(sel.assetId); } },
     ]);
