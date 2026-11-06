@@ -412,6 +412,20 @@ export default function TaskDetailScreen() {
           </View>
 
           {/* ── Récurrence ── */}
+          {task.status === 'done' && (
+            <Pressable
+              testID="edit-task-completion-date"
+              onPress={() => router.push({ pathname: '/task/new', params: { id: task.id } })}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10 }}
+            >
+              <MaterialCommunityIcons name="calendar-check" size={18} color={colors.primary} />
+              <Text style={{ color: colors.primary, fontSize: 14 }}>
+                {task.completedAt ? `Terminée le ${task.completedAt}` : 'Date de fin à préciser'}
+              </Text>
+              <MaterialCommunityIcons name="pencil-outline" size={16} color={colors.primary} />
+            </Pressable>
+          )}
+
           <View>
             <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Récurrence</Text>
             <View style={styles.statusRow}>

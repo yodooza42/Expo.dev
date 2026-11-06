@@ -15,6 +15,7 @@ export interface Project {
   spent: number;
   priority: Priority;
   status: ProjectStatus;
+  completedAt?: string;
   archived?: boolean;
   createdAt: string;
   updatedAt: string;

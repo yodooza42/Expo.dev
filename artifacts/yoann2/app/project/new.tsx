@@ -16,6 +16,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '@/contexts/AppContext';
 import { useColors } from '@/hooks/useColors';
 import { SubPageHeader } from '@/components/SubPageHeader';
+import { CompletionDateField } from '@/components/CompletionDateField';
+import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
+import { completionDateError, formatCompletionDate } from '@/utils/completionDate';
 import type { Priority, ProjectStatus } from '@/types';
 
 const PRIORITIES: Priority[] = ['low', 'medium', 'high', 'critical'];
@@ -43,6 +46,7 @@ export default function NewProjectScreen() {
   const [category, setCategory] = useState(existing?.category ?? categories[0]?.name ?? '');
   const [priority, setPriority] = useState<Priority>(existing?.priority ?? 'medium');
   const [status, setStatus] = useState<ProjectStatus>(existing?.status ?? 'todo');
+  const [completedAt, setCompletedAt] = useState(existing?.completedAt ?? '');
   const [budget, setBudget] = useState(existing?.budget?.toString() ?? '0');
   const [startDate, setStartDate] = useState(
     existing ? new Date(existing.startDate).toLocaleDateString('fr-FR') : new Date().toLocaleDateString('fr-FR')
@@ -64,6 +68,8 @@ export default function NewProjectScreen() {
     const e: Record<string, string> = {};
     if (!name.trim()) e.name = 'Le nom est obligatoire';
     if (!dueDate.trim()) e.dueDate = "La date d'échéance est obligatoire";
+    const dateError = status === 'done' ? completionDateError(completedAt) : undefined;
+    if (dateError) e.completedAt = dateError;
     setErrors(e);
     return Object.keys(e).length === 0;
   }
@@ -81,6 +87,7 @@ export default function NewProjectScreen() {
       spent: existing?.spent ?? 0,
       priority,
       status,
+      ...(status === 'done' && completedAt.trim() ? { completedAt: completedAt.trim() } : {}),
     };
     if (isEditing && existing) {
       updateProject(existing.id, data);
@@ -104,7 +111,7 @@ export default function NewProjectScreen() {
         }
       />
 
-      <ScrollView contentContainerStyle={[styles.form, { paddingBottom: 100 }]} showsVerticalScrollIndicator={false}>
+      <KeyboardAwareScrollViewCompat bottomOffset={20} contentContainerStyle={[styles.form, { paddingBottom: Math.max(insets.bottom, 34) + 32 }]} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         <View>
           <Text style={[styles.label, { color: colors.mutedForeground }]}>Nom du projet *</Text>
           <TextInput
@@ -180,7 +187,11 @@ export default function NewProjectScreen() {
             {STATUSES.map(s => (
               <Pressable
                 key={s}
-                onPress={() => setStatus(s)}
+                onPress={() => {
+                  if (s === 'done' && status !== 'done') setCompletedAt(formatCompletionDate());
+                  if (s !== 'done') setCompletedAt('');
+                  setStatus(s);
+                }}
                 style={[
                   styles.statusChip,
                   status === s
@@ -195,6 +206,10 @@ export default function NewProjectScreen() {
             ))}
           </View>
         </View>
+
+        {status === 'done' && (
+          <CompletionDateField value={completedAt} onChange={setCompletedAt} error={errors.completedAt} />
+        )}
 
         <View style={styles.row}>
           <View style={{ flex: 1 }}>
@@ -231,7 +246,7 @@ export default function NewProjectScreen() {
             style={[styles.input, { backgroundColor: colors.card, color: colors.foreground, borderColor: colors.border }]}
           />
         </View>
-      </ScrollView>
+      </KeyboardAwareScrollViewCompat>
     </View>
   );
 }

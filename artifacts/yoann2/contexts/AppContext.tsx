@@ -1,3 +1,4 @@
+import { resolveCompletionDate } from '@/utils/completionDate';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
@@ -398,7 +399,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const addProject = useCallback((p: Omit<Project, 'id' | 'createdAt' | 'updatedAt'>) => {
     const now = new Date().toISOString();
-    const newP: Project = { ...p, id: genId(), createdAt: now, updatedAt: now };
+    const newP: Project = { ...p, completedAt: resolveCompletionDate(undefined, p), id: genId(), createdAt: now, updatedAt: now };
     setProjects(prev => {
       const next = [...prev, newP];
       AsyncStorage.setItem(STORAGE_KEYS.PROJECTS, JSON.stringify(next));
@@ -410,7 +411,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const updateProject = useCallback((id: string, updates: Partial<Project>) => {
     setProjects(prev => {
       const next = prev.map(p =>
-        p.id === id ? { ...p, ...updates, updatedAt: new Date().toISOString() } : p
+        p.id === id ? { ...p, ...updates, completedAt: resolveCompletionDate(p, updates), updatedAt: new Date().toISOString() } : p
       );
       AsyncStorage.setItem(STORAGE_KEYS.PROJECTS, JSON.stringify(next));
       markDirty();
@@ -469,6 +470,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const addTask = useCallback((t: Omit<Task, 'id' | 'createdAt' | 'eisenhower'>) => {
     const newT: Task = {
       ...t,
+      completedAt: resolveCompletionDate(undefined, t),
       id: genId(),
       createdAt: new Date().toISOString(),
       eisenhower: computeEisenhower(t.urgency, t.importance),
@@ -489,16 +491,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       let next = prev.map(t => {
         if (t.id !== id) return t;
         const updated = { ...t, ...updates };
-        if (updates.status === 'done' && t.status !== 'done') {
-          const now = new Date();
-          const dd   = String(now.getDate()).padStart(2, '0');
-          const mm   = String(now.getMonth() + 1).padStart(2, '0');
-          const yyyy = now.getFullYear();
-          updated.completedAt = `${dd}/${mm}/${yyyy}`;
-        }
-        if (updates.status && updates.status !== 'done') {
-          updated.completedAt = undefined;
-        }
+        updated.completedAt = resolveCompletionDate(t, updates);
         updated.eisenhower = computeEisenhower(updated.urgency, updated.importance);
         return updated;
       });

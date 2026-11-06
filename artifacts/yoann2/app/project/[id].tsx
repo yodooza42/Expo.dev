@@ -644,6 +644,19 @@ export default function ProjectDetailScreen() {
           </View>
 
           <Text style={[styles.projectName, { color: colors.foreground }]}>{project.name}</Text>
+          {project.status === 'done' && (
+            <Pressable
+              testID="edit-project-completion-date"
+              onPress={() => router.push({ pathname: '/project/new', params: { id: project.id } })}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10 }}
+            >
+              <MaterialCommunityIcons name="calendar-check" size={18} color={colors.primary} />
+              <Text style={{ color: colors.primary, fontSize: 14 }}>
+                {project.completedAt ? `Terminé le ${project.completedAt}` : 'Date de fin à préciser'}
+              </Text>
+              <MaterialCommunityIcons name="pencil-outline" size={16} color={colors.primary} />
+            </Pressable>
+          )}
           {project.description.length > 0 && (
             <Text style={[styles.desc, { color: colors.mutedForeground }]}>{project.description}</Text>
           )}

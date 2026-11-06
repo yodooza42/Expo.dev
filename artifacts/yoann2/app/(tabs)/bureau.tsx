@@ -21,7 +21,8 @@ import { BottomSheet } from '@/components/BottomSheet';
 import { useApp } from '@/contexts/AppContext';
 import { useSplash } from '@/contexts/SplashContext';
 import { useColors } from '@/hooks/useColors';
-import type { Appointment, Task } from '@/types';
+import type { Appointment, Project, Task } from '@/types';
+import { parseCompletionDate } from '@/utils/completionDate';
 import { pH } from '@/styles/header';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -87,7 +88,7 @@ const PRIORITY_LABELS: Record<string, string> = {
   critical: 'Critique', high: 'Haute', medium: 'Moy.', low: 'Basse',
 };
 
-type DayGroup  = { dateKey: string; date: Date; label: string; tasks: Task[] };
+type DayGroup  = { dateKey: string; date: Date; label: string; tasks: Task[]; projects?: Project[] };
 type WeekGroup = { weekKey: string; label: string; days: DayGroup[] };
 
 // ── Component ──────────────────────────────────────────────────────────────
@@ -259,26 +260,52 @@ export default function DashboardScreen() {
       day.tasks.push(task);
     }
 
+    // Projects have their own completion day; never infer it from last edit or deadline.
+    const noDateProjects: Project[] = [];
+    for (const project of projects.filter(p => p.status === 'done')) {
+      const date = project.completedAt ? parseCompletionDate(project.completedAt) : null;
+      if (!date) {
+        noDateProjects.push(project);
+        continue;
+      }
+      const monday = getMondayOfWeek(date);
+      const wKey = isoDate(monday), dKey = isoDate(date);
+      if (!weekMap.has(wKey))
+        weekMap.set(wKey, { weekKey: wKey, label: buildWeekLabel(monday), days: [] });
+      const week = weekMap.get(wKey)!;
+      let day = week.days.find(dg => dg.dateKey === dKey);
+      if (!day) {
+        day = {
+          dateKey: dKey, date,
+          label: date.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'long' }),
+          tasks: [],
+        };
+        week.days.push(day);
+      }
+      (day.projects ??= []).push(project);
+    }
+
     for (const week of weekMap.values())
       week.days.sort((a, b) => a.dateKey.localeCompare(b.dateKey));
 
     const result = Array.from(weekMap.values()).sort((a, b) => a.weekKey.localeCompare(b.weekKey));
 
-    if (noDateDone.length > 0) {
+    if (noDateDone.length > 0 || noDateProjects.length > 0) {
       result.push({
         weekKey: 'no-date',
         label: 'Sans date',
         days: [{
           dateKey: 'no-date',
           date: todayStart,
-          label: 'Terminées sans date',
+          label: 'Terminés sans date connue',
           tasks: noDateDone,
+          projects: noDateProjects,
         }],
       });
     }
 
     return result;
-  }, [tasks, todayStart]);
+  }, [tasks, projects, todayStart]);
 
   // ── Sub-component: ApptEntry ──────────────────────────────────────────
 
@@ -568,12 +595,12 @@ export default function DashboardScreen() {
             color={colors.mutedForeground}
           />
           <Text style={[styles.historyTxt, { color: colors.mutedForeground }]}>
-            {showHistory ? 'Masquer l\'historique' : 'Voir les tâches terminées'}
+            {showHistory ? 'Masquer l\'historique' : 'Voir les projets et tâches terminés'}
           </Text>
           {!showHistory && pastWeekGroups.length > 0 && (
             <View style={[styles.historyBadge, { backgroundColor: colors.border }]}>
               <Text style={[styles.historyBadgeTxt, { color: colors.mutedForeground }]}>
-                {pastWeekGroups.reduce((s, w) => s + w.days.reduce((ds, d) => ds + d.tasks.length, 0), 0)}
+                {pastWeekGroups.reduce((s, w) => s + w.days.reduce((ds, d) => ds + d.tasks.length + (d.projects?.length ?? 0), 0), 0)}
               </Text>
             </View>
           )}
@@ -583,7 +610,7 @@ export default function DashboardScreen() {
         {showHistory && (
           pastWeekGroups.length === 0 ? (
             <Text style={[styles.historyEmpty, { color: colors.mutedForeground }]}>
-              Aucune tâche terminée
+              Aucun projet ni tâche terminé
             </Text>
           ) : (
             pastWeekGroups.map(week => (
@@ -603,6 +630,21 @@ export default function DashboardScreen() {
                     </View>
                     <View style={[styles.branch, { borderLeftColor: colors.border }]}>
                       {day.tasks.map(t => <TaskEntry key={t.id} task={t} isDone />)}
+                      {day.projects?.map(project => (
+                        <Pressable
+                          key={`project-${project.id}`}
+                          testID={`completed-project-${project.id}`}
+                          onPress={() => router.push(`/project/${project.id}` as any)}
+                          style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12 }}
+                        >
+                          <MaterialCommunityIcons name="folder-check-outline" size={20} color={colors.primary} />
+                          <View style={{ flex: 1 }}>
+                            <Text style={{ color: colors.foreground, fontFamily: 'Inter_500Medium', fontSize: 14 }}>{project.name}</Text>
+                            <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>Projet terminé{project.completedAt ? ` · ${project.completedAt}` : ' · date à préciser'}</Text>
+                          </View>
+                          <MaterialCommunityIcons name="chevron-right" size={18} color={colors.mutedForeground} />
+                        </Pressable>
+                      ))}
                       {showAppts && (apptsByDay.get(day.dateKey) ?? []).map(a => (
                         <ApptEntry key={a.id} appt={a} />
                       ))}

@@ -25,6 +25,9 @@ import { useApp } from '@/contexts/AppContext';
 import { GalleryPhotoPicker } from '@/components/GalleryPhotoPicker';
 import { useColors } from '@/hooks/useColors';
 import { SubPageHeader } from '@/components/SubPageHeader';
+import { CompletionDateField } from '@/components/CompletionDateField';
+import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
+import { completionDateError, formatCompletionDate } from '@/utils/completionDate';
 import type { Priority, RecurrenceType, TaskStatus } from '@/types';
 
 const { width } = Dimensions.get('window');
@@ -63,6 +66,7 @@ export default function NewTaskScreen() {
   const [projectId, setProjectId] = useState(existing?.projectId ?? defaultProjectId);
   const [priority, setPriority] = useState<Priority>(existing?.priority ?? (isIdea ? 'low' : 'medium'));
   const [status, setStatus] = useState<TaskStatus>(existing?.status ?? (isIdea ? 'idea' : 'todo'));
+  const [completedAt, setCompletedAt] = useState(existing?.completedAt ?? '');
   const [importance, setImportance] = useState(() => {
     if (existing) return Math.min(3, Math.max(1, Math.round((existing.importance / 5) * 3)));
     return isIdea ? 1 : 2;
@@ -106,6 +110,8 @@ export default function NewTaskScreen() {
     const e: Record<string, string> = {};
     if (!title.trim()) e.title = 'Le titre est obligatoire';
     if (!dueDate.trim()) e.dueDate = "La date limite est obligatoire";
+    const dateError = status === 'done' ? completionDateError(completedAt) : undefined;
+    if (dateError) e.completedAt = dateError;
     setErrors(e);
     return Object.keys(e).length === 0;
   }
@@ -125,6 +131,7 @@ export default function NewTaskScreen() {
       importance: scaledImportance,
       urgency: scaledUrgency,
       status,
+      ...(status === 'done' && completedAt.trim() ? { completedAt: completedAt.trim() } : {}),
       recurrence,
     };
     if (isEditing && existing) {
@@ -248,7 +255,7 @@ export default function NewTaskScreen() {
         }
       />
 
-      <ScrollView contentContainerStyle={[styles.form, { paddingBottom: 100 }]} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+      <KeyboardAwareScrollViewCompat bottomOffset={20} contentContainerStyle={[styles.form, { paddingBottom: Math.max(insets.bottom, 34) + 32 }]} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         <View>
           <Text style={[styles.label, { color: colors.mutedForeground }]}>Projet</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
@@ -373,7 +380,11 @@ export default function NewTaskScreen() {
             {STATUSES.map(s => (
               <Pressable
                 key={s}
-                onPress={() => setStatus(s)}
+                  onPress={() => {
+                    if (s === 'done' && status !== 'done') setCompletedAt(formatCompletionDate());
+                    if (s !== 'done') setCompletedAt('');
+                    setStatus(s);
+                  }}
                 style={[
                   styles.statusChip,
                   status === s ? { backgroundColor: colors.primary } : { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 },
@@ -386,6 +397,10 @@ export default function NewTaskScreen() {
             ))}
           </View>
         </View>
+
+        {status === 'done' && (
+          <CompletionDateField value={completedAt} onChange={setCompletedAt} error={errors.completedAt} />
+        )}
 
         <View style={[styles.eisenBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <Text style={[styles.eisenTitle, { color: colors.foreground }]}>Matrice d'Eisenhower</Text>
@@ -416,7 +431,7 @@ export default function NewTaskScreen() {
             </Pressable>
           </View>
         </View>
-      </ScrollView>
+      </KeyboardAwareScrollViewCompat>
 
       <GalleryPhotoPicker
         visible={galleryPickerVisible}
