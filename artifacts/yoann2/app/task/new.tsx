@@ -4,6 +4,7 @@ import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import * as MediaLibrary from 'expo-media-library';
 import { resolveProjectDirForBatch, sanitize, savePhotoToProject, taskFolderName } from '@/utils/photoStorage';
+import { protectPhoto } from '@/utils/photoProtection';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useMemo, useState } from 'react';
@@ -167,7 +168,7 @@ export default function NewTaskScreen() {
         },
       },
       {
-        text: 'Galerie (associer sans copier)',
+        text: 'Galerie (copie protégée)',
         onPress: async () => {
           setGalleryPickerVisible(true);
         },
@@ -176,11 +177,19 @@ export default function NewTaskScreen() {
     ]);
   }
 
-  function addTaskPhotoUris(uris: string[]) {
+  async function addTaskPhotoUris(uris: string[]) {
+    try {
+    const permanent = await Promise.all(uris.map(uri => protectPhoto(uri, {
+      project: projects.find(item => item.id === projectId)?.name ?? 'Sans projet',
+      folder: existing ? taskFolderName(title, existing.id) : sanitize(title || 'Nouvelle tâche'),
+    })));
     setPhotos(previous => {
       const existingUris = new Set(previous);
-      return [...previous, ...uris.filter(uri => !existingUris.has(uri))];
+      return [...previous, ...permanent.filter(uri => !existingUris.has(uri))];
     });
+    } catch (error) {
+      Alert.alert('Photo non conservée', error instanceof Error ? error.message : 'Copie permanente impossible.');
+    }
   }
 
   async function browseAllTaskPhotos() {
@@ -192,8 +201,11 @@ export default function NewTaskScreen() {
     if (!result.canceled) addTaskPhotoUris(result.assets.map(asset => asset.uri));
   }
 
-  function addGalleryTaskPhotos(assets: MediaLibrary.Asset[]) {
-    addTaskPhotoUris(assets.map(asset => asset.uri));
+  async function addGalleryTaskPhotos(assets: MediaLibrary.Asset[]) {
+    try {
+      const uris = await Promise.all(assets.map(async asset => (await MediaLibrary.getAssetInfoAsync(asset)).localUri ?? asset.uri));
+      await addTaskPhotoUris(uris);
+    } catch { Alert.alert('Photo inaccessible', 'Autorise l’accès aux photos, puis réessaie.'); }
   }
 
   function ScoreSelector({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {

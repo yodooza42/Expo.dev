@@ -1,10 +1,12 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import * as MediaLibrary from 'expo-media-library';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
   Alert,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -32,6 +34,8 @@ import {
 import { importBackupFromFile, listBackups, rebuildBackupListFromSAF, restoreBackup, saveBackup } from '@/utils/backup';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { reconfigureStorage, recoverAllPhotosFromExternal, SAF_ROOT_KEY } from '@/utils/photoStorage';
+import { mergeRecoveredPhotoUris } from '@/utils/photoReferences';
+import { photoProtectionEvents, photoProtectionStatus } from '@/utils/photoProtection';
 import { CategoryConfig, DEFAULT_EXPENSE_CATEGORY_CONFIGS, getCategoryConfigs, saveCategoryConfigs } from '@/utils/bankStorage';
 import { genId } from '@/utils/ids';
 
@@ -97,6 +101,8 @@ export default function SettingsScreen() {
   const [configuringFolder, setConfiguringFolder] = useState(false);
   const [rebuildingList,    setRebuildingList]    = useState(false);
   const [recoveringAll,     setRecoveringAll]     = useState(false);
+  const [protectingPhotos, setProtectingPhotos] = useState(false);
+  const [photoStatus, setPhotoStatus] = useState({ local: 0, backedUp: 0, pending: 0, missing: 0 });
   const [expCatConfigs, setExpCatConfigs] = useState<CategoryConfig[]>(DEFAULT_EXPENSE_CATEGORY_CONFIGS);
   const [widgetLogVisible, setWidgetLogVisible] = useState(false);
   const [widgetLogEntries, setWidgetLogEntries] = useState<{ t: string; tag: string; data: string }[]>([]);
@@ -130,6 +136,7 @@ export default function SettingsScreen() {
     });
     getApptReminderPref().then(setApptReminder);
     loadStorageStatus();
+    photoProtectionStatus().then(setPhotoStatus).catch(console.warn);
   }, []);
 
   async function loadStorageStatus() {
@@ -150,7 +157,27 @@ export default function SettingsScreen() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       Alert.alert('Dossier configuré', 'Les dossiers Photos et Sauvegarde sont prêts.');
       loadStorageStatus();
+      void photoProtectionEvents.retry().then(() => photoProtectionStatus()).then(setPhotoStatus).catch(console.warn);
     }
+  }
+
+  async function handleProtectPhotos() {
+    if (protectingPhotos) return;
+    setProtectingPhotos(true);
+    try {
+      if (Platform.OS === 'web') throw new Error('La protection des fichiers est disponible sur le téléphone.');
+      // Explicit user action may re-authorize gallery originals after an app restore.
+      await MediaLibrary.requestPermissionsAsync(false, ['photo']);
+      await photoProtectionEvents.retry();
+      const status = await photoProtectionStatus();
+      setPhotoStatus(status);
+      Alert.alert('Protection des photos',
+        `${status.local} copie(s) permanente(s) dans l’application.\n${status.backedUp} copie(s) externe(s) vérifiée(s).\n${status.pending} copie(s) externe(s) en attente.\n${status.missing} source(s) inaccessible(s).`
+        + (status.pending ? '\n\nConfigure ou réautorise le dossier Yoann2.0 puis relance la protection.' : '')
+        + '\n\nLe vidage du cache ne supprime pas ces copies. Les deux copies restent sur le téléphone : elles ne couvrent pas sa perte ou sa panne.');
+    } catch (error) {
+      Alert.alert('Protection incomplète', error instanceof Error ? error.message : 'Impossible de protéger les photos.');
+    } finally { setProtectingPhotos(false); }
   }
 
   async function handleWeeklyToggle(value: boolean) {
@@ -233,21 +260,18 @@ export default function SettingsScreen() {
     }
   }
 
-  /** Filtre les URIs dont le nom de fichier existe déjà parmi les photos déjà attachées. */
-  function dedupeByFilename(existingUris: string[], incomingUris: string[]): string[] {
-    const existingNames = new Set(existingUris.map(u => u.split('/').pop()));
-    return incomingUris.filter(u => !existingNames.has(u.split('/').pop()));
-  }
-
   async function handleRecoverAllPhotos() {
     if (!folderConfigured) {
       Alert.alert('Dossier non configur\u00e9', 'Configurez d\u2019abord le dossier Yoann2.0 ci-dessus.');
       return;
     }
     setRecoveringAll(true);
+    try {
     const names = projects.map(p => p.name);
-    const recovered = await recoverAllPhotosFromExternal(names);
-    setRecoveringAll(false);
+    const report = await recoverAllPhotosFromExternal(names);
+    const recovered = report.projects;
+    const projectUpdates = new Map<string, string[]>();
+    const taskUpdates = new Map<string, string[]>();
 
     let totalProject = 0;
     let totalTask = 0;
@@ -257,11 +281,9 @@ export default function SettingsScreen() {
 
       // Project photos (root folder)
       if (r.projectUris.length > 0) {
-        const newUris = dedupeByFilename(proj.photos, r.projectUris);
-        if (newUris.length > 0) {
-          updateProject(proj.id, { photos: [...proj.photos, ...newUris] });
-        }
-        totalProject += newUris.length;
+        const merged = await mergeRecoveredPhotoUris(projectUpdates.get(proj.id) ?? proj.photos, r.projectUris);
+        projectUpdates.set(proj.id, merged.uris);
+        totalProject += merged.added + merged.repaired;
       }
 
       // Task photos — match by embedded ID (_tache_<id>), fallback to sanitized name
@@ -277,33 +299,40 @@ export default function SettingsScreen() {
                 === folder.folderName.toLowerCase(),
             );
           if (matched) {
-            const newUris = dedupeByFilename(matched.photos, folder.uris);
-            if (newUris.length > 0) {
-              updateTask(matched.id, { photos: [...matched.photos, ...newUris] });
-            }
-            totalTask += newUris.length;
+            const merged = await mergeRecoveredPhotoUris(taskUpdates.get(matched.id) ?? matched.photos, folder.uris);
+            taskUpdates.set(matched.id, merged.uris);
+            totalTask += merged.added + merged.repaired;
           } else {
             // Aucune tâche trouvée → photos du projet en fallback
-            const newUris = dedupeByFilename(proj.photos, folder.uris);
-            if (newUris.length > 0) {
-              updateProject(proj.id, { photos: [...proj.photos, ...newUris] });
-            }
-            totalTask += newUris.length;
+            const merged = await mergeRecoveredPhotoUris(projectUpdates.get(proj.id) ?? proj.photos, folder.uris);
+            projectUpdates.set(proj.id, merged.uris);
+            totalProject += merged.added + merged.repaired;
           }
         }
       }
     }
+    for (const [id, photos] of projectUpdates) updateProject(id, { photos });
+    for (const [id, photos] of taskUpdates) updateTask(id, { photos });
 
     const total = totalProject + totalTask;
+    const issues = report.errors.length
+      ? `\n\nRécupération partielle : ${report.errors.length} erreur(s).\n${report.errors.slice(0, 2).join('\n')}`
+      : '';
     if (total > 0) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       Alert.alert(
         'Photos récupérées',
-        `${total} photo${total > 1 ? 's' : ''} restaurée${total > 1 ? 's' : ''} (${totalProject} projet / ${totalTask} tâches) sur ${recovered.length} projet${recovered.length > 1 ? 's' : ''}.`
+        `${total} photo${total > 1 ? 's' : ''} ajoutée${total > 1 ? 's' : ''} ou réparée${total > 1 ? 's' : ''} (${totalProject} projet / ${totalTask} tâches).${issues}`
       );
     } else {
-      Alert.alert('Aucune photo', 'Aucune image trouvée dans les dossiers externes.');
+      Alert.alert(report.errors.length ? 'Accès incomplet' : report.scannedImages ? 'Photos déjà liées' : 'Aucune image trouvée',
+        report.scannedImages
+          ? `${report.scannedImages} image(s) trouvée(s). Aucun nouveau lien à ajouter.${issues}`
+          : `Aucune image lisible dans les dossiers parcourus. Vérifie que le dossier Yoann2.0 sélectionné contient bien Photos et ses images. La sauvegarde JSON contient les liens, pas les fichiers.${issues}`);
     }
+    } catch (error) {
+      Alert.alert('Récupération impossible', error instanceof Error ? error.message : 'Impossible de lire les photos.');
+    } finally { setRecoveringAll(false); }
   }
 
   async function handleRestore(uri: string, filename: string) {
@@ -557,6 +586,13 @@ export default function SettingsScreen() {
           label={recoveringAll ? 'Récupération en cours…' : 'Récupérer toutes les photos'}
           sublabel="Copier les images du dossier Yoann2.0/Photos vers tous les projets"
           onPress={handleRecoverAllPhotos}
+          colors={colors}
+        />
+        <SettingRow
+          icon="shield-check-outline"
+          label={protectingPhotos ? 'Protection en cours…' : 'Sécuriser toutes les photos'}
+          sublabel={`${photoStatus.local} copies permanentes · ${photoStatus.pending} copies externes en attente · ${photoStatus.missing} sources inaccessibles`}
+          onPress={handleProtectPhotos}
           colors={colors}
         />
 

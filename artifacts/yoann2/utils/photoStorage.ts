@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system/legacy';
-import { Alert } from 'react-native';
+import { Alert, Platform } from 'react-native';
+import { photoFilename } from '@/utils/photoReferences';
 
 const SAF            = FileSystem.StorageAccessFramework;
 const SAF_KEY        = '@yoann2_saf_photos_uri';
@@ -15,6 +16,19 @@ const _projectDirCache = new Map<string, string>();
 
 // ── Verrou singleton : un seul dialog de permission à la fois ─────────────────
 let _pendingPermission: Promise<string | null> | null = null;
+let _hiddenPhotosRoot: string | null = null;
+
+/** Keep backup copies out of Android's gallery without changing image dates/EXIF. */
+export async function ensurePhotosHidden(photosDir: string): Promise<void> {
+  if (_hiddenPhotosRoot === photosDir) return;
+  const children = await SAF.readDirectoryAsync(photosDir);
+  if (!children.some(uri => photoFilename(uri) === '.nomedia')) {
+    const marker = await SAF.createFileAsync(photosDir, '.nomedia', 'application/octet-stream');
+    if (photoFilename(marker) !== '.nomedia') throw new Error('Le dossier ne permet pas de masquer les copies de photos.');
+    await SAF.writeAsStringAsync(marker, '', { encoding: FileSystem.EncodingType.UTF8 });
+  }
+  _hiddenPhotosRoot = photosDir;
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -54,6 +68,7 @@ export async function getOrRequestPhotosDir(): Promise<string | null> {
               const yoann2     = await _makeDir(perm.directoryUri, 'Yoann2.0');
               const backupDir  = await _makeDir(yoann2, 'Sauvegarde');
               const photosDir  = await _makeDir(yoann2, 'Photos');
+              await ensurePhotosHidden(photosDir);
 
               await AsyncStorage.setItem(SAF_ROOT_KEY, yoann2);
               await AsyncStorage.setItem(SAF_BACKUP_KEY, backupDir);
@@ -165,6 +180,10 @@ export async function reconfigureStorage(): Promise<boolean> {
     if (!perm.granted) return false;
 
     const treeUri = perm.directoryUri;
+    if (photoFilename(treeUri).split(':').pop()?.toLowerCase() === 'photos') {
+      Alert.alert('Choisir le dossier parent', 'Sélectionne le dossier Yoann2.0, et non son sous-dossier Photos.');
+      return false;
+    }
     await AsyncStorage.setItem(SAF_ROOT_KEY, treeUri);
 
     const [backupDir, photosDir] = await Promise.all([
@@ -174,9 +193,12 @@ export async function reconfigureStorage(): Promise<boolean> {
 
     await AsyncStorage.setItem(SAF_BACKUP_KEY, backupDir);
     await AsyncStorage.setItem(SAF_KEY, photosDir);
+    await ensurePhotosHidden(photosDir);
 
     // Clear per-project dir cache so next photo use re-resolves against new root
     _projectDirCache.clear();
+    const staleKeys = (await AsyncStorage.getAllKeys()).filter(key => key.startsWith(PROJECT_DIR_PREFIX));
+    if (staleKeys.length) await AsyncStorage.multiRemove(staleKeys);
 
     return true;
   } catch {
@@ -189,11 +211,9 @@ export async function reconfigureStorage(): Promise<boolean> {
 // Strategy (ordered, cheapest first):
 //   1. In-memory session cache  → instant, covers every photo in the same batch
 //   2. AsyncStorage             → survives across sessions, no SAF round-trip
-//   3. makeDirectoryAsync       → only on first-ever use, result stored in 1 & 2
-//
-// We deliberately AVOID the readDirectoryAsync name-scan approach: SAF URIs are
-// opaque blobs on Android, not reliable path strings, so suffix-matching produces
-// false negatives and triggers duplicate-folder creation.
+//   3. Find an existing directory before creating one.
+// The primary external-storage provider used by this app exposes document paths.
+// Reuse those names after reauthorization instead of creating "Project (2)".
 
 async function _makeDir(parentUri: string, name: string): Promise<string> {
   return SAF.makeDirectoryAsync(parentUri, name);
@@ -215,8 +235,8 @@ async function _resolveProjectDir(photosBaseDir: string, projectName: string): P
     }
   } catch { /* fall through */ }
 
-  // 3) Create the folder (first time ever for this project)
-  const dirUri = await _makeDir(photosBaseDir, key);
+  // 3) Reuse an existing folder after reinstall/reconfiguration when possible.
+  const dirUri = await _findOrCreateSubfolder(photosBaseDir, key);
   _projectDirCache.set(key, dirUri);
   try {
     await AsyncStorage.setItem(PROJECT_DIR_PREFIX + key, dirUri);
@@ -247,10 +267,11 @@ export async function savePhotoToProject(
   originalFilename?: string | null,
   projectDirUri?: string | null,
   subFolder?: string | null,
-): Promise<void> {
+): Promise<string | null> {
   try {
     const photosDir = await getOrRequestPhotosDir();
-    if (!photosDir) return;
+    if (!photosDir) return null;
+    await ensurePhotosHidden(photosDir);
 
     let dir = projectDirUri ?? await _resolveProjectDir(photosDir, projectName);
     if (subFolder) {
@@ -271,8 +292,11 @@ export async function savePhotoToProject(
     await SAF.writeAsStringAsync(destUri, base64, {
       encoding: FileSystem.EncodingType.Base64,
     });
+    const verified = await SAF.readAsStringAsync(destUri, { encoding: FileSystem.EncodingType.Base64 });
+    if (verified !== base64) throw new Error('La copie externe est incomplète.');
+    return destUri;
   } catch {
-    // La copie interne reste toujours disponible
+    return null;
   }
 }
 
@@ -308,39 +332,9 @@ export async function resolveProjectDirForBatch(
 export async function recoverPhotosFromExternal(
   projectName: string,
 ): Promise<string[]> {
-  const photosDir = await getOrRequestPhotosDir();
-  if (!photosDir) return [];
-
-  const projectDir = await _resolveProjectDir(photosDir, projectName);
-  const localDir = FileSystem.documentDirectory + 'project_photos/';
-  const localDirInfo = await FileSystem.getInfoAsync(localDir);
-  if (!localDirInfo.exists) {
-    await FileSystem.makeDirectoryAsync(localDir, { intermediates: true });
-  }
-
-  const newUris: string[] = [];
-  try {
-    const files = await SAF.readDirectoryAsync(projectDir);
-    for (const fileUri of files) {
-      const decoded = decodeURIComponent(fileUri);
-      const isImage = /\.(jpe?g|png|gif|webp|heic)$/i.test(decoded);
-      if (!isImage) continue;
-
-      const filename = decoded.split('/').pop() ?? `recovered_${Date.now()}.jpg`;
-      const base64 = await SAF.readAsStringAsync(fileUri, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
-      const localPath = localDir + filename;
-      await FileSystem.writeAsStringAsync(localPath, base64, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
-      newUris.push(localPath);
-    }
-  } catch {
-    // ignore scan errors
-  }
-
-  return newUris;
+  const report = await recoverAllPhotosFromExternal([projectName]);
+  if (!report.projects.length && report.errors.length) throw new Error(report.errors[0]);
+  return report.projects.flatMap(result => result.projectUris);
 }
 
 // ── Check whether external photos exist for a project ──────────────────────────
@@ -382,83 +376,77 @@ export interface RecoverResult {
   taskFolders: TaskFolderResult[];
 }
 
+export interface PhotoRecoveryReport {
+  projects: RecoverResult[];
+  scannedImages: number;
+  errors: string[];
+}
+
 export async function recoverAllPhotosFromExternal(
   projectNames: string[],
-): Promise<RecoverResult[]> {
+): Promise<PhotoRecoveryReport> {
+  if (Platform.OS === 'web') throw new Error('La récupération des photos est disponible sur le téléphone.');
   const photosDir = await getOrRequestPhotosDir();
-  if (!photosDir) return [];
-
-  const localDir = FileSystem.documentDirectory + 'project_photos/';
-  const localDirInfo = await FileSystem.getInfoAsync(localDir);
-  if (!localDirInfo.exists) {
-    await FileSystem.makeDirectoryAsync(localDir, { intermediates: true });
+  if (!photosDir) throw new Error('Sélection du dossier annulée. Aucune photo n’a été modifiée.');
+  let children: string[];
+  try { children = await SAF.readDirectoryAsync(photosDir); }
+  catch {
+    throw new Error('Le dossier Photos est inaccessible. Configure à nouveau le dossier Yoann2.0 existant dans les paramètres pour autoriser son accès, puis relance la récupération.');
   }
+  if (!FileSystem.documentDirectory) throw new Error('Stockage local indisponible.');
 
-  const results: RecoverResult[] = [];
-
+  const localDir = FileSystem.documentDirectory + 'project_photos/recovered/';
+  const report: PhotoRecoveryReport = { projects: [], scannedImages: 0, errors: [] };
+  const visited = new Set<string>();
+  const imagePattern = /\.(jpe?g|png|gif|webp|heic|heif)$/i;
+  let visitedCount = 0;
   for (const projectName of projectNames) {
-    const key = sanitize(projectName);
-    try {
-      const children = await SAF.readDirectoryAsync(photosDir);
-      const found = children.find(uri => {
-        const decoded = decodeURIComponent(uri).toLowerCase();
-        return decoded.endsWith('/' + key.toLowerCase());
-      });
-      if (!found) continue;
-
-      const projectUris: string[] = [];
-      const taskFolders: TaskFolderResult[] = [];
-
-      const rootEntries = await SAF.readDirectoryAsync(found);
-
-      for (const entryUri of rootEntries) {
-        const decoded = decodeURIComponent(entryUri);
-        const lastSegment = decoded.split('/').pop() ?? '';
-
-        if (/\.(jpe?g|png|gif|webp|heic)$/i.test(lastSegment)) {
-          // Root image → project photo
-          const filename = lastSegment || `recovered_${Date.now()}.jpg`;
-          const base64 = await SAF.readAsStringAsync(entryUri, {
-            encoding: FileSystem.EncodingType.Base64,
-          });
-          const localPath = localDir + filename;
-          await FileSystem.writeAsStringAsync(localPath, base64, {
-            encoding: FileSystem.EncodingType.Base64,
-          });
-          projectUris.push(localPath);
-        } else {
-          // Sub-folder → task photos; preserve folder name + extract embedded task ID
-          const folderName = lastSegment;
-          const taskId = extractTaskId(folderName);
-          const taskUris: string[] = [];
+    const key = sanitize(projectName).toLowerCase();
+    const matches = children.filter(uri => photoFilename(uri).toLowerCase().replace(/ \(\d+\)$/, '') === key);
+    const result: RecoverResult = { projectName, projectUris: [], taskFolders: [] };
+    const folders = new Map<string, TaskFolderResult>();
+    async function visit(directory: string, path: string[], taskName?: string): Promise<void> {
+      if (visited.has(directory)) return;
+      if (path.length > 12 || visitedCount >= 10_000) {
+        report.errors.push('Limite de parcours des sous-dossiers atteinte. Récupération partielle.');
+        return;
+      }
+      visited.add(directory);
+      visitedCount++;
+      let entries: string[];
+      try { entries = await SAF.readDirectoryAsync(directory); }
+      catch { report.errors.push(`Sous-dossier inaccessible : ${path.join('/')}`); return; }
+      for (const uri of entries) {
+        const name = photoFilename(uri);
+        if (imagePattern.test(name)) {
+          report.scannedImages++;
           try {
-            const taskFiles = await SAF.readDirectoryAsync(entryUri);
-            for (const fileUri of taskFiles) {
-              const fileDecoded = decodeURIComponent(fileUri);
-              const fileName = fileDecoded.split('/').pop() ?? '';
-              if (/\.(jpe?g|png|gif|webp|heic)$/i.test(fileName)) {
-                const base64 = await SAF.readAsStringAsync(fileUri, {
-                  encoding: FileSystem.EncodingType.Base64,
-                });
-                const localPath = localDir + fileName;
-                await FileSystem.writeAsStringAsync(localPath, base64, {
-                  encoding: FileSystem.EncodingType.Base64,
-                });
-                taskUris.push(localPath);
-              }
+            // Full-path namespace prevents cross-project/task filename collisions.
+            const destinationDir = localDir + path.map(part => encodeURIComponent(part)).join('/') + '/';
+            await FileSystem.makeDirectoryAsync(destinationDir, { intermediates: true });
+            const destination = destinationDir + encodeURIComponent(name);
+            const base64 = await SAF.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
+            await FileSystem.writeAsStringAsync(destination, base64, { encoding: FileSystem.EncodingType.Base64 });
+            if (!taskName) result.projectUris.push(destination);
+            else {
+              const folder = folders.get(taskName) ?? {
+                folderName: taskName, taskId: extractTaskId(taskName), uris: [],
+              };
+              folder.uris.push(destination);
+              folders.set(taskName, folder);
             }
-          } catch { /* sub-folder empty or unreadable */ }
-          if (taskUris.length > 0) taskFolders.push({ folderName, taskId, uris: taskUris });
+          } catch { report.errors.push(`Photo non récupérée : ${path.join('/')}/${name}`); }
+        } else if (!/\.[a-z0-9]{1,5}$/i.test(name)) {
+          // A nested album is not a new task. Keep the enclosing task identity.
+          const owner = extractTaskId(name) ? name : taskName
+            ?? (/^(taches|tâches|tasks)$/i.test(name) ? undefined : name);
+          await visit(uri, [...path, name], owner);
         }
       }
-
-      if (projectUris.length > 0 || taskFolders.length > 0) {
-        results.push({ projectName, projectUris, taskFolders });
-      }
-    } catch {
-      // ignore per-project errors
     }
+    for (const match of matches) await visit(match, [photoFilename(match)]);
+    result.taskFolders = [...folders.values()];
+    if (result.projectUris.length || result.taskFolders.length) report.projects.push(result);
   }
-
-  return results;
+  return report;
 }

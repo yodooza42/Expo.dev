@@ -4,9 +4,8 @@ import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import * as MediaLibrary from 'expo-media-library';
-import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -22,6 +21,7 @@ import {
 
 import { BottomSheet } from '@/components/BottomSheet';
 import { GalleryPhotoPicker } from '@/components/GalleryPhotoPicker';
+import { ProjectPhoto } from '@/components/ProjectPhoto';
 import { PriorityBadge } from '@/components/PriorityBadge';
 import { useApp } from '@/contexts/AppContext';
 import { useColors } from '@/hooks/useColors';
@@ -29,6 +29,8 @@ import { SubPageHeader } from '@/components/SubPageHeader';
 import type { TaskStatus } from '@/types';
 import { syncGeofences } from '@/utils/geoReminderManager';
 import { computeStreak, recurrenceLabel } from '@/utils/streakUtils';
+import { protectPhoto } from '@/utils/photoProtection';
+import { taskFolderName } from '@/utils/photoStorage';
 
 const { width } = Dimensions.get('window');
 
@@ -58,6 +60,8 @@ export default function TaskDetailScreen() {
   const colors = useColors();
   const router = useRouter();
   const { tasks, projects, updateTask, deleteTask, addTransactionCtx, deleteTransactionCtx, getTaskExpenses } = useApp();
+  const latestTasks = useRef(tasks);
+  latestTasks.current = tasks;
 
   const taskMaybe = tasks.find(t => t.id === id);
   const project = taskMaybe ? projects.find(p => p.id === taskMaybe.projectId) : null;
@@ -108,9 +112,18 @@ export default function TaskDetailScreen() {
     ? parseFrenchDate(task.completedAt)
     : parseFrenchDate(task.dueDate);
 
-  function addTaskPhotoUris(uris: string[]) {
-    const newUris = uris.filter(uri => !task.photos.includes(uri));
-    if (newUris.length > 0) updateTask(task.id, { photos: [...task.photos, ...newUris] });
+  async function addTaskPhotoUris(uris: string[]) {
+    try {
+      const permanent = await Promise.all(uris.map(uri => protectPhoto(uri, {
+        project: project?.name ?? 'Sans projet', folder: taskFolderName(task.title, task.id),
+      })));
+      const current = latestTasks.current.find(item => item.id === task.id);
+      if (!current) return;
+      const newUris = permanent.filter(uri => !current.photos.includes(uri));
+      if (newUris.length > 0) updateTask(task.id, { photos: [...current.photos, ...newUris] });
+    } catch (error) {
+      Alert.alert('Photo non conservée', error instanceof Error ? error.message : 'Copie permanente impossible.');
+    }
   }
 
   async function browseAllTaskPhotos() {
@@ -122,8 +135,11 @@ export default function TaskDetailScreen() {
     if (!result.canceled) addTaskPhotoUris(result.assets.map(asset => asset.uri));
   }
 
-  function addGalleryTaskPhotos(assets: MediaLibrary.Asset[]) {
-    addTaskPhotoUris(assets.map(asset => asset.uri));
+  async function addGalleryTaskPhotos(assets: MediaLibrary.Asset[]) {
+    try {
+      const uris = await Promise.all(assets.map(async asset => (await MediaLibrary.getAssetInfoAsync(asset)).localUri ?? asset.uri));
+      await addTaskPhotoUris(uris);
+    } catch { Alert.alert('Photo inaccessible', 'Autorise l’accès aux photos, puis réessaie.'); }
   }
 
   async function handleSetGeoReminder() {
@@ -509,7 +525,7 @@ export default function TaskDetailScreen() {
                 {task.photos.map((uri, idx) => (
                   <View key={idx} style={styles.photoThumb}>
                     <Pressable onPress={() => setPhotoViewIdx(idx)} style={{ flex: 1 }}>
-                      <Image source={{ uri }} style={styles.photoImg} contentFit="cover" />
+                      <ProjectPhoto uri={uri} style={styles.photoImg} contentFit="cover" />
                     </Pressable>
                     <Pressable
                       onPress={() => handleDeletePhoto(uri, idx)}
@@ -650,7 +666,7 @@ export default function TaskDetailScreen() {
             <MaterialCommunityIcons name="close" size={26} color="#fff" />
           </Pressable>
           {photoViewIdx !== null && task.photos[photoViewIdx] && (
-            <Image source={{ uri: task.photos[photoViewIdx] }} style={styles.photoFull} contentFit="contain" />
+            <ProjectPhoto uri={task.photos[photoViewIdx]} style={styles.photoFull} contentFit="contain" />
           )}
         </View>
       </Modal>

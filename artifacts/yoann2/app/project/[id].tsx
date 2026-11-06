@@ -1,7 +1,7 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
-import { Image } from 'expo-image';
+import { ProjectPhoto } from '@/components/ProjectPhoto';
 import * as Haptics from 'expo-haptics';
 import * as MediaLibrary from 'expo-media-library';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -32,6 +32,8 @@ import { useColors } from '@/hooks/useColors';
 import type { ProjectStatus, Task } from '@/types';
 import { BankTransaction, CategoryConfig, getCategoryConfigs } from '@/utils/bankStorage';
 import { hasExternalPhotos, recoverPhotosFromExternal, savePhotoToProject } from '@/utils/photoStorage';
+import { mergeRecoveredPhotoUris } from '@/utils/photoReferences';
+import { protectPhoto } from '@/utils/photoProtection';
 
 const { width } = Dimensions.get('window');
 
@@ -172,7 +174,7 @@ export default function ProjectDetailScreen() {
         },
       },
       {
-        text: 'Galerie (associer sans copier)',
+        text: 'Galerie (copie protégée)',
         onPress: async () => {
           setGalleryPickerVisible(true);
         },
@@ -181,10 +183,15 @@ export default function ProjectDetailScreen() {
     ]);
   }
 
-  function addProjectPhotoUris(uris: string[]) {
-    const newUris = uris.filter(uri => !project.photos.includes(uri));
+  async function addProjectPhotoUris(uris: string[]) {
+    try {
+    const permanent = await Promise.all(uris.map(uri => protectPhoto(uri, { project: project.name })));
+    const newUris = permanent.filter(uri => !project.photos.includes(uri));
     if (newUris.length > 0) {
       updateProject(project.id, { photos: [...project.photos, ...newUris] });
+    }
+    } catch (error) {
+      Alert.alert('Photo non conservée', error instanceof Error ? error.message : 'Copie permanente impossible.');
     }
   }
 
@@ -197,8 +204,11 @@ export default function ProjectDetailScreen() {
     if (!result.canceled) addProjectPhotoUris(result.assets.map(asset => asset.uri));
   }
 
-  function addGalleryProjectPhotos(assets: MediaLibrary.Asset[]) {
-    addProjectPhotoUris(assets.map(asset => asset.uri));
+  async function addGalleryProjectPhotos(assets: MediaLibrary.Asset[]) {
+    try {
+      const uris = await Promise.all(assets.map(async asset => (await MediaLibrary.getAssetInfoAsync(asset)).localUri ?? asset.uri));
+      await addProjectPhotoUris(uris);
+    } catch { Alert.alert('Photo inaccessible', 'Autorise l’accès aux photos, puis réessaie.'); }
   }
 
   function openPhoto(idx: number) {
@@ -248,10 +258,11 @@ export default function ProjectDetailScreen() {
   async function handleRecover() {
     if (!project) return;
     setRecovering(true);
+    try {
     const recovered = await recoverPhotosFromExternal(project.name);
-    setRecovering(false);
     if (recovered.length > 0) {
-      updateProject(project.id, { photos: [...project.photos, ...recovered] });
+      const merged = await mergeRecoveredPhotoUris(project.photos, recovered);
+      updateProject(project.id, { photos: merged.uris });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       Alert.alert(
         'Photos récupérées',
@@ -260,6 +271,9 @@ export default function ProjectDetailScreen() {
     } else {
       Alert.alert('Aucune photo', 'Aucune image trouvée dans le dossier externe du projet.');
     }
+    } catch (error) {
+      Alert.alert('Récupération impossible', error instanceof Error ? error.message : 'Accès au dossier impossible.');
+    } finally { setRecovering(false); }
   }
 
   function openEditExpense(e: BankTransaction) {
@@ -846,7 +860,7 @@ export default function ProjectDetailScreen() {
                   <View style={styles.photoGrid}>
                     {allPhotos.map((photo, idx) => (
                       <Pressable key={idx} onPress={() => openPhoto(idx)} style={styles.photoThumb}>
-                        <Image source={{ uri: photo.uri }} style={styles.photoImg} contentFit="cover" />
+                        <ProjectPhoto uri={photo.uri} style={styles.photoImg} contentFit="cover" />
                         {!photo.deletable && (
                           <View style={[styles.taskPhotoBadge, { backgroundColor: colors.card + 'CC' }]}>
                             <MaterialCommunityIcons name="format-list-checks" size={10} color={colors.primary} />
@@ -1000,8 +1014,8 @@ export default function ProjectDetailScreen() {
               }}
               renderItem={({ item }) => (
                 <View style={{ width, justifyContent: 'center', alignItems: 'center' }}>
-                  <Image
-                    source={{ uri: item.uri }}
+                  <ProjectPhoto
+                    uri={item.uri}
                     style={styles.photoFull}
                     contentFit="contain"
                   />

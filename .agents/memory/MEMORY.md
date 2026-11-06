@@ -23,3 +23,4 @@
 - [Virements épargne centralisés](savings-transfer-consistency.md) — les virements manuels et automatiques doivent partager la même écriture solde épargne + transaction courant.
 - [Sources de tuiles cartographiques](map-tile-sources.md) — CARTO renvoie « API KEY REQUIRED » ; les fonds ArcGIS testés fonctionnent sans clé et exigent une attribution visible.
 - [WebViews invisibles Android](hidden-native-webview-layout.md) — contraindre aussi le conteneur natif : masquer la vue interne ne supprime pas son espace dans la page.
+- [Protection des photos](photo-protection.md) — copies permanentes et double copie locale vérifiée, masquée de la galerie sans changer les dates ni les originaux.

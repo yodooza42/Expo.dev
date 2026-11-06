@@ -6,6 +6,7 @@ import type { Appointment, AppStats, CalendarPeriod, Category, Priority, Project
 import { saveBackup } from '@/utils/backup';
 import { genId } from '@/utils/ids';
 import { ensureAllTaskFolders, ensureTaskFolder } from '@/utils/photoStorage';
+import { usePhotoProtection } from '@/hooks/usePhotoProtection';
 import {
   BankTransaction,
   getTransactions,
@@ -234,6 +235,28 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => { tasksRef.current = tasks; }, [tasks]);
   useEffect(() => { categoriesRef.current = categories; }, [categories]);
   useEffect(() => { appointmentsRef.current = appointments; }, [appointments]);
+
+  usePhotoProtection({
+    projects, tasks, loading,
+    replaceProject: (id, replacements) => {
+      setProjects(previous => {
+        const next = previous.map(project => project.id === id
+          ? { ...project, photos: project.photos.map(uri => replacements.get(uri) ?? uri) } : project);
+        AsyncStorage.setItem(STORAGE_KEYS.PROJECTS, JSON.stringify(next)).catch(console.warn);
+        dirtyRef.current = true;
+        return next;
+      });
+    },
+    replaceTask: (id, replacements) => {
+      setTasks(previous => {
+        const next = previous.map(task => task.id === id
+          ? { ...task, photos: task.photos.map(uri => replacements.get(uri) ?? uri) } : task);
+        AsyncStorage.setItem(STORAGE_KEYS.TASKS, JSON.stringify(next)).catch(console.warn);
+        dirtyRef.current = true;
+        return next;
+      });
+    },
+  });
 
   useEffect(() => {
     loadData();
