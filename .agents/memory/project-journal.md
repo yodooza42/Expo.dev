@@ -8,3 +8,9 @@ Le carnet de bord vidéo des projets doit reprendre le principe des stories de t
 **Why:** l’utilisateur veut un résultat fini et qualitatif, pas un brouillon. Il demande le style de ses blocs-notes à petits carreaux de 0,5 cm × 0,5 cm.
 
 **How to apply:** garder une identité de carnet papier quadrillé dans le film. Ne pas remplacer une date de fin inconnue par une échéance ou la dernière modification. Les choix de montage et les légendes de vidéo doivent rester indépendants des tâches, projets, photos et légendes originales.
+
+La chronologie doit entrelacer les tâches des différents projets selon leur complétion, sans les regrouper par projet ni attendre que le projet soit terminé.
+
+**Why:** l’utilisateur travaille sur plusieurs projets en parallèle et veut voir chaque tâche dans l’ordre réel, pas seulement une succession des projets.
+
+**How to apply:** distinguer clairement le projet et la tâche sur chaque étape ; conserver les photos de cette tâche. La fin d’un projet est un jalon distinct, pas un remplacement de ses tâches.
