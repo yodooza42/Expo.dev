@@ -26,8 +26,8 @@ const projects = [
 const tasks = [
   { id: 'later', projectId: 'p1', title: 'Finition', status: 'done', completedAt: '05/04/2026', dueDate: '2026-08-01', notes: 'Note originale', photos: ['file://a', 'file://b'] },
   { id: 'earlier', projectId: 'p2', title: 'Préparer', status: 'done', completedAt: '02/04/2026', dueDate: '2026-09-01', notes: '', photos: [] },
-  { id: 'unknown', projectId: 'p1', title: 'Date inconnue', status: 'done', photos: ['file://unknown'] },
-  { id: 'todo', projectId: 'p1', title: 'À venir', status: 'todo', completedAt: '01/04/2026', photos: [] },
+  { id: 'unknown', projectId: 'p2', title: 'Date inconnue', status: 'done', photos: ['file://unknown'] },
+  { id: 'todo', projectId: 'p2', title: 'À venir', status: 'todo', completedAt: '01/04/2026', photos: [] },
 ];
 const choices = () => ({ ...journal.initialJournalChoices(projects), from: '2026-04-01', to: '2026-04-30', projectIds: ['p1', 'p2'] });
 
@@ -45,7 +45,7 @@ test('multiple projects and inclusive local completion dates produce chronologic
   assert.equal(output.error, '');
   assert.equal(JSON.stringify({ projects, tasks }), before);
   const oneDay = journal.buildProjectJournal(projects, tasks, { ...choices(), from: '2026-04-05', to: '2026-04-05' });
-  assert.deepEqual(clone(oneDay.entries.map(e => e.id)), ['task:later']);
+  assert.deepEqual(clone(oneDay.entries.map(e => e.id)), ['task:later', 'project:p1']);
 });
 test('project selection, excluded entries/photos and independent captions never alter originals', () => {
   const base = choices(), photoId = journal.journalPhotoId('task:later', 'file://b');
@@ -64,13 +64,47 @@ test('project selection, excluded entries/photos and independent captions never 
 });
 test('missing completion date never substitutes the due date even when the task has photos', () => {
   const onlyUndated = {
-    ...tasks[2], dueDate: '06/04/2026', photos: ['file://still-here'],
+    ...tasks[2], projectId: 'p2', dueDate: '06/04/2026', photos: ['file://still-here'],
   };
   const output = journal.buildProjectJournal(projects, [onlyUndated], choices());
   assert.equal(output.photoCount, 1, 'the separately completed project album is still available');
   assert.equal(output.undatedPhotos, 1);
   assert.equal(output.undated[0].photoCount, 1);
   assert.ok(!output.entries.some(entry => entry.id === 'task:unknown'));
+});
+test('parallel projects stay interleaved and each recap immediately follows its closing task', () => {
+  const ps = ['p1', 'p2', 'p3'].map(id => ({ id, name: id, status: 'inprogress', photos: [] }));
+  const order = ['p2', 'p3', 'p2', 'p1', 'p1', 'p3', 'p2', 'p1', 'p3'];
+  const counts = {};
+  const ts = order.map((projectId, i) => ({
+    id: `${projectId}-t${counts[projectId] = (counts[projectId] ?? 0) + 1}`,
+    projectId, title: `${projectId} tâche ${counts[projectId]}`, status: 'done',
+    completedAt: `${String(i + 1).padStart(2, '0')}/04/2026`, photos: [`file://${i}`],
+  }));
+  const before = JSON.stringify({ ps, ts });
+  const opts = { ...choices(), projectIds: ps.map(p => p.id) };
+  const output = journal.buildProjectJournal(ps, ts, opts);
+  assert.deepEqual(clone(output.entries.map(e => e.id)), [
+    'task:p2-t1', 'task:p3-t1', 'task:p2-t2', 'task:p1-t1', 'task:p1-t2', 'task:p3-t2',
+    'task:p2-t3', 'project:p2', 'task:p1-t3', 'project:p1', 'task:p3-t3', 'project:p3',
+  ]);
+  for (const recap of output.entries.filter(e => e.recapTasks)) {
+    assert.equal(recap.recapTasks.length, 3);
+    assert.equal(output.entries[output.entries.indexOf(recap) - 1].id, recap.afterTaskId);
+  }
+  const limited = journal.buildProjectJournal(ps, ts, { ...opts, from: '2026-04-07', to: '2026-04-07' });
+  assert.equal(limited.entries[1].recapTasks.length, 3, 'recap includes earlier tasks without adding their media again');
+  assert.equal(limited.photoCount, 1);
+  const excluded = journal.buildProjectJournal(ps, ts, { ...opts, excludedEntryIds: ['task:p2-t3'] });
+  assert.ok(!excluded.entries.some(e => e.id === 'project:p2'), 'cannot close after a hidden final task');
+  const reopened = journal.buildProjectJournal(ps, ts.map(t => t.id === 'p2-t2' ? { ...t, status: 'inprogress' } : t), opts);
+  assert.ok(!reopened.entries.some(e => e.id === 'project:p2'));
+  const unknown = journal.buildProjectJournal(ps, ts.map(t => t.id === 'p2-t1' ? { ...t, completedAt: undefined } : t), opts);
+  assert.ok(!unknown.entries.some(e => e.id === 'project:p2'));
+  const tied = journal.buildProjectJournal(ps, ts.map(t => ({ ...t, completedAt: '01/04/2026' })), opts);
+  for (const recap of tied.entries.filter(e => e.recapTasks))
+    assert.equal(tied.entries[tied.entries.indexOf(recap) - 1].id, recap.afterTaskId);
+  assert.equal(JSON.stringify({ ps, ts }), before);
 });
 test('empty/invalid ranges, malformed drafts and oversized selections fail explicitly without truncation', () => {
   assert.ok(journal.buildProjectJournal(projects, tasks, { ...choices(), from: '2026-05-01', to: '2026-04-01' }).error);
@@ -179,6 +213,27 @@ function payload({ count = 3, preview = true } = {}) {
   return { jobId: 'job', journal: true, preview, title: 'Mon carnet', periodLabel: 'Avril 2026', projectNames: ['Garage'],
     entryCount: count, photoCount: count, secondsPerPhoto: 3, entries };
 }
+test('recap renderer includes every task across readable pages with matching preview/export duration', async () => {
+  const e = engine(), data = payload({ count: 0 });
+  const recap = {
+    id: 'project:one', kind: 'project', title: 'Un projet mené à bien', project: 'Garage',
+    caption: 'Une étape après l’autre !', photos: [],
+    recapTasks: Array.from({ length: 13 }, (_, i) => ({ id: `t${i}`, title: `Réalisation ${i}`, dateLabel: '5 avril 2026' })),
+  };
+  data.entries = [recap]; data.entryCount = 1; data.photoCount = 0;
+  e.win.generatePeriodStory(data);
+  assert.equal(e.win.journalDuration, journal.journalDuration([recap], 3));
+  await e.advance(200);
+  e.win.journalPause();
+  for (let page = 0; page < 3; page++) {
+    e.win.journalSeek(6 + page * journal.journalRecapDuration(recap));
+    await e.advance(200);
+  }
+  for (let i = 0; i < 13; i++)
+    assert.ok(e.draws.some(draw => draw.text === `Réalisation ${i}`), `missing recap task ${i}`);
+  assert.ok(e.draws.some(draw => draw.text === 'PROJET TERMINÉ'));
+  assert.equal(e.activeImages, 0, 'summary does not decode all original task photos again');
+});
 test('preview and exporter use exactly the calculated duration, expose controls and load bounded photos', async () => {
   const e = engine(), data = payload({ count: 30 });
   e.win.generatePeriodStory(data);

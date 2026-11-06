@@ -21,6 +21,9 @@ export type JournalEntry = {
   dateKey: string;
   caption: string;
   photos: JournalPhoto[];
+  /** A project recap follows its closing task, never a project-sorted chapter. */
+  afterTaskId?: string;
+  recapTasks?: Array<{ id: string; title: string; dateLabel: string }>;
 };
 
 /** All media are temporary story copies. Never modify the source tasks/photos. */

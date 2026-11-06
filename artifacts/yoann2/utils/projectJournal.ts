@@ -17,9 +17,12 @@ export function journalPhotoId(entryId: string, uri: string): string {
   return `${entryId}:${(hash >>> 0).toString(36)}`;
 }
 export const journalPace = (pace: JournalChoices['pace']) => pace === 'calm' ? 6 : pace === 'quick' ? 3 : 4.5;
+export const journalRecapDuration = (entry: JournalEntry) => Math.max(8, Math.min(16,
+  4 + Math.ceil((entry.recapTasks?.length ?? 0) / 6) * 4 + Math.ceil(entry.caption.trim().length / 60)));
 export function journalDuration(entries: JournalEntry[], secondsPerPhoto: number): number {
   return 8 + entries.reduce((sum, entry) => sum
-    + Math.max(entry.photos.length ? 3 : 4, Math.min(16, 2 + Math.ceil((entry.title.length + entry.caption.length) / 24)))
+    + (entry.recapTasks?.length ? Math.ceil(entry.recapTasks.length / 6) * journalRecapDuration(entry)
+      : Math.max(entry.photos.length ? 3 : 4, Math.min(16, 2 + Math.ceil((entry.title.length + entry.caption.length) / 24))))
     + entry.photos.reduce((seconds, photo) => seconds + Math.max(secondsPerPhoto, Math.min(16, 2 + Math.ceil(photo.caption.length / 24))), 0), 0);
 }
 export function initialJournalChoices(projects: Project[], projectId?: string): JournalChoices {
@@ -70,10 +73,44 @@ export function buildProjectJournal(projects: Project[], tasks: Task[], choices:
     const project = projectById.get(task.projectId);
     if (project) add(task, 'task', project);
   });
-  selectedProjects.forEach(project => add(project, 'project', project));
+  selectedProjects.forEach(project => {
+    const children = tasks.filter(task => task.projectId === project.id);
+    const ordered = [...children].sort((a, b) => {
+      const ad = a.completedAt ? parseCompletionDate(a.completedAt) : null;
+      const bd = b.completedAt ? parseCompletionDate(b.completedAt) : null;
+      return (ad?.getTime() ?? 0) - (bd?.getTime() ?? 0) || a.id.localeCompare(b.id);
+    });
+    // The final task closes the story even when the project status has not yet been updated.
+    // Never celebrate a partial/reopened project or guess a missing task completion date.
+    const complete = children.length > 0 && children.every(task =>
+      task.status === 'done' && !!task.completedAt && !!parseCompletionDate(task.completedAt));
+    if (complete && project.status !== 'abandoned') {
+      const last = ordered[ordered.length - 1]!;
+      const before = candidates.length;
+      add({ ...project, status: 'done', completedAt: last.completedAt }, 'project', project);
+      const recap = candidates[before];
+      if (recap) {
+        recap.afterTaskId = `task:${last.id}`;
+        recap.recapTasks = ordered.map(task => ({
+          id: task.id, title: task.title,
+          dateLabel: parseCompletionDate(task.completedAt!)!.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }),
+        }));
+        recap.caption = choices.captions[recap.id] ?? 'Une étape après l’autre, et voilà un projet mené à bien !';
+      }
+    } else {
+      // Keep an explicitly dated project milestone/album, but never call it an all-tasks recap.
+      add(project, 'project', project);
+    }
+  });
   candidates.sort((a, b) => a.dateKey.localeCompare(b.dateKey)
     || a.project.localeCompare(b.project, 'fr') || a.id.localeCompare(b.id));
-  const entries = candidates.filter(e => !choices.excludedEntryIds.includes(e.id)).map(e => ({
+  // Insert recaps after the last task, including when other projects finish on the same day.
+  const recaps = candidates.filter(entry => entry.afterTaskId);
+  const orderedCandidates = candidates.filter(entry => !entry.afterTaskId).flatMap(entry =>
+    [entry, ...recaps.filter(recap => recap.afterTaskId === entry.id)]);
+  candidates.splice(0, candidates.length, ...orderedCandidates);
+  const entries = candidates.filter(e => !choices.excludedEntryIds.includes(e.id)
+    && (!e.afterTaskId || !choices.excludedEntryIds.includes(e.afterTaskId))).map(e => ({
     ...e, photos: e.photos.filter(photo => !choices.excludedPhotoIds.includes(photo.id)),
   }));
   const photoCount = entries.reduce((sum, entry) => sum + entry.photos.length, 0);

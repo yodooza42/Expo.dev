@@ -29,7 +29,7 @@ export function JournalEntryEditor({ entry, choices, expanded, onExpand, onChang
         <Text style={[s.date, { color: c.mutedForeground }]}>{String(number).padStart(2, '0')} / {entry.dateLabel}</Text>
         <Text style={[s.title, { color: included ? c.foreground : c.mutedForeground }]}>{entry.title}</Text>
         <Text style={[s.small, { color: c.mutedForeground }]}>
-          {entry.kind === 'project' ? 'Projet terminé' : entry.project} · {photoCount} photo{photoCount > 1 ? 's' : ''}
+          {entry.recapTasks ? `Récapitulatif · ${entry.recapTasks.length} tâches accomplies` : entry.kind === 'project' ? 'Projet terminé' : entry.project} · {photoCount} photo{photoCount > 1 ? 's' : ''}
         </Text>
       </Pressable>
       <Pressable onPress={onExpand} accessibilityLabel={expanded ? 'Replier l’étape' : 'Modifier les photos et légendes'} style={s.check}>
@@ -37,6 +37,13 @@ export function JournalEntryEditor({ entry, choices, expanded, onExpand, onChang
       </Pressable>
     </View>
     {expanded && <View style={s.content}>
+      {entry.recapTasks && <>
+        <Text style={[s.label, { color: c.primary }]}>Juste après la dernière tâche du projet</Text>
+        {entry.recapTasks.map(task => <Text key={task.id} style={[s.small, { color: c.foreground }]}>
+          ✓ {task.title} · {task.dateLabel}
+        </Text>)}
+        <Text style={[s.small, { color: c.mutedForeground }]}>Toutes les tâches du projet sont récapitulées, y compris celles réalisées avant la période choisie. Les longues listes sont réparties sur plusieurs pages.</Text>
+      </>}
       <Text style={[s.label, { color: c.foreground }]}>Légende de l’étape</Text>
       <TextInput testID={`journal-caption-${entry.id}`} accessibilityLabel={`Légende de ${entry.title}`}
         multiline maxLength={280} value={entry.caption} placeholder="Ce qui a changé, un détail à retenir…"
@@ -45,7 +52,7 @@ export function JournalEntryEditor({ entry, choices, expanded, onExpand, onChang
         style={[s.input, { color: c.foreground, borderColor: c.border, backgroundColor: c.background }]} />
       <Text style={[s.small, { color: c.mutedForeground }]}>{entry.caption.length}/280 · uniquement dans cette vidéo</Text>
       {entry.photos.length === 0 ? <Text style={[s.small, { color: c.mutedForeground }]}>
-        Sans photo : cette étape aura sa propre page de carnet, avec son titre et sa légende.
+        {entry.recapTasks ? 'Cette page récapitule les tâches accomplies ; leurs photos restent sur leurs étapes respectives.' : 'Sans photo : cette étape aura sa propre page de carnet, avec son titre et sa légende.'}
       </Text> : <>
         <View style={s.row}>
           <Text style={[s.label, s.flex, { color: c.foreground }]}>Photos · {photoCount}/{entry.photos.length}</Text>

@@ -14,3 +14,9 @@ La chronologie doit entrelacer les tâches des différents projets selon leur co
 **Why:** l’utilisateur travaille sur plusieurs projets en parallèle et veut voir chaque tâche dans l’ordre réel, pas seulement une succession des projets.
 
 **How to apply:** distinguer clairement le projet et la tâche sur chaque étape ; conserver les photos de cette tâche. La fin d’un projet est un jalon distinct, pas un remplacement de ses tâches.
+
+Lorsque toutes les tâches d’un projet sont accomplies, placer une page récapitulative du projet immédiatement après sa dernière tâche, avec toutes ses tâches et un petit commentaire sympathique.
+
+**Why:** l’utilisateur veut faire comprendre qu’un projet entier vient d’être fini, sans perdre la chronologie entre les projets parallèles.
+
+**How to apply:** reprendre aussi la dernière tâche dans le récapitulatif ; ne pas attendre une clôture manuelle du projet si toutes ses tâches sont terminées.

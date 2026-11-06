@@ -149,7 +149,7 @@ export default function ProjectJournalScreen() {
           })}
           {!projects.length && <Text style={[s.body, { color: c.mutedForeground }]}>Crée d’abord un projet et termine une tâche pour commencer ton carnet.</Text>}
           <Text style={[s.small, { color: c.mutedForeground }]}>
-            Seuls les éléments terminés dont la date de fin se situe dans la période sont retenus. Les albums des projets terminés ont aussi leur page.
+            Les tâches terminées défilent dans l’ordre de leur date de fin, même entre plusieurs projets. Quand toutes les tâches d’un projet sont accomplies, une page récapitulative suit sa dernière tâche.
           </Text>
         </>}
         {step === 1 && <>
