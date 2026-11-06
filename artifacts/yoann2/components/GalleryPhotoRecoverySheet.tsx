@@ -1,9 +1,9 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { Image } from 'expo-image';
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 
 import { BottomSheet } from '@/components/BottomSheet';
+import { GalleryRecoveryThumbnail } from '@/components/GalleryRecoveryThumbnail';
 import { useColors } from '@/hooks/useColors';
 import { useGalleryPhotoRecovery } from '@/hooks/useGalleryPhotoRecovery';
 import type { GalleryRecoveryCandidate, GalleryRecoveryCase } from '@/types/galleryRecovery';
@@ -227,6 +227,9 @@ function Note({ icon, color, text, c }: { icon: React.ComponentProps<typeof Mate
 
 function CaseCard({ c, onChoose, onSkip, disabled }: { c: GalleryRecoveryCase; onChoose: (assetId: string) => Promise<void>; onSkip: () => void; disabled: boolean }) {
   const colors = useColors();
+  const { width } = useWindowDimensions();
+  const [gridWidth, setGridWidth] = useState(Math.max(120, width - 80));
+  const tileSize = Math.max(40, Math.floor((gridWidth - 12) / 3));
   const [page, setPage] = useState(0);
   const [sel, setSel] = useState<GalleryRecoveryCandidate | null>(null);
   const pending = c.status === 'pending';
@@ -257,19 +260,19 @@ function CaseCard({ c, onChoose, onSkip, disabled }: { c: GalleryRecoveryCase; o
       {pending && (
         <>
           <Text style={[styles.small, { color: colors.mutedForeground }]}>{c.candidates.length} possibilité{c.candidates.length > 1 ? 's' : ''} — touche pour sélectionner</Text>
-          <View style={styles.grid}>
+          <View style={styles.grid} onLayout={event => {
+            const measured = event.nativeEvent.layout.width;
+            if (measured > 0) setGridWidth(measured);
+          }}>
             {list.map(a => {
               const on = sel?.assetId === a.assetId;
               return (
-                <Pressable key={a.assetId} testID={`recovery-candidate-${a.assetId}`} disabled={disabled}
-                  accessibilityRole="button" accessibilityState={{ selected: on }} accessibilityLabel={`${a.filename}, ${fmt(a.takenAt)}`}
-                  onPress={() => setSel(on ? null : a)}
-                  style={[styles.thumb, { borderColor: on ? colors.primary : 'transparent' }]}>
-                  <Image source={{ uri: a.uri }} style={StyleSheet.absoluteFill} contentFit="cover" recyclingKey={a.assetId} />
-                  {on && <View style={[styles.check, { backgroundColor: colors.primary }]}>
-                    <MaterialCommunityIcons name="check" size={14} color={colors.primaryForeground} />
-                  </View>}
-                </Pressable>
+                <View key={a.assetId} style={{ width: tileSize, gap: 2 }}>
+                  <GalleryRecoveryThumbnail asset={a} size={tileSize} selected={on}
+                    onSelect={() => { if (!disabled) setSel(on ? null : a); }}
+                    onUnavailable={() => setSel(current => current?.assetId === a.assetId ? null : current)} />
+                  <Text style={[styles.tiny, { color: colors.mutedForeground }]}>{fmt(a.takenAt)}</Text>
+                </View>
               );
             })}
           </View>
@@ -285,7 +288,6 @@ function CaseCard({ c, onChoose, onSkip, disabled }: { c: GalleryRecoveryCase; o
           )}
           {sel && (
             <View style={[styles.row, { backgroundColor: colors.muted, borderRadius: 10, padding: 8, alignItems: 'flex-start' }]}>
-              <Image source={{ uri: sel.uri }} style={styles.preview} contentFit="cover" />
               <View style={{ flex: 1, gap: 2 }}>
                 <Text numberOfLines={1} style={[styles.small, { color: colors.foreground }]}>{sel.filename}</Text>
                 <Text style={[styles.tiny, { color: colors.mutedForeground }]}>{fmt(sel.takenAt)}</Text>
@@ -327,9 +329,6 @@ const styles = StyleSheet.create({
   stat: { flex: 1, borderRadius: 12, paddingVertical: 8, alignItems: 'center' },
   statVal: { fontSize: 17, fontFamily: 'Inter_700Bold' },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  thumb: { width: '23.5%', aspectRatio: 1, borderRadius: 8, overflow: 'hidden', borderWidth: 2 },
-  check: { position: 'absolute', top: 4, right: 4, width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  preview: { width: 56, height: 56, borderRadius: 8 },
   btn: { flex: 1, borderRadius: 10, paddingVertical: 10, alignItems: 'center' },
   primary: { borderRadius: 12, paddingVertical: 13, alignItems: 'center' },
   btnText: { fontSize: 14, fontFamily: 'Inter_600SemiBold' },
