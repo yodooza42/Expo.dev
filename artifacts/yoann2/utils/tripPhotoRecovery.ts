@@ -3,6 +3,34 @@ import type { RecoverResult } from '@/utils/photoStorage';
 import { photoExists, photoFilename } from '@/utils/photoReferences';
 import { getTrips, updateTrip } from '@/utils/tripStorage';
 import { tripEvents } from '@/utils/tripEvents';
+import { protectPhoto } from '@/utils/photoProtection';
+
+/** Explicit user selection only; retain the existing souvenir's identity and anchors. */
+export async function relinkTripPhoto(
+  tripId: string, photoId: string, source: string,
+  options: { metadata?: TripPhoto['galleryMetadata']; isCurrent?: () => boolean; expectedUri?: string } = {},
+) {
+  const before = (await getTrips()).find(trip => trip.id === tripId);
+  if (!before?.photos?.some(photo => photo.id === photoId)) {
+    throw new Error('Ce souvenir est introuvable. Aucune photo n’a été ajoutée.');
+  }
+  const uri = await protectPhoto(source, { project: 'Trajets', folder: tripId });
+  if (options.isCurrent && !options.isCurrent()) throw new Error('Recherche annulée. Ce lien n’a pas été modifié.');
+  const current = (await getTrips()).find(trip => trip.id === tripId);
+  if (!current?.photos?.some(photo => photo.id === photoId)) {
+    throw new Error('Ce souvenir a été supprimé pendant la sélection.');
+  }
+  const existing = current.photos.find(photo => photo.id === photoId)!;
+  if (options.expectedUri != null && existing.uri !== options.expectedUri) {
+    throw new Error('Ce souvenir a changé depuis la recherche. Relance la recherche pour ne pas écraser sa nouvelle photo.');
+  }
+  const photos = current.photos.map(photo => photo.id === photoId ? {
+    ...photo, uri, ...(options.metadata ? { galleryMetadata: options.metadata } : {}),
+  } : photo);
+  await updateTrip(tripId, { photos }, true);
+  tripEvents.emitTripUpdated();
+  return { ...current, photos };
+}
 
 /** Match only exact filenames inside this trip's folder; never guess from dates. */
 export async function repairTripPhotos(photos: TripPhoto[], candidates: string[]) {

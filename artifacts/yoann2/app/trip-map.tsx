@@ -42,6 +42,9 @@ import { useColors } from '@/hooks/useColors';
 import type { KnownPlace, PlaceCategory, WalkRoute } from '@/types/places';
 import type { ActivityKind, RoutePoint, Trip, TripPhoto, Vehicle, WalkParticipant } from '@/types/trips';
 import { ProjectPhoto } from '@/components/ProjectPhoto';
+import { relinkTripPhoto } from '@/utils/tripPhotoRecovery';
+import { GalleryPhotoRecoverySheet } from '@/components/GalleryPhotoRecoverySheet';
+import { galleryPhotoMetadata } from '@/utils/galleryPhotoMetadata';
 import { simplifyRoute, EPSILON_DEG_WALK } from '@/utils/routeSimplification';
 import {
   getAddressUsage,
@@ -459,6 +462,7 @@ export default function TripMapScreen() {
   const [pendingStoryDuration, setPendingStoryDuration] = useState<number | undefined>();
 
   const [photoModalOpen, setPhotoModalOpen] = useState(false);
+  const [galleryRecoveryOpen, setGalleryRecoveryOpen] = useState(false);
   const [addingPhotos, setAddingPhotos] = useState(false);
   const [galleryPickerOpen, setGalleryPickerOpen] = useState(false);
   const [galleryLoading, setGalleryLoading] = useState(false);
@@ -468,6 +472,7 @@ export default function TripMapScreen() {
   const [repositioningPhotoId, setRepositioningPhotoId] = useState<string | null>(null);
   const [photoNoteEditId, setPhotoNoteEditId] = useState<string | null>(null);
   const [photoNoteDraft, setPhotoNoteDraft] = useState('');
+  const [relinkingPhoto, setRelinkingPhoto] = useState(false);
   const [noteEditing, setNoteEditing] = useState(false);
   const [tripNoteDraft, setTripNoteDraft] = useState('');
 
@@ -633,6 +638,7 @@ export default function TripMapScreen() {
         newPhotos.push({
           id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
           uri: asset.uri,
+          galleryMetadata: galleryPhotoMetadata(asset, takenAt),
           takenAt: takenAt ?? Date.now(),
           takenAtEstimated: takenAt == null,
           routeIndex,
@@ -709,6 +715,7 @@ export default function TripMapScreen() {
         return {
           id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
           uri: a.uri,
+          galleryMetadata: galleryPhotoMetadata(a, takenAt),
           takenAt: takenAt ?? Date.now(), takenAtEstimated: takenAt == null,
           routeIndex: placement?.routeIndex, placementMethod: placement?.method,
           lat: point?.lat, lng: point?.lng,
@@ -724,6 +731,28 @@ export default function TripMapScreen() {
       setAddingPhotos(false);
     }
   }, [trip, galleryAssets, gallerySelected, tripLocPts]);
+
+  const handleRelinkPhoto = useCallback(async () => {
+    if (!trip || !photoNoteEditId || relinkingPhoto) return;
+    setRelinkingPhoto(true);
+    try {
+      // The system picker grants access to the chosen image, including limited access.
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'], allowsMultipleSelection: false, quality: 1, exif: true,
+      });
+      if (result.canceled || !result.assets[0]) return;
+      const selected = result.assets[0];
+      const updated = await relinkTripPhoto(trip.id, photoNoteEditId, selected.uri, {
+        metadata: galleryPhotoMetadata(selected, photoTakenAt(selected.exif)),
+      });
+      setTrip(current => current?.id === updated.id ? updated : current);
+      Alert.alert('Photo rattachée', 'La photo a été remplacée. La légende, la date et la position du souvenir ont été conservées.');
+    } catch (error) {
+      Alert.alert('Photo non rattachée', error instanceof Error ? error.message : 'Impossible d’accéder à cette photo. Le souvenir a été conservé.');
+    } finally {
+      setRelinkingPhoto(false);
+    }
+  }, [trip, photoNoteEditId, relinkingPhoto]);
 
   const handleRemovePhoto = useCallback(async (photoId: string) => {
     if (!trip) return;
@@ -1687,8 +1716,16 @@ export default function TripMapScreen() {
             </ScrollView>
             {(trip?.photos ?? []).length === 0 && (
               <Text style={{ color: colors.mutedForeground, fontSize: 12, marginTop: 8 }}>
-                Ajoute des photos de ce trajet depuis ta galerie — elles ne seront pas dupliquées, seulement référencées.
+                Ajoute des photos depuis ta galerie. Les originaux restent inchangés ; les copies de protection sont masquées de la galerie.
               </Text>
+            )}
+            {(trip?.photos ?? []).length > 0 && (
+              <Pressable testID="recover-trip-gallery" accessibilityRole="button"
+                onPress={() => { setPhotoModalOpen(false); setGalleryRecoveryOpen(true); }}
+                style={{ paddingVertical: 14, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <MaterialCommunityIcons name="image-search-outline" size={20} color={colors.primary} />
+                <Text style={{ color: colors.primary, fontSize: 13, flex: 1 }}>Retrouver les photos dans la galerie</Text>
+              </Pressable>
             )}
           </Pressable>
         </Pressable>
@@ -1858,6 +1895,15 @@ export default function TripMapScreen() {
         }}
       />
 
+      {trip && <GalleryPhotoRecoverySheet visible={galleryRecoveryOpen}
+        tripId={trip.id} onClose={() => {
+          setGalleryRecoveryOpen(false);
+          void getTrips().then(items => {
+            const updated = items.find(item => item.id === trip.id);
+            if (updated) setTrip(current => current?.id === updated.id ? updated : current);
+          });
+        }} />}
+
       {/* Note d'une photo */}
       <Modal visible={photoNoteEditId !== null} transparent animationType="fade" onRequestClose={() => setPhotoNoteEditId(null)}>
         <Pressable
@@ -1877,6 +1923,21 @@ export default function TripMapScreen() {
               multiline
               autoFocus
             />
+            <Pressable
+              testID="relink-trip-photo"
+              accessibilityRole="button"
+              accessibilityLabel="Rattacher une photo de la galerie"
+              disabled={relinkingPhoto}
+              onPress={handleRelinkPhoto}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 14, paddingVertical: 8, opacity: relinkingPhoto ? 0.5 : 1 }}
+            >
+              {relinkingPhoto
+                ? <ActivityIndicator size="small" color={colors.primary} />
+                : <MaterialCommunityIcons name="image-refresh-outline" size={18} color={colors.primary} />}
+              <Text style={{ color: colors.primary, fontSize: 13, flex: 1 }}>
+                {relinkingPhoto ? 'Rattachement…' : 'Rattacher une photo de la galerie'}
+              </Text>
+            </Pressable>
             <Pressable
               onPress={() => {
                 if (!photoNoteEditId) return;

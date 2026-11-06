@@ -39,6 +39,7 @@ import { recoverTripPhotos } from '@/utils/tripPhotoRecovery';
 import { photoProtectionEvents, photoProtectionStatus } from '@/utils/photoProtection';
 import { CategoryConfig, DEFAULT_EXPENSE_CATEGORY_CONFIGS, getCategoryConfigs, saveCategoryConfigs } from '@/utils/bankStorage';
 import { genId } from '@/utils/ids';
+import { GalleryPhotoRecoverySheet } from '@/components/GalleryPhotoRecoverySheet';
 
 function SettingRow({
   icon,
@@ -102,6 +103,7 @@ export default function SettingsScreen() {
   const [configuringFolder, setConfiguringFolder] = useState(false);
   const [rebuildingList,    setRebuildingList]    = useState(false);
   const [recoveringAll,     setRecoveringAll]     = useState(false);
+  const [galleryRecoveryOpen, setGalleryRecoveryOpen] = useState(false);
   const [protectingPhotos, setProtectingPhotos] = useState(false);
   const [photoStatus, setPhotoStatus] = useState({ local: 0, backedUp: 0, pending: 0, missing: 0 });
   const [expCatConfigs, setExpCatConfigs] = useState<CategoryConfig[]>(DEFAULT_EXPENSE_CATEGORY_CONFIGS);
@@ -586,6 +588,14 @@ export default function SettingsScreen() {
           onPress={handleRebuildList}
           colors={colors}
         />
+        <SettingRow
+          icon="image-search-outline"
+          label="Retrouver les photos des trajets"
+          sublabel="Comparer les métadonnées de la galerie ; choisir si la correspondance est incertaine"
+          onPress={() => setGalleryRecoveryOpen(true)}
+          colors={colors}
+        />
+        <GalleryPhotoRecoverySheet visible={galleryRecoveryOpen} onClose={() => setGalleryRecoveryOpen(false)} />
         <SettingRow
           icon="image-multiple"
           label={recoveringAll ? 'Récupération en cours…' : 'Récupérer toutes les photos'}

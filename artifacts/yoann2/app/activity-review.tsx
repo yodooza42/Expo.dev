@@ -19,6 +19,7 @@ import { loadMultiDayPoints } from '@/utils/locationTracking';
 import { locatePhotoOnTrip, photoTakenAt, type PhotoGpsPoint, type PhotoPlacement } from '@/utils/tripPhotoPlacement';
 import { tripEvents } from '@/utils/tripEvents';
 import { getTrips, getVehicleSettings, updateTrip } from '@/utils/tripStorage';
+import { galleryPhotoMetadata } from '@/utils/galleryPhotoMetadata';
 
 export default function ActivityReviewScreen() {
   const colors = useColors();
@@ -125,18 +126,19 @@ export default function ActivityReviewScreen() {
     setPickingPoint(false);
     setMomentEditing(true);
   };
-  const preparePhoto = async (uri: string, takenAt?: number, photoId?: string) => {
+  const preparePhoto = async (uri: string, takenAt?: number, photoId?: string, metadata?: TripPhoto['galleryMetadata']) => {
     if (!trip) throw new Error('Activité introuvable.');
     const gps = await gpsPromise.current;
     const placement = takenAt == null ? undefined : locatePhotoOnTrip(trip, takenAt, gps);
     const photo: TripPhoto = {
       id: photoId ?? genId(), uri, takenAt: takenAt ?? trip.endTime,
       takenAtEstimated: takenAt == null,
+      galleryMetadata: metadata,
     };
     return { photo, placement };
   };
-  const attachPhoto = async (uri: string, takenAt?: number) => {
-    const { photo, placement } = await preparePhoto(uri, takenAt, momentPhoto?.id);
+  const attachPhoto = async (uri: string, takenAt?: number, metadata?: TripPhoto['galleryMetadata']) => {
+    const { photo, placement } = await preparePhoto(uri, takenAt, momentPhoto?.id, metadata);
     setMomentPhoto(photo);
     setPointIndex(placement?.routeIndex);
     setPhotoPlacement(placement);
@@ -155,12 +157,12 @@ export default function ActivityReviewScreen() {
     }
     return photoTakenAt(exif, creationTime);
   };
-  const addPhotoBatch = async (assets: Array<{ uri: string; takenAt?: number }>) => {
+  const addPhotoBatch = async (assets: Array<{ uri: string; takenAt?: number; metadata?: TripPhoto['galleryMetadata'] }>) => {
     const existing = new Set(moments.flatMap(moment => moment.photo ? [moment.photo.uri] : []));
     const drafts: MomentDraft[] = [];
     for (const asset of assets) {
       if (existing.has(asset.uri)) continue;
-      const { photo, placement } = await preparePhoto(asset.uri, asset.takenAt);
+      const { photo, placement } = await preparePhoto(asset.uri, asset.takenAt, undefined, asset.metadata);
       drafts.push({
         id: genId(), note: '', photo, routeIndex: placement?.routeIndex, lat: placement?.lat, lng: placement?.lng,
         timestamp: asset.takenAt ?? trip?.endTime, placementMethod: placement?.method,
@@ -178,10 +180,13 @@ export default function ActivityReviewScreen() {
     if (photoBusyRef.current) return;
     photoBusyRef.current = true; setPhotoBusy(true);
     try {
-      const chosen: Array<{ uri: string; takenAt?: number }> = [];
-      for (const asset of assets) chosen.push({ uri: asset.uri, takenAt: await readPhotoTime({ assetId: asset.id, creationTime: asset.creationTime }) });
+      const chosen: Array<{ uri: string; takenAt?: number; metadata?: TripPhoto['galleryMetadata'] }> = [];
+      for (const asset of assets) {
+        const takenAt = await readPhotoTime({ assetId: asset.id, creationTime: asset.creationTime });
+        chosen.push({ uri: asset.uri, takenAt, metadata: galleryPhotoMetadata(asset, takenAt) });
+      }
       if (photoPickerMode === 'batch') await addPhotoBatch(chosen);
-      else if (chosen[0]) await attachPhoto(chosen[0].uri, chosen[0].takenAt);
+      else if (chosen[0]) await attachPhoto(chosen[0].uri, chosen[0].takenAt, chosen[0].metadata);
       setPhotoPickerVisible(false);
     } catch { Alert.alert('Photo indisponible', 'Impossible de joindre cette photo. Tu peux réessayer ou ouvrir toute la galerie.'); }
     finally { photoBusyRef.current = false; setPhotoBusy(false); }
@@ -195,10 +200,13 @@ export default function ActivityReviewScreen() {
         mediaTypes: ['images'], quality: 1, exif: true, allowsMultipleSelection: photoPickerMode === 'batch',
       });
       if (!result.canceled && result.assets[0]) {
-        const chosen: Array<{ uri: string; takenAt?: number }> = [];
-        for (const asset of result.assets) chosen.push({ uri: asset.uri, takenAt: await readPhotoTime(asset) });
+        const chosen: Array<{ uri: string; takenAt?: number; metadata?: TripPhoto['galleryMetadata'] }> = [];
+        for (const asset of result.assets) {
+          const takenAt = await readPhotoTime(asset);
+          chosen.push({ uri: asset.uri, takenAt, metadata: galleryPhotoMetadata(asset, takenAt) });
+        }
         if (photoPickerMode === 'batch') await addPhotoBatch(chosen);
-        else if (chosen[0]) await attachPhoto(chosen[0].uri, chosen[0].takenAt);
+        else if (chosen[0]) await attachPhoto(chosen[0].uri, chosen[0].takenAt, chosen[0].metadata);
       }
     } catch { Alert.alert('Photo indisponible', 'Impossible d’ouvrir la galerie. Tu peux ajouter un souvenir sans photo.'); }
     finally { photoBusyRef.current = false; setPhotoBusy(false); }

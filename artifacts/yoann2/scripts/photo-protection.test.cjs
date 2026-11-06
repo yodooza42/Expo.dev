@@ -347,6 +347,62 @@ test('trip recovery never guesses another trip, duplicates, or a photo without i
   assert.equal(writes, 0);
 });
 
+test('explicit gallery relink protects bytes and retains latest caption, position and souvenir identity', async () => {
+  const env = environment();
+  const original = { id: 'p', uri: 'file:///gone.jpeg', takenAt: 42, routeIndex: 7, lat: 45, lng: 1, note: 'before', placementMethod: 'manual' };
+  let trip = { id: 'trip', photos: [original], moments: [{ photoId: 'p', caption: 'linked' }] };
+  let writes = 0, emissions = 0;
+  env.overrides['@/utils/tripStorage'] = {
+    getTrips: async () => [trip],
+    updateTrip: async (id, patch, strict) => {
+      assert.equal(strict, true);
+      writes++;
+      trip = { ...trip, ...patch };
+    },
+  };
+  env.overrides['@/utils/photoProtection'] = {
+    protectPhoto: async (source, owner) => {
+      assert.equal(source, 'file:///gallery/original.jpeg');
+      assert.equal(owner.project, 'Trajets');
+      assert.equal(owner.folder, 'trip');
+      trip = { ...trip, photos: [{ ...original, note: 'edited while copying' }] };
+      return 'file:///app/files/photo_vault/permanent.jpeg';
+    },
+  };
+  env.overrides['@/utils/tripEvents'] = { tripEvents: { emitTripUpdated: () => { emissions++; } } };
+  const result = await env.load('utils/tripPhotoRecovery.ts').relinkTripPhoto('trip', 'p', 'file:///gallery/original.jpeg');
+  assert.equal(result.photos.length, 1);
+  assert.equal(result.photos[0].id, original.id);
+  assert.equal(result.photos[0].note, 'edited while copying');
+  assert.equal(result.photos[0].takenAt, 42);
+  assert.equal(result.photos[0].routeIndex, 7);
+  assert.equal(result.photos[0].placementMethod, 'manual');
+  assert.equal(result.moments[0].photoId, 'p');
+  assert.equal(writes, 1);
+  assert.equal(emissions, 1);
+});
+
+test('gallery relink does not modify a missing souvenir or one whose new file cannot be protected', async () => {
+  const env = environment();
+  const trip = { id: 'trip', photos: [{ id: 'p', uri: 'old', note: 'keep' }] };
+  let writes = 0, protections = 0;
+  env.overrides['@/utils/tripStorage'] = {
+    getTrips: async () => [trip],
+    updateTrip: async () => { writes++; },
+  };
+  env.overrides['@/utils/photoProtection'] = {
+    protectPhoto: async () => { protections++; throw new Error('source inaccessible'); },
+  };
+  env.overrides['@/utils/tripEvents'] = { tripEvents: { emitTripUpdated: () => {} } };
+  const relink = env.load('utils/tripPhotoRecovery.ts').relinkTripPhoto;
+  await assert.rejects(relink('trip', 'absent', 'new'), /introuvable/);
+  assert.equal(protections, 0);
+  await assert.rejects(relink('trip', 'p', 'new'), /inaccessible/);
+  assert.equal(writes, 0);
+  assert.equal(trip.photos[0].uri, 'old');
+  assert.equal(trip.photos[0].note, 'keep');
+});
+
 test('the actual photo component tries alternatives then displays an explicit unavailable tile', async () => {
   const text = fs.readFileSync(path.join(ROOT, 'components/ProjectPhoto.tsx'), 'utf8');
   const ast = ts.createSourceFile('photo.tsx', text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);

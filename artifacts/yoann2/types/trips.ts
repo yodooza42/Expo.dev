@@ -22,15 +22,25 @@ export interface RoutePoint {
   t?: number;
 }
 
-/** A photo referenced from the device gallery (not copied into app storage) and attached to a trip. */
+/** A trip souvenir whose original gallery metadata is separate from its protected file. */
 export interface TripPhoto {
   /** Geographic placement, independent of the simplified route's point sequence. */
   lat?: number;
   lng?: number;
   placementMethod?: ActivityMoment['placementMethod'];
   id: string;
-  /** Gallery/content URI of the original asset — never copied locally. */
+  /** Readable original or protected private copy; the original gallery photo is never edited. */
   uri: string;
+  /** Source evidence for recovery; never use these fields to move an existing souvenir. */
+  galleryMetadata?: {
+    assetId?: string;
+    filename?: string;
+    takenAt?: number;
+    width?: number;
+    height?: number;
+    lat?: number;
+    lng?: number;
+  };
   /** Moment the photo was taken (ms epoch), from EXIF/asset metadata when available. */
   takenAt: number;
   /** True when camera metadata is unavailable; never use this fallback for automatic positioning. */
