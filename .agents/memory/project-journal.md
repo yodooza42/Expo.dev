@@ -20,3 +20,9 @@ Lorsque toutes les tâches d’un projet sont accomplies, placer une page récap
 **Why:** l’utilisateur veut faire comprendre qu’un projet entier vient d’être fini, sans perdre la chronologie entre les projets parallèles.
 
 **How to apply:** reprendre aussi la dernière tâche dans le récapitulatif ; ne pas attendre une clôture manuelle du projet si toutes ses tâches sont terminées.
+
+Les tâches terminées le même jour peuvent être réordonnées pour le montage, y compris entre projets. Cet ordre appartient au carnet, pas aux tâches originales.
+
+**Why:** une date de fin au jour près ne prouve pas l’ordre réel des réalisations ; un départage déterministe n’est qu’un ordre par défaut.
+
+**How to apply:** conserver le choix à la réouverture du brouillon et lors des changements de sélection. Replacer chaque récapitulatif après la dernière tâche de ce projet réellement retenue au montage ; ne pas le laisser lié au départage initial.

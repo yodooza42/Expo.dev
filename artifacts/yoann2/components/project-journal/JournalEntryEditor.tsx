@@ -4,19 +4,22 @@ import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { ProjectPhoto } from '@/components/ProjectPhoto';
 import { useColors } from '@/hooks/useColors';
 import type { JournalChoices, JournalEntry } from '@/types/projectJournal';
+import { moveJournalTask } from '@/utils/projectJournal';
 
 export function toggleJournalId(values: string[], id: string) {
   return values.includes(id) ? values.filter(value => value !== id) : [...values, id];
 }
-export function JournalEntryEditor({ entry, choices, expanded, onExpand, onChange, number }: {
+export function JournalEntryEditor({ entry, choices, expanded, onExpand, onChange, number, candidates }: {
   entry: JournalEntry; choices: JournalChoices; expanded: boolean; onExpand: () => void;
-  onChange: (next: JournalChoices) => void; number: number;
+  onChange: (next: JournalChoices) => void; number: number; candidates: JournalEntry[];
 }) {
   const c = useColors();
   const [page, setPage] = useState(0);
   const included = !choices.excludedEntryIds.includes(entry.id);
   const photoCount = entry.photos.filter(p => !choices.excludedPhotoIds.includes(p.id)).length;
   const pages = Math.ceil(entry.photos.length / 12);
+  const sameDay = candidates.filter(item => item.kind === 'task' && item.dateKey === entry.dateKey);
+  const taskIndex = sameDay.findIndex(item => item.id === entry.id);
   return <View style={[s.card, { backgroundColor: c.card, borderColor: included ? c.border : c.muted }]}>
     <View style={s.row}>
       <Pressable testID={`journal-include-${entry.id}`} accessibilityRole="checkbox" accessibilityState={{ checked: included }}
@@ -36,6 +39,19 @@ export function JournalEntryEditor({ entry, choices, expanded, onExpand, onChang
         <MaterialCommunityIcons name={expanded ? 'chevron-up' : 'chevron-down'} size={22} color={c.mutedForeground} />
       </Pressable>
     </View>
+    {entry.kind === 'task' && sameDay.length > 1 && <View style={[s.row, s.order]}>
+      <Text style={[s.small, s.flex, { color: c.mutedForeground }]}>Ordre du jour · {taskIndex + 1}/{sameDay.length}</Text>
+      {([-1, 1] as const).map(direction => {
+        const disabled = direction === -1 ? taskIndex === 0 : taskIndex === sameDay.length - 1;
+        return <Pressable key={direction} testID={`journal-move-${direction === -1 ? 'up' : 'down'}-${entry.id}`}
+          accessibilityRole="button" accessibilityState={{ disabled }} disabled={disabled}
+          accessibilityLabel={`${direction === -1 ? 'Avancer' : 'Reculer'} ${entry.title} dans cette journée`}
+          onPress={() => onChange(moveJournalTask(choices, candidates, entry.id, direction))} style={s.check}>
+          <MaterialCommunityIcons name={direction === -1 ? 'arrow-up' : 'arrow-down'} size={22}
+            color={disabled ? c.muted : c.primary} />
+        </Pressable>;
+      })}
+    </View>}
     {expanded && <View style={s.content}>
       {entry.recapTasks && <>
         <Text style={[s.label, { color: c.primary }]}>Juste après la dernière tâche du projet</Text>
@@ -95,6 +111,7 @@ export function JournalEntryEditor({ entry, choices, expanded, onExpand, onChang
 }
 const s = StyleSheet.create({
   flex: { flex: 1 }, row: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  order: { paddingHorizontal: 16, paddingBottom: 6 },
   card: { borderWidth: 1, borderRadius: 14, overflow: 'hidden' }, check: { padding: 10, minHeight: 44, justifyContent: 'center' },
   heading: { paddingVertical: 14, gap: 5 }, title: { fontFamily: 'Inter_600SemiBold', fontSize: 15, lineHeight: 21 },
   date: { fontSize: 10, letterSpacing: 0.6, fontFamily: 'Inter_500Medium' },

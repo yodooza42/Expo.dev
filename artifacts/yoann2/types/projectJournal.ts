@@ -8,6 +8,8 @@ export type JournalChoices = {
   captions: Record<string, string>;
   photoCaptions: Record<string, string>;
   pace: 'calm' | 'normal' | 'quick';
+  /** Story-only task IDs, scoped to their completion day. Optional for older drafts. */
+  taskOrderByDate?: Record<string, string[]>;
 };
 
 export type JournalPhoto = { id: string; uri: string; caption: string };

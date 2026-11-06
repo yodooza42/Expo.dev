@@ -4,6 +4,9 @@ import type { Project } from '@/types';
 import type { JournalChoices } from '@/types/projectJournal';
 import { initialJournalChoices, validateJournalChoices } from '@/utils/projectJournal';
 
+// A reopened editor must wait for writes started by the previous mounted instance.
+let journalWrites = Promise.resolve();
+
 export function useJournalDraft(projects: Project[], loading: boolean, projectId?: string) {
   const [choices, setChoices] = useState<JournalChoices | null>(null);
   const [error, setError] = useState('');
@@ -11,7 +14,6 @@ export function useJournalDraft(projects: Project[], loading: boolean, projectId
   const [retry, setRetry] = useState(0);
   const latest = useRef(projects); latest.current = projects;
   const alive = useRef(true);
-  const chain = useRef(Promise.resolve());
   const revision = useRef(0);
   const key = `@yoann2_project_journal_v1:${projectId ?? 'all'}`;
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
@@ -19,10 +21,11 @@ export function useJournalDraft(projects: Project[], loading: boolean, projectId
     if (loading) return;
     let active = true;
     setChoices(null); setError('');
-    AsyncStorage.getItem(key).then(raw => {
+    journalWrites.catch(() => {}).then(() => AsyncStorage.getItem(key)).then(raw => {
       const stored: unknown = raw ? JSON.parse(raw) : null;
       if (stored && !validateJournalChoices(stored)) throw new Error('Format du carnet enregistré non reconnu.');
-      if (active) setChoices(stored ? stored as JournalChoices : initialJournalChoices(latest.current, projectId));
+      if (active) setChoices(stored ? { ...stored as JournalChoices, taskOrderByDate: (stored as JournalChoices).taskOrderByDate ?? {} }
+        : initialJournalChoices(latest.current, projectId));
     }).catch(() => {
       if (active) setError('Impossible de relire les choix du carnet. Rien n’a été remplacé. Réessaie sans effacer les données.');
     });
@@ -39,7 +42,7 @@ export function useJournalDraft(projects: Project[], loading: boolean, projectId
     }
     setSaving(true);
     // Serialize writes so rapid typing cannot restore an older caption.
-    chain.current = chain.current.catch(() => {}).then(() => AsyncStorage.setItem(key, JSON.stringify(next))).then(() => {
+    journalWrites = journalWrites.catch(() => {}).then(() => AsyncStorage.setItem(key, JSON.stringify(next))).then(() => {
       if (alive.current && revision.current === current) { setError(''); setSaving(false); }
     }).catch(() => {
       if (alive.current && revision.current === current) {

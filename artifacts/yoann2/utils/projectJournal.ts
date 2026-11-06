@@ -30,7 +30,7 @@ export function initialJournalChoices(projects: Project[], projectId?: string): 
   return {
     title: 'Carnet de bord', from: journalDateKey(new Date(now.getFullYear(), 0, 1)), to: journalDateKey(now),
     projectIds: projectId ? [projectId] : projects.filter(p => !p.archived).map(p => p.id),
-    excludedEntryIds: [], excludedPhotoIds: [], captions: {}, photoCaptions: {}, pace: 'normal',
+    excludedEntryIds: [], excludedPhotoIds: [], captions: {}, photoCaptions: {}, pace: 'normal', taskOrderByDate: {},
   };
 }
 /** Discard malformed saved choices, never silently substitute an invalid range. */
@@ -43,7 +43,38 @@ export function validateJournalChoices(value: unknown): value is JournalChoices 
       Array.isArray(v[key as keyof JournalChoices]) && (v[key as keyof JournalChoices] as unknown[]).every(x => typeof x === 'string'))
     && [v.captions, v.photoCaptions].every(record => !!record && typeof record === 'object' && !Array.isArray(record)
       && Object.values(record).every(text => typeof text === 'string' && text.length <= 280))
-    && ['calm', 'normal', 'quick'].includes(v.pace);
+    && ['calm', 'normal', 'quick'].includes(v.pace)
+    && (v.taskOrderByDate === undefined || (!!v.taskOrderByDate && typeof v.taskOrderByDate === 'object'
+      && !Array.isArray(v.taskOrderByDate) && Object.entries(v.taskOrderByDate).every(([day, ids]) =>
+        !!parseJournalDate(day) && Array.isArray(ids) && ids.every(id => typeof id === 'string' && id.startsWith('task:'))
+        && new Set(ids).size === ids.length)));
+}
+/** Only swap tasks from the same day; keep choices for currently hidden projects/days. */
+export function moveJournalTask(choices: JournalChoices, candidates: JournalEntry[], id: string, direction: -1 | 1): JournalChoices {
+  const entry = candidates.find(item => item.id === id && item.kind === 'task');
+  if (!entry) return choices;
+  const ids = candidates.filter(item => item.kind === 'task' && item.dateKey === entry.dateKey).map(item => item.id);
+  const index = ids.indexOf(id), target = index + direction;
+  if (target < 0 || target >= ids.length) return choices;
+  [ids[index], ids[target]] = [ids[target]!, ids[index]!];
+  const present = new Set(ids);
+  let position = 0;
+  const saved = choices.taskOrderByDate?.[entry.dateKey] ?? [];
+  // Replace visible slots, retaining absent task IDs for a later selection.
+  const order = saved.map(taskId => present.has(taskId) ? ids[position++]! : taskId);
+  order.push(...ids.slice(position));
+  return { ...choices, taskOrderByDate: { ...choices.taskOrderByDate, [entry.dateKey]: order } };
+}
+
+/** Resolve anchors from the actual montage, not the source ID tie-breaker. */
+function attachJournalRecaps(items: JournalEntry[]): JournalEntry[] {
+  const after = new Map<string, JournalEntry[]>();
+  for (const recap of items.filter(item => item.recapTasks)) {
+    const taskIds = new Set(recap.recapTasks!.map(task => `task:${task.id}`));
+    const last = items.filter(item => item.kind === 'task' && taskIds.has(item.id)).slice(-1)[0];
+    if (last) after.set(last.id, [...(after.get(last.id) ?? []), { ...recap, afterTaskId: last.id }]);
+  }
+  return items.filter(item => !item.recapTasks).flatMap(item => [item, ...(after.get(item.id) ?? [])]);
 }
 export function buildProjectJournal(projects: Project[], tasks: Task[], choices: JournalChoices) {
   const selectedProjects = projects.filter(p => choices.projectIds.includes(p.id));
@@ -104,13 +135,25 @@ export function buildProjectJournal(projects: Project[], tasks: Task[], choices:
   });
   candidates.sort((a, b) => a.dateKey.localeCompare(b.dateKey)
     || a.project.localeCompare(b.project, 'fr') || a.id.localeCompare(b.id));
-  // Insert recaps after the last task, including when other projects finish on the same day.
-  const recaps = candidates.filter(entry => entry.afterTaskId);
-  const orderedCandidates = candidates.filter(entry => !entry.afterTaskId).flatMap(entry =>
-    [entry, ...recaps.filter(recap => recap.afterTaskId === entry.id)]);
+  // Reorder only task slots within each day; project milestones retain their chronology.
+  const days = new Map<string, JournalEntry[]>();
+  for (const entry of candidates.filter(item => item.kind === 'task')) {
+    days.set(entry.dateKey, [...(days.get(entry.dateKey) ?? []), entry]);
+  }
+  for (const [day, items] of days) {
+    const ranks = new Map((choices.taskOrderByDate?.[day] ?? []).map((id, index) => [id, index]));
+    items.sort((a, b) => (ranks.get(a.id) ?? Infinity) - (ranks.get(b.id) ?? Infinity));
+  }
+  const positions = new Map<string, number>();
+  const sorted = candidates.map(entry => {
+    if (entry.kind !== 'task') return entry;
+    const index = positions.get(entry.dateKey) ?? 0;
+    positions.set(entry.dateKey, index + 1);
+    return days.get(entry.dateKey)![index]!;
+  });
+  const orderedCandidates = attachJournalRecaps(sorted);
   candidates.splice(0, candidates.length, ...orderedCandidates);
-  const entries = candidates.filter(e => !choices.excludedEntryIds.includes(e.id)
-    && (!e.afterTaskId || !choices.excludedEntryIds.includes(e.afterTaskId))).map(e => ({
+  const entries = attachJournalRecaps(candidates.filter(e => !choices.excludedEntryIds.includes(e.id))).map(e => ({
     ...e, photos: e.photos.filter(photo => !choices.excludedPhotoIds.includes(photo.id)),
   }));
   const photoCount = entries.reduce((sum, entry) => sum + entry.photos.length, 0);

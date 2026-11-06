@@ -96,7 +96,8 @@ test('parallel projects stay interleaved and each recap immediately follows its 
   assert.equal(limited.entries[1].recapTasks.length, 3, 'recap includes earlier tasks without adding their media again');
   assert.equal(limited.photoCount, 1);
   const excluded = journal.buildProjectJournal(ps, ts, { ...opts, excludedEntryIds: ['task:p2-t3'] });
-  assert.ok(!excluded.entries.some(e => e.id === 'project:p2'), 'cannot close after a hidden final task');
+  assert.equal(excluded.entries[excluded.entries.findIndex(e => e.id === 'project:p2') - 1].id,
+    'task:p2-t2', 'recap follows the last task actually retained in the montage');
   const reopened = journal.buildProjectJournal(ps, ts.map(t => t.id === 'p2-t2' ? { ...t, status: 'inprogress' } : t), opts);
   assert.ok(!reopened.entries.some(e => e.id === 'project:p2'));
   const unknown = journal.buildProjectJournal(ps, ts.map(t => t.id === 'p2-t1' ? { ...t, completedAt: undefined } : t), opts);
@@ -106,6 +107,104 @@ test('parallel projects stay interleaved and each recap immediately follows its 
     assert.equal(tied.entries[tied.entries.indexOf(recap) - 1].id, recap.afterTaskId);
   assert.equal(JSON.stringify({ ps, ts }), before);
 });
+test('manual same-day montage interleaves projects and reanchors each recap after its actual last task', () => {
+  const ps = projects.map(p => ({ ...p, status: 'inprogress', photos: [] }));
+  const ts = [
+    ['a', 'p1', '05'], ['b', 'p1', '05'], ['c', 'p2', '05'], ['d', 'p2', '05'],
+    ['before', 'p1', '04'], ['after', 'p2', '06'],
+  ].map(([id, projectId, day]) => ({ id, projectId, title: id, status: 'done', completedAt: `${day}/04/2026`, photos: [] }));
+  const opts = { ...choices(), taskOrderByDate: { '2026-04-05': ['task:b', 'task:c', 'task:a', 'task:d', 'task:deleted', 'task:after'] } };
+  const before = JSON.stringify({ ps, ts, opts });
+  const built = journal.buildProjectJournal(ps, ts, opts);
+  assert.deepEqual(clone(built.entries.map(e => e.id)), [
+    'task:before', 'task:b', 'task:c', 'task:a', 'project:p1', 'task:d', 'task:after', 'project:p2',
+  ]);
+  assert.deepEqual(clone(built.request.entries), clone(built.entries));
+  const hidden = journal.buildProjectJournal(ps, ts, { ...opts, excludedEntryIds: ['task:a'] });
+  assert.equal(hidden.entries[hidden.entries.findIndex(e => e.id === 'project:p1') - 1].id, 'task:b');
+  assert.equal(hidden.entries.find(e => e.id === 'project:p1').afterTaskId, 'task:b');
+  const none = journal.buildProjectJournal(ps, ts, { ...opts, excludedEntryIds: ['task:a', 'task:b', 'task:before'] });
+  assert.ok(!none.entries.some(e => e.id === 'project:p1'));
+  const hiddenRecap = journal.buildProjectJournal(ps, ts, { ...opts, excludedEntryIds: ['project:p1'] });
+  assert.ok(!hiddenRecap.entries.some(e => e.id === 'project:p1'));
+  const reversedSource = journal.buildProjectJournal([...ps].reverse(), [...ts].reverse(), opts);
+  assert.deepEqual(clone(reversedSource.entries), clone(built.entries));
+  assert.equal(JSON.stringify({ ps, ts, opts }), before);
+});
+test('move controls stay within a day, retain absent choices and survive JSON roundtrips', () => {
+  const ts = ['a', 'b', 'c'].map((id, index) => ({
+    id, projectId: index === 1 ? 'p2' : 'p1', title: id, status: 'done', completedAt: '05/04/2026', photos: [],
+  }));
+  let opts = { ...choices(), taskOrderByDate: { '2026-04-05': ['task:absent', 'task:a', 'task:b', 'task:c'], '2026-04-01': ['task:other'] } };
+  const before = clone(opts);
+  let built = journal.buildProjectJournal(projects, ts, opts);
+  opts = journal.moveJournalTask(opts, built.candidates, 'task:c', -1);
+  assert.deepEqual(clone(opts.taskOrderByDate['2026-04-05']), ['task:absent', 'task:a', 'task:c', 'task:b']);
+  assert.deepEqual(clone(before.taskOrderByDate['2026-04-05']), ['task:absent', 'task:a', 'task:b', 'task:c']);
+  assert.equal(journal.validateJournalChoices(clone(opts)), true);
+  built = journal.buildProjectJournal(projects, ts, clone(opts));
+  assert.deepEqual(clone(built.entries.filter(e => e.kind === 'task').map(e => e.id)), ['task:a', 'task:c', 'task:b']);
+  assert.equal(journal.moveJournalTask(opts, built.candidates, 'task:a', -1), opts);
+  assert.equal(journal.moveJournalTask(opts, built.candidates, 'task:b', 1), opts);
+  assert.equal(journal.moveJournalTask(opts, built.candidates, 'project:p1', -1), opts);
+  const selected = journal.buildProjectJournal(projects, ts, { ...opts, projectIds: ['p1'] });
+  const moved = journal.moveJournalTask(opts, selected.candidates, 'task:c', -1);
+  assert.deepEqual(clone(moved.taskOrderByDate['2026-04-05']), ['task:absent', 'task:c', 'task:a', 'task:b']);
+  assert.deepEqual(clone(moved.taskOrderByDate['2026-04-01']), ['task:other']);
+  assert.equal(journal.buildProjectJournal(projects, ts, { ...opts, from: '2026-04-06' }).entries.length, 0);
+  assert.deepEqual(clone(journal.buildProjectJournal(projects, ts, opts).entries), clone(built.entries));
+});
+test('draft hook reopens after pending writes, migrates old choices, and keeps manual order per journal', async () => {
+  const store = new Map();
+  let current, release;
+  const pause = new Promise(resolve => { release = resolve; });
+  const hook = load('hooks/useJournalDraft.ts', {
+    react: {
+      useState(initial) {
+        const instance = current, index = instance.index++;
+        if (!(index in instance.state)) instance.state[index] = initial;
+        return [instance.state[index], next => { instance.state[index] = typeof next === 'function' ? next(instance.state[index]) : next; }];
+      },
+      useRef(value) {
+        const instance = current, index = instance.index++;
+        return instance.state[index] ?? (instance.state[index] = { current: value });
+      },
+      useEffect(fn) { if (current.mount) current.effects.push(fn); },
+      useCallback: fn => fn,
+    },
+    '@react-native-async-storage/async-storage': { default: {
+      getItem: async key => store.get(key) ?? null,
+      setItem: async (key, value) => { await pause; store.set(key, value); },
+    } },
+    '@/utils/projectJournal': journal,
+  });
+  function mount(projectId) {
+    const instance = { state: [], index: 0, effects: [], mount: true };
+    instance.render = () => { current = instance; instance.index = 0; return hook.useJournalDraft(projects, false, projectId); };
+    instance.render();
+    instance.cleanup = instance.effects.map(fn => fn());
+    instance.mount = false;
+    return instance;
+  }
+  const flush = () => new Promise(resolve => setImmediate(resolve));
+  const legacy = choices(); delete legacy.taskOrderByDate;
+  store.set('@yoann2_project_journal_v1:all', JSON.stringify(legacy));
+  const first = mount(); await flush();
+  assert.deepEqual(clone(first.render().choices.taskOrderByDate), {});
+  const next = { ...first.render().choices, taskOrderByDate: { '2026-04-05': ['task:b', 'task:a'] } };
+  first.render().save({ ...next, title: 'Premier' });
+  first.render().save({ ...next, title: 'Dernier' });
+  first.cleanup.forEach(fn => fn?.());
+  const reopened = mount();
+  await flush();
+  assert.equal(reopened.render().choices, null, 'waits until pending writes finish');
+  release(); await flush(); await flush();
+  assert.equal(reopened.render().choices.title, 'Dernier');
+  assert.deepEqual(clone(reopened.render().choices.taskOrderByDate), clone(next.taskOrderByDate));
+  const scoped = mount('p1'); await flush();
+  assert.deepEqual(clone(scoped.render().choices.taskOrderByDate), {});
+  assert.deepEqual(clone(scoped.render().choices.projectIds), ['p1']);
+});
 test('empty/invalid ranges, malformed drafts and oversized selections fail explicitly without truncation', () => {
   assert.ok(journal.buildProjectJournal(projects, tasks, { ...choices(), from: '2026-05-01', to: '2026-04-01' }).error);
   assert.ok(journal.buildProjectJournal(projects, tasks, { ...choices(), projectIds: [] }).error);
@@ -114,6 +213,9 @@ test('empty/invalid ranges, malformed drafts and oversized selections fail expli
   assert.equal(journal.validateJournalChoices(choices()), true);
   assert.equal(journal.validateJournalChoices({ ...choices(), from: '2026-02-31' }), false);
   assert.equal(journal.validateJournalChoices({ ...choices(), captions: { task: false } }), false);
+  for (const taskOrderByDate of [null, [], { bad: [] }, { '2026-04-05': 'task:a' },
+    { '2026-04-05': [2] }, { '2026-04-05': ['project:p1'] }, { '2026-04-05': ['task:a', 'task:a'] }])
+    assert.equal(journal.validateJournalChoices({ ...choices(), taskOrderByDate }), false);
   const huge = { ...tasks[0], photos: Array.from({ length: 61 }, (_, i) => `file://${i}`) };
   const output = journal.buildProjectJournal(projects, [huge], choices());
   assert.ok(output.error.includes('60 photos'));
