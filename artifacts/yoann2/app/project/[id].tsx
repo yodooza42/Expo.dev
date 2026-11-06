@@ -590,6 +590,10 @@ export default function ProjectDetailScreen() {
         </Pressable>
         <Text style={[styles.headerTitle, { color: colors.foreground }]} numberOfLines={1}>{project.name}</Text>
         <View style={styles.headerActions}>
+          <Pressable testID="open-project-journal" accessibilityLabel="Créer le carnet vidéo de ce projet"
+            onPress={() => router.push({ pathname: '/project-journal', params: { projectId: project.id } })} hitSlop={8}>
+            <MaterialCommunityIcons name="notebook-edit-outline" size={22} color={colors.primary} />
+          </Pressable>
           <Pressable onPress={handleExportPDF} hitSlop={8} disabled={exporting}>
             <MaterialCommunityIcons name="file-pdf-box" size={22} color={exporting ? colors.mutedForeground : colors.primary} />
           </Pressable>

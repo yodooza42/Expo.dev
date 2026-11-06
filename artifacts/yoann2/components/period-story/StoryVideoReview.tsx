@@ -4,8 +4,8 @@ import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useColors } from '@/hooks/useColors';
 
-export function StoryVideoReview({ uri, onShare, onDiscard, isSharing }: {
-  uri: string; onShare: () => void; onDiscard: () => void; isSharing: boolean;
+export function StoryVideoReview({ uri, onShare, onDiscard, isSharing, shareLabel, discardLabel }: {
+  uri: string; onShare: () => void; onDiscard: () => void; isSharing: boolean; shareLabel?: string; discardLabel?: string;
 }) {
   const colors = useColors();
   const player = useVideoPlayer(uri);
@@ -19,10 +19,10 @@ export function StoryVideoReview({ uri, onShare, onDiscard, isSharing }: {
     <Text style={[s.text, { color: colors.mutedForeground }]}>Rien n’est envoyé automatiquement. Lance la lecture pour vérifier le montage.</Text>
     <Pressable testID="share-memory" disabled={isSharing} onPress={() => { player.pause(); onShare(); }}
       style={[s.button, { backgroundColor: colors.primary, opacity: isSharing ? 0.5 : 1 }]}>
-      <Text style={[s.title, { color: colors.primaryForeground }]}>{isSharing ? 'Partage…' : 'Partager le souvenir'}</Text>
+      <Text style={[s.title, { color: colors.primaryForeground }]}>{isSharing ? 'Partage…' : shareLabel ?? 'Partager le souvenir'}</Text>
     </Pressable>
     <Pressable disabled={isSharing} onPress={onDiscard} style={s.button}>
-      <Text style={[s.text, { color: colors.mutedForeground }]}>Fermer la vidéo et revenir au brouillon</Text>
+      <Text style={[s.text, { color: colors.mutedForeground }]}>{discardLabel ?? 'Fermer la vidéo et revenir au brouillon'}</Text>
     </Pressable>
   </View>;
 }

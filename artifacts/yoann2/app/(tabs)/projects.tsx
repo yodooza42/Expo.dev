@@ -127,6 +127,17 @@ export default function ProjectsScreen() {
             )}
             {!reorderMode && (
               <Pressable
+                testID="open-project-journal"
+                accessibilityLabel="Créer un carnet de bord vidéo"
+                onPress={() => router.push('/project-journal')}
+                hitSlop={8}
+                style={[styles.reportBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+              >
+                <MaterialCommunityIcons name="notebook-edit-outline" size={18} color={colors.primary} />
+              </Pressable>
+            )}
+            {!reorderMode && (
+              <Pressable
                 onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/project-reports' as any); }}
                 hitSlop={8}
                 style={[styles.reportBtn, { backgroundColor: colors.card, borderColor: colors.border }]}

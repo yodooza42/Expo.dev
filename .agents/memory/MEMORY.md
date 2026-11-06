@@ -25,3 +25,4 @@
 - [WebViews invisibles Android](hidden-native-webview-layout.md) — contraindre aussi le conteneur natif : masquer la vue interne ne supprime pas son espace dans la page.
 - [Protection des photos](photo-protection.md) — copies permanentes et double copie locale vérifiée, masquée de la galerie sans changer les dates ni les originaux.
 - [Dates de fin](project-task-completion.md) — projets et tâches : date du jour à la clôture, correction manuelle possible sans changer l’échéance.
+- [Carnet vidéo des projets](project-journal.md) — stories chronologiques par complétion, période/projets/photos/légendes au choix, style carnet à carreaux de 5 mm.

@@ -9,6 +9,10 @@ import type WebView from 'react-native-webview';
 import type { Trip } from '@/types/trips';
 import { buildStoryPeriodHtml } from '@/utils/storyGeneratorPeriod';
 import { PeriodStoryTransfer, type StoryVideoChunk } from '@/utils/periodStoryTransfer';
+import { buildProjectJournalHtml } from '@/utils/projectJournalRenderer';
+import { prepareJournal } from '@/utils/prepareJournal';
+import { journalDuration } from '@/utils/projectJournal';
+import type { JournalGenerationRequest } from '@/types/projectJournal';
 
 type Phase = 'prepare' | 'maps' | 'photos' | 'recording' | 'export';
 export type PeriodStoryChapter = {
@@ -35,7 +39,7 @@ export type GenerationRequest = {
   chapters?: PeriodStoryChapter[];
 };
 export type PeriodStoryResult = { uri: string; mimeType: 'video/mp4' | 'video/webm' };
-type CachedPeriodStoryResult = PeriodStoryResult & { file: File };
+type CachedPeriodStoryResult = PeriodStoryResult & { file?: File; webUrl?: boolean };
 type Run = {
   id: string;
   ready: boolean;
@@ -47,6 +51,7 @@ type Run = {
   file?: File;
   handle?: FileHandle;
   transfer?: PeriodStoryTransfer;
+  webChunks?: Uint8Array[];
 };
 const TITLES: Record<Phase, string> = {
   prepare: 'Préparation des trajets…',
@@ -85,7 +90,7 @@ async function preparePhoto(uri: string, isCurrent: () => boolean): Promise<stri
   }
 }
 
-export function usePeriodStoryGeneration() {
+export function usePeriodStoryGeneration(mode: 'period' | 'journal' = 'period') {
   const webViewRef = useRef<WebView>(null);
   const runRef = useRef<Run | null>(null);
   const mounted = useRef(true);
@@ -97,10 +102,11 @@ export function usePeriodStoryGeneration() {
   const [fallbackNote, setFallbackNote] = useState('');
   const [result, setResult] = useState<PeriodStoryResult | null>(null);
   const [isSharing, setIsSharing] = useState(false);
+  const [error, setError] = useState('');
   const resultRef = useRef<CachedPeriodStoryResult | null>(null);
   const sharingRef = useRef(false);
   const discardAfterShareRef = useRef(false);
-  const source = useMemo(() => ({ html: buildStoryPeriodHtml() }), []);
+  const source = useMemo(() => ({ html: mode === 'journal' ? buildProjectJournalHtml() : buildStoryPeriodHtml() }), [mode]);
 
   const clearCachedResult = useCallback(() => {
     /*
@@ -115,7 +121,8 @@ export function usePeriodStoryGeneration() {
     const cached = resultRef.current;
     resultRef.current = null;
     if (cached) {
-      try { cached.file.delete(); } catch {}
+      try { cached.file?.delete(); } catch {}
+      if (cached.webUrl) URL.revokeObjectURL(cached.uri);
     }
     if (mounted.current) setResult(null);
   }, []);
@@ -127,6 +134,7 @@ export function usePeriodStoryGeneration() {
     try { webViewRef.current?.injectJavaScript(`window.cancelPeriodStory&&window.cancelPeriodStory(${JSON.stringify(run.id)});true;`); } catch {}
     run.script = undefined;
     run.transfer?.clear();
+    run.webChunks = undefined;
     try { run.handle?.close(); } catch {}
     if (!keepFile) { try { run.file?.delete(); } catch {} }
     if (mounted.current) setJobId(null); // Unmount the renderer, releasing native memory too.
@@ -135,6 +143,7 @@ export function usePeriodStoryGeneration() {
   const fail = useCallback((message: string) => {
     if (!runRef.current) return;
     stop();
+    if (mounted.current) setError(message);
     if (mounted.current) Alert.alert('Story interrompue', message);
   }, [stop]);
 
@@ -143,7 +152,9 @@ export function usePeriodStoryGeneration() {
     const timer = setInterval(() => {
       const run = runRef.current;
       if (run && (Date.now() - run.lastActivity > 45_000 || Date.now() > run.deadline)) {
-        fail('La génération ne répond plus. Tu peux réessayer avec le thème Sombre ou une période plus courte. Tes trajets sont conservés.');
+        fail(mode === 'journal'
+          ? 'Le carnet ne répond plus. Réessaie avec moins de photos. Tes projets, tâches et légendes sont conservés.'
+          : 'La génération ne répond plus. Tu peux réessayer avec le thème Sombre ou une période plus courte. Tes trajets sont conservés.');
       }
     }, 1000);
     return () => {
@@ -152,7 +163,7 @@ export function usePeriodStoryGeneration() {
       stop();
       clearCachedResult();
     };
-  }, [clearCachedResult, fail, stop]);
+  }, [clearCachedResult, fail, stop, mode]);
 
   const injectIfReady = useCallback(() => {
     const run = runRef.current;
@@ -214,13 +225,17 @@ export function usePeriodStoryGeneration() {
       const chunk = msg as unknown as StoryVideoChunk;
       if (!run.transfer) {
         run.transfer = new PeriodStoryTransfer(chunk, bytes => {
+          if (Platform.OS === 'web') { run.webChunks!.push(bytes); return; }
           if (!run.handle) throw new Error('Fichier vidéo fermé.');
           run.handle.writeBytes(bytes);
         });
-        const ext = run.transfer.mime === 'video/mp4' ? 'mp4' : 'webm';
-        run.file = new File(Paths.cache, `story_period_${run.id}.${ext}`);
-        run.file.create();
-        run.handle = run.file.open();
+        if (Platform.OS === 'web') run.webChunks = [];
+        else {
+          const ext = run.transfer.mime === 'video/mp4' ? 'mp4' : 'webm';
+          run.file = new File(Paths.cache, `story_${mode}_${run.id}.${ext}`);
+          run.file.create();
+          run.handle = run.file.open();
+        }
       }
       if (!run.transfer.accept(chunk)) return;
       run.lastActivity = Date.now();
@@ -230,16 +245,18 @@ export function usePeriodStoryGeneration() {
       if (!run.transfer.complete) return;
       run.handle?.close();
       run.handle = undefined;
-      const uri = run.file!.uri;
       const mimeType = run.transfer.mime;
+      const uri = Platform.OS === 'web'
+        ? URL.createObjectURL(new Blob(run.webChunks!.map(bytes => bytes.slice().buffer as ArrayBuffer), { type: mimeType }))
+        : run.file!.uri;
       stop(true);
-       const cached: CachedPeriodStoryResult = { uri, mimeType, file: run.file! };
+       const cached: CachedPeriodStoryResult = { uri, mimeType, file: run.file, webUrl: Platform.OS === 'web' };
        resultRef.current = cached;
        if (mounted.current) setResult({ uri, mimeType });
     } catch {
       fail('Impossible d’enregistrer la vidéo. Vérifie l’espace libre du téléphone puis réessaie.');
     }
-  }, [fail, injectIfReady, stop]);
+  }, [fail, injectIfReady, stop, mode]);
 
   const onLoadEnd = useCallback((id: string) => {
     if (runRef.current?.id !== id) return;
@@ -251,31 +268,50 @@ export function usePeriodStoryGeneration() {
 
   const onEngineError = useCallback((id: string) => {
     if (runRef.current?.id === id) {
-      fail('Le moteur vidéo a été interrompu. Réessaie en thème Sombre ou avec une période plus courte. Tes trajets sont conservés.');
+      fail(mode === 'journal' ? 'Le moteur vidéo a été interrompu. Réessaie avec moins de photos. Les originaux sont conservés.'
+        : 'Le moteur vidéo a été interrompu. Réessaie en thème Sombre ou avec une période plus courte. Tes trajets sont conservés.');
     }
-  }, [fail]);
+  }, [fail, mode]);
 
-  const start = useCallback(async (request: GenerationRequest) => {
-    if (runRef.current || sharingRef.current || request.trips.length === 0) return;
-    if (Platform.OS === 'web') {
+  const start = useCallback(async (request: GenerationRequest | JournalGenerationRequest) => {
+    const journal = 'journal' in request;
+    const count = journal ? request.entries.length : request.trips.length;
+    if (runRef.current || sharingRef.current || count === 0) return;
+    if (Platform.OS === 'web' && !journal) {
       Alert.alert('Story', 'La création vidéo est disponible dans l’application mobile.');
       return;
     }
     clearCachedResult();
     const id = `${Date.now()}-${++sequence.current}`;
-    const photoCount = request.trips.reduce((n, t) => n + (t.photos?.filter(p => p.routeIndex != null).length ?? 0), 0);
+    const photoCount = journal ? request.photoCount : request.trips.reduce((n, t) => n + (t.photos?.filter(p => p.routeIndex != null).length ?? 0), 0);
+    const duration = journal ? journalDuration(request.entries, request.secondsPerPhoto)
+      : request.videoDurationSec + photoCount * (request.photoPauseSecPerPhoto ?? 2);
     runRef.current = {
       id, ready: false, injected: false, lastActivity: Date.now(), signal: '',
       deadline: Date.now() + 90_000 +
-        (request.videoDurationSec + photoCount * (request.photoPauseSecPerPhoto ?? 2)) * 3000 +
+        duration * 3000 +
         photoCount * 20_000,
     };
     setJobId(id);
     setPhase('prepare');
     setProgress(0);
-    setDetail(`0 / ${request.trips.length} trajets`);
+    setDetail(`0 / ${count} ${journal ? 'étapes' : 'trajets'}`);
     setFallbackNote('');
+    setError('');
     try {
+      if ('journal' in request) {
+        const payload = await prepareJournal(request, id, () => runRef.current?.id === id, (done, total) => {
+          if (runRef.current?.id !== id) return;
+          runRef.current.lastActivity = Date.now();
+          setProgress(total ? Math.round(done / total * 100) : 100);
+          setDetail(`${done} / ${total} photos préparées`);
+        });
+        if (runRef.current?.id !== id) return;
+        runRef.current.script = `(function(){try{window.generatePeriodStory(${JSON.stringify(payload)});}catch(e){window.ReactNativeWebView.postMessage(JSON.stringify({type:'story_error',jobId:${JSON.stringify(id)},message:'Impossible de démarrer le carnet vidéo.'}));}})();true;`;
+        setDetail('Ouverture du carnet…');
+        injectIfReady();
+        return;
+      }
       const trips = [];
       for (let i = 0; i < request.trips.length; i++) {
         // Let the progress/cancel UI render even when there are no photographs.
@@ -339,7 +375,8 @@ export function usePeriodStoryGeneration() {
       setDetail('Démarrage du moteur vidéo…');
       injectIfReady();
     } catch (error) {
-      if (runRef.current?.id === id) fail(error instanceof Error ? error.message : 'Impossible de préparer les trajets.');
+      if (runRef.current?.id === id) fail(error instanceof Error ? error.message
+        : journal ? 'Impossible de préparer le carnet.' : 'Impossible de préparer les trajets.');
     }
   }, [clearCachedResult, fail, injectIfReady]);
 
@@ -349,12 +386,19 @@ export function usePeriodStoryGeneration() {
     sharingRef.current = true;
     if (mounted.current) setIsSharing(true);
     try {
+      if (Platform.OS === 'web') {
+        const link = document.createElement('a');
+        link.href = cached.uri;
+        link.download = `carnet-de-bord.${cached.mimeType === 'video/mp4' ? 'mp4' : 'webm'}`;
+        document.body.appendChild(link); link.click(); link.remove();
+        return true;
+      }
       if (Sharing.isAvailableAsync && !(await Sharing.isAvailableAsync())) {
         throw new Error('Partage indisponible sur cet appareil.');
       }
       await Sharing.shareAsync(cached.uri, {
         mimeType: cached.mimeType,
-        dialogTitle: 'Partager la story période',
+        dialogTitle: mode === 'journal' ? 'Partager le carnet de bord' : 'Partager la story période',
       });
       return true;
     } catch {
@@ -374,19 +418,21 @@ export function usePeriodStoryGeneration() {
         const pending = resultRef.current;
         resultRef.current = null;
         if (pending) {
-          try { pending.file.delete(); } catch {}
+          try { pending.file?.delete(); } catch {}
+          if (pending.webUrl) URL.revokeObjectURL(pending.uri);
         }
         if (mounted.current) setResult(null);
       }
     }
-  }, []);
+  }, [mode]);
 
   const discardResult = useCallback(() => {
     clearCachedResult();
   }, [clearCachedResult]);
 
   return {
-    jobId, isGenerating: jobId !== null, progress, detail, title: TITLES[phase], fallbackNote,
+    jobId, isGenerating: jobId !== null, progress, detail,
+    title: mode === 'journal' && phase === 'prepare' ? 'Préparation du carnet…' : TITLES[phase], fallbackNote, error,
     webViewRef, source, start, cancel: () => stop(), onMessage, onLoadEnd, onEngineError,
     result, shareResult, discardResult, isSharing,
   };

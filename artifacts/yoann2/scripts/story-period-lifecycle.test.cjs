@@ -318,6 +318,18 @@ function makeNativeMocks(clock, options = {}) {
       buildStoryPeriodHtml: () => '<html data-synthetic-story />',
     },
     '@/utils/periodStoryTransfer': transfer,
+    '@/utils/projectJournalRenderer': { buildProjectJournalHtml: () => '<html data-synthetic-journal />' },
+    '@/utils/prepareJournal': { prepareJournal: async (request, jobId, current, progress) => {
+      if (options.mode !== 'journal') throw new Error('Unexpected journal preparation in period test');
+      if (options.journalBlocked) await new Promise(resolve => { native.resolveJournal = resolve; });
+      if (options.journalError) throw new Error('Photo de la tâche indisponible');
+      if (!current()) throw new Error('Annulé');
+      progress(request.photoCount, request.photoCount);
+      return { ...request, jobId, entries: request.entries.map(entry => ({
+        ...entry, photos: entry.photos.map(photo => ({ id: photo.id, img: 'data:image/jpeg;base64,YWJj', caption: photo.caption })),
+      })) };
+    } },
+    '@/utils/projectJournal': { journalDuration: () => 20 },
   };
 
   return { native, dependencies, webView };
@@ -337,13 +349,14 @@ function makeHarness(options = {}) {
   dependencies.react = react;
 
   const hookModule = loadCommonJs(HOOK_SOURCE, dependencies, {
+    Error,
     Date: { now: () => clock.now },
     setTimeout: clock.setTimeout,
     clearTimeout: clock.clearTimeout,
     setInterval: clock.setInterval,
     clearInterval: clock.clearInterval,
   });
-  runner.hook = hookModule.usePeriodStoryGeneration;
+  runner.hook = () => hookModule.usePeriodStoryGeneration(options.mode ?? 'period');
   runner.render();
   runner.output.webViewRef.current = webView;
   return {
@@ -757,4 +770,47 @@ test('unmount cleanup cancels the renderer, closes and removes a partial file', 
   assert.equal(harness.native.files[0].handle.closed, true);
   assert.ok(harness.native.injections.some(script => script.includes('cancelPeriodStory')));
   assert.equal(harness.clock.activeCount(), 0);
+});
+
+function journalRequest() {
+  return {
+    journal: true, title: 'Mon atelier', periodLabel: 'Avril 2026', projectNames: ['Garage'],
+    entryCount: 1, photoCount: 1, secondsPerPhoto: 4.5,
+    entries: [{ id: 'task:test', title: 'Étagères', kind: 'task', caption: 'Légende conservée',
+      photos: [{ id: 'photo', uri: 'file://source', caption: 'Photo légendée' }] }],
+  };
+}
+test('native journal shares the proven bridge but injects journal photos/captions, not GPS trips', async () => {
+  const harness = makeHarness({ mode: 'journal' });
+  const id = await prepareStart(harness, journalRequest());
+  assert.match(harness.api.source.html, /journal/);
+  ready(harness, id);
+  const injected = harness.native.injections.find(script => script.includes('generatePeriodStory'));
+  assert.ok(injected.includes('Mon atelier') && injected.includes('Légende conservée') && injected.includes('Photo légendée'));
+  assert.equal(injected.includes('"uri":"file://source"'), false, 'renderer receives resized media, not local file paths');
+  send(harness, id, { type: 'story_progress', jobId: id, p: 64 });
+  assert.equal(harness.api.progress, 64);
+  send(harness, id, { type: 'story_chunk', jobId: id, index: 0, total: 1, mime: 'video/mp4', data: chunkData(10) });
+  assert.equal(harness.api.jobId, null);
+  assert.equal(harness.api.result.mimeType, 'video/mp4');
+  assert.equal(harness.native.shares.length, 0);
+  await harness.api.shareResult();
+  assert.equal(harness.native.shares[0].config.dialogTitle, 'Partager le carnet de bord');
+});
+test('journal photo preparation errors preserve a retryable editor and cancellation rejects late preparation', async () => {
+  const failed = makeHarness({ mode: 'journal', journalError: true });
+  await prepareStart(failed, journalRequest());
+  assert.equal(failed.api.jobId, null);
+  assert.match(failed.api.error, /Photo de la tâche/);
+  assert.equal(failed.native.files.length, 0);
+
+  const blocked = makeHarness({ mode: 'journal', journalBlocked: true });
+  const promise = blocked.api.start(journalRequest());
+  await settle();
+  blocked.api.cancel();
+  blocked.native.resolveJournal();
+  await promise;
+  assert.equal(blocked.api.jobId, null);
+  assert.equal(blocked.native.injections.some(script => script.includes('generatePeriodStory')), false);
+  assert.equal(blocked.native.files.length, 0);
 });
