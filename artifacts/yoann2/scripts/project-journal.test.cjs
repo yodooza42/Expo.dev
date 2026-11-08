@@ -216,10 +216,10 @@ test('empty/invalid ranges, malformed drafts and oversized selections fail expli
   for (const taskOrderByDate of [null, [], { bad: [] }, { '2026-04-05': 'task:a' },
     { '2026-04-05': [2] }, { '2026-04-05': ['project:p1'] }, { '2026-04-05': ['task:a', 'task:a'] }])
     assert.equal(journal.validateJournalChoices({ ...choices(), taskOrderByDate }), false);
-  const huge = { ...tasks[0], photos: Array.from({ length: 61 }, (_, i) => `file://${i}`) };
+  const huge = { ...tasks[0], photos: Array.from({ length: 121 }, (_, i) => `file://${i}`) };
   const output = journal.buildProjectJournal(projects, [huge], choices());
-  assert.ok(output.error.includes('60 photos'));
-  assert.equal(output.photoCount, 62, 'limits never silently drop photos');
+  assert.ok(output.error.includes('120 photos'));
+  assert.equal(output.photoCount, 122, 'limits never silently drop photos');
 });
 test('photo preparation is sequential, preserves captions and reports a precise inaccessible photo', async () => {
   const calls = [];

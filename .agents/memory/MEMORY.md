@@ -26,3 +26,4 @@
 - [Protection des photos](photo-protection.md) — copies permanentes et double copie locale vérifiée, masquée de la galerie sans changer les dates ni les originaux.
 - [Dates de fin](project-task-completion.md) — projets et tâches : date du jour à la clôture, correction manuelle possible sans changer l’échéance.
 - [Carnet vidéo des projets](project-journal.md) — stories chronologiques par complétion, période/projets/photos/légendes au choix, style carnet à carreaux de 5 mm.
+- [Appareil de test du carnet vidéo](journal-video-test-device.md) — l’appareil de l’utilisateur pour valider les exports vidéo est un Samsung Galaxy S25 Ultra.
