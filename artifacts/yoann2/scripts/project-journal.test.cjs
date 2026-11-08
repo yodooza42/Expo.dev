@@ -236,7 +236,7 @@ test('photo preparation is sequential, preserves captions and reports a precise 
 /** A single shared clock drives rAF, all timers and recorder callbacks. */
 function engine({ badPhoto = false, loadDelay = 25 } = {}) {
   let now = 1000, next = 1, activeImages = 0, maxImages = 0, recorder;
-  const timers = new Map(), messages = [], draws = [];
+  const timers = new Map(), messages = [], draws = [], imageDraws = [];
   const set = (fn, delay, interval = false) => {
     const id = next++; timers.set(id, { fn, due: now + delay, delay, interval }); return id;
   };
@@ -245,6 +245,7 @@ function engine({ badPhoto = false, loadDelay = 25 } = {}) {
     measureText: text => ({ width: String(text).length * 17 }),
     createLinearGradient: () => ({ addColorStop() {} }),
     createRadialGradient: () => ({ addColorStop() {} }),
+    drawImage(source) { if (source?.value) imageDraws.push({ src: source.value, at: now }); },
     fillText(text, x, y) { if (text) draws.push({ text, x, y, at: now }); },
   }, { get: (o, k) => k in o ? o[k] : () => {}, set: (o, k, v) => { o[k] = v; return true; } });
   const canvas = () => ({ width: 720, height: 1280, getContext: () => ctx,
@@ -304,7 +305,7 @@ function engine({ badPhoto = false, loadDelay = 25 } = {}) {
     now = until;
     await new Promise(resolve => setImmediate(resolve));
   }
-  return { win, messages, draws, elements, advance, get maxImages() { return maxImages; }, get activeImages() { return activeImages; },
+  return { win, messages, draws, imageDraws, elements, advance, get maxImages() { return maxImages; }, get activeImages() { return activeImages; },
     get recorder() { return recorder; }, get timerCount() { return timers.size; } };
 }
 function payload({ count = 3, preview = true } = {}) {
@@ -341,13 +342,40 @@ test('preview and exporter use exactly the calculated duration, expose controls 
   e.win.generatePeriodStory(data);
   assert.equal(e.win.journalDuration, journal.journalDuration(data.entries, 3));
   await e.advance(300);
-  e.win.journalPause(); e.win.journalSeek(10);
+  e.win.journalPause(); e.win.journalSeek(5.2);
   await e.advance(200);
   assert.ok(e.draws.some(draw => draw.text === 'Détail 0'));
   e.win.journalSeek(e.win.journalDuration - 3); await e.advance(200);
   assert.ok(e.draws.some(draw => draw.text === 'Fin du carnet.'));
-  assert.ok(e.maxImages <= 3, `current+next+transition, not ${e.maxImages} decoded photos`);
+  assert.ok(e.maxImages <= 8, `at most the current and turning pages, not ${e.maxImages} decoded photos`);
   assert.equal(e.messages.some(m => m.type === 'story_chunk'), false);
+});
+test('task page reveals four photos in half-second steps and continues the remaining photos on the next page', async () => {
+  const e = engine(), data = payload({ count: 1 });
+  data.entries[0].photos = Array.from({ length: 6 }, (_, i) => ({
+    id: `photo-${i + 1}`, caption: `Photo ${i + 1}`, img: `data:image/jpeg;base64,cGhvdG8${i}`,
+  }));
+  data.photoCount = 6;
+  e.win.generatePeriodStory(data);
+  await e.advance(300);
+  e.win.journalPause();
+  const hasDrawn = id => e.imageDraws.some(draw => draw.src.endsWith(`cGhvdG8${id - 1}`));
+  e.win.journalSeek(5.2); assert.equal(hasDrawn(1), true); assert.equal(hasDrawn(2), false);
+  await e.advance(500);
+  e.win.journalSeek(5.7); assert.equal(hasDrawn(2), true); assert.equal(hasDrawn(3), false);
+  await e.advance(500);
+  e.win.journalSeek(6.2); assert.equal(hasDrawn(3), true); assert.equal(hasDrawn(4), false);
+  await e.advance(500);
+  e.win.journalSeek(6.7); assert.equal(hasDrawn(4), true); assert.equal(hasDrawn(5), false);
+  await e.advance(500);
+  e.win.journalSeek(9.7);
+  await e.advance(100);
+  assert.equal(hasDrawn(5), true, 'photo five starts the continuation page');
+  assert.equal(hasDrawn(6), false, 'photo six still waits for its half-second reveal');
+  await e.advance(500);
+  e.win.journalSeek(10.2);
+  assert.equal(hasDrawn(6), true);
+  assert.equal(e.win.journalDuration, journal.journalDuration(data.entries, 3));
 });
 test('real renderer protocol advances past 45 seconds, streams honest ordered chunks and releases resources', async () => {
   const e = engine();

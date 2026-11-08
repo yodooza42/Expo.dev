@@ -175,7 +175,9 @@ export default function ProjectJournalScreen() {
               </Text>}
             </View>
           )}
-          <Text style={[s.small, { color: c.mutedForeground }]}>Un carnet peut contenir jusqu’à 60 photos et 80 étapes, pour 10 minutes maximum.</Text>
+          <Text style={[s.small, { color: c.mutedForeground }]}>
+            Un carnet peut contenir jusqu’à 60 photos et 80 étapes, pour 10 minutes maximum. Sur la page de chaque tâche, jusqu’à 4 photos apparaissent l’une après l’autre, espacées de 0,5 seconde ; les suivantes passent sur une page de suite.
+          </Text>
           <Text style={[s.small, { color: c.mutedForeground }]}>Les flèches changent l’ordre des tâches terminées le même jour, uniquement dans ce carnet. Les récapitulatifs suivent la dernière tâche retenue de chaque projet.</Text>
           {journal.candidates.map((entry, index) => <JournalEntryEditor key={entry.id} entry={entry} number={index + 1} candidates={journal.candidates}
             choices={choices} expanded={expanded === entry.id} onExpand={() => setExpanded(expanded === entry.id ? null : entry.id)} onChange={change} />)}
