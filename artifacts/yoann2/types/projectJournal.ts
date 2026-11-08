@@ -18,6 +18,9 @@ export type JournalEntry = {
   sourceId: string;
   kind: 'task' | 'project';
   title: string;
+  /** Parent task title when this entry is a dated subtask step. */
+  parentTaskTitle?: string;
+  subTaskId?: string;
   project: string;
   dateLabel: string;
   dateKey: string;

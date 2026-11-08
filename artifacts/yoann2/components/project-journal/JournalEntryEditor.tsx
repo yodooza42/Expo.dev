@@ -30,9 +30,10 @@ export function JournalEntryEditor({ entry, choices, expanded, onExpand, onChang
       </Pressable>
       <Pressable testID={`journal-expand-${entry.id}`} onPress={onExpand} style={[s.flex, s.heading]}>
         <Text style={[s.date, { color: c.mutedForeground }]}>{String(number).padStart(2, '0')} / {entry.dateLabel}</Text>
+        {entry.parentTaskTitle && <Text style={[s.small, { color: c.primary }]}>Tâche · {entry.parentTaskTitle}</Text>}
         <Text style={[s.title, { color: included ? c.foreground : c.mutedForeground }]}>{entry.title}</Text>
         <Text style={[s.small, { color: c.mutedForeground }]}>
-          {entry.recapTasks ? `Récapitulatif · ${entry.recapTasks.length} tâches accomplies` : entry.kind === 'project' ? 'Projet terminé' : entry.project} · {photoCount} photo{photoCount > 1 ? 's' : ''}
+          {entry.recapTasks ? `Récapitulatif · ${entry.recapTasks.length} tâches accomplies` : entry.parentTaskTitle ? `Sous-tâche · ${entry.project}` : entry.kind === 'project' ? 'Projet terminé' : entry.project} · {photoCount} photo{photoCount > 1 ? 's' : ''}
         </Text>
       </Pressable>
       <Pressable onPress={onExpand} accessibilityLabel={expanded ? 'Replier l’étape' : 'Modifier les photos et légendes'} style={s.check}>

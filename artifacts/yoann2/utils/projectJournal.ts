@@ -3,6 +3,9 @@ import type { JournalChoices, JournalEntry, JournalGenerationRequest } from '@/t
 import { parseCompletionDate } from '@/utils/completionDate';
 
 export const JOURNAL_LIMITS = { entries: 80, photos: 60, seconds: 600, encodedBytes: 24 * 1024 * 1024 };
+export const JOURNAL_PHOTOS_PER_SLIDE = 4;
+export const JOURNAL_PHOTO_APPEAR_INTERVAL = 0.5;
+export const JOURNAL_FIRST_PHOTO_DELAY = 1;
 export function journalDateKey(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
@@ -19,11 +22,24 @@ export function journalPhotoId(entryId: string, uri: string): string {
 export const journalPace = (pace: JournalChoices['pace']) => pace === 'calm' ? 6 : pace === 'quick' ? 3 : 4.5;
 export const journalRecapDuration = (entry: JournalEntry) => Math.max(8, Math.min(16,
   4 + Math.ceil((entry.recapTasks?.length ?? 0) / 6) * 4 + Math.ceil(entry.caption.trim().length / 60)));
+const journalPhotoSlideDuration = (count: number, secondsPerPhoto: number, delay = 0) =>
+  delay + Math.max(0, count - 1) * JOURNAL_PHOTO_APPEAR_INTERVAL + secondsPerPhoto;
+const journalTitleDuration = (entry: JournalEntry) => Math.max(entry.photos.length ? 3 : 4,
+  Math.min(16, 2 + Math.ceil((entry.title.length + entry.caption.length) / 24)));
 export function journalDuration(entries: JournalEntry[], secondsPerPhoto: number): number {
-  return 8 + entries.reduce((sum, entry) => sum
-    + (entry.recapTasks?.length ? Math.ceil(entry.recapTasks.length / 6) * journalRecapDuration(entry)
-      : Math.max(entry.photos.length ? 3 : 4, Math.min(16, 2 + Math.ceil((entry.title.length + entry.caption.length) / 24))))
-    + entry.photos.reduce((seconds, photo) => seconds + Math.max(secondsPerPhoto, Math.min(16, 2 + Math.ceil(photo.caption.length / 24))), 0), 0);
+  return 8 + entries.reduce((sum, entry) => {
+    const pages = Math.ceil(entry.photos.length / JOURNAL_PHOTOS_PER_SLIDE);
+    if (entry.recapTasks?.length) return sum + Math.ceil(entry.recapTasks.length / 6) * journalRecapDuration(entry)
+      + Array.from({ length: pages }, (_, page) => journalPhotoSlideDuration(
+        Math.min(JOURNAL_PHOTOS_PER_SLIDE, entry.photos.length - page * JOURNAL_PHOTOS_PER_SLIDE), secondsPerPhoto,
+      )).reduce((total, duration) => total + duration, 0);
+    const firstPageCount = Math.min(JOURNAL_PHOTOS_PER_SLIDE, entry.photos.length);
+    return sum + Math.max(journalTitleDuration(entry),
+      firstPageCount ? journalPhotoSlideDuration(firstPageCount, secondsPerPhoto, JOURNAL_FIRST_PHOTO_DELAY) : 0)
+      + Array.from({ length: Math.max(0, pages - 1) }, (_, page) => journalPhotoSlideDuration(
+        Math.min(JOURNAL_PHOTOS_PER_SLIDE, entry.photos.length - (page + 1) * JOURNAL_PHOTOS_PER_SLIDE), secondsPerPhoto,
+      )).reduce((total, duration) => total + duration, 0);
+  }, 0);
 }
 export function initialJournalChoices(projects: Project[], projectId?: string): JournalChoices {
   const now = new Date();
@@ -70,8 +86,8 @@ export function moveJournalTask(choices: JournalChoices, candidates: JournalEntr
 function attachJournalRecaps(items: JournalEntry[]): JournalEntry[] {
   const after = new Map<string, JournalEntry[]>();
   for (const recap of items.filter(item => item.recapTasks)) {
-    const taskIds = new Set(recap.recapTasks!.map(task => `task:${task.id}`));
-    const last = items.filter(item => item.kind === 'task' && taskIds.has(item.id)).slice(-1)[0];
+    const taskIds = new Set(recap.recapTasks!.map(task => task.id));
+    const last = items.filter(item => item.kind === 'task' && taskIds.has(item.sourceId)).slice(-1)[0];
     if (last) after.set(last.id, [...(after.get(last.id) ?? []), { ...recap, afterTaskId: last.id }]);
   }
   return items.filter(item => !item.recapTasks).flatMap(item => [item, ...(after.get(item.id) ?? [])]);
@@ -80,20 +96,24 @@ export function buildProjectJournal(projects: Project[], tasks: Task[], choices:
   const selectedProjects = projects.filter(p => choices.projectIds.includes(p.id));
   const projectById = new Map(selectedProjects.map(p => [p.id, p]));
   const candidates: JournalEntry[] = [];
-  const undated: Array<{ id: string; kind: 'task' | 'project'; title: string; photoCount: number }> = [];
-  function add(item: Task | Project, kind: 'task' | 'project', project: Project) {
+  const undated: Array<{ id: string; kind: 'task' | 'project'; title: string; photoCount: number; action: 'date' | 'subtask-date' | 'subtask' | 'photos' }> = [];
+  function add(item: Task | Project, kind: 'task' | 'project', project: Project, options?: {
+    entryId?: string; sourceId?: string; parentTaskTitle?: string; subTaskId?: string;
+  }) {
     if (item.status !== 'done') return;
     const title = 'title' in item ? item.title : item.name;
     const date = item.completedAt ? parseCompletionDate(item.completedAt) : null;
-    if (!date) { undated.push({ id: item.id, kind, title, photoCount: item.photos.length }); return; }
+    if (!date) { undated.push({ id: options?.sourceId ?? item.id, kind, title, photoCount: item.photos.length, action: 'date' }); return; }
     const dateKey = journalDateKey(date);
     if (dateKey < choices.from || dateKey > choices.to) return;
-    const id = `${kind}:${item.id}`;
+    const id = options?.entryId ?? `${kind}:${item.id}`;
     const defaultCaption = ('notes' in item ? item.notes?.trim() : '') || item.description || '';
     candidates.push({
-      id, sourceId: item.id, kind, title, project: project.name, dateKey,
+      id, sourceId: options?.sourceId ?? item.id, kind, title, project: project.name, dateKey,
       dateLabel: date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }),
       caption: choices.captions[id] ?? defaultCaption.slice(0, 280),
+      ...(options?.parentTaskTitle ? { parentTaskTitle: options.parentTaskTitle } : {}),
+      ...(options?.subTaskId ? { subTaskId: options.subTaskId } : {}),
       photos: [...new Set(item.photos)].map(uri => {
         const photoId = journalPhotoId(id, uri);
         return { id: photoId, uri, caption: choices.photoCaptions[photoId] ?? '' };
@@ -102,7 +122,37 @@ export function buildProjectJournal(projects: Project[], tasks: Task[], choices:
   }
   tasks.forEach(task => {
     const project = projectById.get(task.projectId);
-    if (project) add(task, 'task', project);
+    if (!project) return;
+    const doneSubTasks = task.subTasks?.filter(subTask => subTask.done) ?? [];
+    const datedSubTasks = doneSubTasks.filter(subTask => !!subTask.completedAt && !!parseCompletionDate(subTask.completedAt));
+    if (!datedSubTasks.length) { add(task, 'task', project); return; }
+
+    const assignedPhotos = new Set<string>();
+    for (const subTask of doneSubTasks) {
+      const photos = (subTask.photoUris ?? []).filter(uri => task.photos.includes(uri));
+      photos.forEach(uri => assignedPhotos.add(uri));
+      if (!subTask.completedAt || !parseCompletionDate(subTask.completedAt)) {
+        undated.push({ id: task.id, kind: 'task', title: `${task.title} · ${subTask.title}`, photoCount: photos.length, action: 'subtask-date' });
+        continue;
+      }
+      add({ ...task, title: subTask.title, completedAt: subTask.completedAt, photos }, 'task', project, {
+        entryId: `task:${task.id}:subtask:${subTask.id}`, sourceId: task.id,
+        parentTaskTitle: task.title, subTaskId: subTask.id,
+      });
+    }
+    for (const subTask of task.subTasks ?? []) {
+      if (subTask.done) continue;
+      const photos = (subTask.photoUris ?? []).filter(uri => task.photos.includes(uri));
+      photos.forEach(uri => assignedPhotos.add(uri));
+      if (photos.length) undated.push({
+        id: task.id, kind: 'task', title: `${task.title} · ${subTask.title} (sous-tâche non terminée)`,
+        photoCount: photos.length, action: 'subtask',
+      });
+    }
+    const unassigned = task.photos.filter(uri => !assignedPhotos.has(uri));
+    if (unassigned.length) undated.push({
+      id: task.id, kind: 'task', title: `${task.title} · photos à associer`, photoCount: unassigned.length, action: 'photos',
+    });
   });
   selectedProjects.forEach(project => {
     const children = tasks.filter(task => task.projectId === project.id);

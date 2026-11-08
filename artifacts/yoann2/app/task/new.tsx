@@ -28,6 +28,7 @@ import { SubPageHeader } from '@/components/SubPageHeader';
 import { CompletionDateField } from '@/components/CompletionDateField';
 import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
 import { completionDateError, formatCompletionDate } from '@/utils/completionDate';
+import { photoTakenAt } from '@/utils/tripPhotoPlacement';
 import type { Priority, RecurrenceType, TaskStatus } from '@/types';
 
 const { width } = Dimensions.get('window');
@@ -85,6 +86,7 @@ export default function NewTaskScreen() {
     return '';
   });
   const [photos, setPhotos] = useState<string[]>(existing?.photos ?? []);
+  const [photoTakenAtByUri, setPhotoTakenAtByUri] = useState<Record<string, number>>(existing?.photoTakenAt ?? {});
   const [recurrence, setRecurrence] = useState<RecurrenceType>(existing?.recurrence ?? null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [galleryPickerVisible, setGalleryPickerVisible] = useState(false);
@@ -126,6 +128,7 @@ export default function NewTaskScreen() {
       description: desc.trim(),
       notes: notes.trim(),
       photos,
+      photoTakenAt: photoTakenAtByUri,
       dueDate: parseFrDate(dueDate).toISOString(),
       priority,
       importance: scaledImportance,
@@ -165,11 +168,13 @@ export default function NewTaskScreen() {
       {
         text: 'Appareil photo',
         onPress: async () => {
-          const r = await ImagePicker.launchCameraAsync({ quality: 1 });
+          const r = await ImagePicker.launchCameraAsync({ quality: 1, exif: true });
           if (!r.canceled && r.assets[0]) {
             const asset = r.assets[0];
             const permanent = await persistPhoto(asset.uri);
             setPhotos(prev => [...prev, permanent]);
+            const takenAt = photoTakenAt(asset.exif as Record<string, unknown> | undefined);
+            if (takenAt) setPhotoTakenAtByUri(prev => ({ ...prev, [permanent]: takenAt }));
             savePhotoToProject(asset.uri, projectName, asset.fileName, undefined, taskFolder);
           }
         },
@@ -184,16 +189,22 @@ export default function NewTaskScreen() {
     ]);
   }
 
-  async function addTaskPhotoUris(uris: string[]) {
+  async function addTaskPhotoUris(items: Array<{ uri: string; takenAt?: number }>) {
     try {
-    const permanent = await Promise.all(uris.map(uri => protectPhoto(uri, {
+    const permanent = await Promise.all(items.map(async item => ({
+      uri: await protectPhoto(item.uri, {
       project: projects.find(item => item.id === projectId)?.name ?? 'Sans projet',
       folder: existing ? taskFolderName(title, existing.id) : sanitize(title || 'Nouvelle tâche'),
+      }),
+      takenAt: item.takenAt,
     })));
     setPhotos(previous => {
       const existingUris = new Set(previous);
-      return [...previous, ...permanent.filter(uri => !existingUris.has(uri))];
+      return [...previous, ...permanent.map(item => item.uri).filter(uri => !existingUris.has(uri))];
     });
+    setPhotoTakenAtByUri(previous => ({
+      ...previous, ...Object.fromEntries(permanent.filter(item => item.takenAt).map(item => [item.uri, item.takenAt!])),
+    }));
     } catch (error) {
       Alert.alert('Photo non conservée', error instanceof Error ? error.message : 'Copie permanente impossible.');
     }
@@ -204,14 +215,20 @@ export default function NewTaskScreen() {
       mediaTypes: ['images'],
       allowsMultipleSelection: true,
       quality: 1,
+      exif: true,
     });
-    if (!result.canceled) addTaskPhotoUris(result.assets.map(asset => asset.uri));
+    if (!result.canceled) addTaskPhotoUris(result.assets.map(asset => ({
+      uri: asset.uri, takenAt: photoTakenAt(asset.exif as Record<string, unknown> | undefined),
+    })));
   }
 
   async function addGalleryTaskPhotos(assets: MediaLibrary.Asset[]) {
     try {
-      const uris = await Promise.all(assets.map(async asset => (await MediaLibrary.getAssetInfoAsync(asset)).localUri ?? asset.uri));
-      await addTaskPhotoUris(uris);
+      const photos = await Promise.all(assets.map(async asset => {
+        const info = await MediaLibrary.getAssetInfoAsync(asset, { shouldDownloadFromNetwork: false });
+        return { uri: info.localUri ?? asset.uri, takenAt: photoTakenAt(info.exif as Record<string, unknown> | undefined, info.creationTime) };
+      }));
+      await addTaskPhotoUris(photos);
     } catch { Alert.alert('Photo inaccessible', 'Autorise l’accès aux photos, puis réessaie.'); }
   }
 
@@ -419,7 +436,12 @@ export default function NewTaskScreen() {
               <View key={idx} style={styles.photoThumb}>
                 <Image source={{ uri }} style={styles.photoImg} contentFit="cover" />
                 <Pressable
-                  onPress={() => setPhotos(prev => prev.filter((_, i) => i !== idx))}
+                  onPress={() => {
+                    setPhotos(prev => prev.filter((_, i) => i !== idx));
+                    setPhotoTakenAtByUri(prev => {
+                      const next = { ...prev }; delete next[uri]; return next;
+                    });
+                  }}
                   style={styles.photoRemove}
                 >
                   <MaterialCommunityIcons name="close-circle" size={20} color="#fff" />

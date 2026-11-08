@@ -236,7 +236,7 @@ test('photo preparation is sequential, preserves captions and reports a precise 
 /** A single shared clock drives rAF, all timers and recorder callbacks. */
 function engine({ badPhoto = false, loadDelay = 25 } = {}) {
   let now = 1000, next = 1, activeImages = 0, maxImages = 0, recorder;
-  const timers = new Map(), messages = [], draws = [];
+  const timers = new Map(), messages = [], draws = [], imageDraws = [];
   const set = (fn, delay, interval = false) => {
     const id = next++; timers.set(id, { fn, due: now + delay, delay, interval }); return id;
   };
@@ -245,6 +245,7 @@ function engine({ badPhoto = false, loadDelay = 25 } = {}) {
     measureText: text => ({ width: String(text).length * 17 }),
     createLinearGradient: () => ({ addColorStop() {} }),
     createRadialGradient: () => ({ addColorStop() {} }),
+    drawImage(source) { if (source?.value) imageDraws.push({ src: source.value, at: now }); },
     fillText(text, x, y) { if (text) draws.push({ text, x, y, at: now }); },
   }, { get: (o, k) => k in o ? o[k] : () => {}, set: (o, k, v) => { o[k] = v; return true; } });
   const canvas = () => ({ width: 720, height: 1280, getContext: () => ctx,
@@ -304,7 +305,7 @@ function engine({ badPhoto = false, loadDelay = 25 } = {}) {
     now = until;
     await new Promise(resolve => setImmediate(resolve));
   }
-  return { win, messages, draws, elements, advance, get maxImages() { return maxImages; }, get activeImages() { return activeImages; },
+  return { win, messages, draws, imageDraws, elements, advance, get maxImages() { return maxImages; }, get activeImages() { return activeImages; },
     get recorder() { return recorder; }, get timerCount() { return timers.size; } };
 }
 function payload({ count = 3, preview = true } = {}) {
@@ -341,13 +342,40 @@ test('preview and exporter use exactly the calculated duration, expose controls 
   e.win.generatePeriodStory(data);
   assert.equal(e.win.journalDuration, journal.journalDuration(data.entries, 3));
   await e.advance(300);
-  e.win.journalPause(); e.win.journalSeek(10);
+  e.win.journalPause(); e.win.journalSeek(5.2);
   await e.advance(200);
   assert.ok(e.draws.some(draw => draw.text === 'Détail 0'));
   e.win.journalSeek(e.win.journalDuration - 3); await e.advance(200);
   assert.ok(e.draws.some(draw => draw.text === 'Fin du carnet.'));
-  assert.ok(e.maxImages <= 3, `current+next+transition, not ${e.maxImages} decoded photos`);
+  assert.ok(e.maxImages <= 8, `at most the current and turning pages, not ${e.maxImages} decoded photos`);
   assert.equal(e.messages.some(m => m.type === 'story_chunk'), false);
+});
+test('task page reveals four photos in half-second steps and continues the remaining photos on the next page', async () => {
+  const e = engine(), data = payload({ count: 1 });
+  data.entries[0].photos = Array.from({ length: 6 }, (_, i) => ({
+    id: `photo-${i + 1}`, caption: `Photo ${i + 1}`, img: `data:image/jpeg;base64,cGhvdG8${i}`,
+  }));
+  data.photoCount = 6;
+  e.win.generatePeriodStory(data);
+  await e.advance(300);
+  e.win.journalPause();
+  const hasDrawn = id => e.imageDraws.some(draw => draw.src.endsWith(`cGhvdG8${id - 1}`));
+  e.win.journalSeek(5.2); assert.equal(hasDrawn(1), true); assert.equal(hasDrawn(2), false);
+  await e.advance(500);
+  e.win.journalSeek(5.7); assert.equal(hasDrawn(2), true); assert.equal(hasDrawn(3), false);
+  await e.advance(500);
+  e.win.journalSeek(6.2); assert.equal(hasDrawn(3), true); assert.equal(hasDrawn(4), false);
+  await e.advance(500);
+  e.win.journalSeek(6.7); assert.equal(hasDrawn(4), true); assert.equal(hasDrawn(5), false);
+  await e.advance(500);
+  e.win.journalSeek(9.7);
+  await e.advance(100);
+  assert.equal(hasDrawn(5), true, 'photo five starts the continuation page');
+  assert.equal(hasDrawn(6), false, 'photo six still waits for its half-second reveal');
+  await e.advance(500);
+  e.win.journalSeek(10.2);
+  assert.equal(hasDrawn(6), true);
+  assert.equal(e.win.journalDuration, journal.journalDuration(data.entries, 3));
 });
 test('real renderer protocol advances past 45 seconds, streams honest ordered chunks and releases resources', async () => {
   const e = engine();
@@ -381,4 +409,56 @@ test('an inaccessible renderer image fails with an exact locator, not an empty s
   assert.ok(e.messages.some(m => m.type === 'story_error' && m.message.includes('Étape 0') && m.message.includes('photo0')));
   assert.equal(e.messages.some(m => m.type === 'story_chunk'), false);
   assert.equal(e.activeImages, 0);
+});
+test('dated subtasks become separate chronological story entries with their own assigned photos', () => {
+  const project = { id: 'split', name: 'Chambre', status: 'inprogress', photos: [] };
+  const task = {
+    id: 'paint', projectId: 'split', title: 'Peinture chambre', status: 'done',
+    completedAt: '30/04/2026', dueDate: '2026-05-01', notes: '', photos: ['p1', 'p2', 'p3'],
+    subTasks: [
+      { id: 'paper', title: 'Enlever la tapisserie', done: true, completedAt: '01/01/2026', photoUris: ['p1'] },
+      { id: 'sand', title: 'Poncer et sous-couche', done: true, completedAt: '20/02/2026', photoUris: ['p2', 'p3'] },
+      { id: 'paint', title: 'Peinture couleur', done: true, photoUris: [] },
+    ],
+  };
+  const output = journal.buildProjectJournal([project], [task], {
+    ...choices(), projectIds: ['split'], from: '2026-01-01', to: '2026-04-30',
+  });
+  const steps = output.entries.filter(entry => entry.kind === 'task');
+  assert.deepEqual(clone(steps.map(entry => [entry.title, entry.dateKey, entry.photos.map(photo => photo.uri)])), [
+    ['Enlever la tapisserie', '2026-01-01', ['p1']],
+    ['Poncer et sous-couche', '2026-02-20', ['p2', 'p3']],
+  ]);
+  assert.ok(steps.every(entry => entry.parentTaskTitle === 'Peinture chambre' && entry.sourceId === 'paint'));
+  assert.equal(output.undated.length, 1);
+  assert.equal(output.undated[0].title, 'Peinture chambre · Peinture couleur');
+  assert.equal(output.undated[0].action, 'subtask-date');
+  assert.equal(output.undatedPhotos, 0);
+  assert.equal(output.entries[output.entries.indexOf(output.entries.find(entry => entry.recapTasks)) - 1].id, 'task:paint:subtask:sand');
+});
+test('subtask photos without a dated assignment are visible as an actionable item, not lost', () => {
+  const project = { id: 'split', name: 'Chambre', status: 'inprogress', photos: [] };
+  const task = {
+    id: 'paint', projectId: 'split', title: 'Peinture chambre', status: 'done',
+    completedAt: '30/04/2026', photos: ['p1', 'p2'],
+    subTasks: [{ id: 'paper', title: 'Tapisserie', done: true, completedAt: '01/01/2026', photoUris: ['p1'] }],
+  };
+  const output = journal.buildProjectJournal([project], [task], {
+    ...choices(), projectIds: ['split'], from: '2026-01-01', to: '2026-04-30',
+  });
+  assert.equal(output.photoCount, 1);
+  assert.equal(output.undatedPhotos, 1);
+  assert.equal(output.undated[0].action, 'photos');
+  assert.equal(output.undated[0].photoCount, 1);
+});
+test('legacy tasks with no dated subtasks keep their original entry and all photos', () => {
+  const task = {
+    ...tasks[0], subTasks: [
+      { id: 'one', title: 'A', done: true },
+      { id: 'two', title: 'B', done: false },
+    ],
+  };
+  const output = journal.buildProjectJournal(projects, [task], choices());
+  assert.deepEqual(clone(output.entries.filter(entry => entry.kind === 'task').map(entry => [entry.id, entry.title, entry.photos.length])),
+    [['task:later', 'Finition', 2]]);
 });
