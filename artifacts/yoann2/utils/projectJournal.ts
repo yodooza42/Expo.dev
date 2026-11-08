@@ -2,7 +2,7 @@ import type { Project, Task } from '@/types';
 import type { JournalChoices, JournalEntry, JournalGenerationRequest } from '@/types/projectJournal';
 import { parseCompletionDate } from '@/utils/completionDate';
 
-export const JOURNAL_LIMITS = { entries: 80, photos: 60, seconds: 600, encodedBytes: 24 * 1024 * 1024 };
+export const JOURNAL_LIMITS = { entries: 120, photos: 120, seconds: 900, encodedBytes: 48 * 1024 * 1024 };
 export const JOURNAL_PHOTOS_PER_SLIDE = 4;
 export const JOURNAL_PHOTO_APPEAR_INTERVAL = 0.5;
 export const JOURNAL_FIRST_PHOTO_DELAY = 1;
@@ -219,7 +219,7 @@ export function buildProjectJournal(projects: Project[], tasks: Task[], choices:
   else if (!choices.title.trim()) error = 'Donne un titre à ton carnet.';
   else if (!entries.length) error = 'Aucun élément terminé retenu dans cette période.';
   else if (entries.length > JOURNAL_LIMITS.entries || photoCount > JOURNAL_LIMITS.photos || duration > JOURNAL_LIMITS.seconds)
-    error = `Ce carnet est trop long. Garde au maximum ${JOURNAL_LIMITS.entries} étapes, ${JOURNAL_LIMITS.photos} photos et 10 minutes ; réduis la période ou la sélection.`;
+    error = `Ce carnet est trop long. Garde au maximum ${JOURNAL_LIMITS.entries} étapes, ${JOURNAL_LIMITS.photos} photos et ${JOURNAL_LIMITS.seconds / 60} minutes ; réduis la période ou la sélection.`;
   const request: JournalGenerationRequest = {
     journal: true, title: choices.title.trim(),
     periodLabel: `${parseJournalDate(choices.from)?.toLocaleDateString('fr-FR') ?? choices.from} — ${parseJournalDate(choices.to)?.toLocaleDateString('fr-FR') ?? choices.to}`,

@@ -190,19 +190,48 @@ test('actual history grouping repositions projects and tasks by corrected date, 
   const helpers = ast.statements.filter(n => ts.isFunctionDeclaration(n) && n.name?.text !== 'DashboardScreen').map(n => n.getText(ast)).join('\n');
   const sandbox = {
     Date, parseCompletionDate, useMemo: fn => fn(), todayStart: new Date(2026, 10, 6),
-    tasks: [{ id: 't', status: 'done', completedAt: '05/04/2026', dueDate: '2026-07-01' }],
+    tasks: [
+      {
+        id: 't', status: 'done', completedAt: '05/04/2026', dueDate: '2026-07-01',
+        subTasks: [
+          { id: 'dated', title: 'Sous-tâche datée', done: true, completedAt: '10/03/2026' },
+          { id: 'missing-date', title: 'Sans date', done: true },
+          { id: 'invalid-date', title: 'Date invalide', done: true, completedAt: '31/02/2026' },
+          { id: 'not-done', title: 'En cours', done: false, completedAt: '09/03/2026' },
+        ],
+      },
+      {
+        id: 'open-parent', status: 'inprogress', dueDate: '2026-07-01',
+        subTasks: [{ id: 'dated-on-open-parent', title: 'Sous-tâche terminée', done: true, completedAt: '12/03/2026' }],
+      },
+      { id: 'legacy-task', status: 'done', dueDate: '2026-07-01' },
+    ],
     projects: [{ id: 'p', status: 'done', completedAt: '05/04/2026', updatedAt: '2026-11-06', dueDate: '2026-07-01' },
       { id: 'legacy', status: 'done', updatedAt: '2026-11-06', dueDate: '2026-07-01' }],
   };
   const run = () => copy(vm.runInNewContext(compile(`(() => { ${helpers}\nconst groups = ${group.initializer.getText(ast)}; return groups; })();`), sandbox));
   let groups = run();
-  assert.equal(groups[0].days[0].dateKey, '2026-04-05');
-  assert.equal(groups[0].days[0].tasks[0].id, 't');
-  assert.equal(groups[0].days[0].projects[0].id, 'p');
+  const dayFor = dateKey => groups.flatMap(week => week.days).find(day => day.dateKey === dateKey);
+  assert.deepEqual(dayFor('2026-04-05').tasks.map(task => task.id), ['t']);
+  assert.deepEqual(dayFor('2026-04-05').projects.map(project => project.id), ['p']);
+  assert.deepEqual(dayFor('2026-07-01').tasks.map(task => task.id), ['legacy-task']);
+  assert.deepEqual(dayFor('2026-03-10').subTasks.map(event => [event.task.id, event.subTask.id]), [['t', 'dated']]);
+  assert.deepEqual(dayFor('2026-03-12').subTasks.map(event => [event.task.id, event.subTask.id]), [['open-parent', 'dated-on-open-parent']]);
+  assert.equal(groups.flatMap(week => week.days).some(day => day.subTasks?.some(event =>
+    ['missing-date', 'invalid-date', 'not-done'].includes(event.subTask.id))), false);
+  assert.equal(groups.at(-1).days[0].subTasks, undefined);
   assert.equal(groups.at(-1).weekKey, 'no-date');
   assert.equal(groups.at(-1).days[0].projects[0].id, 'legacy');
   sandbox.projects[0].completedAt = '01/03/2026';
   groups = run();
-  assert.equal(groups[0].days[0].dateKey, '2026-03-01');
-  assert.equal(groups[1].days[0].dateKey, '2026-04-05');
+  assert.ok(groups.some(week => week.days.some(day => day.dateKey === '2026-03-01')));
+  assert.deepEqual(groups.flatMap(week => week.days).find(day => day.dateKey === '2026-04-05').tasks.map(task => task.id), ['t']);
+});
+
+test('global history opens each completed item and preserves the selected subtask', () => {
+  const bureau = read('app/(tabs)/bureau.tsx');
+  const taskDetail = read('app/task/[id].tsx');
+  assert.match(bureau, /params: \{ id: t\.id \}/);
+  assert.match(bureau, /params: \{ id: task\.id, subTaskId: subTask\.id \}/);
+  assert.match(taskDetail, /backgroundColor: subTaskId === st\.id/);
 });

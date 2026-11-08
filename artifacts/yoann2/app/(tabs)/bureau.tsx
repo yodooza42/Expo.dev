@@ -21,7 +21,7 @@ import { BottomSheet } from '@/components/BottomSheet';
 import { useApp } from '@/contexts/AppContext';
 import { useSplash } from '@/contexts/SplashContext';
 import { useColors } from '@/hooks/useColors';
-import type { Appointment, Project, Task } from '@/types';
+import type { Appointment, Project, SubTask, Task } from '@/types';
 import { parseCompletionDate } from '@/utils/completionDate';
 import { pH } from '@/styles/header';
 
@@ -88,7 +88,14 @@ const PRIORITY_LABELS: Record<string, string> = {
   critical: 'Critique', high: 'Haute', medium: 'Moy.', low: 'Basse',
 };
 
-type DayGroup  = { dateKey: string; date: Date; label: string; tasks: Task[]; projects?: Project[] };
+type DayGroup  = {
+  dateKey: string;
+  date: Date;
+  label: string;
+  tasks: Task[];
+  subTasks?: { task: Task; subTask: SubTask }[];
+  projects?: Project[];
+};
 type WeekGroup = { weekKey: string; label: string; days: DayGroup[] };
 
 // ── Component ──────────────────────────────────────────────────────────────
@@ -231,14 +238,7 @@ export default function DashboardScreen() {
     const weekMap = new Map<string, WeekGroup>();
     const noDateDone: Task[] = [];
 
-    for (const task of allDone) {
-      const d = parseFrDate(task.completedAt ?? task.dueDate);
-      if (!d) {
-        noDateDone.push(task);
-        continue;
-      }
-
-      const date   = d;
+    function ensureDay(date: Date): DayGroup {
       const monday = getMondayOfWeek(date);
       const wKey   = isoDate(monday);
       const dKey   = isoDate(startOfDay(date));
@@ -257,7 +257,27 @@ export default function DashboardScreen() {
         };
         week.days.push(day);
       }
-      day.tasks.push(task);
+      return day;
+    }
+
+    for (const task of allDone) {
+      const date = parseFrDate(task.completedAt ?? task.dueDate);
+      if (!date) {
+        noDateDone.push(task);
+        continue;
+      }
+      ensureDay(date).tasks.push(task);
+    }
+
+    // Subtasks use only their own actual completion date; never infer one.
+    for (const task of tasks) {
+      for (const subTask of task.subTasks ?? []) {
+        if (!subTask.done || !subTask.completedAt) continue;
+        const date = parseCompletionDate(subTask.completedAt);
+        if (!date) continue;
+        const day = ensureDay(date);
+        (day.subTasks ??= []).push({ task, subTask });
+      }
     }
 
     // Projects have their own completion day; never infer it from last edit or deadline.
@@ -268,20 +288,7 @@ export default function DashboardScreen() {
         noDateProjects.push(project);
         continue;
       }
-      const monday = getMondayOfWeek(date);
-      const wKey = isoDate(monday), dKey = isoDate(date);
-      if (!weekMap.has(wKey))
-        weekMap.set(wKey, { weekKey: wKey, label: buildWeekLabel(monday), days: [] });
-      const week = weekMap.get(wKey)!;
-      let day = week.days.find(dg => dg.dateKey === dKey);
-      if (!day) {
-        day = {
-          dateKey: dKey, date,
-          label: date.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'long' }),
-          tasks: [],
-        };
-        week.days.push(day);
-      }
+      const day = ensureDay(date);
       (day.projects ??= []).push(project);
     }
 
@@ -373,7 +380,21 @@ export default function DashboardScreen() {
 
   // ── Sub-component ─────────────────────────────────────────────────────
 
-  function TaskEntry({ task, isOverdue = false, isDone = false }: { task: Task; isOverdue?: boolean; isDone?: boolean }) {
+  function TaskEntry({
+    task,
+    isOverdue = false,
+    isDone = false,
+    onPress,
+    testID,
+    accessibilityLabel,
+  }: {
+    task: Task;
+    isOverdue?: boolean;
+    isDone?: boolean;
+    onPress?: () => void;
+    testID?: string;
+    accessibilityLabel?: string;
+  }) {
     const proj      = projects.find(p => p.id === task.projectId);
     const pColor    = proj ? projectColor(proj.id) : colors.primary;
     const prioColor = PRIORITY_COLORS[task.priority] ?? colors.primary;
@@ -382,7 +403,9 @@ export default function DashboardScreen() {
 
     return (
       <Pressable
-        onPress={() => handleTaskPress(task)}
+        onPress={onPress ?? (() => handleTaskPress(task))}
+        testID={testID}
+        accessibilityLabel={accessibilityLabel}
         style={({ pressed }) => [
           styles.taskEntry,
           {
@@ -440,6 +463,47 @@ export default function DashboardScreen() {
             </ScrollView>
           )}
         </View>
+      </Pressable>
+    );
+  }
+
+  function HistorySubTaskEntry({ task, subTask }: { task: Task; subTask: SubTask }) {
+    const project = projects.find(item => item.id === task.projectId);
+    return (
+      <Pressable
+        testID={`completed-subtask-${task.id}-${subTask.id}`}
+        accessibilityLabel={`Ouvrir la sous-tâche ${subTask.title} de ${task.title}`}
+        onPress={() => router.push({
+          pathname: '/task/[id]',
+          params: { id: task.id, subTaskId: subTask.id },
+        })}
+        style={({ pressed }) => [
+          styles.taskEntry,
+          {
+            backgroundColor: colors.card + '80',
+            borderColor: colors.border,
+            opacity: pressed ? 0.75 : 0.65,
+          },
+        ]}
+      >
+        <View style={[styles.taskColorBar, { backgroundColor: colors.primary }]} />
+        <View style={styles.taskContent}>
+          <View style={styles.taskTop}>
+            <MaterialCommunityIcons name="checkbox-marked-circle-outline" size={14} color={colors.primary} />
+            <Text style={[styles.taskTitle, { color: colors.mutedForeground }]} numberOfLines={1}>
+              {subTask.title}
+            </Text>
+          </View>
+          <Text style={[styles.taskProj, { color: colors.mutedForeground }]} numberOfLines={1}>
+            Sous-tâche de {task.title}{project ? ` · ${project.name}` : ''}
+          </Text>
+        </View>
+        <MaterialCommunityIcons
+          name="chevron-right"
+          size={18}
+          color={colors.mutedForeground}
+          style={{ alignSelf: 'center', marginRight: 8 }}
+        />
       </Pressable>
     );
   }
@@ -600,7 +664,7 @@ export default function DashboardScreen() {
           {!showHistory && pastWeekGroups.length > 0 && (
             <View style={[styles.historyBadge, { backgroundColor: colors.border }]}>
               <Text style={[styles.historyBadgeTxt, { color: colors.mutedForeground }]}>
-                {pastWeekGroups.reduce((s, w) => s + w.days.reduce((ds, d) => ds + d.tasks.length + (d.projects?.length ?? 0), 0), 0)}
+                {pastWeekGroups.reduce((s, w) => s + w.days.reduce((ds, d) => ds + d.tasks.length + (d.subTasks?.length ?? 0) + (d.projects?.length ?? 0), 0), 0)}
               </Text>
             </View>
           )}
@@ -629,7 +693,19 @@ export default function DashboardScreen() {
                       </Text>
                     </View>
                     <View style={[styles.branch, { borderLeftColor: colors.border }]}>
-                      {day.tasks.map(t => <TaskEntry key={t.id} task={t} isDone />)}
+                      {day.tasks.map(t => (
+                        <TaskEntry
+                          key={t.id}
+                          task={t}
+                          isDone
+                          testID={`completed-task-${t.id}`}
+                          accessibilityLabel={`Ouvrir la tâche ${t.title}`}
+                          onPress={() => router.push({ pathname: '/task/[id]', params: { id: t.id } })}
+                        />
+                      ))}
+                      {day.subTasks?.map(({ task, subTask }) => (
+                        <HistorySubTaskEntry key={`${task.id}-${subTask.id}`} task={task} subTask={subTask} />
+                      ))}
                       {day.projects?.map(project => (
                         <Pressable
                           key={`project-${project.id}`}

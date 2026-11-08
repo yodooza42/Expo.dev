@@ -63,6 +63,17 @@ export interface Task {
   reminderAddress?: string;
 }
 
+export interface ProjectTimelineEvent {
+  id: string;
+  taskId: string;
+  subTaskId?: string;
+  kind: 'task' | 'subtask';
+  title: string;
+  taskTitle: string;
+  dateLabel: string | null;
+  timestamp: number | null;
+}
+
 export interface Expense {
   id: string;
   projectId: string;
