@@ -5,7 +5,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import * as MediaLibrary from 'expo-media-library';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -26,11 +26,14 @@ import { PriorityBadge } from '@/components/PriorityBadge';
 import { useApp } from '@/contexts/AppContext';
 import { useColors } from '@/hooks/useColors';
 import { SubPageHeader } from '@/components/SubPageHeader';
-import type { TaskStatus } from '@/types';
+import type { SubTask, TaskStatus } from '@/types';
 import { syncGeofences } from '@/utils/geoReminderManager';
 import { computeStreak, recurrenceLabel } from '@/utils/streakUtils';
 import { protectPhoto } from '@/utils/photoProtection';
 import { taskFolderName } from '@/utils/photoStorage';
+import { completionDateError, formatCompletionDate } from '@/utils/completionDate';
+import { photoTakenAt } from '@/utils/tripPhotoPlacement';
+import { hasSubtaskPhotoDateSpread, scanTaskPhotoDates } from '@/utils/taskPhotoDates';
 
 const { width } = Dimensions.get('window');
 
@@ -55,6 +58,40 @@ function parseFrenchDate(value: string): Date | null {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
+function SubTaskCompletionInput({ value, onSave, colors }: {
+  value: string;
+  onSave: (value: string) => void;
+  colors: { background: string; foreground: string; border: string; destructive: string; mutedForeground: string };
+}) {
+  const [draft, setDraft] = useState(value);
+  const [error, setError] = useState('');
+  function save() {
+    const message = draft.trim() ? completionDateError(draft) : undefined;
+    if (message) { setError(message); return; }
+    setError('');
+    onSave(draft.trim());
+  }
+  return <View style={{ marginLeft: 34, marginTop: 6, marginBottom: 6, gap: 4 }}>
+    <TextInput
+      value={draft}
+      onChangeText={setDraft}
+      onBlur={save}
+      onSubmitEditing={save}
+      placeholder="Date de fin · JJ/MM/AAAA"
+      placeholderTextColor={colors.mutedForeground}
+      keyboardType="numeric"
+      maxLength={10}
+      style={{
+        borderWidth: 1, borderColor: error ? colors.destructive : colors.border,
+        backgroundColor: colors.background, color: colors.foreground,
+        borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, fontSize: 13,
+      }}
+      accessibilityLabel="Date réelle de fin de la sous-tâche"
+    />
+    {!!error && <Text style={{ color: colors.destructive, fontSize: 11 }}>{error}</Text>}
+  </View>;
+}
+
 export default function TaskDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const colors = useColors();
@@ -68,6 +105,18 @@ export default function TaskDetailScreen() {
 
   const [photoViewIdx, setPhotoViewIdx] = useState<number | null>(null);
   const [galleryPickerVisible, setGalleryPickerVisible] = useState(false);
+  const [subTaskPhotoModal, setSubTaskPhotoModal] = useState<'prompt' | 'assign' | null>(null);
+  const [photoAssignments, setPhotoAssignments] = useState<Record<string, string>>({});
+  const [selectedAssignmentPhoto, setSelectedAssignmentPhoto] = useState<string | null>(null);
+  const [scanningPhotoDates, setScanningPhotoDates] = useState(false);
+  const [photoScanProgress, setPhotoScanProgress] = useState('');
+  const promptDismissed = useRef(false);
+
+  useEffect(() => {
+    if (!taskMaybe || taskMaybe.subTaskPhotosReviewed || promptDismissed.current
+      || !taskMaybe.subTasks?.length || !hasSubtaskPhotoDateSpread(taskMaybe.photos, taskMaybe.photoTakenAt)) return;
+    setSubTaskPhotoModal('prompt');
+  }, [taskMaybe]);
 
   async function handleDeletePhoto(uri: string, idx: number) {
     Alert.alert('Supprimer la photo', 'Cette photo sera définitivement supprimée.', [
@@ -77,7 +126,11 @@ export default function TaskDetailScreen() {
         onPress: async () => {
           if (photoViewIdx === idx) setPhotoViewIdx(null);
           const newPhotos = task.photos.filter((_, i) => i !== idx);
-          updateTask(task.id, { photos: newPhotos });
+          const photoTakenAt = { ...(task.photoTakenAt ?? {}) }; delete photoTakenAt[uri];
+          const subTasks = (task.subTasks ?? []).map(st => ({
+            ...st, photoUris: st.photoUris?.filter(photoUri => photoUri !== uri),
+          }));
+          updateTask(task.id, { photos: newPhotos, photoTakenAt, subTasks });
           try {
             const info = await FileSystem.getInfoAsync(uri);
             if (info.exists) await FileSystem.deleteAsync(uri, { idempotent: true });
@@ -112,15 +165,27 @@ export default function TaskDetailScreen() {
     ? parseFrenchDate(task.completedAt)
     : parseFrenchDate(task.dueDate);
 
-  async function addTaskPhotoUris(uris: string[]) {
+  async function addTaskPhotoUris(items: Array<{ uri: string; takenAt?: number }>) {
     try {
-      const permanent = await Promise.all(uris.map(uri => protectPhoto(uri, {
-        project: project?.name ?? 'Sans projet', folder: taskFolderName(task.title, task.id),
+      const permanent = await Promise.all(items.map(async item => ({
+        uri: await protectPhoto(item.uri, {
+          project: project?.name ?? 'Sans projet', folder: taskFolderName(task.title, task.id),
+        }),
+        takenAt: item.takenAt,
       })));
       const current = latestTasks.current.find(item => item.id === task.id);
       if (!current) return;
-      const newUris = permanent.filter(uri => !current.photos.includes(uri));
-      if (newUris.length > 0) updateTask(task.id, { photos: [...current.photos, ...newUris] });
+      const newUris = permanent.map(item => item.uri).filter(uri => !current.photos.includes(uri));
+      const photoTakenAt = { ...(current.photoTakenAt ?? {}) };
+      let metadataChanged = false;
+      permanent.forEach(item => {
+        if (item.takenAt && photoTakenAt[item.uri] !== item.takenAt) {
+          photoTakenAt[item.uri] = item.takenAt;
+          metadataChanged = true;
+        }
+      });
+      if (newUris.length > 0 || metadataChanged)
+        updateTask(task.id, { photos: [...current.photos, ...newUris], photoTakenAt });
     } catch (error) {
       Alert.alert('Photo non conservée', error instanceof Error ? error.message : 'Copie permanente impossible.');
     }
@@ -131,15 +196,69 @@ export default function TaskDetailScreen() {
       mediaTypes: ['images'],
       allowsMultipleSelection: true,
       quality: 1,
+      exif: true,
     });
-    if (!result.canceled) addTaskPhotoUris(result.assets.map(asset => asset.uri));
+    if (!result.canceled) addTaskPhotoUris(result.assets.map(asset => ({
+      uri: asset.uri, takenAt: photoTakenAt(asset.exif as Record<string, unknown> | undefined),
+    })));
   }
 
   async function addGalleryTaskPhotos(assets: MediaLibrary.Asset[]) {
     try {
-      const uris = await Promise.all(assets.map(async asset => (await MediaLibrary.getAssetInfoAsync(asset)).localUri ?? asset.uri));
-      await addTaskPhotoUris(uris);
+      const photos = await Promise.all(assets.map(async asset => {
+        const info = await MediaLibrary.getAssetInfoAsync(asset, { shouldDownloadFromNetwork: false });
+        return { uri: info.localUri ?? asset.uri, takenAt: photoTakenAt(info.exif as Record<string, unknown> | undefined, info.creationTime) };
+      }));
+      await addTaskPhotoUris(photos);
     } catch { Alert.alert('Photo inaccessible', 'Autorise l’accès aux photos, puis réessaie.'); }
+  }
+
+  async function analyzeTaskPhotoDates() {
+    setScanningPhotoDates(true); setPhotoScanProgress('Préparation de l’analyse…');
+    try {
+      const result = await scanTaskPhotoDates(task.photos, setPhotoScanProgress);
+      const current = latestTasks.current.find(item => item.id === task.id);
+      if (!current) return;
+      const photoTakenAt = { ...(current.photoTakenAt ?? {}), ...result.dates };
+      updateTask(task.id, { photoTakenAt });
+      if (!hasSubtaskPhotoDateSpread(current.photos, photoTakenAt)) {
+        const detail = result.unmatched
+          ? `Les dates retrouvées sont à moins de 24 heures d’écart. ${result.unmatched} photo(s) n’ont pas pu être retrouvées sans ambiguïté.`
+          : 'Les photos retrouvées sont à moins de 24 heures d’écart.';
+        Alert.alert('Aucun écart important détecté', detail + (result.limited ? ' La limite de 5 000 photos de la galerie a été atteinte.' : ''));
+      } else if (result.unmatched) {
+        Alert.alert('Analyse terminée', `${result.unmatched} photo(s) n’ont pas pu être retrouvées sans ambiguïté. Tu pourras quand même leur attribuer une sous-tâche.${result.limited ? ' La limite de 5 000 photos de la galerie a été atteinte.' : ''}`);
+      } else if (result.limited) {
+        Alert.alert('Analyse terminée', 'La limite de 5 000 photos de la galerie a été atteinte.');
+      }
+    } catch (error) {
+      Alert.alert('Analyse impossible', error instanceof Error ? error.message : 'Impossible de lire les dates de la galerie.');
+    } finally { setScanningPhotoDates(false); setPhotoScanProgress(''); }
+  }
+
+  function openSubTaskPhotoAssignment() {
+    const assignments: Record<string, string> = {};
+    (task.subTasks ?? []).forEach(st => st.photoUris?.forEach(uri => { assignments[uri] = st.id; }));
+    setPhotoAssignments(assignments);
+    setSelectedAssignmentPhoto(task.photos[0] ?? null);
+    setSubTaskPhotoModal('assign');
+  }
+
+  function saveSubTaskPhotoAssignment() {
+    const next = (task.subTasks ?? []).map(st => {
+      const photoUris = task.photos.filter(uri => photoAssignments[uri] === st.id);
+      const latestTakenAt = photoUris.map(uri => task.photoTakenAt?.[uri])
+        .filter((value): value is number => typeof value === 'number' && Number.isFinite(value))
+        .sort((a, b) => b - a)[0];
+      const inferredDate = latestTakenAt ? formatCompletionDate(new Date(latestTakenAt)) : undefined;
+      const usePhotoDate = st.done && inferredDate && (!st.completedAt || st.completedAtSource === 'photo');
+      return {
+        ...st, photoUris,
+        ...(usePhotoDate ? { completedAt: inferredDate, completedAtSource: 'photo' as const } : {}),
+      };
+    });
+    updateTask(task.id, { subTasks: next, subTaskPhotosReviewed: true });
+    setSubTaskPhotoModal(null);
   }
 
   async function handleSetGeoReminder() {
@@ -224,8 +343,28 @@ export default function TaskDetailScreen() {
 
   function toggleSubTask(id: string) {
     Haptics.selectionAsync();
-    const next = (task.subTasks ?? []).map(st => (st.id === id ? { ...st, done: !st.done } : st));
+    const next = (task.subTasks ?? []).map(st => {
+      if (st.id !== id) return st;
+      const photoDate = (st.photoUris ?? []).filter(uri => task.photos.includes(uri))
+        .map(uri => task.photoTakenAt?.[uri])
+        .filter((value): value is number => typeof value === 'number' && Number.isFinite(value))
+        .sort((a, b) => b - a)[0];
+      const suggestedDate = photoDate ? formatCompletionDate(new Date(photoDate)) : undefined;
+      return st.done
+        ? { ...st, done: false, completedAt: undefined, completedAtSource: undefined }
+        : {
+          ...st, done: true, completedAt: st.completedAt ?? suggestedDate ?? formatCompletionDate(),
+          completedAtSource: st.completedAtSource ?? (suggestedDate ? 'photo' as const : 'manual' as const),
+        };
+    });
     updateTask(task.id, { subTasks: next });
+  }
+
+  function updateSubTaskCompletionDate(id: string, date: string) {
+    const subTasks = (task.subTasks ?? []).map(st => st.id === id
+      ? { ...st, completedAt: date || undefined, completedAtSource: date ? 'manual' as const : undefined }
+      : st);
+    updateTask(task.id, { subTasks });
   }
 
   function handleDeleteSubTask(id: string) {
@@ -480,28 +619,55 @@ export default function TaskDetailScreen() {
             </View>
 
             {(task.subTasks ?? []).map(st => (
-              <Pressable
-                key={st.id}
-                onPress={() => toggleSubTask(st.id)}
-                onLongPress={() => handleDeleteSubTask(st.id)}
-                style={[styles.subTaskRow, { backgroundColor: colors.card, borderColor: colors.border }]}
-              >
-                <MaterialCommunityIcons
-                  name={st.done ? 'checkbox-marked-circle' : 'checkbox-blank-circle-outline'}
-                  size={22}
-                  color={st.done ? colors.primary : colors.mutedForeground}
-                />
-                <Text
-                  style={[
-                    styles.subTaskLabel,
-                    { color: st.done ? colors.mutedForeground : colors.foreground },
-                    st.done && { textDecorationLine: 'line-through' },
-                  ]}
+              <View key={st.id} style={{ marginBottom: 8 }}>
+                <Pressable
+                  onPress={() => toggleSubTask(st.id)}
+                  onLongPress={() => handleDeleteSubTask(st.id)}
+                  style={[styles.subTaskRow, { backgroundColor: colors.card, borderColor: colors.border, marginBottom: 0 }]}
                 >
-                  {st.title}
+                  <MaterialCommunityIcons
+                    name={st.done ? 'checkbox-marked-circle' : 'checkbox-blank-circle-outline'}
+                    size={22}
+                    color={st.done ? colors.primary : colors.mutedForeground}
+                  />
+                  <Text
+                    style={[
+                      styles.subTaskLabel,
+                      { color: st.done ? colors.mutedForeground : colors.foreground },
+                      st.done && { textDecorationLine: 'line-through' },
+                    ]}
+                  >
+                    {st.title}
+                  </Text>
+                </Pressable>
+                {st.done && <SubTaskCompletionInput
+                  key={`${st.id}:${st.completedAt ?? ''}`}
+                  value={st.completedAt ?? ''}
+                  colors={colors}
+                  onSave={date => updateSubTaskCompletionDate(st.id, date)}
+                />}
+              </View>
+            ))}
+
+            {!!task.subTasks?.length && !!task.photos.length && <View style={{ gap: 8, marginTop: 4 }}>
+              <Pressable onPress={openSubTaskPhotoAssignment} style={[styles.addExpBtn, { backgroundColor: colors.primary + '18', borderColor: colors.primary + '40' }]}>
+                <MaterialCommunityIcons name="image-multiple-outline" size={16} color={colors.primary} />
+                <Text style={[styles.addExpLabel, { color: colors.primary }]}>
+                  {task.subTasks.some(st => st.photoUris?.length) ? 'Modifier la répartition des photos' : 'Répartir les photos entre les sous-tâches'}
                 </Text>
               </Pressable>
-            ))}
+              {task.photos.some(uri => !task.photoTakenAt?.[uri]) && <Pressable
+                onPress={() => { void analyzeTaskPhotoDates(); }}
+                disabled={scanningPhotoDates}
+                style={[styles.addExpBtn, { backgroundColor: colors.card, borderColor: colors.border, opacity: scanningPhotoDates ? 0.7 : 1 }]}
+              >
+                {scanningPhotoDates ? <ActivityIndicator size="small" color={colors.primary} />
+                  : <MaterialCommunityIcons name="calendar-search" size={16} color={colors.primary} />}
+                <Text style={[styles.addExpLabel, { color: colors.primary }]}>
+                  {scanningPhotoDates ? photoScanProgress || 'Analyse en cours…' : 'Analyser les dates des photos existantes'}
+                </Text>
+              </Pressable>}
+            </View>}
 
             <View style={styles.subTaskAddRow}>
               <TextInput
@@ -685,6 +851,117 @@ export default function TaskDetailScreen() {
         </View>
       </Modal>
 
+      <Modal visible={subTaskPhotoModal === 'prompt'} transparent animationType="fade"
+        onRequestClose={() => { promptDismissed.current = true; setSubTaskPhotoModal(null); }}>
+        <View style={styles.subTaskModalBackdrop}>
+          <View style={[styles.subTaskModal, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <MaterialCommunityIcons name="calendar-multiple-check" size={30} color={colors.primary} />
+            <Text style={[styles.sectionTitle, { color: colors.foreground, marginBottom: 0 }]}>Plusieurs jours de travaux détectés</Text>
+            <Text style={[styles.body2, { color: colors.mutedForeground }]}>
+              Les photos de cette tâche sont espacées de plus de 24 heures. Correspondent-elles à différentes sous-tâches ?
+              Tu pourras associer chaque photo et proposer une date de fin à partir de sa date de prise.
+            </Text>
+            <Pressable onPress={openSubTaskPhotoAssignment} style={[styles.primaryModalButton, { backgroundColor: colors.primary }]}>
+              <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_600SemiBold' }}>Oui, répartir les photos</Text>
+            </Pressable>
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <Pressable onPress={() => { promptDismissed.current = true; setSubTaskPhotoModal(null); }}
+                style={[styles.secondaryModalButton, { borderColor: colors.border }]}>
+                <Text style={{ color: colors.foreground, fontFamily: 'Inter_500Medium' }}>Plus tard</Text>
+              </Pressable>
+              <Pressable onPress={() => {
+                updateTask(task.id, { subTaskPhotosReviewed: true });
+                setSubTaskPhotoModal(null);
+              }} style={[styles.secondaryModalButton, { borderColor: colors.border }]}>
+                <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_500Medium' }}>Non, même période</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={subTaskPhotoModal === 'assign'} transparent animationType="slide"
+        onRequestClose={() => setSubTaskPhotoModal(null)}>
+        <View style={styles.subTaskModalBackdrop}>
+          <View style={[styles.subTaskAssignModal, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <View style={styles.subTaskModalHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.sectionTitle, { color: colors.foreground, marginBottom: 2 }]}>Répartir les photos</Text>
+                <Text style={[styles.emptyExp, { color: colors.mutedForeground }]}>Choisis une photo, puis la sous-tâche correspondante.</Text>
+              </View>
+              <Pressable onPress={() => setSubTaskPhotoModal(null)} accessibilityLabel="Fermer">
+                <MaterialCommunityIcons name="close" size={24} color={colors.mutedForeground} />
+              </Pressable>
+            </View>
+            <ScrollView style={{ maxHeight: 260 }} contentContainerStyle={styles.assignmentPhotoGrid}>
+              {task.photos.map((uri, index) => {
+                const assignedId = photoAssignments[uri];
+                const assignedName = task.subTasks?.find(st => st.id === assignedId)?.title;
+                const takenAt = task.photoTakenAt?.[uri];
+                const selected = uri === selectedAssignmentPhoto;
+                return <Pressable key={uri} onPress={() => setSelectedAssignmentPhoto(uri)}
+                  style={[styles.assignmentPhotoCard, { borderColor: selected ? colors.primary : colors.border }]}>
+                  <ProjectPhoto uri={uri} style={styles.assignmentPhoto} contentFit="cover" />
+                  <Text numberOfLines={1} style={{ color: colors.foreground, fontSize: 11 }}>
+                    {takenAt ? new Date(takenAt).toLocaleDateString('fr-FR') : `Photo ${index + 1} · date inconnue`}
+                  </Text>
+                  <Text numberOfLines={1} style={{ color: assignedName ? colors.primary : colors.mutedForeground, fontSize: 10 }}>
+                    {assignedName ?? 'À associer'}
+                  </Text>
+                </Pressable>;
+              })}
+            </ScrollView>
+            <Text style={[styles.inputLabel, { color: colors.mutedForeground }]}>
+              {selectedAssignmentPhoto
+                ? `Associer cette photo à : ${task.photoTakenAt?.[selectedAssignmentPhoto]
+                  ? new Date(task.photoTakenAt[selectedAssignmentPhoto]!).toLocaleDateString('fr-FR') : 'date inconnue'}`
+                : 'Sélectionne une photo'}
+            </Text>
+            <ScrollView style={{ maxHeight: 190 }} contentContainerStyle={{ gap: 8 }}>
+              {(task.subTasks ?? []).map(st => {
+                const previewUris = task.photos.filter(uri => photoAssignments[uri] === st.id);
+                const suggested = previewUris.map(uri => task.photoTakenAt?.[uri])
+                  .filter((value): value is number => typeof value === 'number' && Number.isFinite(value))
+                  .sort((a, b) => b - a)[0];
+                return <Pressable key={st.id} disabled={!selectedAssignmentPhoto}
+                  onPress={() => selectedAssignmentPhoto && setPhotoAssignments(previous => ({ ...previous, [selectedAssignmentPhoto]: st.id }))}
+                  style={[styles.assignmentOption, {
+                    borderColor: selectedAssignmentPhoto && photoAssignments[selectedAssignmentPhoto] === st.id ? colors.primary : colors.border,
+                    backgroundColor: colors.background,
+                  }]}>
+                  <MaterialCommunityIcons name={photoAssignments[selectedAssignmentPhoto ?? ''] === st.id ? 'radiobox-marked' : 'radiobox-blank'}
+                    size={20} color={photoAssignments[selectedAssignmentPhoto ?? ''] === st.id ? colors.primary : colors.mutedForeground} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: colors.foreground, fontFamily: 'Inter_500Medium' }}>{st.title}</Text>
+                    {suggested && <Text style={{ color: colors.mutedForeground, fontSize: 11 }}>
+                      Date de fin proposée : {formatCompletionDate(new Date(suggested))}
+                    </Text>}
+                  </View>
+                  <Text style={{ color: colors.mutedForeground, fontSize: 11 }}>{previewUris.length} photo(s)</Text>
+                </Pressable>;
+              })}
+              <Pressable disabled={!selectedAssignmentPhoto}
+                onPress={() => {
+                  if (!selectedAssignmentPhoto) return;
+                  setPhotoAssignments(previous => { const next = { ...previous }; delete next[selectedAssignmentPhoto]; return next; });
+                }} style={[styles.assignmentOption, { borderColor: colors.border, backgroundColor: colors.background }]}>
+                <MaterialCommunityIcons name={!photoAssignments[selectedAssignmentPhoto ?? ''] ? 'radiobox-marked' : 'radiobox-blank'}
+                  size={20} color={colors.mutedForeground} />
+                <Text style={{ color: colors.mutedForeground }}>Ne pas associer</Text>
+              </Pressable>
+            </ScrollView>
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
+              <Pressable onPress={() => setSubTaskPhotoModal(null)} style={[styles.secondaryModalButton, { borderColor: colors.border }]}>
+                <Text style={{ color: colors.foreground }}>Annuler</Text>
+              </Pressable>
+              <Pressable onPress={saveSubTaskPhotoAssignment} style={[styles.primaryModalButton, { backgroundColor: colors.primary, flex: 1 }]}>
+                <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_600SemiBold' }}>Enregistrer les associations</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       <GalleryPhotoPicker
         visible={galleryPickerVisible}
         title="Photos de la tâche"
@@ -809,6 +1086,16 @@ const styles = StyleSheet.create({
   subTaskLabel: { flex: 1, fontSize: 14, fontFamily: 'Inter_500Medium' },
   subTaskAddRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 2 },
   subTaskAddBtn: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  subTaskModalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.62)', justifyContent: 'center', padding: 20 },
+  subTaskModal: { borderWidth: 1, borderRadius: 20, padding: 20, gap: 14 },
+  subTaskAssignModal: { borderTopLeftRadius: 22, borderTopRightRadius: 22, borderWidth: 1, padding: 16, maxHeight: '90%', marginTop: 'auto' },
+  subTaskModalHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 10 },
+  assignmentPhotoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingBottom: 12 },
+  assignmentPhotoCard: { width: '31.5%', borderWidth: 2, borderRadius: 10, padding: 4, gap: 2 },
+  assignmentPhoto: { width: '100%', height: 82, borderRadius: 7 },
+  assignmentOption: { flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderRadius: 12, padding: 10 },
+  primaryModalButton: { minHeight: 48, paddingHorizontal: 12, paddingVertical: 12, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  secondaryModalButton: { flex: 1, minHeight: 46, paddingHorizontal: 8, paddingVertical: 10, borderRadius: 12, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   viewProjectLink: { fontSize: 12, fontFamily: 'Inter_400Regular', textAlign: 'center', marginTop: 4 },
   sheetSub: { fontSize: 13, fontFamily: 'Inter_400Regular', marginTop: -4, marginBottom: 4 },
   inputLabel: { fontSize: 12, fontFamily: 'Inter_500Medium' },

@@ -220,7 +220,9 @@ function drawTitle(seg,lt,a){
   stamp(str(e.dateLabel)||str(e.dateKey),CX,y,a*eo(lt/0.35));
   ctx.globalAlpha=a*eo((lt-0.1)/0.4);ctx.fillStyle=INK2;ctx.font='bold 20px '+MONO;
   ctx.fillText(one((e.project||'').toUpperCase(),'bold #px '+MONO,20,CR-CX),CX,y+70);
-  var tf=fit(e.title||'Sans titre','bold #px '+SERIF,58,28,CR-CX,3),ty=y+120+tf.size*0.8;
+  if(e.parentTaskTitle){ctx.globalAlpha=a*eo((lt-0.12)/0.4);ctx.fillStyle=RED;ctx.font='bold 16px '+MONO;
+    ctx.fillText(one('TÂCHE · '+e.parentTaskTitle,'bold #px '+MONO,16,CR-CX),CX,y+104)}
+  var tf=fit(e.title||'Sans titre','bold #px '+SERIF,58,28,CR-CX,3),ty=y+(e.parentTaskTitle?154:120)+tf.size*0.8;
   ctx.globalAlpha=1;var yy=lines(tf,'bold #px '+SERIF,CX,ty,1.12,INK,a*eo((lt-0.15)/0.5));
   /* checkbox in margin */
   var bx=MX-48,by=ty-tf.size*0.75;ctx.globalAlpha=a;ctx.strokeStyle=INK;ctx.lineWidth=2.5;ctx.strokeRect(bx,by,30,30);
@@ -247,8 +249,10 @@ function drawPhotos(seg,lt,a){
   stamp('SUITE DE L’ETAPE',CX,132,a*eo(lt/0.35));
   ctx.globalAlpha=a*eo((lt-0.1)/0.4);ctx.fillStyle=INK2;ctx.font='bold 18px '+MONO;
   ctx.fillText(one((str(e.dateLabel)+'  .  '+str(e.project)).toUpperCase(),'bold #px '+MONO,18,CR-CX),CX,202);
+  if(e.parentTaskTitle){ctx.globalAlpha=a*eo((lt-0.12)/0.4);ctx.fillStyle=RED;ctx.font='bold 14px '+MONO;
+    ctx.fillText(one('TÂCHE · '+e.parentTaskTitle,'bold #px '+MONO,14,CR-CX),CX,240)}
   var tf=fit(e.title||'Sans titre','bold #px '+SERIF,42,24,CR-CX,2);
-  lines(tf,'bold #px '+SERIF,CX,270,1.1,INK,a*eo((lt-0.15)/0.45));
+  lines(tf,'bold #px '+SERIF,CX,e.parentTaskTitle?286:270,1.1,INK,a*eo((lt-0.15)/0.45));
   ctx.globalAlpha=a*eo((lt-0.3)/0.4);ctx.fillStyle=RED;ctx.font='bold 16px '+MONO;
   ctx.fillText('PHOTOS '+(first.pi+1)+'–'+(last.pi+1)+' / '+total,CX,370);
   drawPhotoGrid(start,count,lt,a,0,405,H-112);

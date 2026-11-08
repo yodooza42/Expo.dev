@@ -27,6 +27,11 @@ export interface SubTask {
   id: string;
   title: string;
   done: boolean;
+  /** Real completion day, independent of the parent task's completion day. */
+  completedAt?: string;
+  completedAtSource?: 'photo' | 'manual';
+  /** Task photo URIs assigned to this subtask for its progress story. */
+  photoUris?: string[];
 }
 
 export interface Task {
@@ -47,6 +52,10 @@ export interface Task {
   recurrence?: RecurrenceType;
   recurrenceFromId?: string; // id of the original task this was spawned from
   subTasks?: SubTask[];
+  /** Taken-at timestamps for protected task photos, keyed by their stored URI. */
+  photoTakenAt?: Record<string, number>;
+  /** Avoid asking again after the user accepts or dismisses a photo/subtask split. */
+  subTaskPhotosReviewed?: boolean;
   // Rappel géolocalisé
   reminderLat?: number;
   reminderLng?: number;

@@ -86,8 +86,8 @@ export function moveJournalTask(choices: JournalChoices, candidates: JournalEntr
 function attachJournalRecaps(items: JournalEntry[]): JournalEntry[] {
   const after = new Map<string, JournalEntry[]>();
   for (const recap of items.filter(item => item.recapTasks)) {
-    const taskIds = new Set(recap.recapTasks!.map(task => `task:${task.id}`));
-    const last = items.filter(item => item.kind === 'task' && taskIds.has(item.id)).slice(-1)[0];
+    const taskIds = new Set(recap.recapTasks!.map(task => task.id));
+    const last = items.filter(item => item.kind === 'task' && taskIds.has(item.sourceId)).slice(-1)[0];
     if (last) after.set(last.id, [...(after.get(last.id) ?? []), { ...recap, afterTaskId: last.id }]);
   }
   return items.filter(item => !item.recapTasks).flatMap(item => [item, ...(after.get(item.id) ?? [])]);
@@ -96,20 +96,24 @@ export function buildProjectJournal(projects: Project[], tasks: Task[], choices:
   const selectedProjects = projects.filter(p => choices.projectIds.includes(p.id));
   const projectById = new Map(selectedProjects.map(p => [p.id, p]));
   const candidates: JournalEntry[] = [];
-  const undated: Array<{ id: string; kind: 'task' | 'project'; title: string; photoCount: number }> = [];
-  function add(item: Task | Project, kind: 'task' | 'project', project: Project) {
+  const undated: Array<{ id: string; kind: 'task' | 'project'; title: string; photoCount: number; action: 'date' | 'subtask-date' | 'subtask' | 'photos' }> = [];
+  function add(item: Task | Project, kind: 'task' | 'project', project: Project, options?: {
+    entryId?: string; sourceId?: string; parentTaskTitle?: string; subTaskId?: string;
+  }) {
     if (item.status !== 'done') return;
     const title = 'title' in item ? item.title : item.name;
     const date = item.completedAt ? parseCompletionDate(item.completedAt) : null;
-    if (!date) { undated.push({ id: item.id, kind, title, photoCount: item.photos.length }); return; }
+    if (!date) { undated.push({ id: options?.sourceId ?? item.id, kind, title, photoCount: item.photos.length, action: 'date' }); return; }
     const dateKey = journalDateKey(date);
     if (dateKey < choices.from || dateKey > choices.to) return;
-    const id = `${kind}:${item.id}`;
+    const id = options?.entryId ?? `${kind}:${item.id}`;
     const defaultCaption = ('notes' in item ? item.notes?.trim() : '') || item.description || '';
     candidates.push({
-      id, sourceId: item.id, kind, title, project: project.name, dateKey,
+      id, sourceId: options?.sourceId ?? item.id, kind, title, project: project.name, dateKey,
       dateLabel: date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }),
       caption: choices.captions[id] ?? defaultCaption.slice(0, 280),
+      ...(options?.parentTaskTitle ? { parentTaskTitle: options.parentTaskTitle } : {}),
+      ...(options?.subTaskId ? { subTaskId: options.subTaskId } : {}),
       photos: [...new Set(item.photos)].map(uri => {
         const photoId = journalPhotoId(id, uri);
         return { id: photoId, uri, caption: choices.photoCaptions[photoId] ?? '' };
@@ -118,7 +122,37 @@ export function buildProjectJournal(projects: Project[], tasks: Task[], choices:
   }
   tasks.forEach(task => {
     const project = projectById.get(task.projectId);
-    if (project) add(task, 'task', project);
+    if (!project) return;
+    const doneSubTasks = task.subTasks?.filter(subTask => subTask.done) ?? [];
+    const datedSubTasks = doneSubTasks.filter(subTask => !!subTask.completedAt && !!parseCompletionDate(subTask.completedAt));
+    if (!datedSubTasks.length) { add(task, 'task', project); return; }
+
+    const assignedPhotos = new Set<string>();
+    for (const subTask of doneSubTasks) {
+      const photos = (subTask.photoUris ?? []).filter(uri => task.photos.includes(uri));
+      photos.forEach(uri => assignedPhotos.add(uri));
+      if (!subTask.completedAt || !parseCompletionDate(subTask.completedAt)) {
+        undated.push({ id: task.id, kind: 'task', title: `${task.title} · ${subTask.title}`, photoCount: photos.length, action: 'subtask-date' });
+        continue;
+      }
+      add({ ...task, title: subTask.title, completedAt: subTask.completedAt, photos }, 'task', project, {
+        entryId: `task:${task.id}:subtask:${subTask.id}`, sourceId: task.id,
+        parentTaskTitle: task.title, subTaskId: subTask.id,
+      });
+    }
+    for (const subTask of task.subTasks ?? []) {
+      if (subTask.done) continue;
+      const photos = (subTask.photoUris ?? []).filter(uri => task.photos.includes(uri));
+      photos.forEach(uri => assignedPhotos.add(uri));
+      if (photos.length) undated.push({
+        id: task.id, kind: 'task', title: `${task.title} · ${subTask.title} (sous-tâche non terminée)`,
+        photoCount: photos.length, action: 'subtask',
+      });
+    }
+    const unassigned = task.photos.filter(uri => !assignedPhotos.has(uri));
+    if (unassigned.length) undated.push({
+      id: task.id, kind: 'task', title: `${task.title} · photos à associer`, photoCount: unassigned.length, action: 'photos',
+    });
   });
   selectedProjects.forEach(project => {
     const children = tasks.filter(task => task.projectId === project.id);

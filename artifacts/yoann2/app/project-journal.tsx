@@ -149,7 +149,7 @@ export default function ProjectJournalScreen() {
           })}
           {!projects.length && <Text style={[s.body, { color: c.mutedForeground }]}>Crée d’abord un projet et termine une tâche pour commencer ton carnet.</Text>}
           <Text style={[s.small, { color: c.mutedForeground }]}>
-            Les tâches terminées défilent dans l’ordre de leur date de fin, même entre plusieurs projets. Quand toutes les tâches d’un projet sont accomplies, une page récapitulative suit sa dernière tâche.
+            Les tâches et les sous-tâches datées défilent dans l’ordre réel de leur fin, même entre plusieurs projets. Quand toutes les tâches d’un projet sont accomplies, un récapitulatif suit sa dernière étape.
           </Text>
         </>}
         {step === 1 && <>
@@ -221,13 +221,15 @@ export default function ProjectJournalScreen() {
           </Text>
         </>}
         {journal.undated.length > 0 && <View style={[s.notice, { borderColor: c.border }]}>
-          <Text style={[s.label, { color: c.foreground }]}>{journal.undated.length} élément(s) terminé(s) sans date de fin</Text>
+          <Text style={[s.label, { color: c.foreground }]}>{journal.undated.length} étape(s) à dater ou compléter</Text>
           <Text style={[s.small, { color: c.mutedForeground }]}>
-            Ils ne sont pas placés arbitrairement dans le carnet. L’historique peut afficher leur date limite, mais ce n’est pas leur date de réalisation. Renseigne leur vraie date de fin pour les inclure{journal.undatedPhotos > 0 ? ` avec leurs ${journal.undatedPhotos} photo(s)` : ''}.
+            Les réalisations sans date réelle ne sont pas placées arbitrairement. Ajoute la date de fin des sous-tâches ou associe les photos pour les remettre dans l’ordre chronologique.
           </Text>
-          {(showUndated ? journal.undated : journal.undated.slice(0, 5)).map(item => <Pressable key={`${item.kind}:${item.id}`}
-            onPress={() => router.push({ pathname: item.kind === 'task' ? '/task/new' : '/project/new', params: { id: item.id } })}>
-            <Text style={[s.small, { color: c.primary }]}>{item.title} · préciser la date{item.photoCount ? ` · ${item.photoCount} photo(s)` : ''}</Text>
+          {(showUndated ? journal.undated : journal.undated.slice(0, 5)).map(item => <Pressable key={`${item.kind}:${item.id}:${item.title}`}
+            onPress={() => item.action === 'photos' || item.action === 'subtask-date' || item.action === 'subtask'
+              ? router.push(`/task/${item.id}`)
+              : router.push({ pathname: item.kind === 'task' ? '/task/new' : '/project/new', params: { id: item.id } })}>
+            <Text style={[s.small, { color: c.primary }]}>{item.title} · {item.action === 'photos' ? 'associer les photos' : item.action === 'subtask' ? 'ouvrir la tâche' : 'préciser la date'}{item.photoCount ? ` · ${item.photoCount} photo(s)` : ''}</Text>
           </Pressable>)}
           {journal.undated.length > 5 && <Pressable onPress={() => setShowUndated(value => !value)}>
             <Text style={[s.small, { color: c.primary }]}>{showUndated ? 'Réduire la liste' : `Voir les ${journal.undated.length - 5} autres éléments`}</Text>

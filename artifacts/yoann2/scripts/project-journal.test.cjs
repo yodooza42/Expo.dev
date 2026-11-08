@@ -410,3 +410,55 @@ test('an inaccessible renderer image fails with an exact locator, not an empty s
   assert.equal(e.messages.some(m => m.type === 'story_chunk'), false);
   assert.equal(e.activeImages, 0);
 });
+test('dated subtasks become separate chronological story entries with their own assigned photos', () => {
+  const project = { id: 'split', name: 'Chambre', status: 'inprogress', photos: [] };
+  const task = {
+    id: 'paint', projectId: 'split', title: 'Peinture chambre', status: 'done',
+    completedAt: '30/04/2026', dueDate: '2026-05-01', notes: '', photos: ['p1', 'p2', 'p3'],
+    subTasks: [
+      { id: 'paper', title: 'Enlever la tapisserie', done: true, completedAt: '01/01/2026', photoUris: ['p1'] },
+      { id: 'sand', title: 'Poncer et sous-couche', done: true, completedAt: '20/02/2026', photoUris: ['p2', 'p3'] },
+      { id: 'paint', title: 'Peinture couleur', done: true, photoUris: [] },
+    ],
+  };
+  const output = journal.buildProjectJournal([project], [task], {
+    ...choices(), projectIds: ['split'], from: '2026-01-01', to: '2026-04-30',
+  });
+  const steps = output.entries.filter(entry => entry.kind === 'task');
+  assert.deepEqual(clone(steps.map(entry => [entry.title, entry.dateKey, entry.photos.map(photo => photo.uri)])), [
+    ['Enlever la tapisserie', '2026-01-01', ['p1']],
+    ['Poncer et sous-couche', '2026-02-20', ['p2', 'p3']],
+  ]);
+  assert.ok(steps.every(entry => entry.parentTaskTitle === 'Peinture chambre' && entry.sourceId === 'paint'));
+  assert.equal(output.undated.length, 1);
+  assert.equal(output.undated[0].title, 'Peinture chambre · Peinture couleur');
+  assert.equal(output.undated[0].action, 'subtask-date');
+  assert.equal(output.undatedPhotos, 0);
+  assert.equal(output.entries[output.entries.indexOf(output.entries.find(entry => entry.recapTasks)) - 1].id, 'task:paint:subtask:sand');
+});
+test('subtask photos without a dated assignment are visible as an actionable item, not lost', () => {
+  const project = { id: 'split', name: 'Chambre', status: 'inprogress', photos: [] };
+  const task = {
+    id: 'paint', projectId: 'split', title: 'Peinture chambre', status: 'done',
+    completedAt: '30/04/2026', photos: ['p1', 'p2'],
+    subTasks: [{ id: 'paper', title: 'Tapisserie', done: true, completedAt: '01/01/2026', photoUris: ['p1'] }],
+  };
+  const output = journal.buildProjectJournal([project], [task], {
+    ...choices(), projectIds: ['split'], from: '2026-01-01', to: '2026-04-30',
+  });
+  assert.equal(output.photoCount, 1);
+  assert.equal(output.undatedPhotos, 1);
+  assert.equal(output.undated[0].action, 'photos');
+  assert.equal(output.undated[0].photoCount, 1);
+});
+test('legacy tasks with no dated subtasks keep their original entry and all photos', () => {
+  const task = {
+    ...tasks[0], subTasks: [
+      { id: 'one', title: 'A', done: true },
+      { id: 'two', title: 'B', done: false },
+    ],
+  };
+  const output = journal.buildProjectJournal(projects, [task], choices());
+  assert.deepEqual(clone(output.entries.filter(entry => entry.kind === 'task').map(entry => [entry.id, entry.title, entry.photos.length])),
+    [['task:later', 'Finition', 2]]);
+});

@@ -24,6 +24,12 @@ async function records(): Promise<Record[]> {
   return parsed;
 }
 
+/** Return the gallery URI retained before this file was copied into protected storage. */
+export async function protectedPhotoSource(uri: string): Promise<string> {
+  const record = (await records()).find(item => item.local === uri || item.external === uri);
+  return record?.source ?? uri;
+}
+
 /** Serialized to keep the durable registry intact during multiple photo imports. */
 export function protectPhoto(source: string, owner: PhotoOwner): Promise<string> {
   if (Platform.OS === 'web') return Promise.resolve(source);
