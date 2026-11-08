@@ -93,7 +93,7 @@ function SubTaskCompletionInput({ value, onSave, colors }: {
 }
 
 export default function TaskDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, subTaskId } = useLocalSearchParams<{ id: string; subTaskId?: string }>();
   const colors = useColors();
   const router = useRouter();
   const { tasks, projects, updateTask, deleteTask, addTransactionCtx, deleteTransactionCtx, getTaskExpenses } = useApp();
@@ -621,9 +621,18 @@ export default function TaskDetailScreen() {
             {(task.subTasks ?? []).map(st => (
               <View key={st.id} style={{ marginBottom: 8 }}>
                 <Pressable
+                  testID={`subtask-${st.id}`}
+                  accessibilityLabel={subTaskId === st.id ? `Sous-tâche sélectionnée dans la chronologie : ${st.title}` : st.title}
                   onPress={() => toggleSubTask(st.id)}
                   onLongPress={() => handleDeleteSubTask(st.id)}
-                  style={[styles.subTaskRow, { backgroundColor: colors.card, borderColor: colors.border, marginBottom: 0 }]}
+                  style={[
+                    styles.subTaskRow,
+                    {
+                      backgroundColor: subTaskId === st.id ? colors.primary + '12' : colors.card,
+                      borderColor: subTaskId === st.id ? colors.primary : colors.border,
+                      marginBottom: 0,
+                    },
+                  ]}
                 >
                   <MaterialCommunityIcons
                     name={st.done ? 'checkbox-marked-circle' : 'checkbox-blank-circle-outline'}

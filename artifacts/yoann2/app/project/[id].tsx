@@ -29,7 +29,8 @@ import { ProgressBar } from '@/components/ProgressBar';
 import { TaskCard } from '@/components/TaskCard';
 import { useApp } from '@/contexts/AppContext';
 import { useColors } from '@/hooks/useColors';
-import type { ProjectStatus, Task } from '@/types';
+import type { ProjectStatus, ProjectTimelineEvent, Task } from '@/types';
+import { parseCompletionDate } from '@/utils/completionDate';
 import { BankTransaction, CategoryConfig, getCategoryConfigs } from '@/utils/bankStorage';
 import { hasExternalPhotos, recoverPhotosFromExternal, savePhotoToProject } from '@/utils/photoStorage';
 import { mergeRecoveredPhotoUris } from '@/utils/photoReferences';
@@ -76,6 +77,51 @@ export default function ProjectDetailScreen() {
   const projectMaybe = projects.find(p => p.id === id);
   const tasks = useMemo(() => getProjectTasks(id ?? ''), [getProjectTasks, id]);
   const expenses = useMemo(() => getProjectExpenses(id ?? ''), [getProjectExpenses, id]);
+  const timeline = useMemo<ProjectTimelineEvent[]>(() => {
+    const events: ProjectTimelineEvent[] = [];
+
+    for (const task of tasks) {
+      if (task.status === 'done') {
+        const completedDate = task.completedAt
+          ? parseCompletionDate(task.completedAt)
+          : (() => {
+            const dueDate = new Date(task.dueDate);
+            return Number.isNaN(dueDate.getTime()) ? null : dueDate;
+          })();
+        events.push({
+          id: `task-${task.id}`,
+          taskId: task.id,
+          kind: 'task',
+          title: task.title,
+          taskTitle: task.title,
+          dateLabel: completedDate?.toLocaleDateString('fr-FR') ?? null,
+          timestamp: completedDate?.getTime() ?? null,
+        });
+      }
+
+      for (const subTask of task.subTasks ?? []) {
+        if (!subTask.done || !subTask.completedAt) continue;
+        const completedDate = parseCompletionDate(subTask.completedAt);
+        if (!completedDate) continue;
+        events.push({
+          id: `subtask-${task.id}-${subTask.id}`,
+          taskId: task.id,
+          subTaskId: subTask.id,
+          kind: 'subtask',
+          title: subTask.title,
+          taskTitle: task.title,
+          dateLabel: completedDate.toLocaleDateString('fr-FR'),
+          timestamp: completedDate.getTime(),
+        });
+      }
+    }
+
+    return events.sort((a, b) => {
+      if (a.timestamp === null) return b.timestamp === null ? a.title.localeCompare(b.title) : 1;
+      if (b.timestamp === null) return -1;
+      return a.timestamp - b.timestamp || a.title.localeCompare(b.title);
+    });
+  }, [tasks]);
 
   const allPhotos = useMemo<AllPhoto[]>(() => {
     if (!projectMaybe) return [];
@@ -772,6 +818,57 @@ export default function ProjectDetailScreen() {
                   <TaskCard key={t.id} task={t} />
                 ))
               )}
+              <View style={[styles.timelineSection, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <View style={styles.timelineHeader}>
+                  <MaterialCommunityIcons name="timeline-clock-outline" size={19} color={colors.primary} />
+                  <Text style={[styles.timelineTitle, { color: colors.foreground }]}>Chronologie</Text>
+                  {timeline.length > 0 && (
+                    <Text style={[styles.timelineCount, { color: colors.mutedForeground }]}>{timeline.length}</Text>
+                  )}
+                </View>
+                {timeline.length === 0 ? (
+                  <Text style={[styles.timelineEmpty, { color: colors.mutedForeground }]}>
+                    Aucune tâche ou sous-tâche terminée
+                  </Text>
+                ) : (
+                  timeline.map(event => (
+                    <Pressable
+                      key={event.id}
+                      testID={`project-timeline-event-${event.id}`}
+                      accessibilityLabel={`Ouvrir ${event.kind === 'subtask' ? `la sous-tâche ${event.title}` : `la tâche ${event.title}`}`}
+                      onPress={() => router.push({
+                        pathname: '/task/[id]',
+                        params: {
+                          id: event.taskId,
+                          ...(event.subTaskId ? { subTaskId: event.subTaskId } : {}),
+                        },
+                      })}
+                      style={({ pressed }) => [
+                        styles.timelineEvent,
+                        { borderColor: colors.border, opacity: pressed ? 0.7 : 1 },
+                      ]}
+                    >
+                      <MaterialCommunityIcons
+                        name={event.kind === 'subtask' ? 'checkbox-marked-circle-outline' : 'check-circle-outline'}
+                        size={18}
+                        color={colors.primary}
+                      />
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.timelineEventTitle, { color: colors.foreground }]}>{event.title}</Text>
+                        {event.kind === 'subtask' && (
+                          <Text style={[styles.timelineEventTask, { color: colors.mutedForeground }]} numberOfLines={1}>
+                            {event.taskTitle}
+                          </Text>
+                        )}
+                        <Text style={[styles.timelineEventDate, { color: colors.mutedForeground }]}>
+                          {event.dateLabel ?? 'Date à préciser'}
+                        </Text>
+                      </View>
+                      <MaterialCommunityIcons name="chevron-right" size={18} color={colors.mutedForeground} />
+                    </Pressable>
+                  ))
+                )}
+              </View>
             </>
           )}
 
@@ -1118,6 +1215,15 @@ const styles = StyleSheet.create({
   tab: { flex: 1, alignItems: 'center', paddingVertical: 10 },
   tabLabel: { fontSize: 13, fontFamily: 'Inter_500Medium' },
   tabContent: { paddingHorizontal: 16, gap: 10 },
+  timelineSection: { borderWidth: 1, borderRadius: 14, padding: 12, gap: 8, marginTop: 8 },
+  timelineHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 2 },
+  timelineTitle: { flex: 1, fontSize: 15, fontFamily: 'Inter_600SemiBold' },
+  timelineCount: { fontSize: 12, fontFamily: 'Inter_500Medium' },
+  timelineEmpty: { fontSize: 13, fontFamily: 'Inter_400Regular', paddingVertical: 4 },
+  timelineEvent: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, paddingHorizontal: 8, borderWidth: 1, borderRadius: 10 },
+  timelineEventTitle: { fontSize: 14, fontFamily: 'Inter_500Medium' },
+  timelineEventTask: { fontSize: 12, fontFamily: 'Inter_400Regular', marginTop: 2 },
+  timelineEventDate: { fontSize: 12, fontFamily: 'Inter_400Regular', marginTop: 3 },
   addBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, padding: 12, borderRadius: 12, justifyContent: 'center' },
   addBtnLabel: { fontSize: 14, fontFamily: 'Inter_600SemiBold' },
   empty: { alignItems: 'center', paddingVertical: 40, gap: 8 },
