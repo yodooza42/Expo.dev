@@ -810,7 +810,17 @@ export default function TaskDetailScreen() {
               </Text>
             ) : (
               taskExpenses.map(e => (
-                <View key={e.id} style={[styles.expRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <Pressable
+                  key={e.id}
+                  testID={`task-expense-${e.id}`}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Ouvrir ${e.label} dans Finance`}
+                  onPress={() => router.push({
+                    pathname: '/(tabs)/expenses',
+                    params: { transactionId: e.id },
+                  } as any)}
+                  style={[styles.expRow, { backgroundColor: colors.card, borderColor: colors.border }]}
+                >
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.expName, { color: colors.foreground }]}>{e.label}</Text>
                     {e.category.length > 0 && (
@@ -821,10 +831,18 @@ export default function TaskDetailScreen() {
                     </Text>
                   </View>
                   <Text style={[styles.expAmount, { color: colors.primary }]}>{e.amount}€</Text>
-                  <Pressable onPress={() => deleteTransactionCtx(e.id)} hitSlop={8}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`Supprimer ${e.label}`}
+                    onPress={event => {
+                      event.stopPropagation();
+                      deleteTransactionCtx(e.id);
+                    }}
+                    hitSlop={8}
+                  >
                     <MaterialCommunityIcons name="trash-can-outline" size={18} color={colors.mutedForeground} />
                   </Pressable>
-                </View>
+                </Pressable>
               ))
             )}
 

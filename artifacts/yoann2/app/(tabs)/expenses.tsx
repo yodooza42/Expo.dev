@@ -129,7 +129,7 @@ export default function FinanceScreen() {
   const colors  = useColors();
   const insets  = useSafeAreaInsets();
   const router  = useRouter();
-  const params  = useLocalSearchParams<{ add?: string }>();
+  const params  = useLocalSearchParams<{ add?: string; transactionId?: string }>();
   const { transactions, projects, tasks, addTransactionCtx, updateTransactionCtx, deleteTransactionCtx, reloadTransactions } = useApp();
   const [savingsBalance, setSavingsBal]   = useState(0);
   const [marketBalance, setMarketBal]     = useState(0);
@@ -154,6 +154,7 @@ export default function FinanceScreen() {
 
   const [categoryConfigs, setCategoryConfigs] = useState<CategoryConfig[]>(DEFAULT_CATEGORY_CONFIGS);
   const categoryLockedRef = useRef(false);
+  const handledTransactionIdRef = useRef<string | null>(null);
 
   const slideAnim = useRef(new Animated.Value(0)).current;
 
@@ -211,6 +212,25 @@ export default function FinanceScreen() {
       router.setParams({ add: '' });
     }
   }, [params.add]));
+
+  useEffect(() => {
+    const transactionId = params.transactionId;
+    if (!transactionId) {
+      handledTransactionIdRef.current = null;
+      return;
+    }
+    if (handledTransactionIdRef.current === transactionId) return;
+    const transaction = transactions.find(item => item.id === transactionId);
+    if (!transaction) return;
+
+    handledTransactionIdRef.current = transactionId;
+    setFilter(transaction.type);
+    setSearchActive(false);
+    setSearchQuery('');
+    setVisibleYears(previous => new Set([...previous, new Date(transaction.date).getFullYear()]));
+    openForm(transaction.type, transaction);
+    router.setParams({ transactionId: '' });
+  }, [params.transactionId, transactions]);
 
   function toggleSummary() {
     Haptics.selectionAsync();
