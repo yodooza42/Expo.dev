@@ -25,7 +25,6 @@ function load(file, deps) {
 
 test('photo-date spread starts strictly after 24 hours and ignores missing dates', () => {
   const { hasSubtaskPhotoDateSpread, SUBTASK_PHOTO_GAP_MS } = load('utils/taskPhotoDates.ts', {
-    'exifr/dist/lite.esm.mjs': { parse: async () => undefined },
     'expo-file-system/legacy': { EncodingType: { Base64: 'base64' }, readAsStringAsync: async () => '' },
     '@/utils/photoReferences': { photoCandidates: async uri => [uri] },
     '@/utils/tripPhotoPlacement': { photoTakenAt: () => undefined },
