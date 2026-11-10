@@ -1,4 +1,4 @@
-import { parse as parseExif } from 'exifr';
+import { parse as parseExif } from 'exifr/dist/lite.esm.mjs';
 import * as FileSystem from 'expo-file-system/legacy';
 import { photoCandidates } from '@/utils/photoReferences';
 import { photoTakenAt } from '@/utils/tripPhotoPlacement';
