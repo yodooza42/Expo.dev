@@ -848,8 +848,19 @@ export default function ExpensesScreen() {
               ) : catDetailExpenses.map((exp, i) => {
                 const proj = projects.find(p => p.id === exp.projectId);
                 return (
-                  <View
+                  <Pressable
                     key={exp.id}
+                    testID={`category-detail-transaction-${exp.id}`}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Modifier ${statsView === 'income' ? 'le revenu' : 'la dépense'} ${exp.label} dans Finance`}
+                    onPress={() => {
+                      Haptics.selectionAsync();
+                      setSelectedExpenseCat(null);
+                      router.push({
+                        pathname: '/(tabs)/expenses',
+                        params: { transactionId: exp.id },
+                      } as any);
+                    }}
                     style={[
                       styles.catSheetRow,
                       i < catDetailExpenses.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border },
@@ -873,7 +884,7 @@ export default function ExpensesScreen() {
                     <Text style={[styles.catSheetRowAmt, { color: colors.foreground }]}>
                       {showAmounts ? fmtEuro(exp.amount) : '••••'}
                     </Text>
-                  </View>
+                  </Pressable>
                 );
               })}
             </ScrollView>

@@ -223,13 +223,11 @@ export default function TaskDetailScreen() {
       updateTask(task.id, { photoTakenAt });
       if (!hasSubtaskPhotoDateSpread(current.photos, photoTakenAt)) {
         const detail = result.unmatched
-          ? `Les dates retrouvées sont à moins de 24 heures d’écart. ${result.unmatched} photo(s) n’ont pas pu être retrouvées sans ambiguïté.`
-          : 'Les photos retrouvées sont à moins de 24 heures d’écart.';
-        Alert.alert('Aucun écart important détecté', detail + (result.limited ? ' La limite de 5 000 photos de la galerie a été atteinte.' : ''));
+          ? `Après lecture des métadonnées des ${result.scanned} photos de la tâche, les dates retrouvées sont à moins de 24 heures d’écart. ${result.unmatched} photo(s) n’ont pas de date lisible.`
+          : `Après lecture des métadonnées des ${result.scanned} photos de la tâche, les dates sont à moins de 24 heures d’écart.`;
+        Alert.alert('Aucun écart important détecté', detail);
       } else if (result.unmatched) {
-        Alert.alert('Analyse terminée', `${result.unmatched} photo(s) n’ont pas pu être retrouvées sans ambiguïté. Tu pourras quand même leur attribuer une sous-tâche.${result.limited ? ' La limite de 5 000 photos de la galerie a été atteinte.' : ''}`);
-      } else if (result.limited) {
-        Alert.alert('Analyse terminée', 'La limite de 5 000 photos de la galerie a été atteinte.');
+        Alert.alert('Analyse terminée', `${result.unmatched} photo(s) de la tâche n’ont pas de date lisible. Tu pourras quand même leur attribuer une sous-tâche.`);
       }
     } catch (error) {
       Alert.alert('Analyse impossible', error instanceof Error ? error.message : 'Impossible de lire les dates de la galerie.');
@@ -812,7 +810,17 @@ export default function TaskDetailScreen() {
               </Text>
             ) : (
               taskExpenses.map(e => (
-                <View key={e.id} style={[styles.expRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <Pressable
+                  key={e.id}
+                  testID={`task-expense-${e.id}`}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Ouvrir ${e.label} dans Finance`}
+                  onPress={() => router.push({
+                    pathname: '/(tabs)/expenses',
+                    params: { transactionId: e.id },
+                  } as any)}
+                  style={[styles.expRow, { backgroundColor: colors.card, borderColor: colors.border }]}
+                >
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.expName, { color: colors.foreground }]}>{e.label}</Text>
                     {e.category.length > 0 && (
@@ -823,10 +831,18 @@ export default function TaskDetailScreen() {
                     </Text>
                   </View>
                   <Text style={[styles.expAmount, { color: colors.primary }]}>{e.amount}€</Text>
-                  <Pressable onPress={() => deleteTransactionCtx(e.id)} hitSlop={8}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`Supprimer ${e.label}`}
+                    onPress={event => {
+                      event.stopPropagation();
+                      deleteTransactionCtx(e.id);
+                    }}
+                    hitSlop={8}
+                  >
                     <MaterialCommunityIcons name="trash-can-outline" size={18} color={colors.mutedForeground} />
                   </Pressable>
-                </View>
+                </Pressable>
               ))
             )}
 
