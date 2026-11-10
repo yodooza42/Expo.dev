@@ -1,16 +1,12 @@
 ---
 name: Dates des photos de tâches
-description: Source de vérité pour la récupération des dates EXIF des photos attachées aux tâches.
+description: Extraction des dates EXIF depuis les photos déjà attachées à une tâche.
 ---
 
-Pour dater les photos déjà attachées à une tâche, lire leurs métadonnées depuis les fichiers protégés eux-mêmes et essayer les autres copies connues en secours. Ne pas balayer toute la galerie ni faire de correspondance par nom pour cette opération.
+Lire les dates uniquement depuis les URI des photos attachées à la tâche, puis depuis leurs copies protégées connues. Ne pas parcourir toute la galerie ni chercher par nom.
 
-**Why:** le registre de la tâche contient déjà les photos concernées, et leurs copies protégées préservent les octets ; scanner la galerie entière est plus lent et examine des images hors sujet.
+Lire les segments JPEG APP1 ou l’élément Exif HEIF par plages ciblées, en sautant les données d’image. Ne pas recharger le fichier complet dans un parseur généraliste.
 
-**How to apply:** toute récupération de dates pour répartir les photos entre sous-tâches doit rester limitée aux URI de la tâche et laisser les dates absentes non assignées.
+**Why:** la tâche connaît déjà ses photos ; l’extraction directe des plages de métadonnées évite les allocations mémoire des images haute résolution et ne dépend pas du chargement de pixels.
 
-Pour React Native/Hermes, importer `exifr/dist/lite.esm.mjs` plutôt que le point d’entrée `exifr` : l’entrée principale sélectionne le bundle full UMD, dont l’import dynamique non littéral échoue à la compilation Hermes.
-
-**Why:** l’étape Gradle `createBundleReleaseJsAndAssets` échoue avec « Invalid expression encountered » sur cet import dynamique.
-
-**How to apply:** si le bundle EXIF change, vérifier l’export Android avec Hermes activé ; lite gère JPEG et HEIC et couvre les dates EXIF utilisées ici.
+**How to apply:** conserver la lecture limitée aux URI fournies, tester JPEG et HEIC/HEIF, et vérifier l’export Android Hermes après toute modification du parseur.

@@ -223,18 +223,12 @@ export default function TaskDetailScreen() {
       const photoTakenAt = { ...(current.photoTakenAt ?? {}), ...result.dates };
       updateTask(task.id, { photoTakenAt });
       if (!hasSubtaskPhotoDateSpread(current.photos, photoTakenAt)) {
-        const limitedNotice = result.limited
-          ? ` ${result.limited} photo(s) volumineuse(s) n’ont été lues que sur leurs 4 premiers Mo pour éviter un manque de mémoire.`
-          : '';
         const detail = result.unmatched
-          ? `Après lecture des métadonnées des ${result.scanned} photos sans date de la tâche, les dates retrouvées sont à moins de 24 heures d’écart. ${result.unmatched} photo(s) n’ont pas de date lisible.${limitedNotice}`
-          : `Après lecture des métadonnées des ${result.scanned} photos sans date de la tâche, les dates sont à moins de 24 heures d’écart.${limitedNotice}`;
+          ? `Après lecture des métadonnées des ${result.scanned} photos sans date de la tâche, les dates retrouvées sont à moins de 24 heures d’écart. ${result.unmatched} photo(s) n’ont pas de date lisible.`
+          : `Après lecture des métadonnées des ${result.scanned} photos sans date de la tâche, les dates sont à moins de 24 heures d’écart.`;
         Alert.alert('Aucun écart important détecté', detail);
       } else if (result.unmatched) {
-        const limitedNotice = result.limited
-          ? ` ${result.limited} photo(s) volumineuse(s) n’ont été lues que sur leurs 4 premiers Mo pour éviter un manque de mémoire.`
-          : '';
-        Alert.alert('Analyse terminée', `${result.unmatched} photo(s) sans date lisible. Tu pourras quand même leur attribuer une sous-tâche.${limitedNotice}`);
+        Alert.alert('Analyse terminée', `${result.unmatched} photo(s) sans date lisible. Tu pourras quand même leur attribuer une sous-tâche.`);
       }
     } catch (error) {
       Alert.alert('Analyse impossible', error instanceof Error ? error.message : 'Impossible de lire les dates de la galerie.');
