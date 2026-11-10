@@ -1,4 +1,3 @@
-import { parse as parseExif } from 'exifr/dist/lite.esm.mjs';
 import * as FileSystem from 'expo-file-system/legacy';
 import { photoCandidates } from '@/utils/photoReferences';
 import { photoTakenAt } from '@/utils/tripPhotoPlacement';
@@ -23,7 +22,10 @@ function mimeType(uri: string): string {
   return 'image/jpeg';
 }
 
-async function readPhotoDate(uri: string): Promise<number | undefined> {
+async function readPhotoDate(
+  uri: string,
+  parseExif: typeof import('exifr/dist/lite.esm.mjs').parse,
+): Promise<number | undefined> {
   const source = await protectedPhotoSource(uri);
   const candidates = [...new Set([
     uri,
@@ -64,9 +66,11 @@ export async function scanTaskPhotoDates(
 ): Promise<{ dates: Record<string, number>; unmatched: number; scanned: number }> {
   const dates: Record<string, number> = {};
   let scanned = 0;
+  if (uris.length === 0) return { dates, unmatched: 0, scanned };
+  const { parse: parseExif } = await import('exifr/dist/lite.esm.mjs');
   for (const [index, uri] of uris.entries()) {
     onProgress(`Lecture des métadonnées des photos ${index + 1}/${uris.length}…`);
-    const timestamp = await readPhotoDate(uri);
+    const timestamp = await readPhotoDate(uri, parseExif);
     if (timestamp) dates[uri] = timestamp;
     scanned++;
   }
