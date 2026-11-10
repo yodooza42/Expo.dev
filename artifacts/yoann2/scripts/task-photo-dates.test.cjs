@@ -25,7 +25,7 @@ function load(file, deps) {
 
 test('photo-date spread starts strictly after 24 hours and ignores missing dates', () => {
   const { hasSubtaskPhotoDateSpread, SUBTASK_PHOTO_GAP_MS } = load('utils/taskPhotoDates.ts', {
-    exifr: { parse: async () => undefined },
+    'exifr/dist/lite.esm.mjs': { parse: async () => undefined },
     'expo-file-system/legacy': { EncodingType: { Base64: 'base64' }, readAsStringAsync: async () => '' },
     '@/utils/photoReferences': { photoCandidates: async uri => [uri] },
     '@/utils/tripPhotoPlacement': { photoTakenAt: () => undefined },
@@ -58,7 +58,7 @@ test('reads EXIF only from photos attached to the task, without querying the gal
     return metadata[bytes];
   } };
   const { scanTaskPhotoDates } = load('utils/taskPhotoDates.ts', {
-    exifr,
+    'exifr/dist/lite.esm.mjs': exifr,
     'expo-file-system/legacy': files,
     '@/utils/photoReferences': { photoCandidates: async uri => [uri] },
     '@/utils/tripPhotoPlacement': { photoTakenAt: exif => exif?.timestamp },
@@ -79,7 +79,7 @@ test('reads EXIF only from photos attached to the task, without querying the gal
 test('falls back to another protected copy if a task photo URI cannot be read', async () => {
   const reads = [];
   const { scanTaskPhotoDates } = load('utils/taskPhotoDates.ts', {
-    exifr: { parse: async () => ({ timestamp: 1234 }) },
+    'exifr/dist/lite.esm.mjs': { parse: async () => ({ timestamp: 1234 }) },
     'expo-file-system/legacy': {
       EncodingType: { Base64: 'base64' },
       readAsStringAsync: async uri => {
