@@ -46,6 +46,7 @@ test('reads EXIF only from photos attached to the task, without querying the gal
   };
   const files = {
     EncodingType: { Base64: 'base64' },
+    getInfoAsync: async () => ({ exists: true, size: 1024 }),
     readAsStringAsync: async (uri, options) => {
       fileReads.push([uri, options]);
       return uri.endsWith('one.jpg') ? 'photo-one-bytes' : 'photo-two-bytes';
@@ -67,10 +68,11 @@ test('reads EXIF only from photos attached to the task, without querying the gal
   const result = await scanTaskPhotoDates(['file:///vault/one.jpg', 'file:///vault/two.jpg'], message => progress.push(message));
   assert.deepEqual(JSON.parse(JSON.stringify(result)), {
     dates: { 'file:///vault/one.jpg': 100, 'file:///vault/two.jpg': 100 + 3 * 24 * 60 * 60 * 1000 },
-    unmatched: 0, scanned: 2,
+    unmatched: 0, scanned: 2, limited: 0,
   });
   assert.deepEqual(fileReads.map(([uri]) => uri), ['file:///vault/one.jpg', 'file:///vault/two.jpg']);
-  assert.ok(fileReads.every(([, options]) => options.encoding === 'base64'));
+  assert.ok(fileReads.every(([, options]) =>
+    options.encoding === 'base64' && options.position === 0 && options.length === 1024));
   assert.ok(exifInputs.every(([dataUri]) => dataUri.startsWith('data:image/jpeg;base64,')));
   assert.deepEqual(progress, ['Lecture des métadonnées des photos 1/2…', 'Lecture des métadonnées des photos 2/2…']);
 });
@@ -81,6 +83,7 @@ test('falls back to another protected copy if a task photo URI cannot be read', 
     'exifr/dist/lite.esm.mjs': { parse: async () => ({ timestamp: 1234 }) },
     'expo-file-system/legacy': {
       EncodingType: { Base64: 'base64' },
+      getInfoAsync: async uri => ({ exists: uri !== 'file:///vault/photo.jpg', size: 12 * 1024 * 1024 }),
       readAsStringAsync: async uri => {
         reads.push(uri);
         if (uri === 'file:///vault/photo.jpg') throw new Error('unavailable');
@@ -93,7 +96,30 @@ test('falls back to another protected copy if a task photo URI cannot be read', 
   });
   const result = await scanTaskPhotoDates(['file:///vault/photo.jpg']);
   assert.deepEqual(JSON.parse(JSON.stringify(result)), {
-    dates: { 'file:///vault/photo.jpg': 1234 }, unmatched: 0, scanned: 1,
+    dates: { 'file:///vault/photo.jpg': 1234 }, unmatched: 0, scanned: 1, limited: 0,
   });
   assert.deepEqual(reads, ['file:///vault/photo.jpg', 'file:///backup/photo.jpg']);
+});
+
+test('limits metadata reads for large photos and reports when no date was found', async () => {
+  const lengths = [];
+  const { scanTaskPhotoDates } = load('utils/taskPhotoDates.ts', {
+    'exifr/dist/lite.esm.mjs': { parse: async () => undefined },
+    'expo-file-system/legacy': {
+      EncodingType: { Base64: 'base64' },
+      getInfoAsync: async () => ({ exists: true, size: 30 * 1024 * 1024 }),
+      readAsStringAsync: async (_uri, options) => {
+        lengths.push(options.length);
+        return 'large-photo-prefix';
+      },
+    },
+    '@/utils/photoReferences': { photoCandidates: async uri => [uri] },
+    '@/utils/tripPhotoPlacement': { photoTakenAt: () => undefined },
+    '@/utils/photoProtection': { protectedPhotoSource: async uri => uri },
+  });
+  const result = await scanTaskPhotoDates(['file:///vault/large.jpg']);
+  assert.deepEqual(JSON.parse(JSON.stringify(result)), {
+    dates: {}, unmatched: 1, scanned: 1, limited: 1,
+  });
+  assert.deepEqual(lengths, [4 * 1024 * 1024]);
 });

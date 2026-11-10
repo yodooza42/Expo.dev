@@ -216,18 +216,25 @@ export default function TaskDetailScreen() {
   async function analyzeTaskPhotoDates() {
     setScanningPhotoDates(true); setPhotoScanProgress('Préparation de l’analyse…');
     try {
-      const result = await scanTaskPhotoDates(task.photos, setPhotoScanProgress);
+      const photosWithoutDate = task.photos.filter(uri => !task.photoTakenAt?.[uri]);
+      const result = await scanTaskPhotoDates(photosWithoutDate, setPhotoScanProgress);
       const current = latestTasks.current.find(item => item.id === task.id);
       if (!current) return;
       const photoTakenAt = { ...(current.photoTakenAt ?? {}), ...result.dates };
       updateTask(task.id, { photoTakenAt });
       if (!hasSubtaskPhotoDateSpread(current.photos, photoTakenAt)) {
+        const limitedNotice = result.limited
+          ? ` ${result.limited} photo(s) volumineuse(s) n’ont été lues que sur leurs 4 premiers Mo pour éviter un manque de mémoire.`
+          : '';
         const detail = result.unmatched
-          ? `Après lecture des métadonnées des ${result.scanned} photos de la tâche, les dates retrouvées sont à moins de 24 heures d’écart. ${result.unmatched} photo(s) n’ont pas de date lisible.`
-          : `Après lecture des métadonnées des ${result.scanned} photos de la tâche, les dates sont à moins de 24 heures d’écart.`;
+          ? `Après lecture des métadonnées des ${result.scanned} photos sans date de la tâche, les dates retrouvées sont à moins de 24 heures d’écart. ${result.unmatched} photo(s) n’ont pas de date lisible.${limitedNotice}`
+          : `Après lecture des métadonnées des ${result.scanned} photos sans date de la tâche, les dates sont à moins de 24 heures d’écart.${limitedNotice}`;
         Alert.alert('Aucun écart important détecté', detail);
       } else if (result.unmatched) {
-        Alert.alert('Analyse terminée', `${result.unmatched} photo(s) de la tâche n’ont pas de date lisible. Tu pourras quand même leur attribuer une sous-tâche.`);
+        const limitedNotice = result.limited
+          ? ` ${result.limited} photo(s) volumineuse(s) n’ont été lues que sur leurs 4 premiers Mo pour éviter un manque de mémoire.`
+          : '';
+        Alert.alert('Analyse terminée', `${result.unmatched} photo(s) sans date lisible. Tu pourras quand même leur attribuer une sous-tâche.${limitedNotice}`);
       }
     } catch (error) {
       Alert.alert('Analyse impossible', error instanceof Error ? error.message : 'Impossible de lire les dates de la galerie.');
