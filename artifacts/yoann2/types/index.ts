@@ -48,6 +48,8 @@ export interface Task {
   dueDate: string;
   createdAt: string;
   completedAt?: string;
+  /** Photo URIs shared from the owning project rather than copied into the task. */
+  projectPhotoUris?: string[];
   priority: Priority;
   importance: number;
   urgency: number;

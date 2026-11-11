@@ -28,3 +28,4 @@
 - [Dates de fin](project-task-completion.md) — projets et tâches : date du jour à la clôture, correction manuelle possible sans changer l’échéance.
 - [Carnet vidéo des projets](project-journal.md) — stories chronologiques par complétion, période/projets/photos/légendes au choix, style carnet à carreaux de 5 mm.
 - [Appareil de test du carnet vidéo](journal-video-test-device.md) — l’appareil de l’utilisateur pour valider les exports vidéo est un Samsung Galaxy S25 Ultra.
+- [Photos partagées entre projet et tâche](project-task-photos.md) — rattacher les photos du projet comme références et ne jamais supprimer l’original lors du retrait d’une tâche.

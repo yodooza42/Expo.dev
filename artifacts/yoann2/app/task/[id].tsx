@@ -21,6 +21,7 @@ import {
 
 import { BottomSheet } from '@/components/BottomSheet';
 import { GalleryPhotoPicker } from '@/components/GalleryPhotoPicker';
+import { ProjectPhotosPicker } from '@/components/ProjectPhotosPicker';
 import { ProjectPhoto } from '@/components/ProjectPhoto';
 import { PriorityBadge } from '@/components/PriorityBadge';
 import { useApp } from '@/contexts/AppContext';
@@ -34,6 +35,7 @@ import { taskFolderName } from '@/utils/photoStorage';
 import { completionDateError, formatCompletionDate } from '@/utils/completionDate';
 import { photoTakenAt } from '@/utils/tripPhotoPlacement';
 import { hasSubtaskPhotoDateSpread, scanTaskPhotoDates } from '@/utils/taskPhotoDates';
+import { attachProjectPhotoReferences, getUnlinkedProjectPhotos, isSharedProjectPhoto } from '@/utils/projectPhotoLinks';
 
 const { width } = Dimensions.get('window');
 
@@ -102,9 +104,14 @@ export default function TaskDetailScreen() {
 
   const taskMaybe = tasks.find(t => t.id === id);
   const project = taskMaybe ? projects.find(p => p.id === taskMaybe.projectId) : null;
+  const availableProjectPhotos = useMemo(
+    () => getUnlinkedProjectPhotos(project?.photos ?? [], taskMaybe?.photos ?? []),
+    [project, taskMaybe],
+  );
 
   const [photoViewIdx, setPhotoViewIdx] = useState<number | null>(null);
   const [galleryPickerVisible, setGalleryPickerVisible] = useState(false);
+  const [projectPhotosPickerVisible, setProjectPhotosPickerVisible] = useState(false);
   const [subTaskPhotoModal, setSubTaskPhotoModal] = useState<'prompt' | 'assign' | null>(null);
   const [photoAssignments, setPhotoAssignments] = useState<Record<string, string>>({});
   const [selectedAssignmentPhoto, setSelectedAssignmentPhoto] = useState<string | null>(null);
@@ -127,14 +134,22 @@ export default function TaskDetailScreen() {
           if (photoViewIdx === idx) setPhotoViewIdx(null);
           const newPhotos = task.photos.filter((_, i) => i !== idx);
           const photoTakenAt = { ...(task.photoTakenAt ?? {}) }; delete photoTakenAt[uri];
+          const isShared = isSharedProjectPhoto(uri, task.projectPhotoUris, project?.photos);
           const subTasks = (task.subTasks ?? []).map(st => ({
             ...st, photoUris: st.photoUris?.filter(photoUri => photoUri !== uri),
           }));
-          updateTask(task.id, { photos: newPhotos, photoTakenAt, subTasks });
-          try {
-            const info = await FileSystem.getInfoAsync(uri);
-            if (info.exists) await FileSystem.deleteAsync(uri, { idempotent: true });
-          } catch { /* ignore cleanup errors */ }
+          updateTask(task.id, {
+            photos: newPhotos,
+            photoTakenAt,
+            subTasks,
+            projectPhotoUris: task.projectPhotoUris?.filter(photoUri => photoUri !== uri),
+          });
+          if (!isShared) {
+            try {
+              const info = await FileSystem.getInfoAsync(uri);
+              if (info.exists) await FileSystem.deleteAsync(uri, { idempotent: true });
+            } catch { /* ignore cleanup errors */ }
+          }
         },
       },
     ]);
@@ -189,6 +204,14 @@ export default function TaskDetailScreen() {
     } catch (error) {
       Alert.alert('Photo non conservée', error instanceof Error ? error.message : 'Copie permanente impossible.');
     }
+  }
+
+  function addProjectPhotos(uris: string[]) {
+    const current = latestTasks.current.find(item => item.id === task.id);
+    if (!current) return;
+    const updated = attachProjectPhotoReferences(current.photos, current.projectPhotoUris, uris);
+    if (updated.photos.length === current.photos.length) return;
+    updateTask(task.id, updated);
   }
 
   async function browseAllTaskPhotos() {
@@ -700,13 +723,27 @@ export default function TaskDetailScreen() {
           <View>
             <View style={styles.sectionHeader}>
               <Text style={[styles.sectionTitle, { color: colors.foreground, marginBottom: 0 }]}>Photos</Text>
-              <Pressable
-                onPress={() => setGalleryPickerVisible(true)}
-                style={[styles.addPhotoInline, { backgroundColor: colors.primary + '18', borderColor: colors.primary + '40' }]}
-              >
-                <MaterialCommunityIcons name="image-plus-outline" size={16} color={colors.primary} />
-                <Text style={[styles.addExpLabel, { color: colors.primary }]}>Ajouter</Text>
-              </Pressable>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                {availableProjectPhotos.length > 0 && (
+                  <Pressable
+                    testID="add-project-photos"
+                    accessibilityRole="button"
+                    accessibilityLabel="Associer des photos du projet"
+                    onPress={() => setProjectPhotosPickerVisible(true)}
+                    hitSlop={8}
+                    style={styles.addProjectPhotoInline}
+                  >
+                    <MaterialCommunityIcons name="folder-plus-outline" size={19} color={colors.primary} />
+                  </Pressable>
+                )}
+                <Pressable
+                  onPress={() => setGalleryPickerVisible(true)}
+                  style={[styles.addPhotoInline, { backgroundColor: colors.primary + '18', borderColor: colors.primary + '40' }]}
+                >
+                  <MaterialCommunityIcons name="image-plus-outline" size={16} color={colors.primary} />
+                  <Text style={[styles.addExpLabel, { color: colors.primary }]}>Ajouter</Text>
+                </Pressable>
+              </View>
             </View>
             {task.photos.length > 0 ? (
               <View style={styles.photoGrid}>
@@ -996,6 +1033,13 @@ export default function TaskDetailScreen() {
         onAddAssets={addGalleryTaskPhotos}
         onBrowseAll={browseAllTaskPhotos}
       />
+      <ProjectPhotosPicker
+        visible={projectPhotosPickerVisible}
+        projectName={project?.name ?? 'Projet'}
+        photos={availableProjectPhotos}
+        onClose={() => setProjectPhotosPickerVisible(false)}
+        onConfirm={addProjectPhotos}
+      />
 
       <BottomSheet visible={addExpVisible} onClose={() => setAddExpVisible(false)} title="Nouvelle dépense" avoidKeyboard>
             <Text style={[styles.sheetSub, { color: colors.mutedForeground }]}>
@@ -1097,6 +1141,7 @@ const styles = StyleSheet.create({
   photoImg: { width: '100%', height: '100%' },
   photoRemove: { position: 'absolute', top: 4, right: 4, zIndex: 10 },
   addPhotoInline: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 10, borderWidth: 1 },
+  addProjectPhotoInline: { width: 38, height: 36, alignItems: 'center', justifyContent: 'center' },
   photoModal: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   photoClose: { position: 'absolute', top: 60, right: 20, zIndex: 10 },
   photoFull: { width, height: width * 1.2 },
