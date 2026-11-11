@@ -15,6 +15,12 @@ La chronologie doit entrelacer les tâches des différents projets selon leur co
 
 **How to apply:** distinguer clairement le projet et la tâche sur chaque étape ; conserver les photos de cette tâche. La fin d’un projet est un jalon distinct, pas un remplacement de ses tâches.
 
+Dans le carnet, trier les photos de chaque tâche par date/heure de prise connue, puis les afficher une à une en grand au même emplacement. Garder l’image entière dans son ratio d’origine, sans recadrage, filtre ni contour ; laisser les photos sans date après celles datées, dans leur ordre d’origine.
+
+**Why:** les mosaïques rendent les détails difficiles à voir, et l’utilisateur veut reconnaître les photos telles qu’elles ont été prises.
+
+**How to apply:** utiliser les dates photo déjà enregistrées pour chaque tâche, garder un ordre stable quand la date manque, et ne pas décoder les images hors de la photo affichée ou imminente.
+
 Pour un carnet limité à un seul projet, proposer de choisir une photo « avant » et une photo « après », avec leur date sous chaque image. Sauvegarder ces choix sur le projet et les afficher dans sa fiche, puis terminer la vidéo par ce comparatif.
 
 **Why:** l’utilisateur veut conserver la comparaison avant/après dans le carnet vidéo et dans le récapitulatif du projet consultable dans l’application.

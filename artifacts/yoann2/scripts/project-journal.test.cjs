@@ -62,6 +62,15 @@ test('project selection, excluded entries/photos and independent captions never 
   assert.equal(tasks[0].photos.length, 2);
   assert.equal(journal.buildProjectJournal(projects, tasks, { ...chosen, excludedPhotoIds: [] }).photoCount, 2);
 });
+test('task photos are ordered by capture time with undated photos kept last in their original order', () => {
+  const task = {
+    ...tasks[0], photos: ['file://late', 'file://unknown-a', 'file://early', 'file://unknown-b'],
+    photoTakenAt: { 'file://late': 500, 'file://early': 100 },
+  };
+  const output = journal.buildProjectJournal(projects, [task], { ...choices(), projectIds: ['p1'] });
+  assert.deepEqual(clone(output.entries[0].photos.map(photo => photo.uri)),
+    ['file://early', 'file://late', 'file://unknown-a', 'file://unknown-b']);
+});
 test('single-project carnet keeps before/after selections and adds a dated final comparison', () => {
   const beforeId = journal.journalPhotoId('task:later', 'file://a');
   const afterId = journal.journalPhotoId('project:p1', 'file://p');
@@ -285,7 +294,7 @@ function engine({ badPhoto = false, loadDelay = 25 } = {}) {
     measureText: text => ({ width: String(text).length * 17 }),
     createLinearGradient: () => ({ addColorStop() {} }),
     createRadialGradient: () => ({ addColorStop() {} }),
-    drawImage(source) { if (source?.value) imageDraws.push({ src: source.value, at: now }); },
+    drawImage(source, ...dimensions) { if (source?.value) imageDraws.push({ src: source.value, dimensions, at: now }); },
     fillText(text, x, y) { if (text) draws.push({ text, x, y, at: now }); },
   }, { get: (o, k) => k in o ? o[k] : () => {}, set: (o, k, v) => { o[k] = v; return true; } });
   const canvas = () => ({ width: 720, height: 1280, getContext: () => ctx,
@@ -390,7 +399,7 @@ test('preview and exporter use exactly the calculated duration, expose controls 
   assert.ok(e.maxImages <= 8, `at most the current and turning pages, not ${e.maxImages} decoded photos`);
   assert.equal(e.messages.some(m => m.type === 'story_chunk'), false);
 });
-test('task page reveals four photos in half-second steps and continues the remaining photos on the next page', async () => {
+test('task page overlays full-size photos one at a time in half-second steps', async () => {
   const e = engine(), data = payload({ count: 1 });
   data.entries[0].photos = Array.from({ length: 6 }, (_, i) => ({
     id: `photo-${i + 1}`, caption: `Photo ${i + 1}`, img: `data:image/jpeg;base64,cGhvdG8${i}`,
@@ -401,12 +410,16 @@ test('task page reveals four photos in half-second steps and continues the remai
   e.win.journalPause();
   const hasDrawn = id => e.imageDraws.some(draw => draw.src.endsWith(`cGhvdG8${id - 1}`));
   e.win.journalSeek(5.2); assert.equal(hasDrawn(1), true); assert.equal(hasDrawn(2), false);
+  assert.ok(e.imageDraws.at(-1).dimensions[2] >= 560, 'the source image spans nearly the full page width');
   await e.advance(500);
   e.win.journalSeek(5.7); assert.equal(hasDrawn(2), true); assert.equal(hasDrawn(3), false);
+  assert.ok(e.imageDraws.at(-1).src.endsWith('cGhvdG81'), 'the second photo replaces the first in the same frame');
   await e.advance(500);
   e.win.journalSeek(6.2); assert.equal(hasDrawn(3), true); assert.equal(hasDrawn(4), false);
+  assert.ok(e.imageDraws.at(-1).src.endsWith('cGhvdG82'));
   await e.advance(500);
   e.win.journalSeek(6.7); assert.equal(hasDrawn(4), true); assert.equal(hasDrawn(5), false);
+  assert.ok(e.imageDraws.at(-1).src.endsWith('cGhvdG83'));
   await e.advance(500);
   e.win.journalSeek(9.7);
   await e.advance(100);
