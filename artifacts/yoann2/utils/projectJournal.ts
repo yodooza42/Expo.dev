@@ -121,10 +121,18 @@ export function buildProjectJournal(projects: Project[], tasks: Task[], choices:
       caption: choices.captions[id] ?? defaultCaption.slice(0, 280),
       ...(options?.parentTaskTitle ? { parentTaskTitle: options.parentTaskTitle } : {}),
       ...(options?.subTaskId ? { subTaskId: options.subTaskId } : {}),
-      photos: [...new Set(item.photos)].map(uri => {
+      photos: [...new Set(item.photos)].map((uri, index) => {
         const photoId = journalPhotoId(id, uri);
-        return { id: photoId, uri, caption: choices.photoCaptions[photoId] ?? '' };
-      }),
+        const takenAt = 'photoTakenAt' in item ? item.photoTakenAt?.[uri] : undefined;
+        return { id: photoId, uri, caption: choices.photoCaptions[photoId] ?? '', takenAt, sourceOrder: index };
+      }).sort((a, b) => {
+        const aDate = typeof a.takenAt === 'number' && Number.isFinite(a.takenAt) && a.takenAt > 0 ? a.takenAt : undefined;
+        const bDate = typeof b.takenAt === 'number' && Number.isFinite(b.takenAt) && b.takenAt > 0 ? b.takenAt : undefined;
+        if (aDate !== undefined && bDate !== undefined) return aDate - bDate || a.sourceOrder - b.sourceOrder;
+        if (aDate !== undefined) return -1;
+        if (bDate !== undefined) return 1;
+        return a.sourceOrder - b.sourceOrder;
+      }).map(({ sourceOrder: _sourceOrder, ...photo }) => photo),
     });
   }
   tasks.forEach(task => {

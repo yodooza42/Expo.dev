@@ -141,26 +141,41 @@ function load(gi){
   img.onerror=function(){fail('image illisible.')};
   img.src=photos[gi].ph.img;
 }
+function photoIndex(seg,lt){
+  var delay=Number(seg.photoDelay)||0,elapsed=Math.max(0,lt-delay);
+  return Math.min(seg.photoCount-1,Math.floor(elapsed/PHOTO_INTERVAL));
+}
 function ensure(seg,lt){
   var keep={},loads={};
-  function include(start,count,shouldLoad){for(var i=start;i<start+count;i++){keep[i]=1;if(shouldLoad)loads[i]=1}}
-  var start=seg.photoCount?seg.photoStart:seg.nextPhotoStart,count=seg.photoCount?seg.photoCount:seg.nextPhotoCount;
-  if(count)include(start,count,true);
+  function include(index){if(index<0||index>=photos.length)return;keep[index]=1;loads[index]=1}
+  function includeCurrent(target,at){
+    if(!target||!target.photoCount)return;
+    if(target.k==='comparison'){for(var c=0;c<target.photoCount;c++)include(target.photoStart+c);return}
+    var active=photoIndex(target,at),elapsed=Math.max(0,at-(Number(target.photoDelay)||0));
+    include(target.photoStart+active);
+    if(active>0&&elapsed-active*PHOTO_INTERVAL<0.2)include(target.photoStart+active-1);
+    if(active+1<target.photoCount)include(target.photoStart+active+1);
+  }
+  includeCurrent(seg,lt);
   var prev=segs[seg.i-1];
-  if(prev&&lt<TURN&&prev.photoCount)include(prev.photoStart,prev.photoCount,true);
+  if(prev&&lt<TURN)includeCurrent(prev,prev.d-0.001);
+  if(!seg.photoCount&&seg.nextPhotoCount)include(seg.nextPhotoStart);
   var next=segs[seg.i+1];
   if(next&&seg.d-lt<1.2){
-    var nextStart=next.photoCount?next.photoStart:next.nextPhotoStart;
-    var nextCount=next.photoCount?next.photoCount:next.nextPhotoCount;
-    if(nextCount)include(nextStart,nextCount,true);
+    if(next.photoCount)include(next.photoStart);
+    else if(next.nextPhotoCount)include(next.nextPhotoStart);
   }
   Object.keys(cache).forEach(function(k){if(!keep[k])release(k)});
   Object.keys(loads).forEach(function(k){load(Number(k))});
 }
-function ready(seg){
+function ready(seg,lt){
   if(!seg.photoCount)return true;
-  for(var i=seg.photoStart;i<seg.photoStart+seg.photoCount;i++){var c=cache[i];if(!c||c.st!=='ok')return false}
-  return true;
+  if(seg.k==='comparison'){
+    for(var i=seg.photoStart;i<seg.photoStart+seg.photoCount;i++){var c=cache[i];if(!c||c.st!=='ok')return false}
+    return true;
+  }
+  var active=seg.photoStart+photoIndex(seg,lt),current=cache[active];
+  return !!current&&current.st==='ok';
 }
 
 /* ---------- drawing ---------- */
@@ -190,37 +205,34 @@ function drawIntro(lt,a){
   var ec=Number(p.entryCount)||P.entries.length,pc=Number(p.photoCount)||photos.length;
   ctx.fillText(ec+(ec>1?' ENTRÉES':' ENTRÉE')+'  .  '+pc+(pc>1?' PHOTOS':' PHOTO'),CX,H-140);ctx.globalAlpha=1;
 }
-function drawPhotoGrid(start,count,lt,a,delay,top,bottom){
+function drawPhotoFrame(start,count,lt,a,delay,top,bottom){
   if(!count)return;
-  var cols=count===1?1:2,rows=Math.ceil(count/cols),gap=18;
-  var cellW=(CR-CX-gap*(cols-1))/cols,cellH=(bottom-top-gap*(rows-1))/rows;
-  for(var i=0;i<count;i++){
-    var col=i%cols,row=Math.floor(i/cols),x=CX+col*(cellW+gap),y=top+row*(cellH+gap);
-    var revealAt=delay+i*PHOTO_INTERVAL,alpha=a*eo((lt-revealAt)/0.18);
-    ctx.save();ctx.globalAlpha=a*0.42;ctx.fillStyle='rgba(30,42,71,0.08)';ctx.fillRect(x,y,cellW,cellH-38);
-    ctx.strokeStyle='rgba(30,42,71,0.24)';ctx.lineWidth=1.5;ctx.strokeRect(x+.5,y+.5,cellW-1,cellH-39);ctx.restore();
-    if(alpha<=0)continue;
-    var gi=start+i,c=cache[gi],img=c&&c.st==='ok'?c.img:null;
-    var imageH=cellH-58,innerW=cellW-12,innerH=imageH-12;
-    ctx.save();ctx.globalAlpha=alpha;
+  var elapsed=Math.max(0,lt-delay),index=Math.min(count-1,Math.floor(elapsed/PHOTO_INTERVAL));
+  var fade=eo((elapsed-index*PHOTO_INTERVAL)/0.18),gi=start+index;
+  function paint(photoIndex,alpha){
+    var photo=photos[start+photoIndex],c=cache[start+photoIndex],img=c&&c.st==='ok'?c.img:null;
+    ctx.save();ctx.globalAlpha=a*alpha;
     if(img){
-      var scale=Math.min(innerW/img.naturalWidth,innerH/img.naturalHeight);
+      /* Preserve the complete source frame and aspect ratio; do not crop, filter, or frame it. */
+      var scale=Math.min((CR-CX)/img.naturalWidth,(bottom-top)/img.naturalHeight);
       var iw=img.naturalWidth*scale,ih=img.naturalHeight*scale;
-      ctx.drawImage(img,x+(cellW-iw)/2,y+6+(imageH-ih)/2,iw,ih);
+      ctx.drawImage(img,CX+(CR-CX-iw)/2,top+(bottom-top-ih)/2,iw,ih);
     }else{
-      ctx.fillStyle='#D9DDD5';ctx.fillRect(x+6,y+6,innerW,innerH);
       ctx.fillStyle=INK2;ctx.font='16px '+MONO;ctx.textAlign='center';
-      ctx.fillText(c&&c.st==='error'?'Photo introuvable':'Chargement',x+cellW/2,y+imageH/2);ctx.textAlign='left';
+      ctx.fillText(c&&c.st==='error'?'Photo introuvable':'Chargement',(CX+CR)/2,(top+bottom)/2);ctx.textAlign='left';
     }
-    var caption=str(photos[gi].ph.caption);
+    var caption=str(photo.ph.caption);
     if(caption){
-      var cf=fit(caption,'italic #px '+SERIF,18,13,cellW-18,2);
-      lines(cf,'italic #px '+SERIF,x+9,y+cellH-31,1.08,INK,alpha);
+      var cf=fit(caption,'italic #px '+SERIF,18,13,CR-CX,2);
+      lines(cf,'italic #px '+SERIF,CX,bottom+32,1.08,INK,alpha);
     }
-    ctx.fillStyle=RED;ctx.font='bold 12px '+MONO;ctx.textAlign='right';
-    ctx.fillText(String(photos[gi].pi+1),x+cellW-5,y+cellH-8);ctx.textAlign='left';
+    ctx.globalAlpha=a;ctx.fillStyle=RED;ctx.font='bold 12px '+MONO;ctx.textAlign='right';
+    ctx.fillText(String(photo.pi+1),CR,bottom+52);ctx.textAlign='left';
     ctx.restore();
   }
+  /* Draw the previous photo underneath briefly, then reveal the next one over it. */
+  if(index>0&&fade<1)paint(index-1,1);
+  paint(index,fade);
 }
 function drawTitle(seg,lt,a){
   var e=P.entries[seg.ei],y=150,n=seg.ei+1;
@@ -238,10 +250,11 @@ function drawTitle(seg,lt,a){
   if(cap){var cf=fit(cap,'italic #px '+SERIF,28,20,CR-CX,3);ctx.globalAlpha=1;yy=lines(cf,'italic #px '+SERIF,CX,yy+cf.size,1.18,INK,a*eo((lt-0.6)/0.6))}
   var ph=(e.photos||[]).length;
   if(seg.photoCount){
-    var top=Math.max(500,Math.min(650,yy+36)),bottom=H-112;
+    var top=Math.max(500,Math.min(650,yy+36)),bottom=H-174;
     ctx.globalAlpha=a*eo((lt-0.8)/0.4);ctx.fillStyle=INK2;ctx.font='bold 15px '+MONO;
-    ctx.fillText('PHOTOS 1–'+seg.photoCount+' / '+ph,CX,top-14);
-    drawPhotoGrid(seg.photoStart,seg.photoCount,lt,a,seg.photoDelay,top,bottom);
+    ctx.fillText('PHOTOS '+(photos[seg.photoStart].pi+1)+'–'+
+      (photos[seg.photoStart+seg.photoCount-1].pi+1)+' / '+ph,CX,top-14);
+    drawPhotoFrame(seg.photoStart,seg.photoCount,lt,a,seg.photoDelay,top,bottom);
   }else{
     ctx.globalAlpha=a*eo((lt-0.8)/0.5);ctx.fillStyle=INK2;ctx.font='18px '+MONO;
     ctx.fillText((e.kind==='project'?'PROJET':'TÂCHE TERMINÉE')+'  .  sans photo',CX,Math.min(H-110,yy+50));
@@ -260,7 +273,7 @@ function drawPhotos(seg,lt,a){
   lines(tf,'bold #px '+SERIF,CX,e.parentTaskTitle?286:270,1.1,INK,a*eo((lt-0.15)/0.45));
   ctx.globalAlpha=a*eo((lt-0.3)/0.4);ctx.fillStyle=RED;ctx.font='bold 16px '+MONO;
   ctx.fillText('PHOTOS '+(first.pi+1)+'–'+(last.pi+1)+' / '+total,CX,370);
-  drawPhotoGrid(start,count,lt,a,0,405,H-112);
+  drawPhotoFrame(start,count,lt,a,0,405,H-174);
   ctx.globalAlpha=1;
 }
 function drawRecap(seg,lt,a){
@@ -345,7 +358,7 @@ function tick(){
   var dt=lastTick?(now-lastTick)/1000:0;lastTick=now;var seg=segAt(t);
   if(playing){
     if(mode==='export')exportStep(seg,dt);
-    else if(ready(seg)){t=Math.min(dur,t+Math.min(dt,0.25));if(t>=dur){playing=false}}
+    else if(ready(seg,t-seg.s)){t=Math.min(dur,t+Math.min(dt,0.25));if(t>=dur){playing=false}}
     dirty=true;
   }
   if(dirty)render();ui();
@@ -369,10 +382,10 @@ function fail(j,msg){if(j.dead)return;var id=j.id;cleanup(j);cv.width=1;cv.heigh
 function exportStep(seg,dt){
   var j=job;if(!j||j.dead)return;
   var nextT=Math.min(dur,t+dt),nextSeg=segAt(nextT);
-  if(!ready(nextSeg)){ensure(nextSeg,nextT-nextSeg.s);
+  if(!ready(nextSeg,nextT-nextSeg.s)){ensure(nextSeg,nextT-nextSeg.s);
     if(j.rec.state==='recording'){try{j.rec.pause()}catch(e){}}
     if(!j.waitAt)j.waitAt=performance.now();return}
-  if(!ready(seg)){if(j.rec.state==='recording'){try{j.rec.pause()}catch(e){}}
+  if(!ready(seg,t-seg.s)){if(j.rec.state==='recording'){try{j.rec.pause()}catch(e){}}
     if(!j.waitAt)j.waitAt=performance.now();return}
   if(j.waitAt){j.waitAt=0;if(j.rec.state==='paused'){try{j.rec.resume()}catch(e){}}lastTick=performance.now();return}
   t=Math.min(dur,t+dt);

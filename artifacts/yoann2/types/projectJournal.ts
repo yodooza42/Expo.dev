@@ -14,7 +14,7 @@ export type JournalChoices = {
   beforeAfterByProjectId?: Record<string, { beforePhotoId?: string; afterPhotoId?: string }>;
 };
 
-export type JournalPhoto = { id: string; uri: string; caption: string };
+export type JournalPhoto = { id: string; uri: string; caption: string; takenAt?: number };
 export type JournalEntry = {
   id: string;
   sourceId: string;
