@@ -216,19 +216,20 @@ export default function TaskDetailScreen() {
   async function analyzeTaskPhotoDates() {
     setScanningPhotoDates(true); setPhotoScanProgress('Préparation de l’analyse…');
     try {
-      const photosWithoutDate = task.photos.filter(uri => !task.photoTakenAt?.[uri]);
-      const result = await scanTaskPhotoDates(photosWithoutDate, setPhotoScanProgress);
+      // Re-read the metadata for every photo already attached to this task.
+      // Dates are small metadata reads; the image pixels are never loaded.
+      const result = await scanTaskPhotoDates(task.photos, setPhotoScanProgress);
       const current = latestTasks.current.find(item => item.id === task.id);
       if (!current) return;
       const photoTakenAt = { ...(current.photoTakenAt ?? {}), ...result.dates };
       updateTask(task.id, { photoTakenAt });
       if (!hasSubtaskPhotoDateSpread(current.photos, photoTakenAt)) {
         const detail = result.unmatched
-          ? `Après lecture des métadonnées des ${result.scanned} photos sans date de la tâche, les dates retrouvées sont à moins de 24 heures d’écart. ${result.unmatched} photo(s) n’ont pas de date lisible.`
-          : `Après lecture des métadonnées des ${result.scanned} photos sans date de la tâche, les dates sont à moins de 24 heures d’écart.`;
+          ? `Après lecture des métadonnées des ${result.scanned} photos de la tâche, les dates retrouvées sont à moins de 24 heures d’écart. ${result.unmatched} photo(s) n’ont pas de date lisible.`
+          : `Après lecture des métadonnées des ${result.scanned} photos de la tâche, les dates sont à moins de 24 heures d’écart.`;
         Alert.alert('Aucun écart important détecté', detail);
       } else if (result.unmatched) {
-        Alert.alert('Analyse terminée', `${result.unmatched} photo(s) sans date lisible. Tu pourras quand même leur attribuer une sous-tâche.`);
+        Alert.alert('Analyse terminée', `${result.unmatched} photo(s) n’ont pas de date lisible. Tu pourras quand même leur attribuer une sous-tâche.`);
       }
     } catch (error) {
       Alert.alert('Analyse impossible', error instanceof Error ? error.message : 'Impossible de lire les dates de la galerie.');
@@ -657,14 +658,21 @@ export default function TaskDetailScreen() {
               </View>
             ))}
 
-            {!!task.subTasks?.length && !!task.photos.length && <View style={{ gap: 8, marginTop: 4 }}>
-              <Pressable onPress={openSubTaskPhotoAssignment} style={[styles.addExpBtn, { backgroundColor: colors.primary + '18', borderColor: colors.primary + '40' }]}>
+            {!!task.photos.length && <View style={{ gap: 8, marginTop: 4 }}>
+              {!!task.subTasks?.length && <Pressable
+                testID="subtask-photo-assignment"
+                accessibilityRole="button"
+                onPress={openSubTaskPhotoAssignment}
+                style={[styles.addExpBtn, { backgroundColor: colors.primary + '18', borderColor: colors.primary + '40' }]}
+              >
                 <MaterialCommunityIcons name="image-multiple-outline" size={16} color={colors.primary} />
                 <Text style={[styles.addExpLabel, { color: colors.primary }]}>
                   {task.subTasks.some(st => st.photoUris?.length) ? 'Modifier la répartition des photos' : 'Répartir les photos entre les sous-tâches'}
                 </Text>
-              </Pressable>
-              {task.photos.some(uri => !task.photoTakenAt?.[uri]) && <Pressable
+              </Pressable>}
+              <Pressable
+                testID="analyze-task-photo-dates"
+                accessibilityRole="button"
                 onPress={() => { void analyzeTaskPhotoDates(); }}
                 disabled={scanningPhotoDates}
                 style={[styles.addExpBtn, { backgroundColor: colors.card, borderColor: colors.border, opacity: scanningPhotoDates ? 0.7 : 1 }]}
@@ -672,9 +680,9 @@ export default function TaskDetailScreen() {
                 {scanningPhotoDates ? <ActivityIndicator size="small" color={colors.primary} />
                   : <MaterialCommunityIcons name="calendar-search" size={16} color={colors.primary} />}
                 <Text style={[styles.addExpLabel, { color: colors.primary }]}>
-                  {scanningPhotoDates ? photoScanProgress || 'Analyse en cours…' : 'Analyser les dates des photos existantes'}
+                  {scanningPhotoDates ? photoScanProgress || 'Analyse en cours…' : 'Analyser les dates des photos'}
                 </Text>
-              </Pressable>}
+              </Pressable>
             </View>}
 
             <View style={styles.subTaskAddRow}>
