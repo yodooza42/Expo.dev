@@ -77,7 +77,7 @@ export function ProjectPhotosPicker({ visible, projectName, photos, onClose, onC
             <View style={styles.empty}>
               <MaterialCommunityIcons name="image-multiple-outline" size={28} color={colors.mutedForeground} />
               <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
-                Toutes les photos du projet sont déjà liées à cette tâche.
+                Aucune autre photo disponible dans ce projet.
               </Text>
             </View>
           ) : (

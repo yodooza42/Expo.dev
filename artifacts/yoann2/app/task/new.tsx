@@ -1,9 +1,8 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import * as FileSystem from 'expo-file-system/legacy';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import * as MediaLibrary from 'expo-media-library';
-import { resolveProjectDirForBatch, sanitize, savePhotoToProject, taskFolderName } from '@/utils/photoStorage';
+import { sanitize, taskFolderName } from '@/utils/photoStorage';
 import { protectPhoto } from '@/utils/photoProtection';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useMemo, useState } from 'react';
@@ -29,7 +28,7 @@ import { SubPageHeader } from '@/components/SubPageHeader';
 import { CompletionDateField } from '@/components/CompletionDateField';
 import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
 import { completionDateError, formatCompletionDate } from '@/utils/completionDate';
-import { attachProjectPhotoReferences, getUnlinkedProjectPhotos } from '@/utils/projectPhotoLinks';
+import { attachProjectPhotoReferences, collectProjectPhotoUris, getUnlinkedProjectPhotos } from '@/utils/projectPhotoLinks';
 import { photoTakenAt } from '@/utils/tripPhotoPlacement';
 import type { Priority, RecurrenceType, TaskStatus } from '@/types';
 
@@ -96,8 +95,14 @@ export default function NewTaskScreen() {
   const [projectPhotosPickerVisible, setProjectPhotosPickerVisible] = useState(false);
   const selectedProject = projects.find(project => project.id === projectId);
   const availableProjectPhotos = useMemo(
-    () => getUnlinkedProjectPhotos(selectedProject?.photos ?? [], photos),
-    [photos, selectedProject],
+    () => getUnlinkedProjectPhotos(
+      collectProjectPhotoUris(
+        selectedProject?.photos ?? [],
+        tasks.filter(task => task.projectId === selectedProject?.id).flatMap(task => task.photos ?? []),
+      ),
+      photos,
+    ),
+    [photos, selectedProject, tasks],
   );
 
   const topPad = Platform.OS === 'web' ? 67 : insets.top;
@@ -154,49 +159,6 @@ export default function NewTaskScreen() {
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     router.back();
-  }
-
-  async function persistPhoto(tempUri: string): Promise<string> {
-    const dir = FileSystem.documentDirectory + 'task_photos/';
-    const dirInfo = await FileSystem.getInfoAsync(dir);
-    if (!dirInfo.exists) await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
-    const ext = tempUri.split('.').pop()?.split('?')[0] ?? 'jpg';
-    const dest = dir + Date.now() + '_' + Math.random().toString(36).slice(2) + '.' + ext;
-    await FileSystem.copyAsync({ from: tempUri, to: dest });
-    return dest;
-  }
-
-  async function pickPhoto() {
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted && Platform.OS !== 'web') { Alert.alert('Permission refusée'); return; }
-    const projectName = projects.find(p => p.id === projectId)?.name ?? 'Projet';
-    // Nom du dossier : <titre>_tache_<id> si tâche existante, sinon juste <titre>
-    const taskFolder = existing
-      ? taskFolderName(title || 'Nouvelle tâche', existing.id)
-      : sanitize(title || 'Nouvelle tâche');
-    Alert.alert('Ajouter une photo', '', [
-      {
-        text: 'Appareil photo',
-        onPress: async () => {
-          const r = await ImagePicker.launchCameraAsync({ quality: 1, exif: true });
-          if (!r.canceled && r.assets[0]) {
-            const asset = r.assets[0];
-            const permanent = await persistPhoto(asset.uri);
-            setPhotos(prev => [...prev, permanent]);
-            const takenAt = photoTakenAt(asset.exif as Record<string, unknown> | undefined);
-            if (takenAt) setPhotoTakenAtByUri(prev => ({ ...prev, [permanent]: takenAt }));
-            savePhotoToProject(asset.uri, projectName, asset.fileName, undefined, taskFolder);
-          }
-        },
-      },
-      {
-        text: 'Galerie (copie protégée)',
-        onPress: async () => {
-          setGalleryPickerVisible(true);
-        },
-      },
-      { text: 'Annuler', style: 'cancel' },
-    ]);
   }
 
   async function addTaskPhotoUris(items: Array<{ uri: string; takenAt?: number }>) {
@@ -447,18 +409,47 @@ export default function NewTaskScreen() {
         <View>
           <View style={styles.photoSectionHeader}>
             <Text style={[styles.label, { color: colors.mutedForeground, marginBottom: 0 }]}>Photos</Text>
-            {availableProjectPhotos.length > 0 && (
-              <Pressable
-                testID="add-project-photos"
-                accessibilityRole="button"
-                accessibilityLabel="Associer des photos du projet"
-                onPress={() => setProjectPhotosPickerVisible(true)}
-                hitSlop={8}
-                style={styles.projectPhotosButton}
-              >
-                <MaterialCommunityIcons name="folder-plus-outline" size={19} color={colors.primary} />
-              </Pressable>
-            )}
+          </View>
+          <View style={styles.photoSourceActions}>
+            <Pressable
+              testID="add-task-photo-from-gallery"
+              accessibilityRole="button"
+              accessibilityLabel="Ajouter une photo depuis la galerie"
+              onPress={() => setGalleryPickerVisible(true)}
+              style={[styles.photoSourceButton, { backgroundColor: colors.primary + '18', borderColor: colors.primary + '40' }]}
+            >
+              <MaterialCommunityIcons name="image-plus-outline" size={16} color={colors.primary} />
+              <View style={styles.photoSourceLabelGroup}>
+                <Text style={[styles.photoSourceText, { color: colors.primary }]}>Ajouter photo</Text>
+                <Text style={[styles.photoSourceHint, { color: colors.mutedForeground }]}>Galerie</Text>
+              </View>
+            </Pressable>
+            <Pressable
+              testID="add-project-photos"
+              accessibilityRole="button"
+              accessibilityLabel="Ajouter une photo depuis le projet"
+              onPress={() => setProjectPhotosPickerVisible(true)}
+              disabled={!selectedProject}
+              style={[
+                styles.photoSourceButton,
+                {
+                  backgroundColor: selectedProject ? colors.primary + '18' : colors.card,
+                  borderColor: selectedProject ? colors.primary + '40' : colors.border,
+                },
+              ]}
+            >
+              <MaterialCommunityIcons
+                name="folder-plus-outline"
+                size={16}
+                color={selectedProject ? colors.primary : colors.mutedForeground}
+              />
+              <View style={styles.photoSourceLabelGroup}>
+                <Text style={[styles.photoSourceText, { color: selectedProject ? colors.primary : colors.mutedForeground }]}>
+                  Ajouter photo
+                </Text>
+                <Text style={[styles.photoSourceHint, { color: colors.mutedForeground }]}>Projet</Text>
+              </View>
+            </Pressable>
           </View>
           <View style={styles.photoGrid}>
             {photos.map((uri, idx) => (
@@ -478,9 +469,6 @@ export default function NewTaskScreen() {
                 </Pressable>
               </View>
             ))}
-            <Pressable onPress={pickPhoto} style={[styles.addPhotoBtn, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <MaterialCommunityIcons name="camera-plus-outline" size={24} color={colors.mutedForeground} />
-            </Pressable>
           </View>
         </View>
       </KeyboardAwareScrollViewCompat>
@@ -558,15 +546,14 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   eisenLabel: { fontSize: 14, fontFamily: 'Inter_600SemiBold' },
-  photoSectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
-  projectPhotosButton: { width: 38, height: 36, alignItems: 'center', justifyContent: 'center' },
+  photoSectionHeader: { marginBottom: 8 },
+  photoSourceActions: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
+  photoSourceButton: { flex: 1, minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 6, borderRadius: 10, borderWidth: 1 },
+  photoSourceLabelGroup: { alignItems: 'flex-start', gap: 1 },
+  photoSourceText: { fontSize: 12, fontFamily: 'Inter_600SemiBold' },
+  photoSourceHint: { fontSize: 10, fontFamily: 'Inter_500Medium' },
   photoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   photoThumb: { width: THUMB, height: THUMB, borderRadius: 10, overflow: 'hidden' },
   photoImg: { width: '100%', height: '100%' },
   photoRemove: { position: 'absolute', top: 4, right: 4 },
-  addPhotoBtn: {
-    width: THUMB, height: THUMB, borderRadius: 10,
-    borderWidth: 1, borderStyle: 'dashed',
-    alignItems: 'center', justifyContent: 'center',
-  },
 });

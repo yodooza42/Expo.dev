@@ -35,7 +35,7 @@ import { taskFolderName } from '@/utils/photoStorage';
 import { completionDateError, formatCompletionDate } from '@/utils/completionDate';
 import { photoTakenAt } from '@/utils/tripPhotoPlacement';
 import { hasSubtaskPhotoDateSpread, scanTaskPhotoDates } from '@/utils/taskPhotoDates';
-import { attachProjectPhotoReferences, getUnlinkedProjectPhotos, isSharedProjectPhoto } from '@/utils/projectPhotoLinks';
+import { attachProjectPhotoReferences, collectProjectPhotoUris, getUnlinkedProjectPhotos, isSharedProjectPhoto } from '@/utils/projectPhotoLinks';
 
 const { width } = Dimensions.get('window');
 
@@ -104,9 +104,16 @@ export default function TaskDetailScreen() {
 
   const taskMaybe = tasks.find(t => t.id === id);
   const project = taskMaybe ? projects.find(p => p.id === taskMaybe.projectId) : null;
+  const projectPhotoUris = useMemo(
+    () => collectProjectPhotoUris(
+      project?.photos ?? [],
+      tasks.filter(item => item.projectId === project?.id).flatMap(item => item.photos ?? []),
+    ),
+    [project, tasks],
+  );
   const availableProjectPhotos = useMemo(
-    () => getUnlinkedProjectPhotos(project?.photos ?? [], taskMaybe?.photos ?? []),
-    [project, taskMaybe],
+    () => getUnlinkedProjectPhotos(projectPhotoUris, taskMaybe?.photos ?? []),
+    [projectPhotoUris, taskMaybe],
   );
 
   const [photoViewIdx, setPhotoViewIdx] = useState<number | null>(null);
@@ -134,7 +141,14 @@ export default function TaskDetailScreen() {
           if (photoViewIdx === idx) setPhotoViewIdx(null);
           const newPhotos = task.photos.filter((_, i) => i !== idx);
           const photoTakenAt = { ...(task.photoTakenAt ?? {}) }; delete photoTakenAt[uri];
-          const isShared = isSharedProjectPhoto(uri, task.projectPhotoUris, project?.photos);
+          const otherProjectTaskPhotos = latestTasks.current
+            .filter(item => item.projectId === task.projectId && item.id !== task.id)
+            .flatMap(item => item.photos ?? []);
+          const isShared = isSharedProjectPhoto(
+            uri,
+            task.projectPhotoUris,
+            collectProjectPhotoUris(project?.photos ?? [], otherProjectTaskPhotos),
+          );
           const subTasks = (task.subTasks ?? []).map(st => ({
             ...st, photoUris: st.photoUris?.filter(photoUri => photoUri !== uri),
           }));
@@ -723,27 +737,34 @@ export default function TaskDetailScreen() {
           <View>
             <View style={styles.sectionHeader}>
               <Text style={[styles.sectionTitle, { color: colors.foreground, marginBottom: 0 }]}>Photos</Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                {availableProjectPhotos.length > 0 && (
-                  <Pressable
-                    testID="add-project-photos"
-                    accessibilityRole="button"
-                    accessibilityLabel="Associer des photos du projet"
-                    onPress={() => setProjectPhotosPickerVisible(true)}
-                    hitSlop={8}
-                    style={styles.addProjectPhotoInline}
-                  >
-                    <MaterialCommunityIcons name="folder-plus-outline" size={19} color={colors.primary} />
-                  </Pressable>
-                )}
-                <Pressable
-                  onPress={() => setGalleryPickerVisible(true)}
-                  style={[styles.addPhotoInline, { backgroundColor: colors.primary + '18', borderColor: colors.primary + '40' }]}
-                >
-                  <MaterialCommunityIcons name="image-plus-outline" size={16} color={colors.primary} />
-                  <Text style={[styles.addExpLabel, { color: colors.primary }]}>Ajouter</Text>
-                </Pressable>
-              </View>
+            </View>
+            <View style={styles.photoSourceActions}>
+              <Pressable
+                testID="add-task-photo-from-gallery"
+                accessibilityRole="button"
+                accessibilityLabel="Ajouter une photo depuis la galerie"
+                onPress={() => setGalleryPickerVisible(true)}
+                style={[styles.addPhotoInline, styles.photoSourceButton, { backgroundColor: colors.primary + '18', borderColor: colors.primary + '40' }]}
+              >
+                <MaterialCommunityIcons name="image-plus-outline" size={16} color={colors.primary} />
+                <View style={styles.photoSourceLabelGroup}>
+                  <Text style={[styles.addExpLabel, styles.photoSourceText, { color: colors.primary }]}>Ajouter photo</Text>
+                  <Text style={[styles.photoSourceHint, { color: colors.mutedForeground }]}>Galerie</Text>
+                </View>
+              </Pressable>
+              <Pressable
+                testID="add-project-photos"
+                accessibilityRole="button"
+                accessibilityLabel="Ajouter une photo depuis le projet"
+                onPress={() => setProjectPhotosPickerVisible(true)}
+                style={[styles.addPhotoInline, styles.photoSourceButton, { backgroundColor: colors.primary + '18', borderColor: colors.primary + '40' }]}
+              >
+                <MaterialCommunityIcons name="folder-plus-outline" size={16} color={colors.primary} />
+                <View style={styles.photoSourceLabelGroup}>
+                  <Text style={[styles.addExpLabel, styles.photoSourceText, { color: colors.primary }]}>Ajouter photo</Text>
+                  <Text style={[styles.photoSourceHint, { color: colors.mutedForeground }]}>Projet</Text>
+                </View>
+              </Pressable>
             </View>
             {task.photos.length > 0 ? (
               <View style={styles.photoGrid}>
@@ -1141,7 +1162,11 @@ const styles = StyleSheet.create({
   photoImg: { width: '100%', height: '100%' },
   photoRemove: { position: 'absolute', top: 4, right: 4, zIndex: 10 },
   addPhotoInline: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 10, borderWidth: 1 },
-  addProjectPhotoInline: { width: 38, height: 36, alignItems: 'center', justifyContent: 'center' },
+  photoSourceActions: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 2 },
+  photoSourceButton: { flex: 1, minHeight: 44, justifyContent: 'center', paddingHorizontal: 6 },
+  photoSourceLabelGroup: { alignItems: 'flex-start', gap: 1 },
+  photoSourceText: { fontSize: 12 },
+  photoSourceHint: { fontSize: 10, fontFamily: 'Inter_500Medium' },
   photoModal: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   photoClose: { position: 'absolute', top: 60, right: 20, zIndex: 10 },
   photoFull: { width, height: width * 1.2 },

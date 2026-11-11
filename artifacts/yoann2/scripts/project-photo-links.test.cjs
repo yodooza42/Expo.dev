@@ -11,7 +11,14 @@ const compiled = ts.transpileModule(source, {
 }).outputText;
 const moduleExports = {};
 vm.runInNewContext(compiled, { exports: moduleExports });
-const { attachProjectPhotoReferences, getUnlinkedProjectPhotos, isSharedProjectPhoto } = moduleExports;
+const { attachProjectPhotoReferences, collectProjectPhotoUris, getUnlinkedProjectPhotos, isSharedProjectPhoto } = moduleExports;
+
+test('collects album photos and photos attached to other tasks in the same project', () => {
+  assert.deepEqual(
+    Array.from(collectProjectPhotoUris(['file://album'], ['file://task', 'file://album'])),
+    ['file://album', 'file://task'],
+  );
+});
 
 test('shows only project photos not already linked to the task', () => {
   assert.deepEqual(

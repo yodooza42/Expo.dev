@@ -1,3 +1,7 @@
+export function collectProjectPhotoUris(projectPhotoUris: string[], projectTaskPhotoUris: string[]): string[] {
+  return [...new Set([...projectPhotoUris, ...projectTaskPhotoUris])];
+}
+
 export function getUnlinkedProjectPhotos(projectPhotoUris: string[], taskPhotoUris: string[]): string[] {
   const attached = new Set(taskPhotoUris);
   return [...new Set(projectPhotoUris)].filter(uri => !attached.has(uri));
