@@ -10,8 +10,13 @@ export type JournalChoices = {
   pace: 'calm' | 'normal' | 'quick';
   /** Story-only task IDs, scoped to their completion day. Optional for older drafts. */
   taskOrderByDate?: Record<string, string[]>;
-  /** Chosen photos for the single-project closing comparison. */
-  beforeAfterByProjectId?: Record<string, { beforePhotoId?: string; afterPhotoId?: string }>;
+  /** Up to two chosen photos per side; singular fields remain readable for older drafts. */
+  beforeAfterByProjectId?: Record<string, {
+    beforePhotoIds?: string[];
+    afterPhotoIds?: string[];
+    beforePhotoId?: string;
+    afterPhotoId?: string;
+  }>;
 };
 
 export type JournalPhoto = { id: string; uri: string; caption: string; takenAt?: number };
@@ -37,8 +42,8 @@ export type JournalEntry = {
 export type JournalComparisonPhoto = { id: string; uri: string; dateLabel: string };
 export type JournalComparison = {
   projectName: string;
-  before: JournalComparisonPhoto;
-  after: JournalComparisonPhoto;
+  before: JournalComparisonPhoto[];
+  after: JournalComparisonPhoto[];
 };
 
 /** All media are temporary story copies. Never modify the source tasks/photos. */
@@ -54,8 +59,8 @@ export type JournalVideoPayload = {
   secondsPerPhoto: number;
   finalComparisonImages?: {
     projectName: string;
-    before: { id: string; img: string; dateLabel: string };
-    after: { id: string; img: string; dateLabel: string };
+    before: Array<{ id: string; img: string; dateLabel: string }>;
+    after: Array<{ id: string; img: string; dateLabel: string }>;
   };
   entries: Array<Omit<JournalEntry, 'photos'> & {
     photos: Array<{ id: string; img: string; caption: string }>;

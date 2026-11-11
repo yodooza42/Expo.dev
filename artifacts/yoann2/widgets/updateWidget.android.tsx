@@ -28,16 +28,16 @@ export async function updateTodoWidget(
   appointments?: RawApptLike[]
 ): Promise<void> {
   try {
-    const [settings, mr, ab, shortcuts, tripState, tripDistRaw] = await Promise.all([
+    const [settings, mr, anna, shortcuts, tripState, tripDistRaw] = await Promise.all([
       getWidgetSettings(),
       AsyncStorage.getItem('@marie_planning_v1'),
-      AsyncStorage.getItem('@anna_badges_v1'),
+      AsyncStorage.getItem('@anna_nanny_days_v1'),
       getKnownPlaces(),
       getManualTripState(),
       AsyncStorage.getItem('@yoann2_trip_dist_km'),
     ]);
     const mariePlanning = mr ? (JSON.parse(mr) as Record<string, 'PB' | 'PD'>)             : {};
-    const annaBadges    = ab ? (JSON.parse(ab) as Record<string, 'Isabelle' | 'Evelyne'>) : {};
+    const annaPlanning = anna ? (JSON.parse(anna) as Record<string, true>) : {};
 
     const tripStatus: 'idle' | 'selecting' | 'active' | 'paused' =
       !tripState         ? 'idle'
@@ -55,7 +55,7 @@ export async function updateTodoWidget(
       }
     }
 
-    const data = buildWidgetData(tasks ?? [], appointments ?? [], settings, null, mariePlanning, annaBadges);
+    const data = buildWidgetData(tasks ?? [], appointments ?? [], settings, null, mariePlanning, annaPlanning);
     await requestWidgetUpdate({
       widgetName: 'TodoWidget',
       renderWidget: () => (

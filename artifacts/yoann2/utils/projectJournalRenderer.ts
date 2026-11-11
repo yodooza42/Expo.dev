@@ -110,12 +110,13 @@ function build(p){
     }});
   var comparisonStart=photos.length;
   if(p.finalComparisonImages){
-    photos.push(
-      {ei:-1,pi:0,ph:{id:p.finalComparisonImages.before.id,img:p.finalComparisonImages.before.img,caption:''},
-        title:p.finalComparisonImages.projectName+' · Avant',dateLabel:p.finalComparisonImages.before.dateLabel},
-      {ei:-1,pi:1,ph:{id:p.finalComparisonImages.after.id,img:p.finalComparisonImages.after.img,caption:''},
-        title:p.finalComparisonImages.projectName+' · Après',dateLabel:p.finalComparisonImages.after.dateLabel});
-    segs.push({k:'comparison',d:10,photoStart:comparisonStart,photoCount:2});
+    var beforeItems=p.finalComparisonImages.before||[],afterItems=p.finalComparisonImages.after||[];
+    beforeItems.forEach(function(item,pi){photos.push({ei:-1,pi:pi,ph:{id:item.id,img:item.img,caption:''},
+      title:p.finalComparisonImages.projectName+' · Avant',dateLabel:item.dateLabel,comparisonSide:'before'})});
+    afterItems.forEach(function(item,pi){photos.push({ei:-1,pi:pi,ph:{id:item.id,img:item.img,caption:''},
+      title:p.finalComparisonImages.projectName+' · Après',dateLabel:item.dateLabel,comparisonSide:'after'})});
+    segs.push({k:'comparison',d:10,photoStart:comparisonStart,photoCount:beforeItems.length+afterItems.length,
+      beforeCount:beforeItems.length});
   }
   segs.push({k:'outro',d:4});
   var at=0,ng=photos.length,nc=0;for(var i=segs.length-1;i>=0;i--){
@@ -302,27 +303,31 @@ function drawComparison(seg,lt,a){
   stamp('AVANT / APRÈS',CX,145,a*eo(lt/0.4));
   var tf=fit(comparison.projectName,'bold #px '+SERIF,54,30,CR-CX,2);
   lines(tf,'bold #px '+SERIF,CX,245,1.1,INK,a*eo((lt-0.1)/0.45));
-  var top=360,gap=20,cellW=(CR-CX-gap)/2,imageH=470;
-  [comparison.before,comparison.after].forEach(function(item,index){
-    var x=CX+index*(cellW+gap),gi=seg.photoStart+index,c=cache[gi],img=c&&c.st==='ok'?c.img:null;
-    ctx.globalAlpha=a*eo((lt-0.25-index*0.18)/0.35);
-    ctx.fillStyle=INK2;ctx.font='bold 18px '+MONO;
-    ctx.fillText(index===0?'AVANT':'APRÈS',x,top-18);
-    ctx.strokeStyle='rgba(30,42,71,0.35)';ctx.lineWidth=1.5;ctx.strokeRect(x+.5,top+.5,cellW-1,imageH-1);
+  var gap=20,cellW=(CR-CX-gap)/2,imageH=245,top=352,rowGap=105,beforeCount=comparison.before.length;
+  ctx.globalAlpha=a*eo((lt-0.2)/0.4);ctx.fillStyle=INK2;ctx.font='bold 18px '+MONO;
+  ctx.fillText('AVANT',CX,320);ctx.fillText('APRÈS',CX+cellW+gap,320);
+  for(var i=0;i<seg.photoCount;i++){
+    var isBefore=i<beforeCount,sideIndex=isBefore?i:i-beforeCount;
+    var sideCount=isBefore?comparison.before.length:comparison.after.length;
+    var x=CX+(isBefore?0:cellW+gap);
+    var topY=sideCount===1?525:top+sideIndex*(imageH+rowGap);
+    var gi=seg.photoStart+i,c=cache[gi],img=c&&c.st==='ok'?c.img:null,item=photos[gi];
+    ctx.globalAlpha=a*eo((lt-0.25-i*0.12)/0.35);
+    ctx.strokeStyle='rgba(30,42,71,0.35)';ctx.lineWidth=1.5;ctx.strokeRect(x+.5,topY+.5,cellW-1,imageH-1);
     if(img){
-      var scale=Math.min((cellW-16)/img.naturalWidth,(imageH-16)/img.naturalHeight);
+      var scale=Math.min((cellW-12)/img.naturalWidth,(imageH-12)/img.naturalHeight);
       var iw=img.naturalWidth*scale,ih=img.naturalHeight*scale;
-      ctx.drawImage(img,x+(cellW-iw)/2,top+(imageH-ih)/2,iw,ih);
+      ctx.drawImage(img,x+(cellW-iw)/2,topY+(imageH-ih)/2,iw,ih);
     }else{
       ctx.fillStyle=INK2;ctx.font='15px '+MONO;ctx.textAlign='center';
-      ctx.fillText(c&&c.st==='error'?'Photo introuvable':'Chargement',x+cellW/2,top+imageH/2);ctx.textAlign='left';
+      ctx.fillText(c&&c.st==='error'?'Photo introuvable':'Chargement',x+cellW/2,topY+imageH/2);ctx.textAlign='left';
     }
-    ctx.globalAlpha=a;ctx.fillStyle=RED;ctx.font='bold 15px '+MONO;
-    ctx.fillText(str(item.dateLabel),x,top+imageH+38);
-  });
-  scribble(CX,970,CR-CX,ease((lt-0.8)/0.7)*a,OCHRE,5);
+    ctx.globalAlpha=a*eo((lt-0.3-i*0.12)/0.35);ctx.fillStyle=RED;ctx.font='bold 14px '+MONO;
+    ctx.fillText(str(item.dateLabel),x,topY+imageH+25);
+  }
+  scribble(CX,1015,CR-CX,ease((lt-0.8)/0.7)*a,OCHRE,5);
   ctx.globalAlpha=a;ctx.fillStyle=INK2;ctx.font='italic 26px '+SERIF;
-  ctx.fillText('Le chemin parcouru, en images.',CX,1035);ctx.globalAlpha=1;
+  ctx.fillText('Le chemin parcouru, en images.',CX,1074);ctx.globalAlpha=1;
 }
 function drawOutro(lt,a){
   var y=360;ctx.globalAlpha=a*eo(lt/0.6);ctx.fillStyle=RED;ctx.font='bold 20px '+MONO;ctx.fillText('DERNIÈRE PAGE',CX,y);

@@ -1,4 +1,4 @@
-import type { Project, Task } from '@/types';
+import type { JournalProjectPhoto, JournalProjectPhotoSelection, Project, Task } from '@/types';
 import type { JournalChoices, JournalEntry, JournalGenerationRequest } from '@/types/projectJournal';
 import { parseCompletionDate } from '@/utils/completionDate';
 
@@ -6,6 +6,11 @@ export const JOURNAL_LIMITS = { entries: 120, photos: 120, seconds: 900, encoded
 export const JOURNAL_PHOTOS_PER_SLIDE = 4;
 export const JOURNAL_PHOTO_APPEAR_INTERVAL = 0.5;
 export const JOURNAL_FIRST_PHOTO_DELAY = 1;
+export function normalizeJournalProjectPhotos(selection?: JournalProjectPhotoSelection): JournalProjectPhoto[] {
+  if (!selection) return [];
+  const photos = Array.isArray(selection) ? selection : [selection];
+  return [...new Map(photos.map(photo => [photo.uri, photo])).values()].slice(0, 2);
+}
 export function journalDateKey(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
@@ -70,7 +75,13 @@ export function validateJournalChoices(value: unknown): value is JournalChoices 
       && Object.values(v.beforeAfterByProjectId).every(selection => !!selection && typeof selection === 'object'
         && !Array.isArray(selection)
         && ['beforePhotoId', 'afterPhotoId'].every(key => selection[key as keyof typeof selection] === undefined
-          || typeof selection[key as keyof typeof selection] === 'string'))));
+          || typeof selection[key as keyof typeof selection] === 'string')
+        && ['beforePhotoIds', 'afterPhotoIds'].every(key => selection[key as keyof typeof selection] === undefined
+          || (Array.isArray(selection[key as keyof typeof selection])
+            && (selection[key as keyof typeof selection] as unknown[]).length <= 2
+            && (selection[key as keyof typeof selection] as unknown[]).every(id => typeof id === 'string')
+            && new Set(selection[key as keyof typeof selection] as unknown[]).size
+              === (selection[key as keyof typeof selection] as unknown[]).length)))));
 }
 /** Only swap tasks from the same day; keep choices for currently hidden projects/days. */
 export function moveJournalTask(choices: JournalChoices, candidates: JournalEntry[], id: string, direction: -1 | 1): JournalChoices {
@@ -230,27 +241,32 @@ export function buildProjectJournal(projects: Project[], tasks: Task[], choices:
       ? projectCandidates.flatMap(entry => entry.photos.map(photo => ({ photo, dateLabel: entry.dateLabel })))
         .find(item => item.photo.id === photoId)
       : undefined;
-    const beforeCandidate = findCandidate(stored?.beforePhotoId);
-    const afterCandidate = findCandidate(stored?.afterPhotoId);
-    const savedBefore = project.journalBeforeAfter?.before;
-    const savedAfter = project.journalBeforeAfter?.after;
-    const before = beforeCandidate
-      ? { id: beforeCandidate.photo.id, uri: beforeCandidate.photo.uri, dateLabel: beforeCandidate.dateLabel }
-      : savedBefore && (!stored?.beforePhotoId || stored.beforePhotoId === savedBefore.photoId)
-        ? { id: savedBefore.photoId, uri: savedBefore.uri, dateLabel: savedBefore.dateLabel }
-        : undefined;
-    const after = afterCandidate
-      ? { id: afterCandidate.photo.id, uri: afterCandidate.photo.uri, dateLabel: afterCandidate.dateLabel }
-      : savedAfter && (!stored?.afterPhotoId || stored.afterPhotoId === savedAfter.photoId)
-        ? { id: savedAfter.photoId, uri: savedAfter.uri, dateLabel: savedAfter.dateLabel }
-        : undefined;
-    if (before && after && before.uri !== after.uri) {
-      finalComparison = { projectName: project.name, before, after };
+    const resolveSide = (slot: 'before' | 'after') => {
+      const idsKey = slot === 'before' ? 'beforePhotoIds' : 'afterPhotoIds';
+      const legacyKey = slot === 'before' ? 'beforePhotoId' : 'afterPhotoId';
+      const savedPhotos = normalizeJournalProjectPhotos(project.journalBeforeAfter?.[slot]);
+      const ids = Array.isArray(stored?.[idsKey])
+        ? stored[idsKey]!.slice(0, 2)
+        : stored?.[legacyKey] ? [stored[legacyKey]!] : savedPhotos.map(photo => photo.photoId);
+      return [...new Set(ids)].flatMap(id => {
+        const candidate = findCandidate(id);
+        if (candidate) return [{ id, uri: candidate.photo.uri, dateLabel: candidate.dateLabel }];
+        const saved = savedPhotos.find(photo => photo.photoId === id);
+        return saved ? [{ id, uri: saved.uri, dateLabel: saved.dateLabel }] : [];
+      });
+    };
+    const before = resolveSide('before');
+    const after = resolveSide('after');
+    const usedBeforeUris = new Set(before.map(photo => photo.uri));
+    const uniqueAfter = after.filter(photo => !usedBeforeUris.has(photo.uri));
+    if (before.length && uniqueAfter.length) {
+      finalComparison = { projectName: project.name, before, after: uniqueAfter };
     }
   }
   const selectedEntryPhotoCount = entries.reduce((sum, entry) => sum + entry.photos.length, 0);
   const entryPhotoUris = new Set(entries.flatMap(entry => entry.photos.map(photo => photo.uri)));
-  const comparisonUris = finalComparison ? [finalComparison.before.uri, finalComparison.after.uri] : [];
+  const comparisonUris = finalComparison
+    ? [...finalComparison.before, ...finalComparison.after].map(photo => photo.uri) : [];
   const additionalComparisonPhotos = new Set(comparisonUris.filter(uri => !entryPhotoUris.has(uri))).size;
   const photoCount = selectedEntryPhotoCount + additionalComparisonPhotos;
   const availablePhotos = candidates.reduce((sum, entry) => sum + entry.photos.length, 0);
