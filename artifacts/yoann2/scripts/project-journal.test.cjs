@@ -62,7 +62,21 @@ test('project selection, excluded entries/photos and independent captions never 
   assert.equal(tasks[0].photos.length, 2);
   assert.equal(journal.buildProjectJournal(projects, tasks, { ...chosen, excludedPhotoIds: [] }).photoCount, 2);
 });
-test('task photos are ordered by capture time with undated photos kept last in their original order', () => {
+test('task photos use capture hour to order photos from the same day', () => {
+  const task = {
+    ...tasks[0],
+    photos: ['file://afternoon', 'file://undated', 'file://next-day', 'file://morning'],
+    photoTakenAt: {
+      'file://afternoon': Date.parse('2026-04-05T16:45:00Z'),
+      'file://next-day': Date.parse('2026-04-06T07:00:00Z'),
+      'file://morning': Date.parse('2026-04-05T08:15:00Z'),
+    },
+  };
+  const output = journal.buildProjectJournal(projects, [task], { ...choices(), projectIds: ['p1'] });
+  assert.deepEqual(clone(output.entries[0].photos.map(photo => photo.uri)),
+    ['file://morning', 'file://afternoon', 'file://next-day', 'file://undated']);
+});
+test('undated task photos retain their original order after dated photos', () => {
   const task = {
     ...tasks[0], photos: ['file://late', 'file://unknown-a', 'file://early', 'file://unknown-b'],
     photoTakenAt: { 'file://late': 500, 'file://early': 100 },
