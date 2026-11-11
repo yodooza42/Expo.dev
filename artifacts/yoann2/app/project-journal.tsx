@@ -16,7 +16,7 @@ import { JournalPreview } from '@/components/project-journal/JournalPreview';
 import { ProjectPhoto } from '@/components/ProjectPhoto';
 import { StoryVideoReview } from '@/components/period-story/StoryVideoReview';
 import type { JournalChoices, JournalVideoPayload } from '@/types/projectJournal';
-import { buildProjectJournal, journalDateKey } from '@/utils/projectJournal';
+import { buildProjectJournal, journalDateKey, normalizeJournalProjectPhotos } from '@/utils/projectJournal';
 import { parseCompletionDate } from '@/utils/completionDate';
 import { prepareJournal } from '@/utils/prepareJournal';
 
@@ -56,20 +56,25 @@ export default function ProjectJournalScreen() {
         if (!byUri.has(photo.uri)) byUri.set(photo.uri, { ...photo, dateLabel: entry.dateLabel, title: entry.title });
       });
     });
-    [comparisonProject.journalBeforeAfter?.before, comparisonProject.journalBeforeAfter?.after]
+    (['before', 'after'] as const).flatMap(slot => normalizeJournalProjectPhotos(comparisonProject.journalBeforeAfter?.[slot]))
       .forEach(saved => {
-        if (saved && !byUri.has(saved.uri)) {
+        if (!byUri.has(saved.uri)) {
           byUri.set(saved.uri, { id: saved.photoId, uri: saved.uri, dateLabel: saved.dateLabel, title: saved.sourceTitle });
         }
       });
     return [...byUri.values()];
   }, [comparisonProject, journal]);
-  const comparisonPhotoId = (slot: 'before' | 'after') => {
+  const comparisonPhotoIds = (slot: 'before' | 'after') => {
     if (!comparisonProject || !choices) return undefined;
-    const selectedId = choices.beforeAfterByProjectId?.[comparisonProject.id]?.[slot === 'before' ? 'beforePhotoId' : 'afterPhotoId'];
-    if (selectedId) return selectedId;
-    const saved = comparisonProject.journalBeforeAfter?.[slot];
-    return comparisonPhotos.find(photo => photo.id === saved?.photoId || photo.uri === saved?.uri)?.id ?? saved?.photoId;
+    const stored = choices.beforeAfterByProjectId?.[comparisonProject.id];
+    const idsKey = slot === 'before' ? 'beforePhotoIds' : 'afterPhotoIds';
+    const legacyKey = slot === 'before' ? 'beforePhotoId' : 'afterPhotoId';
+    const storedIds = stored?.[idsKey];
+    if (Array.isArray(storedIds)) return storedIds.slice(0, 2);
+    if (stored?.[legacyKey]) return [stored[legacyKey]!];
+    return normalizeJournalProjectPhotos(comparisonProject.journalBeforeAfter?.[slot])
+      .map(saved => comparisonPhotos.find(photo => photo.id === saved.photoId || photo.uri === saved.uri)?.id ?? saved.photoId)
+      .slice(0, 2);
   };
   const busy = preparing || generation.isGenerating || generation.isSharing;
   const ready = !!journal && !journal.error && !draft.error && !draft.saving && !busy;
@@ -92,29 +97,41 @@ export default function ProjectJournalScreen() {
   }
   function chooseComparisonPhoto(photo: (typeof comparisonPhotos)[number]) {
     if (!choices || !comparisonProject || busy) return;
-    const current = choices.beforeAfterByProjectId?.[comparisonProject.id] ?? {};
-    const currentBefore = current.beforePhotoId ?? comparisonPhotoId('before');
-    const currentAfter = current.afterPhotoId ?? comparisonPhotoId('after');
-    let beforePhotoId = currentBefore;
-    let afterPhotoId = currentAfter;
-    const selectedId = (comparisonSlot === 'before' ? beforePhotoId : afterPhotoId) === photo.id ? undefined : photo.id;
-    if (comparisonSlot === 'before') {
-      beforePhotoId = selectedId;
-      if (afterPhotoId === selectedId) afterPhotoId = undefined;
-    } else {
-      afterPhotoId = selectedId;
-      if (beforePhotoId === selectedId) beforePhotoId = undefined;
+    let beforePhotoIds = [...(comparisonPhotoIds('before') ?? [])];
+    let afterPhotoIds = [...(comparisonPhotoIds('after') ?? [])];
+    const active = comparisonSlot === 'before' ? beforePhotoIds : afterPhotoIds;
+    const other = comparisonSlot === 'before' ? afterPhotoIds : beforePhotoIds;
+    const existingIndex = active.indexOf(photo.id);
+    if (existingIndex >= 0) active.splice(existingIndex, 1);
+    else {
+      if (active.length >= 2) return;
+      active.push(photo.id);
+      const otherIndex = other.indexOf(photo.id);
+      if (otherIndex >= 0) other.splice(otherIndex, 1);
     }
-    const before = comparisonPhotos.find(item => item.id === beforePhotoId);
-    const after = comparisonPhotos.find(item => item.id === afterPhotoId);
+    if (comparisonSlot === 'before') {
+      beforePhotoIds = active;
+      afterPhotoIds = other;
+    } else {
+      afterPhotoIds = active;
+      beforePhotoIds = other;
+    }
+    const toProjectPhoto = (id: string) => {
+      const item = comparisonPhotos.find(candidate => candidate.id === id);
+      return item ? { photoId: item.id, uri: item.uri, dateLabel: item.dateLabel, sourceTitle: item.title } : undefined;
+    };
+    const before = beforePhotoIds.map(toProjectPhoto).filter((item): item is NonNullable<typeof item> => !!item);
+    const after = afterPhotoIds.map(toProjectPhoto).filter((item): item is NonNullable<typeof item> => !!item);
     const beforeAfterByProjectId = { ...choices.beforeAfterByProjectId };
-    if (beforePhotoId || afterPhotoId) beforeAfterByProjectId[comparisonProject.id] = { beforePhotoId, afterPhotoId };
+    if (beforePhotoIds.length || afterPhotoIds.length) {
+      beforeAfterByProjectId[comparisonProject.id] = { beforePhotoIds, afterPhotoIds };
+    }
     else delete beforeAfterByProjectId[comparisonProject.id];
 
     updateProject(comparisonProject.id, {
-      journalBeforeAfter: before || after ? {
-        before: before ? { photoId: before.id, uri: before.uri, dateLabel: before.dateLabel, sourceTitle: before.title } : undefined,
-        after: after ? { photoId: after.id, uri: after.uri, dateLabel: after.dateLabel, sourceTitle: after.title } : undefined,
+      journalBeforeAfter: before.length || after.length ? {
+        before,
+        after,
       } : undefined,
     });
     change({ ...choices, beforeAfterByProjectId });
@@ -218,29 +235,34 @@ export default function ProjectJournalScreen() {
             <View style={s.comparisonHeading}>
               <View style={s.flex}>
                 <Text style={[s.label, { color: c.foreground }]}>Comparatif final · {comparisonProject.name}</Text>
-                <Text style={[s.small, { color: c.mutedForeground }]}>Choisis une photo Avant et une photo Après. Le choix sera gardé pour le récapitulatif du projet.</Text>
+                <Text style={[s.small, { color: c.mutedForeground }]}>Choisis jusqu’à deux photos Avant et deux Après. Elles seront réunies sur la dernière page et gardées dans le récapitulatif du projet.</Text>
               </View>
               <MaterialCommunityIcons name="image-multiple-outline" size={22} color={c.primary} />
             </View>
             <View style={s.row}>
               {(['before', 'after'] as const).map(slot => {
                 const isActive = comparisonSlot === slot;
-                const selectedId = comparisonPhotoId(slot);
-                const selected = comparisonPhotos.find(photo => photo.id === selectedId);
+                const selectedIds = comparisonPhotoIds(slot) ?? [];
+                const selected = selectedIds.map(id => comparisonPhotos.find(photo => photo.id === id)).filter(Boolean);
                 return <Pressable key={slot} accessibilityRole="button" accessibilityState={{ selected: isActive }}
                   onPress={() => setComparisonSlot(slot)}
                   style={[s.comparisonSlot, { borderColor: isActive ? c.primary : c.border, backgroundColor: isActive ? c.primary + '18' : c.background }]}>
-                  <Text style={[s.small, { color: isActive ? c.primary : c.mutedForeground }]}>{slot === 'before' ? 'AVANT' : 'APRÈS'}</Text>
-                  <Text numberOfLines={1} style={[s.comparisonSlotValue, { color: c.foreground }]}>{selected?.dateLabel ?? 'Choisir une photo'}</Text>
+                  <Text style={[s.small, { color: isActive ? c.primary : c.mutedForeground }]}>{slot === 'before' ? 'AVANT' : 'APRÈS'} · {selectedIds.length}/2</Text>
+                  <Text numberOfLines={1} style={[s.comparisonSlotValue, { color: c.foreground }]}>
+                    {selected.length ? selected.map(photo => photo!.dateLabel).join(' · ') : 'Choisir une photo'}
+                  </Text>
                 </Pressable>;
               })}
             </View>
             {comparisonPhotos.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.comparisonPhotos}>
               {comparisonPhotos.map(photo => {
-                const selectedId = comparisonPhotoId(comparisonSlot);
-                const selected = selectedId === photo.id;
+                const selectedIds = comparisonPhotoIds(comparisonSlot) ?? [];
+                const selected = selectedIds.includes(photo.id);
+                const disabled = !selected && selectedIds.length >= 2;
                 return <Pressable key={photo.id} testID={`journal-compare-photo-${comparisonSlot}-${photo.id}`}
-                  accessibilityRole="radio" accessibilityState={{ selected }} accessibilityLabel={`${photo.dateLabel}, ${photo.title}`}
+                  accessibilityRole="checkbox" accessibilityState={{ checked: selected, disabled }}
+                  accessibilityLabel={`${photo.dateLabel}, ${photo.title}`}
+                  disabled={disabled}
                   onPress={() => chooseComparisonPhoto(photo)} style={[s.comparisonPhoto, { borderColor: selected ? c.primary : c.border }]}>
                   <ProjectPhoto uri={photo.uri} style={s.comparisonImage} contentFit="cover" />
                   {selected && <View style={[s.comparisonCheck, { backgroundColor: c.primary }]}>

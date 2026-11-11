@@ -97,13 +97,34 @@ test('single-project carnet keeps before/after selections and adds a dated final
   }];
   const output = journal.buildProjectJournal(projects, comparisonTasks, opts);
   assert.equal(output.request.finalComparison.projectName, 'Garage');
-  assert.equal(output.request.finalComparison.before.dateLabel, '5 avril 2026');
-  assert.equal(output.request.finalComparison.after.dateLabel, '6 avril 2026');
+  assert.equal(output.request.finalComparison.before[0].dateLabel, '5 avril 2026');
+  assert.equal(output.request.finalComparison.after[0].dateLabel, '6 avril 2026');
   assert.equal(output.photoCount, 2, 'the photo removed from the montage is counted once for the comparison');
   assert.equal(output.duration, journal.journalDuration(output.entries, output.request.secondsPerPhoto, true));
   assert.equal(journal.buildProjectJournal(projects, comparisonTasks, { ...opts, projectIds: ['p1', 'p2'] }).request.finalComparison, undefined);
   assert.equal(journal.validateJournalChoices(opts), true);
   assert.equal(journal.validateJournalChoices({ ...opts, beforeAfterByProjectId: { p1: { beforePhotoId: 2 } } }), false);
+});
+test('single-project comparison selects and counts up to two photos on each side', () => {
+  const p = { ...projects[0], photos: ['file://p', 'file://p2'] };
+  const beforePhotoIds = [
+    journal.journalPhotoId('task:later', 'file://a'),
+    journal.journalPhotoId('task:later', 'file://b'),
+  ];
+  const afterPhotoIds = [
+    journal.journalPhotoId('project:p1', 'file://p'),
+    journal.journalPhotoId('project:p1', 'file://p2'),
+  ];
+  const opts = {
+    ...choices(), projectIds: ['p1'],
+    beforeAfterByProjectId: { p1: { beforePhotoIds, afterPhotoIds } },
+  };
+  const output = journal.buildProjectJournal([p], tasks, opts);
+  assert.deepEqual(clone(output.request.finalComparison.before.map(photo => photo.uri)), ['file://a', 'file://b']);
+  assert.deepEqual(clone(output.request.finalComparison.after.map(photo => photo.uri)), ['file://p', 'file://p2']);
+  assert.equal(output.photoCount, 4, 'comparison selections already in the montage are counted once');
+  assert.equal(journal.validateJournalChoices(opts), true);
+  assert.equal(journal.validateJournalChoices({ ...opts, beforeAfterByProjectId: { p1: { beforePhotoIds: ['a', 'b', 'c'] } } }), false);
 });
 test('missing completion date never substitutes the due date even when the task has photos', () => {
   const onlyUndated = {
@@ -285,15 +306,15 @@ test('photo preparation reuses comparison images already included in the montage
     ...journal.buildProjectJournal(projects, tasks, choices()).request,
     finalComparison: {
       projectName: 'Garage',
-      before: { id: 'before', uri: 'file://a', dateLabel: '5 avril 2026' },
-      after: { id: 'after', uri: 'file://compare', dateLabel: '6 avril 2026' },
+      before: [{ id: 'before', uri: 'file://a', dateLabel: '5 avril 2026' }],
+      after: [{ id: 'after', uri: 'file://compare', dateLabel: '6 avril 2026' }],
     },
   };
   const prepared = await prepare.prepareJournal(request, 'job', () => true, () => {});
   assert.deepEqual(calls, ['file://a', 'file://b', 'file://p', 'file://compare']);
   const montageBefore = prepared.entries.flatMap(entry => entry.photos).find(photo => photo.id === journal.journalPhotoId('task:later', 'file://a'));
-  assert.equal(prepared.finalComparisonImages.before.img, montageBefore.img);
-  assert.equal(prepared.finalComparisonImages.after.dateLabel, '6 avril 2026');
+  assert.equal(prepared.finalComparisonImages.before[0].img, montageBefore.img);
+  assert.equal(prepared.finalComparisonImages.after[0].dateLabel, '6 avril 2026');
 });
 
 /** A single shared clock drives rAF, all timers and recorder callbacks. */
@@ -444,12 +465,18 @@ test('task page overlays full-size photos one at a time in half-second steps', a
   assert.equal(hasDrawn(6), true);
   assert.equal(e.win.journalDuration, journal.journalDuration(data.entries, 3));
 });
-test('final comparison renders after the project entries with dates and without the task checkbox', async () => {
+test('final comparison renders four dated photos together after the project entries', async () => {
   const e = engine(), data = payload({ count: 1 });
   data.finalComparisonImages = {
     projectName: 'Chambre parentale',
-    before: { id: 'before', img: 'data:image/jpeg;base64,YmVmb3Jl', dateLabel: '5 avril 2026' },
-    after: { id: 'after', img: 'data:image/jpeg;base64,YWZ0ZXI', dateLabel: '10 novembre 2026' },
+    before: [
+      { id: 'before-1', img: 'data:image/jpeg;base64,YmVmb3JlMQ==', dateLabel: '5 avril 2026' },
+      { id: 'before-2', img: 'data:image/jpeg;base64,YmVmb3JlMg==', dateLabel: '6 avril 2026' },
+    ],
+    after: [
+      { id: 'after-1', img: 'data:image/jpeg;base64,YWZ0ZXIx', dateLabel: '9 novembre 2026' },
+      { id: 'after-2', img: 'data:image/jpeg;base64,YWZ0ZXIy', dateLabel: '10 novembre 2026' },
+    ],
   };
   e.win.generatePeriodStory(data);
   assert.equal(e.win.journalDuration, journal.journalDuration(data.entries, 3, true));
@@ -461,8 +488,10 @@ test('final comparison renders after the project entries with dates and without 
   assert.ok(e.draws.some(draw => draw.text === 'AVANT / APRÈS'));
   assert.ok(e.draws.some(draw => draw.text === '5 avril 2026'));
   assert.ok(e.draws.some(draw => draw.text === '10 novembre 2026'));
-  assert.ok(e.imageDraws.some(draw => draw.src.endsWith('YmVmb3Jl')));
-  assert.ok(e.imageDraws.some(draw => draw.src.endsWith('YWZ0ZXI')));
+  assert.ok(e.imageDraws.some(draw => draw.src.endsWith('YmVmb3JlMQ==')));
+  assert.ok(e.imageDraws.some(draw => draw.src.endsWith('YmVmb3JlMg==')));
+  assert.ok(e.imageDraws.some(draw => draw.src.endsWith('YWZ0ZXIx')));
+  assert.ok(e.imageDraws.some(draw => draw.src.endsWith('YWZ0ZXIy')));
   const source = renderer.buildProjectJournalHtml();
   assert.ok(!source.includes("fillStyle='#F7F6F1'"));
   assert.ok(!source.includes('var bx=MX-48'));

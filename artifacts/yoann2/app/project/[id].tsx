@@ -35,6 +35,7 @@ import { BankTransaction, CategoryConfig, getCategoryConfigs } from '@/utils/ban
 import { hasExternalPhotos, recoverPhotosFromExternal, savePhotoToProject } from '@/utils/photoStorage';
 import { mergeRecoveredPhotoUris } from '@/utils/photoReferences';
 import { protectPhoto } from '@/utils/photoProtection';
+import { normalizeJournalProjectPhotos } from '@/utils/projectJournal';
 
 const { width } = Dimensions.get('window');
 
@@ -797,24 +798,25 @@ export default function ProjectDetailScreen() {
             </View>
             <View style={styles.beforeAfterRow}>
               {(['before', 'after'] as const).map(slot => {
-                const photo = project.journalBeforeAfter?.[slot];
+                const photos = normalizeJournalProjectPhotos(project.journalBeforeAfter?.[slot]);
                 const label = slot === 'before' ? 'AVANT' : 'APRÈS';
                 return <View key={slot} style={styles.beforeAfterItem}>
-                  {photo ? <Pressable accessibilityLabel={`Ouvrir la photo ${label.toLowerCase()}`}
-                    onPress={() => {
-                      const index = allPhotos.findIndex(item => item.uri === photo.uri);
-                      if (index >= 0) openPhoto(index);
-                    }}>
-                    <ProjectPhoto uri={photo.uri} style={styles.beforeAfterImage} contentFit="cover" />
-                  </Pressable> : <Pressable accessibilityRole="button" accessibilityLabel={`Choisir la photo ${label.toLowerCase()}`}
+                  <Text style={[styles.beforeAfterLabel, { color: colors.primary }]}>{label}</Text>
+                  {photos.length ? photos.map((photo, index) => <View key={`${photo.photoId}-${index}`} style={styles.beforeAfterPhotoItem}>
+                    <Pressable accessibilityLabel={`Ouvrir la photo ${label.toLowerCase()} ${index + 1}`}
+                      onPress={() => {
+                        const photoIndex = allPhotos.findIndex(item => item.uri === photo.uri);
+                        if (photoIndex >= 0) openPhoto(photoIndex);
+                      }}>
+                      <ProjectPhoto uri={photo.uri}
+                        style={[styles.beforeAfterImage, photos.length > 1 && styles.beforeAfterImageCompact]} contentFit="cover" />
+                    </Pressable>
+                    <Text numberOfLines={1} style={[styles.progressSub, { color: colors.mutedForeground }]}>{photo.dateLabel}</Text>
+                  </View>) : <Pressable accessibilityRole="button" accessibilityLabel={`Choisir les photos ${label.toLowerCase()}`}
                     onPress={openProjectJournal} style={[styles.beforeAfterEmpty, { borderColor: colors.border, backgroundColor: colors.background }]}>
                     <MaterialCommunityIcons name="image-plus-outline" size={22} color={colors.mutedForeground} />
                     <Text style={[styles.progressSub, { color: colors.mutedForeground }]}>À choisir</Text>
                   </Pressable>}
-                  <Text style={[styles.beforeAfterLabel, { color: colors.primary }]}>{label}</Text>
-                  <Text numberOfLines={1} style={[styles.progressSub, { color: colors.mutedForeground }]}>
-                    {photo?.dateLabel ?? 'Choisis une photo dans le carnet'}
-                  </Text>
                 </View>;
               })}
             </View>
@@ -1253,8 +1255,10 @@ const styles = StyleSheet.create({
   beforeAfterCard: { padding: 14, borderRadius: 14, borderWidth: 1, gap: 10 },
   beforeAfterHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   beforeAfterRow: { flexDirection: 'row', gap: 10 },
-  beforeAfterItem: { flex: 1, gap: 4 },
+  beforeAfterItem: { flex: 1, gap: 6 },
+  beforeAfterPhotoItem: { gap: 3 },
   beforeAfterImage: { width: '100%', height: 132, borderRadius: 9 },
+  beforeAfterImageCompact: { height: 88 },
   beforeAfterEmpty: { height: 132, borderWidth: 1, borderRadius: 9, alignItems: 'center', justifyContent: 'center', gap: 6 },
   beforeAfterLabel: { fontSize: 11, fontFamily: 'Inter_700Bold', letterSpacing: 0.5 },
   budgetBreakdown: { gap: 3 },

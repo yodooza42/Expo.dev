@@ -10,10 +10,12 @@ export async function prepareJournal(
     uri: photo.uri, title: entry.title, index,
   })));
   if (request.finalComparison) {
-    photoSources.push(
-      { uri: request.finalComparison.before.uri, title: `${request.finalComparison.projectName} · Avant`, index: 0 },
-      { uri: request.finalComparison.after.uri, title: `${request.finalComparison.projectName} · Après`, index: 0 },
-    );
+    request.finalComparison.before.forEach((photo, index) => photoSources.push({
+      uri: photo.uri, title: `${request.finalComparison!.projectName} · Avant`, index,
+    }));
+    request.finalComparison.after.forEach((photo, index) => photoSources.push({
+      uri: photo.uri, title: `${request.finalComparison!.projectName} · Après`, index,
+    }));
   }
   const uniqueSources = [...new Map(photoSources.map(source => [source.uri, source])).values()];
   const images = new Map<string, string>();
@@ -44,16 +46,12 @@ export async function prepareJournal(
   }));
   const finalComparisonImages = request.finalComparison ? {
     projectName: request.finalComparison.projectName,
-    before: {
-      id: request.finalComparison.before.id,
-      img: images.get(request.finalComparison.before.uri)!,
-      dateLabel: request.finalComparison.before.dateLabel,
-    },
-    after: {
-      id: request.finalComparison.after.id,
-      img: images.get(request.finalComparison.after.uri)!,
-      dateLabel: request.finalComparison.after.dateLabel,
-    },
+    before: request.finalComparison.before.map(photo => ({
+      id: photo.id, img: images.get(photo.uri)!, dateLabel: photo.dateLabel,
+    })),
+    after: request.finalComparison.after.map(photo => ({
+      id: photo.id, img: images.get(photo.uri)!, dateLabel: photo.dateLabel,
+    })),
   } : undefined;
   const { finalComparison: _comparison, ...payload } = request;
   return { ...payload, ...(finalComparisonImages ? { finalComparisonImages } : {}), entries, jobId };

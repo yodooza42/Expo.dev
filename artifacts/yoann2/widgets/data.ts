@@ -7,31 +7,7 @@ const APPTS_KEY    = '@yoann2_appointments';
 const SETTINGS_KEY = '@yoann2_widget_settings';
 const CONFIRM_KEY  = '@yoann2_widget_confirm_id';
 const MARIE_KEY    = '@marie_planning_v1';
-const ANNA_KEY     = '@anna_badges_v1';
-
-// ── Nanny calculation helpers ───────────────────────────────────────────────
-
-const MARIE_WINDOWS: Record<'PB' | 'PD', [number, number]> = {
-  PB: [6 * 60 + 30, 15 * 60],  // 06:30 → 15:00
-  PD: [12 * 60,     20 * 60],   // 12:00 → 20:00
-};
-
-function _toMins(t: string): number {
-  const [h, m] = t.split(':').map(Number);
-  return h * 60 + m;
-}
-
-function _fromMins(mins: number): string {
-  const h = Math.floor(mins / 60) % 24;
-  const m = mins % 60;
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-}
-
-function _durationLabel(diffMins: number): string {
-  const h = Math.floor(diffMins / 60);
-  const m = diffMins % 60;
-  return h > 0 ? (m > 0 ? `${h}h${String(m).padStart(2, '0')}` : `${h}h`) : `${m}min`;
-}
+const ANNA_PLANNING_KEY = '@anna_nanny_days_v1';
 
 const PRIORITY_COLORS: Record<string, string> = {
   low: '#4CAF50',
@@ -128,7 +104,7 @@ export function buildWidgetData(
   settings: WidgetSettings = DEFAULT_WIDGET_SETTINGS,
   confirmId: string | null = null,
   mariePlanning: Record<string, 'PB' | 'PD'> = {},
-  annaBadges: Record<string, 'Isabelle' | 'Evelyne'> = {},
+  annaPlanning: Record<string, true> = {},
 ): WidgetData {
   const today = new Date();
 
@@ -247,28 +223,14 @@ export function buildWidgetData(
   const marieShift = mariePlanning[todayKey] as 'PB' | 'PD' | undefined;
   const marieCircleColor = marieShift === 'PB' ? '#2196F3' : marieShift === 'PD' ? '#FF9800' : '#3A3A3A';
 
-  // ── Nanny period (nobody home intersection) ───────────────────────────────
+  // ── Fixed nanny days selected in Anna's monthly calendar ─────────────────
   let nounouName     = '';
   let nounouColor    = '';
   let nounouPeriod   = '';
   let nounouDuration = '';
-
-  const todaySchedForNanny = settings.workSchedule?.[today.getDay()];
-  if (todaySchedForNanny && !todaySchedForNanny.off && marieShift) {
-    let yStart = _toMins(todaySchedForNanny.start) - 30;
-    let yEnd   = _toMins(todaySchedForNanny.end);
-    if (yEnd <= _toMins(todaySchedForNanny.start)) yEnd += 24 * 60;
-    if (yStart < 0) yStart = 0;
-    const mWin = MARIE_WINDOWS[marieShift];
-    const iStart = Math.max(yStart, mWin[0]);
-    const iEnd   = Math.min(yEnd, mWin[1]);
-    if (iStart < iEnd) {
-      const badge = (annaBadges[todayKey] as 'Isabelle' | 'Evelyne' | undefined) ?? 'Isabelle';
-      nounouName     = badge;
-      nounouColor    = badge === 'Isabelle' ? '#00BCD4' : '#9C27B0';
-      nounouPeriod   = `${_fromMins(iStart)} → ${_fromMins(iEnd)}`;
-      nounouDuration = _durationLabel(iEnd - iStart);
-    }
+  if (annaPlanning[todayKey]) {
+    nounouName = 'Nounou';
+    nounouColor = '#EC4899';
   }
 
   return {
@@ -296,21 +258,21 @@ export async function getWidgetDataFromStorage(): Promise<WidgetData> {
   let settings = DEFAULT_WIDGET_SETTINGS;
   let confirmId: string | null = null;
   let mariePlanning: Record<string, 'PB' | 'PD'> = {};
-  let annaBadges: Record<string, 'Isabelle' | 'Evelyne'>  = {};
+  let annaPlanning: Record<string, true> = {};
 
   try {
-    const [t, a, s, c, mr, ab] = await AsyncStorage.multiGet([
-      TASKS_KEY, APPTS_KEY, SETTINGS_KEY, CONFIRM_KEY, MARIE_KEY, ANNA_KEY,
+    const [t, a, s, c, mr, anna] = await AsyncStorage.multiGet([
+      TASKS_KEY, APPTS_KEY, SETTINGS_KEY, CONFIRM_KEY, MARIE_KEY, ANNA_PLANNING_KEY,
     ]);
     if (t[1])  tasks          = JSON.parse(t[1]);
     if (a[1])  appts          = JSON.parse(a[1]);
     if (s[1])  settings       = { ...DEFAULT_WIDGET_SETTINGS, ...JSON.parse(s[1]) };
     if (c[1])  confirmId      = c[1];
-    if (mr[1]) mariePlanning  = JSON.parse(mr[1]);
-    if (ab[1]) annaBadges     = JSON.parse(ab[1]);
+    if (mr[1]) mariePlanning = JSON.parse(mr[1]);
+    if (anna[1]) annaPlanning = JSON.parse(anna[1]);
   } catch {}
 
-  return buildWidgetData(tasks, appts, settings, confirmId, mariePlanning, annaBadges);
+  return buildWidgetData(tasks, appts, settings, confirmId, mariePlanning, annaPlanning);
 }
 
 export async function setConfirmId(id: string | null): Promise<void> {

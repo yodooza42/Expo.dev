@@ -21,6 +21,7 @@ import { WidgetPreview } from '@/components/WidgetPreview';
 import { useApp } from '@/contexts/AppContext';
 import { useColors } from '@/hooks/useColors';
 import { SubPageHeader } from '@/components/SubPageHeader';
+import { loadAnnaPlanning, type AnnaPlanning } from '@/utils/annaStorage';
 import { cancelShiftNotifications, scheduleShiftNotifications } from '@/utils/notificationScheduler';
 import { updateTodoWidget } from '@/widgets/updateWidget';
 import { buildWidgetData, type WidgetData } from '@/widgets/data';
@@ -61,15 +62,15 @@ export default function WidgetSettingsScreen() {
 
 
   const [mariePlanning, setMariePlanning] = useState<Record<string, 'PB' | 'PD'>>({});
-  const [annaBadges,    setAnnaBadges]    = useState<Record<string, 'Isabelle' | 'Evelyne'>>({});
+  const [annaPlanning, setAnnaPlanning] = useState<AnnaPlanning>({});
 
   useEffect(() => {
     Promise.all([
       AsyncStorage.getItem('@marie_planning_v1'),
-      AsyncStorage.getItem('@anna_badges_v1'),
-    ]).then(([mr, ab]) => {
+      loadAnnaPlanning(),
+    ]).then(([mr, nannyDays]) => {
       if (mr) setMariePlanning(JSON.parse(mr) as Record<string, 'PB' | 'PD'>);
-      if (ab) setAnnaBadges(JSON.parse(ab)    as Record<string, 'Isabelle' | 'Evelyne'>);
+      setAnnaPlanning(nannyDays);
     }).catch(() => {});
   }, []);
 
@@ -80,10 +81,10 @@ export default function WidgetSettingsScreen() {
       settings,
       null,
       mariePlanning,
-      annaBadges,
+      annaPlanning,
     );
     return base;
-  }, [tasks, appointments, settings, mariePlanning, annaBadges]);
+  }, [tasks, appointments, settings, mariePlanning, annaPlanning]);
 
   async function handleSave() {
     setSaving(true);

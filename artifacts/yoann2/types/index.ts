@@ -2,6 +2,8 @@ export type Priority = 'low' | 'medium' | 'high' | 'critical';
 export type TaskStatus = 'idea' | 'todo' | 'inprogress' | 'waiting' | 'done';
 export type ProjectStatus = 'idea' | 'todo' | 'inprogress' | 'waiting' | 'done' | 'abandoned';
 export type EisenhowerQuadrant = 'do_now' | 'schedule' | 'delegate' | 'eliminate';
+export type JournalProjectPhoto = { photoId: string; uri: string; dateLabel: string; sourceTitle: string };
+export type JournalProjectPhotoSelection = JournalProjectPhoto | JournalProjectPhoto[];
 
 export interface Project {
   id: string;
@@ -17,8 +19,8 @@ export interface Project {
   status: ProjectStatus;
   completedAt?: string;
   journalBeforeAfter?: {
-    before?: { photoId: string; uri: string; dateLabel: string; sourceTitle: string };
-    after?: { photoId: string; uri: string; dateLabel: string; sourceTitle: string };
+    before?: JournalProjectPhotoSelection;
+    after?: JournalProjectPhotoSelection;
   };
   archived?: boolean;
   createdAt: string;

@@ -21,11 +21,11 @@ Dans le carnet, trier les photos de chaque tâche par date/heure de prise connue
 
 **How to apply:** utiliser les dates photo déjà enregistrées pour chaque tâche, garder un ordre stable quand la date manque, et ne pas décoder les images hors de la photo affichée ou imminente.
 
-Pour un carnet limité à un seul projet, proposer de choisir une photo « avant » et une photo « après », avec leur date sous chaque image. Sauvegarder ces choix sur le projet et les afficher dans sa fiche, puis terminer la vidéo par ce comparatif.
+Pour un carnet limité à un seul projet, proposer jusqu’à deux photos « avant » et deux « après », avec la date de chaque photo. Sauvegarder ces choix sur le projet et les afficher dans sa fiche, puis terminer la vidéo par un montage des photos sélectionnées sur une seule page.
 
-**Why:** l’utilisateur veut conserver la comparaison avant/après dans le carnet vidéo et dans le récapitulatif du projet consultable dans l’application.
+**Why:** l’utilisateur veut plusieurs angles de vue pour la comparaison avant/après, conservée dans le carnet vidéo et dans le récapitulatif du projet consultable dans l’application.
 
-**How to apply:** ces choix restent distincts des photos et légendes originales ; une comparaison n’apparaît dans la vidéo que si les deux photos sont choisies.
+**How to apply:** ces choix restent distincts des photos et légendes originales ; une comparaison n’apparaît dans la vidéo que si au moins une photo est choisie de chaque côté. Garder la compatibilité avec les anciens choix uniques.
 
 Lorsque toutes les tâches d’un projet sont accomplies, placer une page récapitulative du projet immédiatement après sa dernière tâche, avec toutes ses tâches et un petit commentaire sympathique.
 
