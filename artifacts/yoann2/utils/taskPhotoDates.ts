@@ -5,6 +5,25 @@ import { readImageExifDateFields } from '@/utils/imageExifDate';
 
 export const SUBTASK_PHOTO_GAP_MS = 24 * 60 * 60 * 1000;
 
+export function sortTaskPhotosChronologically(
+  uris: string[],
+  photoDates: Record<string, number> = {},
+): string[] {
+  return uris
+    .map((uri, index) => ({
+      uri,
+      index,
+      takenAt: Number.isFinite(photoDates[uri]) && photoDates[uri]! > 0 ? photoDates[uri]! : undefined,
+    }))
+    .sort((a, b) => {
+      if (a.takenAt === undefined && b.takenAt === undefined) return a.index - b.index;
+      if (a.takenAt === undefined) return 1;
+      if (b.takenAt === undefined) return -1;
+      return a.takenAt - b.takenAt || a.index - b.index;
+    })
+    .map(item => item.uri);
+}
+
 export function hasSubtaskPhotoDateSpread(uris: string[], photoDates: Record<string, number> = {}): boolean {
   const dates = uris.map(uri => photoDates[uri]).filter((date): date is number =>
     typeof date === 'number' && Number.isFinite(date) && date > 0);

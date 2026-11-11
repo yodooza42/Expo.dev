@@ -62,6 +62,8 @@ export interface Task {
   subTasks?: SubTask[];
   /** Taken-at timestamps for protected task photos, keyed by their stored URI. */
   photoTakenAt?: Record<string, number>;
+  /** Photos whose metadata was checked automatically, including files without readable dates. */
+  photoDateScanAttempted?: Record<string, true>;
   /** Avoid asking again after the user accepts or dismisses a photo/subtask split. */
   subTaskPhotosReviewed?: boolean;
   // Rappel géolocalisé

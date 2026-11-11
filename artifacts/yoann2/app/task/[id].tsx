@@ -34,7 +34,7 @@ import { protectPhoto } from '@/utils/photoProtection';
 import { taskFolderName } from '@/utils/photoStorage';
 import { completionDateError, formatCompletionDate } from '@/utils/completionDate';
 import { photoTakenAt } from '@/utils/tripPhotoPlacement';
-import { hasSubtaskPhotoDateSpread, scanTaskPhotoDates } from '@/utils/taskPhotoDates';
+import { hasSubtaskPhotoDateSpread, scanTaskPhotoDates, sortTaskPhotosChronologically } from '@/utils/taskPhotoDates';
 import { attachProjectPhotoReferences, collectProjectPhotoUris, getUnlinkedProjectPhotos, isSharedProjectPhoto } from '@/utils/projectPhotoLinks';
 
 const { width } = Dimensions.get('window');
@@ -116,7 +116,7 @@ export default function TaskDetailScreen() {
     [projectPhotoUris, taskMaybe],
   );
 
-  const [photoViewIdx, setPhotoViewIdx] = useState<number | null>(null);
+  const [photoViewUri, setPhotoViewUri] = useState<string | null>(null);
   const [galleryPickerVisible, setGalleryPickerVisible] = useState(false);
   const [projectPhotosPickerVisible, setProjectPhotosPickerVisible] = useState(false);
   const [subTaskPhotoModal, setSubTaskPhotoModal] = useState<'prompt' | 'assign' | null>(null);
@@ -125,6 +125,39 @@ export default function TaskDetailScreen() {
   const [scanningPhotoDates, setScanningPhotoDates] = useState(false);
   const [photoScanProgress, setPhotoScanProgress] = useState('');
   const promptDismissed = useRef(false);
+  const photoDateScanSignature = (taskMaybe?.photos ?? [])
+    .filter(uri => !taskMaybe?.photoTakenAt?.[uri] && !taskMaybe?.photoDateScanAttempted?.[uri])
+    .join('\u0000');
+
+  useEffect(() => {
+    if (!taskMaybe) return;
+    const photosWithoutDate = taskMaybe.photos.filter(uri =>
+      !taskMaybe.photoTakenAt?.[uri] && !taskMaybe.photoDateScanAttempted?.[uri]);
+    if (photosWithoutDate.length > 0) {
+      let active = true;
+      scanTaskPhotoDates(photosWithoutDate).then(result => {
+        if (!active) return;
+        const current = latestTasks.current.find(item => item.id === taskMaybe.id);
+        if (!current) return;
+        const photoTakenAt = { ...(current.photoTakenAt ?? {}), ...result.dates };
+        const photoDateScanAttempted = {
+          ...(current.photoDateScanAttempted ?? {}),
+          ...Object.fromEntries(photosWithoutDate.map(uri => [uri, true])),
+        } as Record<string, true>;
+        updateTask(taskMaybe.id, {
+          photos: sortTaskPhotosChronologically(current.photos, photoTakenAt),
+          photoTakenAt,
+          photoDateScanAttempted,
+        });
+      }).catch(() => {});
+      return () => { active = false; };
+    }
+
+    const sorted = sortTaskPhotosChronologically(taskMaybe.photos, taskMaybe.photoTakenAt);
+    if (sorted.some((uri, index) => uri !== taskMaybe.photos[index])) {
+      updateTask(taskMaybe.id, { photos: sorted });
+    }
+  }, [taskMaybe?.id, photoDateScanSignature]);
 
   useEffect(() => {
     if (!taskMaybe || taskMaybe.subTaskPhotosReviewed || promptDismissed.current
@@ -132,15 +165,17 @@ export default function TaskDetailScreen() {
     setSubTaskPhotoModal('prompt');
   }, [taskMaybe]);
 
-  async function handleDeletePhoto(uri: string, idx: number) {
+  async function handleDeletePhoto(uri: string) {
     Alert.alert('Supprimer la photo', 'Cette photo sera définitivement supprimée.', [
       { text: 'Annuler', style: 'cancel' },
       {
         text: 'Supprimer', style: 'destructive',
         onPress: async () => {
-          if (photoViewIdx === idx) setPhotoViewIdx(null);
-          const newPhotos = task.photos.filter((_, i) => i !== idx);
+          if (photoViewUri === uri) setPhotoViewUri(null);
+          const newPhotos = task.photos.filter(photoUri => photoUri !== uri);
           const photoTakenAt = { ...(task.photoTakenAt ?? {}) }; delete photoTakenAt[uri];
+          const photoDateScanAttempted = { ...(task.photoDateScanAttempted ?? {}) };
+          delete photoDateScanAttempted[uri];
           const otherProjectTaskPhotos = latestTasks.current
             .filter(item => item.projectId === task.projectId && item.id !== task.id)
             .flatMap(item => item.photos ?? []);
@@ -155,6 +190,7 @@ export default function TaskDetailScreen() {
           updateTask(task.id, {
             photos: newPhotos,
             photoTakenAt,
+            photoDateScanAttempted,
             subTasks,
             projectPhotoUris: task.projectPhotoUris?.filter(photoUri => photoUri !== uri),
           });
@@ -189,6 +225,7 @@ export default function TaskDetailScreen() {
     );
   }
   const task = taskMaybe;
+  const orderedPhotoUris = sortTaskPhotosChronologically(task.photos, task.photoTakenAt);
   const streak = computeStreak(task, tasks);
   const photoReferenceDate = task.status === 'done' && task.completedAt
     ? parseFrenchDate(task.completedAt)
@@ -214,7 +251,10 @@ export default function TaskDetailScreen() {
         }
       });
       if (newUris.length > 0 || metadataChanged)
-        updateTask(task.id, { photos: [...current.photos, ...newUris], photoTakenAt });
+        updateTask(task.id, {
+          photos: sortTaskPhotosChronologically([...current.photos, ...newUris], photoTakenAt),
+          photoTakenAt,
+        });
     } catch (error) {
       Alert.alert('Photo non conservée', error instanceof Error ? error.message : 'Copie permanente impossible.');
     }
@@ -276,13 +316,13 @@ export default function TaskDetailScreen() {
     const assignments: Record<string, string> = {};
     (task.subTasks ?? []).forEach(st => st.photoUris?.forEach(uri => { assignments[uri] = st.id; }));
     setPhotoAssignments(assignments);
-    setSelectedAssignmentPhoto(task.photos[0] ?? null);
+    setSelectedAssignmentPhoto(orderedPhotoUris[0] ?? null);
     setSubTaskPhotoModal('assign');
   }
 
   function saveSubTaskPhotoAssignment() {
     const next = (task.subTasks ?? []).map(st => {
-      const photoUris = task.photos.filter(uri => photoAssignments[uri] === st.id);
+      const photoUris = orderedPhotoUris.filter(uri => photoAssignments[uri] === st.id);
       const latestTakenAt = photoUris.map(uri => task.photoTakenAt?.[uri])
         .filter((value): value is number => typeof value === 'number' && Number.isFinite(value))
         .sort((a, b) => b - a)[0];
@@ -768,13 +808,13 @@ export default function TaskDetailScreen() {
             </View>
             {task.photos.length > 0 ? (
               <View style={styles.photoGrid}>
-                {task.photos.map((uri, idx) => (
-                  <View key={idx} style={styles.photoThumb}>
-                    <Pressable onPress={() => setPhotoViewIdx(idx)} style={{ flex: 1 }}>
+                {orderedPhotoUris.map(uri => (
+                  <View key={uri} style={styles.photoThumb}>
+                    <Pressable onPress={() => setPhotoViewUri(uri)} style={{ flex: 1 }}>
                       <ProjectPhoto uri={uri} style={styles.photoImg} contentFit="cover" />
                     </Pressable>
                     <Pressable
-                      onPress={() => handleDeletePhoto(uri, idx)}
+                      onPress={() => handleDeletePhoto(uri)}
                       style={styles.photoRemove}
                       hitSlop={6}
                     >
@@ -924,13 +964,13 @@ export default function TaskDetailScreen() {
         </View>
       </ScrollView>
 
-      <Modal visible={photoViewIdx !== null} animationType="fade" transparent>
+      <Modal visible={photoViewUri !== null} animationType="fade" transparent>
         <View style={[styles.photoModal, { backgroundColor: 'rgba(0,0,0,0.95)' }]}>
-          <Pressable onPress={() => setPhotoViewIdx(null)} style={styles.photoClose}>
+          <Pressable onPress={() => setPhotoViewUri(null)} style={styles.photoClose}>
             <MaterialCommunityIcons name="close" size={26} color="#fff" />
           </Pressable>
-          {photoViewIdx !== null && task.photos[photoViewIdx] && (
-            <ProjectPhoto uri={task.photos[photoViewIdx]} style={styles.photoFull} contentFit="contain" />
+          {photoViewUri && task.photos.includes(photoViewUri) && (
+            <ProjectPhoto uri={photoViewUri} style={styles.photoFull} contentFit="contain" />
           )}
         </View>
       </Modal>
@@ -978,7 +1018,7 @@ export default function TaskDetailScreen() {
               </Pressable>
             </View>
             <ScrollView style={{ maxHeight: 260 }} contentContainerStyle={styles.assignmentPhotoGrid}>
-              {task.photos.map((uri, index) => {
+              {orderedPhotoUris.map((uri, index) => {
                 const assignedId = photoAssignments[uri];
                 const assignedName = task.subTasks?.find(st => st.id === assignedId)?.title;
                 const takenAt = task.photoTakenAt?.[uri];
@@ -1003,7 +1043,7 @@ export default function TaskDetailScreen() {
             </Text>
             <ScrollView style={{ maxHeight: 190 }} contentContainerStyle={{ gap: 8 }}>
               {(task.subTasks ?? []).map(st => {
-                const previewUris = task.photos.filter(uri => photoAssignments[uri] === st.id);
+                const previewUris = orderedPhotoUris.filter(uri => photoAssignments[uri] === st.id);
                 const suggested = previewUris.map(uri => task.photoTakenAt?.[uri])
                   .filter((value): value is number => typeof value === 'number' && Number.isFinite(value))
                   .sort((a, b) => b - a)[0];

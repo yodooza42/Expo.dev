@@ -114,6 +114,22 @@ test('photo-date spread starts strictly after 24 hours and ignores missing dates
   assert.equal(hasSubtaskPhotoDateSpread(['a'], { a: t }), false);
 });
 
+test('task photos sort by capture date and time, keeping unknown dates stable at the end', () => {
+  const { sortTaskPhotosChronologically } = load('utils/taskPhotoDates.ts', {
+    '@/utils/photoReferences': { photoCandidates: async uri => [uri] },
+    '@/utils/tripPhotoPlacement': { photoTakenAt: () => undefined },
+    '@/utils/photoProtection': { protectedPhotoSource: async uri => uri },
+    '@/utils/imageExifDate': { readImageExifDateFields: async () => undefined },
+  });
+  assert.deepEqual(
+    sortTaskPhotosChronologically(
+      ['late', 'unknown-a', 'early', 'unknown-b', 'same-time'],
+      { late: 1_800_000_000_200, early: 1_800_000_000_100, 'same-time': 1_800_000_000_100 },
+    ),
+    ['early', 'same-time', 'late', 'unknown-a', 'unknown-b'],
+  );
+});
+
 test('reads only metadata ranges from JPEG and extracts its capture date', async () => {
   const uri = 'file:///vault/photo.jpg';
   const bytes = jpegWithExif(tiffWithDate());

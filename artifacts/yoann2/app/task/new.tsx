@@ -30,6 +30,7 @@ import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollV
 import { completionDateError, formatCompletionDate } from '@/utils/completionDate';
 import { attachProjectPhotoReferences, collectProjectPhotoUris, getUnlinkedProjectPhotos } from '@/utils/projectPhotoLinks';
 import { photoTakenAt } from '@/utils/tripPhotoPlacement';
+import { sortTaskPhotosChronologically } from '@/utils/taskPhotoDates';
 import type { Priority, RecurrenceType, TaskStatus } from '@/types';
 
 const { width } = Dimensions.get('window');
@@ -89,6 +90,10 @@ export default function NewTaskScreen() {
   const [photos, setPhotos] = useState<string[]>(existing?.photos ?? []);
   const [projectPhotoUris, setProjectPhotoUris] = useState<string[]>(existing?.projectPhotoUris ?? []);
   const [photoTakenAtByUri, setPhotoTakenAtByUri] = useState<Record<string, number>>(existing?.photoTakenAt ?? {});
+  const orderedPhotos = useMemo(
+    () => sortTaskPhotosChronologically(photos, photoTakenAtByUri),
+    [photos, photoTakenAtByUri],
+  );
   const [recurrence, setRecurrence] = useState<RecurrenceType>(existing?.recurrence ?? null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [galleryPickerVisible, setGalleryPickerVisible] = useState(false);
@@ -141,7 +146,7 @@ export default function NewTaskScreen() {
       title: title.trim(),
       description: desc.trim(),
       notes: notes.trim(),
-      photos,
+      photos: orderedPhotos,
       projectPhotoUris,
       photoTakenAt: photoTakenAtByUri,
       dueDate: parseFrDate(dueDate).toISOString(),
@@ -170,13 +175,18 @@ export default function NewTaskScreen() {
       }),
       takenAt: item.takenAt,
     })));
+    const photoDates = {
+      ...photoTakenAtByUri,
+      ...Object.fromEntries(permanent.filter(item => item.takenAt).map(item => [item.uri, item.takenAt!])),
+    };
     setPhotos(previous => {
       const existingUris = new Set(previous);
-      return [...previous, ...permanent.map(item => item.uri).filter(uri => !existingUris.has(uri))];
+      return sortTaskPhotosChronologically(
+        [...previous, ...permanent.map(item => item.uri).filter(uri => !existingUris.has(uri))],
+        photoDates,
+      );
     });
-    setPhotoTakenAtByUri(previous => ({
-      ...previous, ...Object.fromEntries(permanent.filter(item => item.takenAt).map(item => [item.uri, item.takenAt!])),
-    }));
+    setPhotoTakenAtByUri(photoDates);
     } catch (error) {
       Alert.alert('Photo non conservée', error instanceof Error ? error.message : 'Copie permanente impossible.');
     }
@@ -205,7 +215,10 @@ export default function NewTaskScreen() {
   }
 
   function addProjectPhotos(uris: string[]) {
-    setPhotos(previous => attachProjectPhotoReferences(previous, projectPhotoUris, uris).photos);
+    setPhotos(previous => sortTaskPhotosChronologically(
+      attachProjectPhotoReferences(previous, projectPhotoUris, uris).photos,
+      photoTakenAtByUri,
+    ));
     setProjectPhotoUris(previous => attachProjectPhotoReferences(photos, previous, uris).projectPhotoUris);
   }
 
@@ -452,12 +465,12 @@ export default function NewTaskScreen() {
             </Pressable>
           </View>
           <View style={styles.photoGrid}>
-            {photos.map((uri, idx) => (
-              <View key={idx} style={styles.photoThumb}>
+            {orderedPhotos.map(uri => (
+              <View key={uri} style={styles.photoThumb}>
                 <ProjectPhoto uri={uri} style={styles.photoImg} contentFit="cover" />
                 <Pressable
                   onPress={() => {
-                    setPhotos(prev => prev.filter((_, i) => i !== idx));
+                    setPhotos(prev => prev.filter(photoUri => photoUri !== uri));
                     setProjectPhotoUris(prev => prev.filter(photoUri => photoUri !== uri));
                     setPhotoTakenAtByUri(prev => {
                       const next = { ...prev }; delete next[uri]; return next;
