@@ -62,6 +62,26 @@ test('project selection, excluded entries/photos and independent captions never 
   assert.equal(tasks[0].photos.length, 2);
   assert.equal(journal.buildProjectJournal(projects, tasks, { ...chosen, excludedPhotoIds: [] }).photoCount, 2);
 });
+test('single-project carnet keeps before/after selections and adds a dated final comparison', () => {
+  const beforeId = journal.journalPhotoId('task:later', 'file://a');
+  const afterId = journal.journalPhotoId('project:p1', 'file://p');
+  const opts = {
+    ...choices(), projectIds: ['p1'], excludedEntryIds: ['task:later'],
+    beforeAfterByProjectId: { p1: { beforePhotoId: beforeId, afterPhotoId: afterId } },
+  };
+  const comparisonTasks = [...tasks, {
+    id: 'last', projectId: 'p1', title: 'Dernière tâche', status: 'done', completedAt: '06/04/2026', photos: [],
+  }];
+  const output = journal.buildProjectJournal(projects, comparisonTasks, opts);
+  assert.equal(output.request.finalComparison.projectName, 'Garage');
+  assert.equal(output.request.finalComparison.before.dateLabel, '5 avril 2026');
+  assert.equal(output.request.finalComparison.after.dateLabel, '6 avril 2026');
+  assert.equal(output.photoCount, 2, 'the photo removed from the montage is counted once for the comparison');
+  assert.equal(output.duration, journal.journalDuration(output.entries, output.request.secondsPerPhoto, true));
+  assert.equal(journal.buildProjectJournal(projects, comparisonTasks, { ...opts, projectIds: ['p1', 'p2'] }).request.finalComparison, undefined);
+  assert.equal(journal.validateJournalChoices(opts), true);
+  assert.equal(journal.validateJournalChoices({ ...opts, beforeAfterByProjectId: { p1: { beforePhotoId: 2 } } }), false);
+});
 test('missing completion date never substitutes the due date even when the task has photos', () => {
   const onlyUndated = {
     ...tasks[2], projectId: 'p2', dueDate: '06/04/2026', photos: ['file://still-here'],
@@ -232,6 +252,26 @@ test('photo preparation is sequential, preserves captions and reports a precise 
   assert.deepEqual(calls, ['file://a', 'file://b']);
   await assert.rejects(prepare.prepareJournal(request, 'job', () => false, () => {}), /annulée/);
 });
+test('photo preparation reuses comparison images already included in the montage', async () => {
+  const calls = [];
+  const prepare = load('utils/prepareJournal.ts', {
+    '@/utils/projectJournal': journal,
+    '@/utils/storyPhoto': { prepareStoryPhoto: async uri => { calls.push(uri); return `data:image/jpeg;base64,${uri}`; } },
+  });
+  const request = {
+    ...journal.buildProjectJournal(projects, tasks, choices()).request,
+    finalComparison: {
+      projectName: 'Garage',
+      before: { id: 'before', uri: 'file://a', dateLabel: '5 avril 2026' },
+      after: { id: 'after', uri: 'file://compare', dateLabel: '6 avril 2026' },
+    },
+  };
+  const prepared = await prepare.prepareJournal(request, 'job', () => true, () => {});
+  assert.deepEqual(calls, ['file://a', 'file://b', 'file://p', 'file://compare']);
+  const montageBefore = prepared.entries.flatMap(entry => entry.photos).find(photo => photo.id === journal.journalPhotoId('task:later', 'file://a'));
+  assert.equal(prepared.finalComparisonImages.before.img, montageBefore.img);
+  assert.equal(prepared.finalComparisonImages.after.dateLabel, '6 avril 2026');
+});
 
 /** A single shared clock drives rAF, all timers and recorder callbacks. */
 function engine({ badPhoto = false, loadDelay = 25 } = {}) {
@@ -376,6 +416,29 @@ test('task page reveals four photos in half-second steps and continues the remai
   e.win.journalSeek(10.2);
   assert.equal(hasDrawn(6), true);
   assert.equal(e.win.journalDuration, journal.journalDuration(data.entries, 3));
+});
+test('final comparison renders after the project entries with dates and without the task checkbox', async () => {
+  const e = engine(), data = payload({ count: 1 });
+  data.finalComparisonImages = {
+    projectName: 'Chambre parentale',
+    before: { id: 'before', img: 'data:image/jpeg;base64,YmVmb3Jl', dateLabel: '5 avril 2026' },
+    after: { id: 'after', img: 'data:image/jpeg;base64,YWZ0ZXI', dateLabel: '10 novembre 2026' },
+  };
+  e.win.generatePeriodStory(data);
+  assert.equal(e.win.journalDuration, journal.journalDuration(data.entries, 3, true));
+  await e.advance(300);
+  e.win.journalPause();
+  const baseDuration = journal.journalDuration(data.entries, 3);
+  e.win.journalSeek(baseDuration - 3);
+  await e.advance(200);
+  assert.ok(e.draws.some(draw => draw.text === 'AVANT / APRÈS'));
+  assert.ok(e.draws.some(draw => draw.text === '5 avril 2026'));
+  assert.ok(e.draws.some(draw => draw.text === '10 novembre 2026'));
+  assert.ok(e.imageDraws.some(draw => draw.src.endsWith('YmVmb3Jl')));
+  assert.ok(e.imageDraws.some(draw => draw.src.endsWith('YWZ0ZXI')));
+  const source = renderer.buildProjectJournalHtml();
+  assert.ok(!source.includes("fillStyle='#F7F6F1'"));
+  assert.ok(!source.includes('var bx=MX-48'));
 });
 test('real renderer protocol advances past 45 seconds, streams honest ordered chunks and releases resources', async () => {
   const e = engine();

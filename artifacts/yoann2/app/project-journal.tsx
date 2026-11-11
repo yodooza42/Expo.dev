@@ -1,7 +1,7 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Modal, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '@/contexts/AppContext';
 import { useColors } from '@/hooks/useColors';
@@ -13,6 +13,7 @@ import { JournalDateInput } from '@/components/project-journal/JournalDateInput'
 import { JournalEntryEditor, toggleJournalId } from '@/components/project-journal/JournalEntryEditor';
 import { JournalEngine } from '@/components/project-journal/JournalEngine';
 import { JournalPreview } from '@/components/project-journal/JournalPreview';
+import { ProjectPhoto } from '@/components/ProjectPhoto';
 import { StoryVideoReview } from '@/components/period-story/StoryVideoReview';
 import type { JournalChoices, JournalVideoPayload } from '@/types/projectJournal';
 import { buildProjectJournal, journalDateKey } from '@/utils/projectJournal';
@@ -25,7 +26,7 @@ const STEPS = ['Sélection', 'Montage', 'Vidéo'];
 export default function ProjectJournalScreen() {
   const c = useColors(), insets = useSafeAreaInsets(), router = useRouter();
   const { projectId } = useLocalSearchParams<{ projectId?: string }>();
-  const { projects, tasks, loading } = useApp();
+  const { projects, tasks, loading, updateProject } = useApp();
   const draft = useJournalDraft(projects, loading, projectId);
   const generation = usePeriodStoryGeneration('journal');
   const [step, setStep] = useState(0);
@@ -35,6 +36,7 @@ export default function ProjectJournalScreen() {
   const [previewDetail, setPreviewDetail] = useState('');
   const [error, setError] = useState('');
   const [showUndated, setShowUndated] = useState(false);
+  const [comparisonSlot, setComparisonSlot] = useState<'before' | 'after'>('before');
   const previewRun = useRef(0);
   const alive = useRef(true);
   useEffect(() => {
@@ -43,6 +45,32 @@ export default function ProjectJournalScreen() {
   }, []);
   const choices = draft.choices;
   const journal = useMemo(() => choices ? buildProjectJournal(projects, tasks, choices) : null, [projects, tasks, choices]);
+  const comparisonProject = choices?.projectIds.length === 1
+    ? projects.find(project => project.id === choices.projectIds[0])
+    : undefined;
+  const comparisonPhotos = useMemo(() => {
+    if (!comparisonProject || !journal) return [];
+    const byUri = new Map<string, { id: string; uri: string; dateLabel: string; title: string }>();
+    journal.candidates.filter(entry => entry.projectId === comparisonProject.id).forEach(entry => {
+      entry.photos.forEach(photo => {
+        if (!byUri.has(photo.uri)) byUri.set(photo.uri, { ...photo, dateLabel: entry.dateLabel, title: entry.title });
+      });
+    });
+    [comparisonProject.journalBeforeAfter?.before, comparisonProject.journalBeforeAfter?.after]
+      .forEach(saved => {
+        if (saved && !byUri.has(saved.uri)) {
+          byUri.set(saved.uri, { id: saved.photoId, uri: saved.uri, dateLabel: saved.dateLabel, title: saved.sourceTitle });
+        }
+      });
+    return [...byUri.values()];
+  }, [comparisonProject, journal]);
+  const comparisonPhotoId = (slot: 'before' | 'after') => {
+    if (!comparisonProject || !choices) return undefined;
+    const selectedId = choices.beforeAfterByProjectId?.[comparisonProject.id]?.[slot === 'before' ? 'beforePhotoId' : 'afterPhotoId'];
+    if (selectedId) return selectedId;
+    const saved = comparisonProject.journalBeforeAfter?.[slot];
+    return comparisonPhotos.find(photo => photo.id === saved?.photoId || photo.uri === saved?.uri)?.id ?? saved?.photoId;
+  };
   const busy = preparing || generation.isGenerating || generation.isSharing;
   const ready = !!journal && !journal.error && !draft.error && !draft.saving && !busy;
   // Edits made elsewhere must invalidate a prepared video/preview too.
@@ -61,6 +89,35 @@ export default function ProjectJournalScreen() {
     setError(''); setPreview(null); previewRun.current++;
     generation.discardResult();
     draft.save(next);
+  }
+  function chooseComparisonPhoto(photo: (typeof comparisonPhotos)[number]) {
+    if (!choices || !comparisonProject || busy) return;
+    const current = choices.beforeAfterByProjectId?.[comparisonProject.id] ?? {};
+    const currentBefore = current.beforePhotoId ?? comparisonPhotoId('before');
+    const currentAfter = current.afterPhotoId ?? comparisonPhotoId('after');
+    let beforePhotoId = currentBefore;
+    let afterPhotoId = currentAfter;
+    const selectedId = (comparisonSlot === 'before' ? beforePhotoId : afterPhotoId) === photo.id ? undefined : photo.id;
+    if (comparisonSlot === 'before') {
+      beforePhotoId = selectedId;
+      if (afterPhotoId === selectedId) afterPhotoId = undefined;
+    } else {
+      afterPhotoId = selectedId;
+      if (beforePhotoId === selectedId) beforePhotoId = undefined;
+    }
+    const before = comparisonPhotos.find(item => item.id === beforePhotoId);
+    const after = comparisonPhotos.find(item => item.id === afterPhotoId);
+    const beforeAfterByProjectId = { ...choices.beforeAfterByProjectId };
+    if (beforePhotoId || afterPhotoId) beforeAfterByProjectId[comparisonProject.id] = { beforePhotoId, afterPhotoId };
+    else delete beforeAfterByProjectId[comparisonProject.id];
+
+    updateProject(comparisonProject.id, {
+      journalBeforeAfter: before || after ? {
+        before: before ? { photoId: before.id, uri: before.uri, dateLabel: before.dateLabel, sourceTitle: before.title } : undefined,
+        after: after ? { photoId: after.id, uri: after.uri, dateLabel: after.dateLabel, sourceTitle: after.title } : undefined,
+      } : undefined,
+    });
+    change({ ...choices, beforeAfterByProjectId });
   }
   async function openPreview() {
     if (!journal || !ready) return;
@@ -157,6 +214,47 @@ export default function ProjectJournalScreen() {
           <Text style={[s.body, { color: c.mutedForeground }]}>
             Décoche une étape ou une photo, puis personnalise les légendes. Cela ne change jamais les originaux.
           </Text>
+          {comparisonProject && <View style={[s.comparisonCard, { backgroundColor: c.card, borderColor: c.border }]}>
+            <View style={s.comparisonHeading}>
+              <View style={s.flex}>
+                <Text style={[s.label, { color: c.foreground }]}>Comparatif final · {comparisonProject.name}</Text>
+                <Text style={[s.small, { color: c.mutedForeground }]}>Choisis une photo Avant et une photo Après. Le choix sera gardé pour le récapitulatif du projet.</Text>
+              </View>
+              <MaterialCommunityIcons name="image-multiple-outline" size={22} color={c.primary} />
+            </View>
+            <View style={s.row}>
+              {(['before', 'after'] as const).map(slot => {
+                const isActive = comparisonSlot === slot;
+                const selectedId = comparisonPhotoId(slot);
+                const selected = comparisonPhotos.find(photo => photo.id === selectedId);
+                return <Pressable key={slot} accessibilityRole="button" accessibilityState={{ selected: isActive }}
+                  onPress={() => setComparisonSlot(slot)}
+                  style={[s.comparisonSlot, { borderColor: isActive ? c.primary : c.border, backgroundColor: isActive ? c.primary + '18' : c.background }]}>
+                  <Text style={[s.small, { color: isActive ? c.primary : c.mutedForeground }]}>{slot === 'before' ? 'AVANT' : 'APRÈS'}</Text>
+                  <Text numberOfLines={1} style={[s.comparisonSlotValue, { color: c.foreground }]}>{selected?.dateLabel ?? 'Choisir une photo'}</Text>
+                </Pressable>;
+              })}
+            </View>
+            {comparisonPhotos.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.comparisonPhotos}>
+              {comparisonPhotos.map(photo => {
+                const selectedId = comparisonPhotoId(comparisonSlot);
+                const selected = selectedId === photo.id;
+                return <Pressable key={photo.id} testID={`journal-compare-photo-${comparisonSlot}-${photo.id}`}
+                  accessibilityRole="radio" accessibilityState={{ selected }} accessibilityLabel={`${photo.dateLabel}, ${photo.title}`}
+                  onPress={() => chooseComparisonPhoto(photo)} style={[s.comparisonPhoto, { borderColor: selected ? c.primary : c.border }]}>
+                  <ProjectPhoto uri={photo.uri} style={s.comparisonImage} contentFit="cover" />
+                  {selected && <View style={[s.comparisonCheck, { backgroundColor: c.primary }]}>
+                    <MaterialCommunityIcons name="check" size={14} color={c.primaryForeground} />
+                  </View>}
+                  <Text numberOfLines={1} style={[s.small, { color: c.foreground }]}>{photo.dateLabel}</Text>
+                  <Text numberOfLines={1} style={[s.tiny, { color: c.mutedForeground }]}>{photo.title}</Text>
+                </Pressable>;
+              })}
+            </ScrollView> : <Text style={[s.small, { color: c.mutedForeground }]}>Aucune photo datée disponible pour ce projet dans la sélection actuelle.</Text>}
+          </View>}
+          {choices.projectIds.length > 1 && <Text style={[s.small, { color: c.mutedForeground }]}>
+            Le comparatif Avant / Après s’ajoute uniquement aux carnets d’un seul projet.
+          </Text>}
           {journal.photoCount === 0 && (journal.availablePhotos > 0 || journal.undatedPhotos > 0) && (
             <View style={[s.notice, { borderColor: c.primary }]}>
               <Text style={[s.body, { color: c.foreground }]}>Aucune photo sélectionnée pour la vidéo.</Text>
@@ -281,6 +379,15 @@ const s = StyleSheet.create({
   button: { flexShrink: 1, minHeight: 48, paddingHorizontal: 16, paddingVertical: 13, alignItems: 'center', justifyContent: 'center', borderRadius: 12, borderWidth: 1 },
   buttonText: { fontSize: 13, lineHeight: 19, textAlign: 'center', fontFamily: 'Inter_600SemiBold' },
   project: { flexDirection: 'row', alignItems: 'center', gap: 14, padding: 14, borderRadius: 12, borderWidth: 1 },
+  comparisonCard: { padding: 14, gap: 12, borderRadius: 14, borderWidth: 1 },
+  comparisonHeading: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  comparisonSlot: { flex: 1, padding: 10, borderWidth: 1, borderRadius: 10, gap: 3 },
+  comparisonSlotValue: { fontSize: 12, fontFamily: 'Inter_500Medium' },
+  comparisonPhotos: { gap: 10, paddingVertical: 2, paddingRight: 4 },
+  comparisonPhoto: { width: 112, padding: 4, borderWidth: 1, borderRadius: 10, gap: 3, overflow: 'hidden' },
+  comparisonImage: { width: 102, height: 90, borderRadius: 6 },
+  comparisonCheck: { position: 'absolute', top: 8, right: 8, width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  tiny: { fontSize: 10, lineHeight: 14 },
   notice: { padding: 16, gap: 10, borderRadius: 12, borderWidth: 1 }, pace: { flex: 1, paddingHorizontal: 6, paddingVertical: 14, borderWidth: 1, borderRadius: 10, alignItems: 'center' },
   footer: { borderTopWidth: StyleSheet.hairlineWidth, padding: 16, gap: 10 },
   overlay: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 30, gap: 22 },

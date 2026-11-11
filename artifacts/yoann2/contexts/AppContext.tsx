@@ -1,4 +1,5 @@
 import { resolveCompletionDate } from '@/utils/completionDate';
+import { latestCompletedProjectTaskDate, latestCompletedSubTaskDate } from '@/utils/completionCascade';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
@@ -409,15 +410,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const updateProject = useCallback((id: string, updates: Partial<Project>) => {
-    setProjects(prev => {
-      const next = prev.map(p =>
-        p.id === id ? { ...p, ...updates, completedAt: resolveCompletionDate(p, updates), updatedAt: new Date().toISOString() } : p
-      );
-      AsyncStorage.setItem(STORAGE_KEYS.PROJECTS, JSON.stringify(next));
-      markDirty();
-      return next;
+    const next = projects.map(project => {
+      if (project.id !== id) return project;
+      const updated = {
+        ...project,
+        ...updates,
+        completedAt: resolveCompletionDate(project, updates),
+        updatedAt: new Date().toISOString(),
+      };
+      if (updates.status === 'done' && project.status !== 'done') {
+        updated.completedAt = latestCompletedProjectTaskDate(updated, tasks) ?? updated.completedAt;
+      }
+      return updated;
     });
-  }, []);
+    setProjects(next);
+    AsyncStorage.setItem(STORAGE_KEYS.PROJECTS, JSON.stringify(next));
+    markDirty();
+  }, [projects, tasks]);
 
   const reorderProjects = useCallback((newOrder: Project[]) => {
     setProjects(newOrder);
@@ -487,55 +496,97 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [projects]);
 
   const updateTask = useCallback((id: string, updates: Partial<Task>) => {
-    setTasks(prev => {
-      let next = prev.map(t => {
-        if (t.id !== id) return t;
-        const updated = { ...t, ...updates };
-        updated.completedAt = resolveCompletionDate(t, updates);
-        updated.eisenhower = computeEisenhower(updated.urgency, updated.importance);
-        return updated;
-      });
-      const task = prev.find(t => t.id === id);
-      if (task && task.recurrence && updates.status === 'done' && task.status !== 'done') {
-        const due = new Date(task.dueDate);
-        if (!isNaN(due.getTime())) {
-          const nextDue = new Date(due);
-          if (task.recurrence === 'daily') nextDue.setDate(nextDue.getDate() + 1);
-          else if (task.recurrence === 'weekly') nextDue.setDate(nextDue.getDate() + 7);
-          else if (task.recurrence === 'monthly') nextDue.setMonth(nextDue.getMonth() + 1);
-          const clone: Task = {
-            ...task,
-            id: genId(),
-            createdAt: new Date().toISOString(),
-            completedAt: undefined,
-            dueDate: nextDue.toISOString(),
-            status: 'todo',
-            eisenhower: computeEisenhower(task.urgency, task.importance),
-            recurrenceFromId: task.id,
-          };
-          next = [...next, clone];
-        }
+    const previous = tasks;
+    const task = previous.find(item => item.id === id);
+    if (!task) return;
+
+    let next = previous.map(item => {
+      if (item.id !== id) return item;
+      const updated = { ...item, ...updates };
+      updated.completedAt = resolveCompletionDate(item, updates);
+      const allSubTasksDate = latestCompletedSubTaskDate(updated.subTasks);
+      const subTasksJustChanged = updates.subTasks !== undefined;
+      const taskJustCompleted = updates.status === 'done' && item.status !== 'done';
+      if (updated.status === 'done' && allSubTasksDate && (subTasksJustChanged || taskJustCompleted)) {
+        updated.completedAt = allSubTasksDate;
       }
-      AsyncStorage.setItem(STORAGE_KEYS.TASKS, JSON.stringify(next));
-      markDirty();
-      return next;
+      updated.eisenhower = computeEisenhower(updated.urgency, updated.importance);
+      return updated;
     });
-  }, []);
+
+    if (task.recurrence && updates.status === 'done' && task.status !== 'done') {
+      const due = new Date(task.dueDate);
+      if (!isNaN(due.getTime())) {
+        const nextDue = new Date(due);
+        if (task.recurrence === 'daily') nextDue.setDate(nextDue.getDate() + 1);
+        else if (task.recurrence === 'weekly') nextDue.setDate(nextDue.getDate() + 7);
+        else if (task.recurrence === 'monthly') nextDue.setMonth(nextDue.getMonth() + 1);
+        const clone: Task = {
+          ...task,
+          id: genId(),
+          createdAt: new Date().toISOString(),
+          completedAt: undefined,
+          dueDate: nextDue.toISOString(),
+          status: 'todo',
+          eisenhower: computeEisenhower(task.urgency, task.importance),
+          recurrenceFromId: task.id,
+          subTasks: task.subTasks?.map(subTask => ({
+            ...subTask,
+            done: false,
+            completedAt: undefined,
+            completedAtSource: undefined,
+            photoUris: undefined,
+          })),
+        };
+        next = [...next, clone];
+      }
+    }
+
+    setTasks(next);
+    AsyncStorage.setItem(STORAGE_KEYS.TASKS, JSON.stringify(next));
+    markDirty();
+
+    const updatedTask = next.find(item => item.id === id);
+    if (updatedTask) {
+      const nextProjects = projects.map(project => {
+        if (project.id !== updatedTask.projectId || project.status !== 'done') return project;
+        const completedAt = latestCompletedProjectTaskDate(project, next);
+        return completedAt && completedAt !== project.completedAt
+          ? { ...project, completedAt, updatedAt: new Date().toISOString() }
+          : project;
+      });
+      if (nextProjects.some((project, index) => project !== projects[index])) {
+        setProjects(nextProjects);
+        AsyncStorage.setItem(STORAGE_KEYS.PROJECTS, JSON.stringify(nextProjects));
+        markDirty();
+      }
+    }
+  }, [projects, tasks]);
 
   const deleteTask = useCallback((id: string) => {
-    setTasks(prev => {
-      const next = prev.filter(t => t.id !== id);
-      AsyncStorage.setItem(STORAGE_KEYS.TASKS, JSON.stringify(next));
-      markDirty();
-      return next;
+    const next = tasks.filter(task => task.id !== id);
+    setTasks(next);
+    AsyncStorage.setItem(STORAGE_KEYS.TASKS, JSON.stringify(next));
+    markDirty();
+    const nextProjects = projects.map(project => {
+      if (project.status !== 'done') return project;
+      const completedAt = latestCompletedProjectTaskDate(project, next);
+      return completedAt && completedAt !== project.completedAt
+        ? { ...project, completedAt, updatedAt: new Date().toISOString() }
+        : project;
     });
+    if (nextProjects.some((project, index) => project !== projects[index])) {
+      setProjects(nextProjects);
+      AsyncStorage.setItem(STORAGE_KEYS.PROJECTS, JSON.stringify(nextProjects));
+      markDirty();
+    }
     // Also remove task-linked bank transactions
     setTransactions(prev => {
       const next = prev.filter(t => t.taskId !== id);
       saveTransactions(next);
       return next;
     });
-  }, []);
+  }, [projects, tasks]);
 
   const addTransactionCtx = useCallback(async (tx: Omit<BankTransaction, 'id'>): Promise<BankTransaction> => {
     const newTx = await bankAddTx(tx);

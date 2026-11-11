@@ -15,6 +15,12 @@ La chronologie doit entrelacer les tâches des différents projets selon leur co
 
 **How to apply:** distinguer clairement le projet et la tâche sur chaque étape ; conserver les photos de cette tâche. La fin d’un projet est un jalon distinct, pas un remplacement de ses tâches.
 
+Pour un carnet limité à un seul projet, proposer de choisir une photo « avant » et une photo « après », avec leur date sous chaque image. Sauvegarder ces choix sur le projet et les afficher dans sa fiche, puis terminer la vidéo par ce comparatif.
+
+**Why:** l’utilisateur veut conserver la comparaison avant/après dans le carnet vidéo et dans le récapitulatif du projet consultable dans l’application.
+
+**How to apply:** ces choix restent distincts des photos et légendes originales ; une comparaison n’apparaît dans la vidéo que si les deux photos sont choisies.
+
 Lorsque toutes les tâches d’un projet sont accomplies, placer une page récapitulative du projet immédiatement après sa dernière tâche, avec toutes ses tâches et un petit commentaire sympathique.
 
 **Why:** l’utilisateur veut faire comprendre qu’un projet entier vient d’être fini, sans perdre la chronologie entre les projets parallèles.

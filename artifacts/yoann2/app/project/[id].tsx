@@ -262,6 +262,10 @@ export default function ProjectDetailScreen() {
     setPhotoViewIdx(idx);
   }
 
+  function openProjectJournal() {
+    router.push({ pathname: '/project-journal', params: { projectId: project.id } });
+  }
+
   function removePhoto(allIdx: number) {
     const photo = allPhotos[allIdx];
     if (!photo?.deletable) { setPhotoViewIdx(null); return; }
@@ -779,6 +783,42 @@ export default function ProjectDetailScreen() {
               </View>
             </View>
           )}
+
+          <View style={[styles.beforeAfterCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <View style={styles.beforeAfterHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.progressLabel, { color: colors.foreground }]}>Avant / après</Text>
+                <Text style={[styles.progressSub, { color: colors.mutedForeground }]}>Comparatif photo du projet</Text>
+              </View>
+              <Pressable testID="edit-project-before-after" accessibilityLabel="Choisir les photos avant et après"
+                onPress={openProjectJournal} hitSlop={8}>
+                <MaterialCommunityIcons name="pencil-outline" size={20} color={colors.primary} />
+              </Pressable>
+            </View>
+            <View style={styles.beforeAfterRow}>
+              {(['before', 'after'] as const).map(slot => {
+                const photo = project.journalBeforeAfter?.[slot];
+                const label = slot === 'before' ? 'AVANT' : 'APRÈS';
+                return <View key={slot} style={styles.beforeAfterItem}>
+                  {photo ? <Pressable accessibilityLabel={`Ouvrir la photo ${label.toLowerCase()}`}
+                    onPress={() => {
+                      const index = allPhotos.findIndex(item => item.uri === photo.uri);
+                      if (index >= 0) openPhoto(index);
+                    }}>
+                    <ProjectPhoto uri={photo.uri} style={styles.beforeAfterImage} contentFit="cover" />
+                  </Pressable> : <Pressable accessibilityRole="button" accessibilityLabel={`Choisir la photo ${label.toLowerCase()}`}
+                    onPress={openProjectJournal} style={[styles.beforeAfterEmpty, { borderColor: colors.border, backgroundColor: colors.background }]}>
+                    <MaterialCommunityIcons name="image-plus-outline" size={22} color={colors.mutedForeground} />
+                    <Text style={[styles.progressSub, { color: colors.mutedForeground }]}>À choisir</Text>
+                  </Pressable>}
+                  <Text style={[styles.beforeAfterLabel, { color: colors.primary }]}>{label}</Text>
+                  <Text numberOfLines={1} style={[styles.progressSub, { color: colors.mutedForeground }]}>
+                    {photo?.dateLabel ?? 'Choisis une photo dans le carnet'}
+                  </Text>
+                </View>;
+              })}
+            </View>
+          </View>
         </View>
 
         <View style={styles.tabs}>
@@ -1210,6 +1250,13 @@ const styles = StyleSheet.create({
   progressLabel: { fontSize: 14, fontFamily: 'Inter_500Medium' },
   progressPct: { fontSize: 18, fontFamily: 'Inter_700Bold' },
   progressSub: { fontSize: 12, fontFamily: 'Inter_400Regular' },
+  beforeAfterCard: { padding: 14, borderRadius: 14, borderWidth: 1, gap: 10 },
+  beforeAfterHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  beforeAfterRow: { flexDirection: 'row', gap: 10 },
+  beforeAfterItem: { flex: 1, gap: 4 },
+  beforeAfterImage: { width: '100%', height: 132, borderRadius: 9 },
+  beforeAfterEmpty: { height: 132, borderWidth: 1, borderRadius: 9, alignItems: 'center', justifyContent: 'center', gap: 6 },
+  beforeAfterLabel: { fontSize: 11, fontFamily: 'Inter_700Bold', letterSpacing: 0.5 },
   budgetBreakdown: { gap: 3 },
   tabs: { flexDirection: 'row', paddingHorizontal: 16, marginBottom: 8 },
   tab: { flex: 1, alignItems: 'center', paddingVertical: 10 },

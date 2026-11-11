@@ -24,7 +24,11 @@ export function useJournalDraft(projects: Project[], loading: boolean, projectId
     journalWrites.catch(() => {}).then(() => AsyncStorage.getItem(key)).then(raw => {
       const stored: unknown = raw ? JSON.parse(raw) : null;
       if (stored && !validateJournalChoices(stored)) throw new Error('Format du carnet enregistré non reconnu.');
-      if (active) setChoices(stored ? { ...stored as JournalChoices, taskOrderByDate: (stored as JournalChoices).taskOrderByDate ?? {} }
+      if (active) setChoices(stored ? {
+        ...stored as JournalChoices,
+        taskOrderByDate: (stored as JournalChoices).taskOrderByDate ?? {},
+        beforeAfterByProjectId: (stored as JournalChoices).beforeAfterByProjectId ?? {},
+      }
         : initialJournalChoices(latest.current, projectId));
     }).catch(() => {
       if (active) setError('Impossible de relire les choix du carnet. Rien n’a été remplacé. Réessaie sans effacer les données.');

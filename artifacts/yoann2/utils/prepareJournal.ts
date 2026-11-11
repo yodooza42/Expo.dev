@@ -6,30 +6,55 @@ export async function prepareJournal(
   request: JournalGenerationRequest, jobId: string, isCurrent: () => boolean,
   onProgress: (completed: number, total: number) => void,
 ): Promise<JournalVideoPayload> {
-  const entries: JournalVideoPayload['entries'] = [];
+  const photoSources = request.entries.flatMap(entry => entry.photos.map((photo, index) => ({
+    uri: photo.uri, title: entry.title, index,
+  })));
+  if (request.finalComparison) {
+    photoSources.push(
+      { uri: request.finalComparison.before.uri, title: `${request.finalComparison.projectName} · Avant`, index: 0 },
+      { uri: request.finalComparison.after.uri, title: `${request.finalComparison.projectName} · Après`, index: 0 },
+    );
+  }
+  const uniqueSources = [...new Map(photoSources.map(source => [source.uri, source])).values()];
+  const images = new Map<string, string>();
   let completed = 0, bytes = 0;
-  const total = request.entries.reduce((n, entry) => n + entry.photos.length, 0);
+  const total = uniqueSources.length;
   if (total > JOURNAL_LIMITS.photos || request.entries.length > JOURNAL_LIMITS.entries)
     throw new Error('La sélection dépasse la capacité du carnet. Réduis la période ou décoche des photos.');
-  for (const entry of request.entries) {
-    const photos: JournalVideoPayload['entries'][number]['photos'] = [];
-    for (const [index, photo] of entry.photos.entries()) {
-      if (!isCurrent()) throw new Error('Préparation annulée.');
-      let img: string;
-      try { img = await prepareStoryPhoto(photo.uri, isCurrent); }
-      catch (error) {
-        throw new Error(`${entry.title} · photo ${index + 1} : ${error instanceof Error ? error.message : 'Photo illisible.'}`);
-      }
+  for (const source of uniqueSources) {
+    if (!isCurrent()) throw new Error('Préparation annulée.');
+    try {
+      const img = await prepareStoryPhoto(source.uri, isCurrent);
       if (!isCurrent()) throw new Error('Préparation annulée.');
       bytes += img.length;
       if (bytes > JOURNAL_LIMITS.encodedBytes)
         throw new Error('Les photos sont trop volumineuses pour un seul carnet. Décoche quelques photos ou réduis la période.');
-      photos.push({ id: photo.id, img, caption: photo.caption });
-      onProgress(++completed, total);
-      await new Promise(resolve => setTimeout(resolve, 0));
+      images.set(source.uri, img);
+    } catch (error) {
+      if (error instanceof Error && error.message === 'Préparation annulée.') throw error;
+      throw new Error(`${source.title} · photo ${source.index + 1} : ${error instanceof Error ? error.message : 'Photo illisible.'}`);
     }
-    entries.push({ ...entry, photos });
+    onProgress(++completed, total);
+    await new Promise(resolve => setTimeout(resolve, 0));
   }
   if (!isCurrent()) throw new Error('Préparation annulée.');
-  return { ...request, entries, jobId };
+  const entries: JournalVideoPayload['entries'] = request.entries.map(entry => ({
+    ...entry,
+    photos: entry.photos.map(photo => ({ id: photo.id, img: images.get(photo.uri)!, caption: photo.caption })),
+  }));
+  const finalComparisonImages = request.finalComparison ? {
+    projectName: request.finalComparison.projectName,
+    before: {
+      id: request.finalComparison.before.id,
+      img: images.get(request.finalComparison.before.uri)!,
+      dateLabel: request.finalComparison.before.dateLabel,
+    },
+    after: {
+      id: request.finalComparison.after.id,
+      img: images.get(request.finalComparison.after.uri)!,
+      dateLabel: request.finalComparison.after.dateLabel,
+    },
+  } : undefined;
+  const { finalComparison: _comparison, ...payload } = request;
+  return { ...payload, ...(finalComparisonImages ? { finalComparisonImages } : {}), entries, jobId };
 }

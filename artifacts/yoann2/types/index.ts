@@ -16,6 +16,10 @@ export interface Project {
   priority: Priority;
   status: ProjectStatus;
   completedAt?: string;
+  journalBeforeAfter?: {
+    before?: { photoId: string; uri: string; dateLabel: string; sourceTitle: string };
+    after?: { photoId: string; uri: string; dateLabel: string; sourceTitle: string };
+  };
   archived?: boolean;
   createdAt: string;
   updatedAt: string;

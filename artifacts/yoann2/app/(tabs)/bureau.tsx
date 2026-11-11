@@ -3,7 +3,8 @@ import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import React, { useCallback, useMemo, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Dimensions,
   FlatList,
@@ -22,6 +23,7 @@ import { useApp } from '@/contexts/AppContext';
 import { useSplash } from '@/contexts/SplashContext';
 import { useColors } from '@/hooks/useColors';
 import type { Appointment, Project, SubTask, Task } from '@/types';
+import { getCompletionPrompts, getUndismissedCompletionPrompts } from '@/utils/completionPrompts';
 import { parseCompletionDate } from '@/utils/completionDate';
 import { pH } from '@/styles/header';
 
@@ -87,6 +89,7 @@ const PRIORITY_COLORS: Record<string, string> = {
 const PRIORITY_LABELS: Record<string, string> = {
   critical: 'Critique', high: 'Haute', medium: 'Moy.', low: 'Basse',
 };
+const COMPLETION_PROMPT_DISMISSED_KEY = '@yoann2_completion_prompt_dismissed_v1';
 
 type DayGroup  = {
   dateKey: string;
@@ -104,15 +107,39 @@ export default function DashboardScreen() {
   const colors   = useColors();
   const insets   = useSafeAreaInsets();
   const router   = useRouter();
-  const { projects, tasks, appointments, getStats, updateTask } = useApp();
+  const { projects, tasks, appointments, getStats, updateTask, updateProject } = useApp();
   useSplash();
 
+  const [dismissedCompletionPrompts, setDismissedCompletionPrompts] = useState<Record<string, string>>({});
+  const [completionPromptDismissalsLoaded, setCompletionPromptDismissalsLoaded] = useState(false);
   const [showPhotos,    setShowPhotos]    = useState(false);
   const [showAppts,     setShowAppts]     = useState(false);
   const [showHistory,   setShowHistory]   = useState(false);
   const [selectedTask,  setSelectedTask]  = useState<Task | null>(null);
   const [photoViewer,   setPhotoViewer]   = useState<string[]>([]);
   const [photoIndex,    setPhotoIndex]     = useState(0);
+
+  useEffect(() => {
+    let mounted = true;
+    AsyncStorage.getItem(COMPLETION_PROMPT_DISMISSED_KEY).then(raw => {
+      if (!mounted) return;
+      if (raw) {
+        try {
+          const parsed: unknown = JSON.parse(raw);
+          if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+            setDismissedCompletionPrompts(parsed as Record<string, string>);
+          }
+        } catch {
+          AsyncStorage.removeItem(COMPLETION_PROMPT_DISMISSED_KEY).catch(() => {});
+        }
+      }
+      setCompletionPromptDismissalsLoaded(true);
+    }).catch(error => {
+      console.warn('Impossible de charger les alertes de fin', error);
+      if (mounted) setCompletionPromptDismissalsLoaded(true);
+    });
+    return () => { mounted = false; };
+  }, []);
 
   const stats    = getStats();
   const now      = new Date();
@@ -230,6 +257,29 @@ export default function DashboardScreen() {
   const criticalTasks = useMemo(() =>
     tasks.filter(t => t.priority === 'critical' && t.status !== 'done'),
   [tasks]);
+
+  const currentCompletionPrompt = useMemo(() => {
+    if (!completionPromptDismissalsLoaded) return undefined;
+    return getUndismissedCompletionPrompts(getCompletionPrompts(projects, tasks), dismissedCompletionPrompts)[0];
+  }, [completionPromptDismissalsLoaded, dismissedCompletionPrompts, projects, tasks]);
+
+  const dismissCompletionPrompt = useCallback((promptId: string, signature: string) => {
+    const next = { ...dismissedCompletionPrompts, [promptId]: signature };
+    const entries = Object.entries(next);
+    const bounded = entries.length > 250
+      ? Object.fromEntries(entries.slice(entries.length - 250))
+      : next;
+    setDismissedCompletionPrompts(bounded);
+    AsyncStorage.setItem(COMPLETION_PROMPT_DISMISSED_KEY, JSON.stringify(bounded)).catch(error => {
+      console.warn('Impossible de mémoriser le report de cette alerte', error);
+    });
+  }, [dismissedCompletionPrompts]);
+
+  const markCompletionPromptDone = useCallback((prompt: NonNullable<typeof currentCompletionPrompt>) => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    if (prompt.kind === 'task') updateTask(prompt.entityId, { status: 'done' });
+    else updateProject(prompt.entityId, { status: 'done' });
+  }, [updateProject, updateTask]);
 
   // All done tasks grouped by week (completedAt or dueDate); no-date ones get their own bucket
   const pastWeekGroups = useMemo((): WeekGroup[] => {
@@ -585,6 +635,55 @@ export default function DashboardScreen() {
         contentContainerStyle={[styles.scroll, { paddingBottom: 120 }]}
         showsVerticalScrollIndicator={false}
       >
+        {currentCompletionPrompt && (
+          <View style={[styles.completionPromptCard, { backgroundColor: colors.card, borderColor: colors.primary + '55' }]}
+            accessibilityLiveRegion="polite">
+            <View style={styles.completionPromptHeading}>
+              <View style={[styles.completionPromptIcon, { backgroundColor: colors.primary + '20' }]}>
+                <MaterialCommunityIcons name="check-all" size={20} color={colors.primary} />
+              </View>
+              <View style={{ flex: 1, gap: 3 }}>
+                <Text style={[styles.completionPromptEyebrow, { color: colors.primary }]}>Éléments terminés</Text>
+                <Text style={[styles.completionPromptTitle, { color: colors.foreground }]}>
+                  {currentCompletionPrompt.kind === 'task'
+                    ? currentCompletionPrompt.childCount === 1
+                      ? `La sous-tâche de « ${currentCompletionPrompt.title} » est terminée.`
+                      : `Toutes les sous-tâches de « ${currentCompletionPrompt.title} » sont terminées.`
+                    : currentCompletionPrompt.childCount === 1
+                      ? `La tâche du projet « ${currentCompletionPrompt.title} » est terminée.`
+                      : `Toutes les tâches du projet « ${currentCompletionPrompt.title} » sont terminées.`}
+                </Text>
+                <Text style={[styles.completionPromptQuestion, { color: colors.mutedForeground }]}>
+                  {currentCompletionPrompt.kind === 'task'
+                    ? 'Veux-tu marquer cette tâche comme terminée ?'
+                    : 'Veux-tu marquer ce projet comme terminé ?'}
+                </Text>
+              </View>
+            </View>
+            <View style={styles.completionPromptActions}>
+              <Pressable
+                testID="completion-prompt-confirm"
+                accessibilityRole="button"
+                onPress={() => markCompletionPromptDone(currentCompletionPrompt)}
+                style={[styles.completionPromptConfirm, { backgroundColor: colors.primary }]}
+              >
+                <MaterialCommunityIcons name="check" size={17} color={colors.background} />
+                <Text style={[styles.completionPromptButtonText, { color: colors.background }]}>
+                  {currentCompletionPrompt.kind === 'task' ? 'Terminer la tâche' : 'Terminer le projet'}
+                </Text>
+              </Pressable>
+              <Pressable
+                testID="completion-prompt-dismiss"
+                accessibilityRole="button"
+                onPress={() => dismissCompletionPrompt(currentCompletionPrompt.id, currentCompletionPrompt.signature)}
+                style={[styles.completionPromptLater, { borderColor: colors.border }]}
+              >
+                <Text style={[styles.completionPromptButtonText, { color: colors.mutedForeground }]}>Plus tard</Text>
+              </Pressable>
+            </View>
+          </View>
+        )}
+
         {/* Next appointment banner */}
         {nextAppointment && (
           <Pressable
@@ -991,6 +1090,16 @@ const styles = StyleSheet.create({
   // Appointment banner
   apptBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10, borderRadius: 12, borderWidth: 1, marginBottom: 10 },
   apptTxt:    { flex: 1, fontSize: 12, fontFamily: 'Inter_500Medium' },
+  completionPromptCard: { padding: 14, gap: 12, marginBottom: 12, borderRadius: 14, borderWidth: 1 },
+  completionPromptHeading: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  completionPromptIcon: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  completionPromptEyebrow: { fontSize: 11, fontFamily: 'Inter_700Bold', letterSpacing: 0.5, textTransform: 'uppercase' },
+  completionPromptTitle: { fontSize: 14, lineHeight: 20, fontFamily: 'Inter_600SemiBold' },
+  completionPromptQuestion: { fontSize: 12, lineHeight: 17, fontFamily: 'Inter_400Regular' },
+  completionPromptActions: { flexDirection: 'row', gap: 8 },
+  completionPromptConfirm: { minHeight: 42, flex: 1, paddingHorizontal: 10, borderRadius: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
+  completionPromptLater: { minHeight: 42, minWidth: 84, paddingHorizontal: 12, borderWidth: 1, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  completionPromptButtonText: { fontSize: 12, fontFamily: 'Inter_600SemiBold' },
 
   // Section
   section:       { marginBottom: 2 },

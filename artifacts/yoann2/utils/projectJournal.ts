@@ -26,7 +26,7 @@ const journalPhotoSlideDuration = (count: number, secondsPerPhoto: number, delay
   delay + Math.max(0, count - 1) * JOURNAL_PHOTO_APPEAR_INTERVAL + secondsPerPhoto;
 const journalTitleDuration = (entry: JournalEntry) => Math.max(entry.photos.length ? 3 : 4,
   Math.min(16, 2 + Math.ceil((entry.title.length + entry.caption.length) / 24)));
-export function journalDuration(entries: JournalEntry[], secondsPerPhoto: number): number {
+export function journalDuration(entries: JournalEntry[], secondsPerPhoto: number, hasFinalComparison = false): number {
   return 8 + entries.reduce((sum, entry) => {
     const pages = Math.ceil(entry.photos.length / JOURNAL_PHOTOS_PER_SLIDE);
     if (entry.recapTasks?.length) return sum + Math.ceil(entry.recapTasks.length / 6) * journalRecapDuration(entry)
@@ -39,7 +39,7 @@ export function journalDuration(entries: JournalEntry[], secondsPerPhoto: number
       + Array.from({ length: Math.max(0, pages - 1) }, (_, page) => journalPhotoSlideDuration(
         Math.min(JOURNAL_PHOTOS_PER_SLIDE, entry.photos.length - (page + 1) * JOURNAL_PHOTOS_PER_SLIDE), secondsPerPhoto,
       )).reduce((total, duration) => total + duration, 0);
-  }, 0);
+  }, 0) + (hasFinalComparison ? 10 : 0);
 }
 export function initialJournalChoices(projects: Project[], projectId?: string): JournalChoices {
   const now = new Date();
@@ -47,6 +47,7 @@ export function initialJournalChoices(projects: Project[], projectId?: string): 
     title: 'Carnet de bord', from: journalDateKey(new Date(now.getFullYear(), 0, 1)), to: journalDateKey(now),
     projectIds: projectId ? [projectId] : projects.filter(p => !p.archived).map(p => p.id),
     excludedEntryIds: [], excludedPhotoIds: [], captions: {}, photoCaptions: {}, pace: 'normal', taskOrderByDate: {},
+    beforeAfterByProjectId: {},
   };
 }
 /** Discard malformed saved choices, never silently substitute an invalid range. */
@@ -63,7 +64,13 @@ export function validateJournalChoices(value: unknown): value is JournalChoices 
     && (v.taskOrderByDate === undefined || (!!v.taskOrderByDate && typeof v.taskOrderByDate === 'object'
       && !Array.isArray(v.taskOrderByDate) && Object.entries(v.taskOrderByDate).every(([day, ids]) =>
         !!parseJournalDate(day) && Array.isArray(ids) && ids.every(id => typeof id === 'string' && id.startsWith('task:'))
-        && new Set(ids).size === ids.length)));
+        && new Set(ids).size === ids.length)))
+    && (v.beforeAfterByProjectId === undefined || (!!v.beforeAfterByProjectId
+      && typeof v.beforeAfterByProjectId === 'object' && !Array.isArray(v.beforeAfterByProjectId)
+      && Object.values(v.beforeAfterByProjectId).every(selection => !!selection && typeof selection === 'object'
+        && !Array.isArray(selection)
+        && ['beforePhotoId', 'afterPhotoId'].every(key => selection[key as keyof typeof selection] === undefined
+          || typeof selection[key as keyof typeof selection] === 'string'))));
 }
 /** Only swap tasks from the same day; keep choices for currently hidden projects/days. */
 export function moveJournalTask(choices: JournalChoices, candidates: JournalEntry[], id: string, direction: -1 | 1): JournalChoices {
@@ -109,7 +116,7 @@ export function buildProjectJournal(projects: Project[], tasks: Task[], choices:
     const id = options?.entryId ?? `${kind}:${item.id}`;
     const defaultCaption = ('notes' in item ? item.notes?.trim() : '') || item.description || '';
     candidates.push({
-      id, sourceId: options?.sourceId ?? item.id, kind, title, project: project.name, dateKey,
+      id, sourceId: options?.sourceId ?? item.id, kind, title, project: project.name, projectId: project.id, dateKey,
       dateLabel: date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }),
       caption: choices.captions[id] ?? defaultCaption.slice(0, 280),
       ...(options?.parentTaskTitle ? { parentTaskTitle: options.parentTaskTitle } : {}),
@@ -206,12 +213,43 @@ export function buildProjectJournal(projects: Project[], tasks: Task[], choices:
   const entries = attachJournalRecaps(candidates.filter(e => !choices.excludedEntryIds.includes(e.id))).map(e => ({
     ...e, photos: e.photos.filter(photo => !choices.excludedPhotoIds.includes(photo.id)),
   }));
-  const photoCount = entries.reduce((sum, entry) => sum + entry.photos.length, 0);
+  let finalComparison: JournalGenerationRequest['finalComparison'];
+  if (selectedProjects.length === 1) {
+    const project = selectedProjects[0]!;
+    const stored = choices.beforeAfterByProjectId?.[project.id];
+    const projectCandidates = candidates.filter(entry => entry.projectId === project.id);
+    const findCandidate = (photoId: string | undefined) => photoId
+      ? projectCandidates.flatMap(entry => entry.photos.map(photo => ({ photo, dateLabel: entry.dateLabel })))
+        .find(item => item.photo.id === photoId)
+      : undefined;
+    const beforeCandidate = findCandidate(stored?.beforePhotoId);
+    const afterCandidate = findCandidate(stored?.afterPhotoId);
+    const savedBefore = project.journalBeforeAfter?.before;
+    const savedAfter = project.journalBeforeAfter?.after;
+    const before = beforeCandidate
+      ? { id: beforeCandidate.photo.id, uri: beforeCandidate.photo.uri, dateLabel: beforeCandidate.dateLabel }
+      : savedBefore && (!stored?.beforePhotoId || stored.beforePhotoId === savedBefore.photoId)
+        ? { id: savedBefore.photoId, uri: savedBefore.uri, dateLabel: savedBefore.dateLabel }
+        : undefined;
+    const after = afterCandidate
+      ? { id: afterCandidate.photo.id, uri: afterCandidate.photo.uri, dateLabel: afterCandidate.dateLabel }
+      : savedAfter && (!stored?.afterPhotoId || stored.afterPhotoId === savedAfter.photoId)
+        ? { id: savedAfter.photoId, uri: savedAfter.uri, dateLabel: savedAfter.dateLabel }
+        : undefined;
+    if (before && after && before.uri !== after.uri) {
+      finalComparison = { projectName: project.name, before, after };
+    }
+  }
+  const selectedEntryPhotoCount = entries.reduce((sum, entry) => sum + entry.photos.length, 0);
+  const entryPhotoUris = new Set(entries.flatMap(entry => entry.photos.map(photo => photo.uri)));
+  const comparisonUris = finalComparison ? [finalComparison.before.uri, finalComparison.after.uri] : [];
+  const additionalComparisonPhotos = new Set(comparisonUris.filter(uri => !entryPhotoUris.has(uri))).size;
+  const photoCount = selectedEntryPhotoCount + additionalComparisonPhotos;
   const availablePhotos = candidates.reduce((sum, entry) => sum + entry.photos.length, 0);
   const undatedPhotos = undated.reduce((sum, item) => sum + item.photoCount, 0);
-  const excludedPhotos = availablePhotos - photoCount;
+  const excludedPhotos = availablePhotos - selectedEntryPhotoCount;
   const secondsPerPhoto = journalPace(choices.pace);
-  const duration = journalDuration(entries, secondsPerPhoto);
+  const duration = journalDuration(entries, secondsPerPhoto, !!finalComparison);
   let error = '';
   if (!parseJournalDate(choices.from) || !parseJournalDate(choices.to) || choices.from > choices.to)
     error = 'Choisis une période valide : la fin doit suivre le début.';
@@ -224,7 +262,7 @@ export function buildProjectJournal(projects: Project[], tasks: Task[], choices:
     journal: true, title: choices.title.trim(),
     periodLabel: `${parseJournalDate(choices.from)?.toLocaleDateString('fr-FR') ?? choices.from} — ${parseJournalDate(choices.to)?.toLocaleDateString('fr-FR') ?? choices.to}`,
     projectNames: selectedProjects.map(p => p.name), entryCount: entries.length,
-    photoCount, secondsPerPhoto, entries,
+    photoCount, secondsPerPhoto, entries, ...(finalComparison ? { finalComparison } : {}),
   };
   return { candidates, entries, undated, photoCount, availablePhotos, excludedPhotos, undatedPhotos, duration, error, request };
 }

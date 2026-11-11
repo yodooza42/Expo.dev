@@ -12,6 +12,13 @@ const compile = source => ts.transpileModule(source, {
 const dateExports = {};
 vm.runInNewContext(compile(read('utils/completionDate.ts')), { exports: dateExports, Date });
 const { formatCompletionDate, parseCompletionDate, completionDateError, resolveCompletionDate } = dateExports;
+const cascadeExports = {};
+vm.runInNewContext(compile(read('utils/completionCascade.ts')), {
+  exports: cascadeExports,
+  require: name => name === '@/utils/completionDate' ? dateExports : {},
+  Date,
+});
+const { latestCompletedProjectTaskDate, latestCompletedSubTaskDate } = cascadeExports;
 const now = new Date(2026, 10, 6, 23, 30);
 const copy = value => JSON.parse(JSON.stringify(value));
 
@@ -39,22 +46,23 @@ test('automatic completion, backdating, ordinary edits and reopening are distinc
   assert.equal(resolveCompletionDate(done, { completedAt: '31/02/2026' }, now), done.completedAt);
 });
 
-function contextHarness() {
+function contextHarness(initialProjects = [], initialTasks = []) {
   const source = read('contexts/AppContext.tsx');
   const ast = ts.createSourceFile('AppContext.tsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const nodes = [];
   (function visit(node) { nodes.push(node); ts.forEachChild(node, visit); })(ast);
-  const state = { projects: [], tasks: [], writes: new Map() };
+  const state = { projects: initialProjects, tasks: initialTasks, writes: new Map() };
   const sandbox = {
-    resolveCompletionDate, Date,
+    resolveCompletionDate, latestCompletedProjectTaskDate, latestCompletedSubTaskDate, Date,
     useCallback: fn => fn, genId: () => `id-${Math.random()}`,
     computeEisenhower: () => 'schedule', markDirty() {},
     STORAGE_KEYS: { PROJECTS: 'projects', TASKS: 'tasks' },
     AsyncStorage: { setItem: (key, value) => { state.writes.set(key, JSON.parse(value)); } },
     ensureTaskFolder: async () => {},
-    projects: [],
-    setProjects: fn => { state.projects = fn(state.projects); },
-    setTasks: fn => { state.tasks = fn(state.tasks); },
+    projects: state.projects,
+    tasks: state.tasks,
+    setProjects: next => { state.projects = typeof next === 'function' ? next(state.projects) : next; sandbox.projects = state.projects; },
+    setTasks: next => { state.tasks = typeof next === 'function' ? next(state.tasks) : next; sandbox.tasks = state.tasks; },
   };
   const functions = {};
   for (const name of ['addProject', 'updateProject', 'addTask', 'updateTask']) {
@@ -78,12 +86,18 @@ test('actual context writes preserve corrected project/task dates and recurrence
   app.updateProject(id, { status: 'done' });
   assert.equal(app.state.projects[0].completedAt, formatCompletionDate());
 
-  app.addTask({ title: 'Recurring', status: 'todo', dueDate: '2026-07-01T00:00:00.000Z', recurrence: 'weekly' });
+  app.addTask({
+    title: 'Recurring', status: 'todo', dueDate: '2026-07-01T00:00:00.000Z', recurrence: 'weekly',
+    subTasks: [{ id: 's1', title: 'Étape', done: true, completedAt: '05/04/2026', photoUris: ['file://ancienne'] }],
+  });
   const taskId = app.state.tasks[0].id;
   app.updateTask(taskId, { status: 'done' });
   assert.equal(app.state.tasks.length, 2);
   assert.equal(app.state.tasks[1].status, 'todo');
   assert.equal(app.state.tasks[1].completedAt, undefined);
+  assert.equal(app.state.tasks[1].subTasks[0].done, false);
+  assert.equal(app.state.tasks[1].subTasks[0].completedAt, undefined);
+  assert.equal(app.state.tasks[1].subTasks[0].photoUris, undefined);
   const nextDeadline = app.state.tasks[1].dueDate;
   app.updateTask(taskId, { status: 'done', completedAt: '05/04/2026' });
   app.updateTask(taskId, { notes: 'Corrected later' });
@@ -93,6 +107,48 @@ test('actual context writes preserve corrected project/task dates and recurrence
   assert.equal(app.state.tasks[0].dueDate, '2026-07-01T00:00:00.000Z');
   app.addTask({ title: 'Already done', status: 'done', dueDate: '2026-07-01' });
   assert.equal(app.state.tasks[2].completedAt, formatCompletionDate());
+});
+
+test('latest completed child dates become the task and project completion dates', () => {
+  const project = { id: 'p', status: 'done', completedAt: '10/11/2026' };
+  const subtasks = [
+    { id: 's1', title: 'Retirer tapisserie', done: true, completedAt: '17/09/2025' },
+    { id: 's2', title: 'Poncer', done: true, completedAt: '28/10/2026' },
+    { id: 's3', title: 'Sous-couche', done: true, completedAt: '28/10/2026' },
+    { id: 's4', title: 'Peinture', done: true, completedAt: '31/10/2026' },
+    { id: 's5', title: 'Retirer penderie', done: true, completedAt: '13/09/2025' },
+  ];
+  const firstTask = { id: 't1', projectId: 'p', status: 'done', completedAt: '10/11/2026', subTasks: subtasks };
+  const secondTask = { id: 't2', projectId: 'p', status: 'done', completedAt: '05/11/2026', subTasks: [] };
+  const app = contextHarness([project], [firstTask, secondTask]);
+
+  app.updateTask('t1', { subTasks: subtasks });
+  assert.equal(app.state.tasks[0].completedAt, '31/10/2026');
+  assert.equal(app.state.projects[0].completedAt, '05/11/2026');
+
+  app.updateTask('t2', { completedAt: '30/10/2026' });
+  assert.equal(app.state.projects[0].completedAt, '31/10/2026');
+  assert.equal(app.state.writes.get('projects')[0].completedAt, '31/10/2026');
+});
+
+test('marking a project complete uses the latest dated task, but incomplete child dates are not guessed', () => {
+  const project = { id: 'p', status: 'todo', completedAt: undefined };
+  const tasks = [
+    { id: 't1', projectId: 'p', status: 'done', completedAt: '05/04/2026' },
+    { id: 't2', projectId: 'p', status: 'done', completedAt: '06/04/2026' },
+  ];
+  const app = contextHarness([project], tasks);
+  app.updateProject('p', { status: 'done' });
+  assert.equal(app.state.projects[0].completedAt, '06/04/2026');
+
+  assert.equal(latestCompletedSubTaskDate([
+    { id: 'dated', title: 'Datée', done: true, completedAt: '06/04/2026' },
+    { id: 'undated', title: 'Sans date', done: true },
+  ]), undefined);
+  assert.equal(latestCompletedProjectTaskDate(project, [
+    ...tasks,
+    { id: 't3', projectId: 'p', status: 'done' },
+  ]), undefined);
 });
 
 function formHarness(kind, existing) {
