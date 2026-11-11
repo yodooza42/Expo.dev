@@ -47,3 +47,18 @@ test('Anna nanny day loading ignores malformed and impossible calendar dates', a
   assert.deepEqual(plain(await moduleExports.loadAnnaPlanning()), { '2026-02-28': true });
   await assert.rejects(moduleExports.toggleAnnaDay('2026-02-30', true), /Date de planning invalide/);
 });
+
+test('Anna attendance checks today and tomorrow across month and year boundaries', () => {
+  const referenceDate = new Date(2026, 11, 31, 23, 45);
+  const result = moduleExports.getAnnaNannyAttendance({
+    '2026-12-31': true,
+    '2027-01-01': true,
+    '2027-01-02': true,
+  }, referenceDate);
+  assert.deepEqual(plain(result), { today: true, tomorrow: true });
+});
+
+test('Anna attendance reports no nanny day when neither date is selected', () => {
+  const result = moduleExports.getAnnaNannyAttendance({}, new Date(2026, 10, 12, 9));
+  assert.deepEqual(plain(result), { today: false, tomorrow: false });
+});

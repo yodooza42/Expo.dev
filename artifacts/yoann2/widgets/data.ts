@@ -1,5 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import { getAnnaNannyAttendance } from '@/utils/annaStorage';
+
 import { DEFAULT_WIDGET_SETTINGS, formatScheduleLabel, type WidgetSettings } from './widgetSettings';
 
 const TASKS_KEY    = '@yoann2_tasks';
@@ -53,10 +55,9 @@ export interface WidgetData {
   // Marie + nanny
   todayDayNum: number;
   marieCircleColor: string;
-  nounouName: string;
-  nounouColor: string;
-  nounouPeriod: string;
-  nounouDuration: string;
+  annaNannyToday: boolean;
+  annaNannyTomorrow: boolean;
+  annaNannyColor: string;
 }
 
 interface RawTask {
@@ -224,14 +225,7 @@ export function buildWidgetData(
   const marieCircleColor = marieShift === 'PB' ? '#2196F3' : marieShift === 'PD' ? '#FF9800' : '#3A3A3A';
 
   // ── Fixed nanny days selected in Anna's monthly calendar ─────────────────
-  let nounouName     = '';
-  let nounouColor    = '';
-  let nounouPeriod   = '';
-  let nounouDuration = '';
-  if (annaPlanning[todayKey]) {
-    nounouName = 'Nounou';
-    nounouColor = '#EC4899';
-  }
+  const annaNannyAttendance = getAnnaNannyAttendance(annaPlanning, today);
 
   return {
     tasks: taskItems,
@@ -245,10 +239,9 @@ export function buildWidgetData(
     todayLabel,
     todayDayNum: today.getDate(),
     marieCircleColor,
-    nounouName,
-    nounouColor,
-    nounouPeriod,
-    nounouDuration,
+    annaNannyToday: annaNannyAttendance.today,
+    annaNannyTomorrow: annaNannyAttendance.tomorrow,
+    annaNannyColor: '#EC4899',
   };
 }
 

@@ -5,6 +5,30 @@ const ANNA_PLANNING_KEY = '@anna_nanny_days_v1';
 /** Selected calendar days when Anna is at the nanny's. */
 export type AnnaPlanning = Record<string, true>;
 
+function toDateKey(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+export function getAnnaPlanningDateKeys(referenceDate: Date = new Date()): {
+  today: string;
+  tomorrow: string;
+} {
+  const today = new Date(referenceDate.getFullYear(), referenceDate.getMonth(), referenceDate.getDate());
+  const tomorrow = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+  return { today: toDateKey(today), tomorrow: toDateKey(tomorrow) };
+}
+
+export function getAnnaNannyAttendance(
+  planning: AnnaPlanning,
+  referenceDate: Date = new Date(),
+): { today: boolean; tomorrow: boolean } {
+  const keys = getAnnaPlanningDateKeys(referenceDate);
+  return {
+    today: planning[keys.today] === true,
+    tomorrow: planning[keys.tomorrow] === true,
+  };
+}
+
 function validDateKey(value: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const [year, month, day] = value.split('-').map(Number);

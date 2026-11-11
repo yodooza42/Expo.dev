@@ -185,19 +185,32 @@ export default function AccueilScreen() {
               {wData.todayWork}
             </Text>
           </View>
-          {wData.nounouName ? (
-            <View style={[styles.between, styles.nounouRow, { borderTopColor: colors.border }]}>
+          {(
+            <View style={[styles.nounouSection, { borderTopColor: colors.border }]}>
               <View style={styles.rowCenter}>
-                <MaterialCommunityIcons name="account-heart-outline" size={15} color={wData.nounouColor as any} />
+                <MaterialCommunityIcons name="account-heart-outline" size={15} color={wData.annaNannyColor as any} />
                 <Text style={[styles.cardLabel, { color: colors.mutedForeground, marginLeft: 6 }]}>
-                  {wData.nounouName}
+                  Nounou
                 </Text>
               </View>
-              <Text style={[styles.cardSub, { color: wData.nounouColor as any }]}>
-                {wData.nounouPeriod} · {wData.nounouDuration}
-              </Text>
+              {[
+                { label: "Aujourd'hui", scheduled: wData.annaNannyToday },
+                { label: 'Demain', scheduled: wData.annaNannyTomorrow },
+              ].map(day => (
+                <View key={day.label} style={styles.nannyDayRow}>
+                  <Text style={[styles.cardSub, { color: colors.mutedForeground }]}>
+                    {day.label}
+                  </Text>
+                  <Text style={[styles.cardSub, {
+                    color: day.scheduled ? wData.annaNannyColor as any : colors.mutedForeground,
+                    fontFamily: 'Inter_600SemiBold',
+                  }]}>
+                    {day.scheduled ? 'Oui · 07h45–16h30' : 'Non'}
+                  </Text>
+                </View>
+              ))}
             </View>
-          ) : null}
+          )}
         </View>
       )}
 
@@ -340,7 +353,8 @@ const styles = StyleSheet.create({
   cardValue: { fontSize: 22, fontFamily: 'Inter_700Bold', marginTop: 4 },
   cardSub:   { fontSize: 11, fontFamily: 'Inter_400Regular', marginTop: 2 },
   workLabel: { fontSize: 15, fontFamily: 'Inter_600SemiBold' },
-  nounouRow: { marginTop: 8, paddingTop: 8, borderTopWidth: 1 },
+  nounouSection: { marginTop: 8, paddingTop: 8, borderTopWidth: 1 },
+  nannyDayRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 7 },
   apptTitle: { fontSize: 15, fontFamily: 'Inter_600SemiBold', marginTop: 6 },
   apptWhen:  { fontSize: 12, fontFamily: 'Inter_400Regular', marginTop: 2 },
   taskRow:   { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 9 },
