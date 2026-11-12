@@ -480,6 +480,14 @@ export default function TaskDetailScreen() {
     ]);
   }
 
+  function openSubTaskActions(id: string, title: string) {
+    Alert.alert(title, 'Que veux-tu faire ?', [
+      { text: 'Annuler', style: 'cancel' },
+      { text: 'Supprimer', style: 'destructive', onPress: () => handleDeleteSubTask(id) },
+      { text: 'Modifier', onPress: () => startEditingSubTask(id, title) },
+    ]);
+  }
+
   function parseFrDate(s: string): string {
     const parts = s.split('/');
     if (parts.length === 3) {
@@ -769,14 +777,23 @@ export default function TaskDetailScreen() {
                         testID={`subtask-${st.id}`}
                         accessibilityLabel={subTaskId === st.id ? `Sous-tâche sélectionnée dans la chronologie : ${st.title}` : st.title}
                         onPress={() => toggleSubTask(st.id)}
-                        onLongPress={() => handleDeleteSubTask(st.id)}
-                        style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 }}
+                        accessibilityRole="checkbox"
+                        accessibilityState={{ checked: st.done }}
+                        style={{ alignItems: 'center', justifyContent: 'center' }}
                       >
                         <MaterialCommunityIcons
                           name={st.done ? 'checkbox-marked-circle' : 'checkbox-blank-circle-outline'}
                           size={22}
                           color={st.done ? colors.primary : colors.mutedForeground}
                         />
+                      </Pressable>
+                      <Pressable
+                        testID={`subtask-title-${st.id}`}
+                        accessibilityLabel={`Options de la sous-tâche ${st.title}`}
+                        onPress={() => openSubTaskActions(st.id, st.title)}
+                        onLongPress={() => handleDeleteSubTask(st.id)}
+                        style={{ flex: 1 }}
+                      >
                         <Text
                           style={[
                             styles.subTaskLabel,
@@ -786,15 +803,6 @@ export default function TaskDetailScreen() {
                         >
                           {st.title}
                         </Text>
-                      </Pressable>
-                      <Pressable
-                        testID={`edit-subtask-button-${st.id}`}
-                        accessibilityLabel={`Modifier le nom de la sous-tâche ${st.title}`}
-                        hitSlop={8}
-                        onPress={() => startEditingSubTask(st.id, st.title)}
-                        style={{ padding: 2 }}
-                      >
-                        <MaterialCommunityIcons name="pencil-outline" size={18} color={colors.primary} />
                       </Pressable>
                     </>
                   )}
