@@ -120,6 +120,8 @@ export default function TaskDetailScreen() {
   const [galleryPickerVisible, setGalleryPickerVisible] = useState(false);
   const [projectPhotosPickerVisible, setProjectPhotosPickerVisible] = useState(false);
   const [subTaskPhotoModal, setSubTaskPhotoModal] = useState<'prompt' | 'assign' | null>(null);
+  const [editingSubTaskId, setEditingSubTaskId] = useState<string | null>(null);
+  const [editingSubTaskTitle, setEditingSubTaskTitle] = useState('');
   const [photoAssignments, setPhotoAssignments] = useState<Record<string, string>>({});
   const [selectedAssignmentPhoto, setSelectedAssignmentPhoto] = useState<string | null>(null);
   const [scanningPhotoDates, setScanningPhotoDates] = useState(false);
@@ -417,6 +419,28 @@ export default function TaskDetailScreen() {
     Haptics.selectionAsync();
   }
 
+  function startEditingSubTask(id: string, title: string) {
+    setEditingSubTaskId(id);
+    setEditingSubTaskTitle(title);
+  }
+
+  function cancelEditingSubTask() {
+    setEditingSubTaskId(null);
+    setEditingSubTaskTitle('');
+  }
+
+  function saveSubTaskTitle(id: string) {
+    const title = editingSubTaskTitle.trim();
+    if (!title) {
+      Alert.alert('Nom requis', 'Le nom de la sous-tâche ne peut pas être vide.');
+      return;
+    }
+    const subTasks = (task.subTasks ?? []).map(st => st.id === id ? { ...st, title } : st);
+    updateTask(task.id, { subTasks });
+    cancelEditingSubTask();
+    Haptics.selectionAsync();
+  }
+
   function toggleSubTask(id: string) {
     Haptics.selectionAsync();
     const next = (task.subTasks ?? []).map(st => {
@@ -504,7 +528,7 @@ export default function TaskDetailScreen() {
         }
       />
 
-      <ScrollView contentContainerStyle={{ paddingBottom: 80 }} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={{ paddingBottom: 80 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         <View style={styles.body}>
           <View style={styles.titleRow}>
             <Pressable onPress={toggleDone} hitSlop={8}>
@@ -696,11 +720,7 @@ export default function TaskDetailScreen() {
 
             {(task.subTasks ?? []).map(st => (
               <View key={st.id} style={{ marginBottom: 8 }}>
-                <Pressable
-                  testID={`subtask-${st.id}`}
-                  accessibilityLabel={subTaskId === st.id ? `Sous-tâche sélectionnée dans la chronologie : ${st.title}` : st.title}
-                  onPress={() => toggleSubTask(st.id)}
-                  onLongPress={() => handleDeleteSubTask(st.id)}
+                <View
                   style={[
                     styles.subTaskRow,
                     {
@@ -710,21 +730,75 @@ export default function TaskDetailScreen() {
                     },
                   ]}
                 >
-                  <MaterialCommunityIcons
-                    name={st.done ? 'checkbox-marked-circle' : 'checkbox-blank-circle-outline'}
-                    size={22}
-                    color={st.done ? colors.primary : colors.mutedForeground}
-                  />
-                  <Text
-                    style={[
-                      styles.subTaskLabel,
-                      { color: st.done ? colors.mutedForeground : colors.foreground },
-                      st.done && { textDecorationLine: 'line-through' },
-                    ]}
-                  >
-                    {st.title}
-                  </Text>
-                </Pressable>
+                  {editingSubTaskId === st.id ? (
+                    <>
+                      <TextInput
+                        testID={`edit-subtask-${st.id}`}
+                        accessibilityLabel={`Modifier le nom de la sous-tâche ${st.title}`}
+                        value={editingSubTaskTitle}
+                        onChangeText={setEditingSubTaskTitle}
+                        onSubmitEditing={() => saveSubTaskTitle(st.id)}
+                        autoFocus
+                        selectTextOnFocus
+                        returnKeyType="done"
+                        maxLength={160}
+                        style={[styles.subTaskLabel, { color: colors.foreground, paddingVertical: 4 }]}
+                      />
+                      <Pressable
+                        testID={`cancel-edit-subtask-${st.id}`}
+                        accessibilityLabel="Annuler la modification du nom"
+                        hitSlop={8}
+                        onPress={cancelEditingSubTask}
+                        style={{ padding: 2 }}
+                      >
+                        <MaterialCommunityIcons name="close" size={20} color={colors.mutedForeground} />
+                      </Pressable>
+                      <Pressable
+                        testID={`save-edit-subtask-${st.id}`}
+                        accessibilityLabel="Enregistrer le nom de la sous-tâche"
+                        hitSlop={8}
+                        onPress={() => saveSubTaskTitle(st.id)}
+                        style={{ padding: 2 }}
+                      >
+                        <MaterialCommunityIcons name="check" size={20} color={colors.primary} />
+                      </Pressable>
+                    </>
+                  ) : (
+                    <>
+                      <Pressable
+                        testID={`subtask-${st.id}`}
+                        accessibilityLabel={subTaskId === st.id ? `Sous-tâche sélectionnée dans la chronologie : ${st.title}` : st.title}
+                        onPress={() => toggleSubTask(st.id)}
+                        onLongPress={() => handleDeleteSubTask(st.id)}
+                        style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 }}
+                      >
+                        <MaterialCommunityIcons
+                          name={st.done ? 'checkbox-marked-circle' : 'checkbox-blank-circle-outline'}
+                          size={22}
+                          color={st.done ? colors.primary : colors.mutedForeground}
+                        />
+                        <Text
+                          style={[
+                            styles.subTaskLabel,
+                            { color: st.done ? colors.mutedForeground : colors.foreground },
+                            st.done && { textDecorationLine: 'line-through' },
+                          ]}
+                        >
+                          {st.title}
+                        </Text>
+                      </Pressable>
+                      <Pressable
+                        testID={`edit-subtask-button-${st.id}`}
+                        accessibilityLabel={`Modifier le nom de la sous-tâche ${st.title}`}
+                        hitSlop={8}
+                        onPress={() => startEditingSubTask(st.id, st.title)}
+                        style={{ padding: 2 }}
+                      >
+                        <MaterialCommunityIcons name="pencil-outline" size={18} color={colors.primary} />
+                      </Pressable>
+                    </>
+                  )}
+                </View>
                 {st.done && <SubTaskCompletionInput
                   key={`${st.id}:${st.completedAt ?? ''}`}
                   value={st.completedAt ?? ''}

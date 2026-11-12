@@ -191,6 +191,7 @@ function formHarness(kind, existing) {
     '@/components/CompletionDateField': { CompletionDateField: 'CompletionDateField' },
     '@/components/KeyboardAwareScrollViewCompat': { KeyboardAwareScrollViewCompat: 'KeyboardScroll' },
     '@/utils/completionDate': dateExports,
+    '@/utils/taskPhotoDates': { sortTaskPhotosChronologically: photos => photos },
     '@/utils/projectPhotoLinks': projectPhotoLinkExports,
   };
   const exports = {};
