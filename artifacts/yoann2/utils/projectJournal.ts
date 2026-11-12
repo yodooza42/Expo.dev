@@ -11,6 +11,61 @@ export function normalizeJournalProjectPhotos(selection?: JournalProjectPhotoSel
   const photos = Array.isArray(selection) ? selection : [selection];
   return [...new Map(photos.map(photo => [photo.uri, photo])).values()].slice(0, 2);
 }
+
+/** All project-owned and task-associated photos are eligible, regardless of task status. */
+export function getProjectBeforeAfterPhotoOptions(project: Project, tasks: Task[]): JournalProjectPhoto[] {
+  const byUri = new Map<string, { photo: JournalProjectPhoto; takenAt?: number; order: number }>();
+  let order = 0;
+  const add = (photo: JournalProjectPhoto, takenAt?: number) => {
+    const current = byUri.get(photo.uri);
+    if (!current) {
+      byUri.set(photo.uri, { photo, takenAt, order: order++ });
+      return;
+    }
+    if (takenAt && (!current.takenAt || takenAt < current.takenAt)) {
+      current.takenAt = takenAt;
+      current.photo = { ...current.photo, dateLabel: new Date(takenAt).toLocaleDateString('fr-FR') };
+    }
+    if (photo.sourceTitle !== 'Projet' && current.photo.sourceTitle === 'Projet') {
+      current.photo = { ...current.photo, sourceTitle: photo.sourceTitle };
+    }
+  };
+
+  for (const saved of [
+    ...normalizeJournalProjectPhotos(project.journalBeforeAfter?.before),
+    ...normalizeJournalProjectPhotos(project.journalBeforeAfter?.after),
+  ]) add(saved);
+
+  for (const uri of project.photos) {
+    add({ photoId: journalPhotoId(`project:${project.id}`, uri), uri, dateLabel: 'Date inconnue', sourceTitle: 'Projet' });
+  }
+
+  for (const task of tasks) {
+    if (task.projectId !== project.id) continue;
+    for (const uri of task.photos) {
+      const rawTakenAt = task.photoTakenAt?.[uri];
+      const takenAt = typeof rawTakenAt === 'number' && Number.isFinite(rawTakenAt) && rawTakenAt > 0
+        ? rawTakenAt : undefined;
+      add({
+        photoId: journalPhotoId(`project:${project.id}`, uri),
+        uri,
+        dateLabel: takenAt !== undefined
+          ? new Date(takenAt).toLocaleDateString('fr-FR')
+          : 'Date inconnue',
+        sourceTitle: task.title,
+      }, takenAt);
+    }
+  }
+
+  return [...byUri.values()]
+    .sort((a, b) => {
+      if (a.takenAt === undefined && b.takenAt === undefined) return a.order - b.order;
+      if (a.takenAt === undefined) return 1;
+      if (b.takenAt === undefined) return -1;
+      return a.takenAt - b.takenAt || a.order - b.order;
+    })
+    .map(item => item.photo);
+}
 export function journalDateKey(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
@@ -245,9 +300,12 @@ export function buildProjectJournal(projects: Project[], tasks: Task[], choices:
       const idsKey = slot === 'before' ? 'beforePhotoIds' : 'afterPhotoIds';
       const legacyKey = slot === 'before' ? 'beforePhotoId' : 'afterPhotoId';
       const savedPhotos = normalizeJournalProjectPhotos(project.journalBeforeAfter?.[slot]);
-      const ids = Array.isArray(stored?.[idsKey])
-        ? stored[idsKey]!.slice(0, 2)
-        : stored?.[legacyKey] ? [stored[legacyKey]!] : savedPhotos.map(photo => photo.photoId);
+      const projectSelection = project.journalBeforeAfter?.[slot];
+      const ids = projectSelection !== undefined
+        ? savedPhotos.map(photo => photo.photoId)
+        : Array.isArray(stored?.[idsKey]) && stored[idsKey]!.length > 0
+          ? stored[idsKey]!.slice(0, 2)
+          : stored?.[legacyKey] ? [stored[legacyKey]!] : savedPhotos.map(photo => photo.photoId);
       return [...new Set(ids)].flatMap(id => {
         const candidate = findCandidate(id);
         if (candidate) return [{ id, uri: candidate.photo.uri, dateLabel: candidate.dateLabel }];

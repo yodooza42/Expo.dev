@@ -29,13 +29,14 @@ import { ProgressBar } from '@/components/ProgressBar';
 import { TaskCard } from '@/components/TaskCard';
 import { useApp } from '@/contexts/AppContext';
 import { useColors } from '@/hooks/useColors';
-import type { ProjectStatus, ProjectTimelineEvent, Task } from '@/types';
+import type { JournalProjectPhoto, ProjectStatus, ProjectTimelineEvent, Task } from '@/types';
 import { parseCompletionDate } from '@/utils/completionDate';
 import { BankTransaction, CategoryConfig, getCategoryConfigs } from '@/utils/bankStorage';
 import { hasExternalPhotos, recoverPhotosFromExternal, savePhotoToProject } from '@/utils/photoStorage';
 import { mergeRecoveredPhotoUris } from '@/utils/photoReferences';
 import { protectPhoto } from '@/utils/photoProtection';
-import { normalizeJournalProjectPhotos } from '@/utils/projectJournal';
+import { getProjectBeforeAfterPhotoOptions, normalizeJournalProjectPhotos } from '@/utils/projectJournal';
+import { scanPhotoDates } from '@/utils/taskPhotoDates';
 
 const { width } = Dimensions.get('window');
 
@@ -44,6 +45,7 @@ const STATUS_LABELS: Record<ProjectStatus, string> = {
   waiting: 'En attente', done: 'Terminé', abandoned: 'Abandonné',
 };
 const STATUS_LIST: ProjectStatus[] = ['idea', 'todo', 'inprogress', 'waiting', 'done', 'abandoned'];
+type BeforeAfterSlot = 'before' | 'after';
 
 const TASK_STATUS_LABELS: Record<string, string> = {
   idea: 'Idée', todo: 'À faire', inprogress: 'En cours', waiting: 'En attente', done: 'Terminé',
@@ -131,6 +133,10 @@ export default function ProjectDetailScreen() {
       ...tasks.flatMap(t => (t.photos ?? []).map(uri => ({ uri, deletable: false, source: t.title }))),
     ];
   }, [projectMaybe, tasks]);
+  const beforeAfterOptions = useMemo(
+    () => projectMaybe ? getProjectBeforeAfterPhotoOptions(projectMaybe, tasks) : [],
+    [projectMaybe, tasks],
+  );
 
   const [tab, setTab] = useState<'tasks' | 'expenses' | 'photos'>('tasks');
   const [expCatConfigs, setExpCatConfigs] = useState<CategoryConfig[]>([]);
@@ -153,6 +159,12 @@ export default function ProjectDetailScreen() {
   const [canRecover, setCanRecover] = useState(false);
   const [recovering, setRecovering] = useState(false);
   const [galleryPickerVisible, setGalleryPickerVisible] = useState(false);
+  const [beforeAfterPickerVisible, setBeforeAfterPickerVisible] = useState(false);
+  const [beforeAfterPickerSlot, setBeforeAfterPickerSlot] = useState<BeforeAfterSlot>('before');
+  const [beforeAfterDraft, setBeforeAfterDraft] = useState<Record<BeforeAfterSlot, JournalProjectPhoto[]>>({
+    before: [], after: [],
+  });
+  const [savingBeforeAfter, setSavingBeforeAfter] = useState(false);
 
   useEffect(() => {
     if (tab !== 'photos' || !projectMaybe) { setCanRecover(false); return; }
@@ -172,6 +184,65 @@ export default function ProjectDetailScreen() {
     );
   }
   const project = projectMaybe;
+
+  function openBeforeAfterPicker(slot: BeforeAfterSlot = 'before') {
+    const before = normalizeJournalProjectPhotos(project.journalBeforeAfter?.before);
+    const after = normalizeJournalProjectPhotos(project.journalBeforeAfter?.after)
+      .filter(photo => !before.some(item => item.uri === photo.uri));
+    setBeforeAfterDraft({ before, after });
+    setBeforeAfterPickerSlot(slot);
+    setBeforeAfterPickerVisible(true);
+  }
+
+  function toggleBeforeAfterPhoto(photo: JournalProjectPhoto) {
+    const slot = beforeAfterPickerSlot;
+    const otherSlot = slot === 'before' ? 'after' : 'before';
+    setBeforeAfterDraft(previous => {
+      const selected = previous[slot];
+      if (selected.some(item => item.uri === photo.uri)) {
+        return { ...previous, [slot]: selected.filter(item => item.uri !== photo.uri) };
+      }
+      if (selected.length >= 2) return previous;
+      return {
+        ...previous,
+        [slot]: [...selected, photo],
+        [otherSlot]: previous[otherSlot].filter(item => item.uri !== photo.uri),
+      };
+    });
+  }
+
+  async function saveBeforeAfterPhotos() {
+    if (savingBeforeAfter) return;
+    setSavingBeforeAfter(true);
+    try {
+      const optionsByUri = new Map(beforeAfterOptions.map(photo => [photo.uri, photo]));
+      const selected = {
+        before: beforeAfterDraft.before.map(photo => optionsByUri.get(photo.uri) ?? photo),
+        after: beforeAfterDraft.after.map(photo => optionsByUri.get(photo.uri) ?? photo),
+      };
+      const missingDateUris = [...new Set([...selected.before, ...selected.after]
+        .filter(photo => photo.dateLabel === 'Date inconnue')
+        .map(photo => photo.uri))];
+      let dates: Record<string, number> = {};
+      if (missingDateUris.length) {
+        try { dates = (await scanPhotoDates(missingDateUris)).dates; } catch { /* Keep an honest unknown date. */ }
+      }
+      const withDates = (photos: JournalProjectPhoto[]) => photos.map(photo => {
+        const timestamp = dates[photo.uri];
+        return timestamp
+          ? { ...photo, dateLabel: new Date(timestamp).toLocaleDateString('fr-FR') }
+          : photo;
+      });
+      const before = withDates(selected.before);
+      const after = withDates(selected.after);
+      updateProject(project.id, {
+        journalBeforeAfter: before.length || after.length ? { before, after } : undefined,
+      });
+      setBeforeAfterPickerVisible(false);
+    } finally {
+      setSavingBeforeAfter(false);
+    }
+  }
 
   const totalTasks = tasks.length;
   const doneTasks = tasks.filter(t => t.status === 'done').length;
@@ -261,10 +332,6 @@ export default function ProjectDetailScreen() {
   function openPhoto(idx: number) {
     setCurrentPhotoIdx(idx);
     setPhotoViewIdx(idx);
-  }
-
-  function openProjectJournal() {
-    router.push({ pathname: '/project-journal', params: { projectId: project.id } });
   }
 
   function removePhoto(allIdx: number) {
@@ -792,7 +859,7 @@ export default function ProjectDetailScreen() {
                 <Text style={[styles.progressSub, { color: colors.mutedForeground }]}>Comparatif photo du projet</Text>
               </View>
               <Pressable testID="edit-project-before-after" accessibilityLabel="Choisir les photos avant et après"
-                onPress={openProjectJournal} hitSlop={8}>
+                onPress={() => openBeforeAfterPicker('before')} hitSlop={8}>
                 <MaterialCommunityIcons name="pencil-outline" size={20} color={colors.primary} />
               </Pressable>
             </View>
@@ -813,9 +880,15 @@ export default function ProjectDetailScreen() {
                     </Pressable>
                     <Text numberOfLines={1} style={[styles.progressSub, { color: colors.mutedForeground }]}>{photo.dateLabel}</Text>
                   </View>) : <Pressable accessibilityRole="button" accessibilityLabel={`Choisir les photos ${label.toLowerCase()}`}
-                    onPress={openProjectJournal} style={[styles.beforeAfterEmpty, { borderColor: colors.border, backgroundColor: colors.background }]}>
+                    onPress={() => openBeforeAfterPicker(slot)} style={[styles.beforeAfterEmpty, { borderColor: colors.border, backgroundColor: colors.background }]}>
                     <MaterialCommunityIcons name="image-plus-outline" size={22} color={colors.mutedForeground} />
                     <Text style={[styles.progressSub, { color: colors.mutedForeground }]}>À choisir</Text>
+                  </Pressable>}
+                  {!!photos.length && <Pressable testID={`edit-project-before-after-${slot}`}
+                    accessibilityRole="button" accessibilityLabel={`Modifier les photos ${label.toLowerCase()}`}
+                    onPress={() => openBeforeAfterPicker(slot)} style={styles.beforeAfterEdit}>
+                    <MaterialCommunityIcons name="image-edit-outline" size={15} color={colors.primary} />
+                    <Text style={[styles.progressSub, { color: colors.primary }]}>Modifier</Text>
                   </Pressable>}
                 </View>;
               })}
@@ -1036,6 +1109,99 @@ export default function ProjectDetailScreen() {
           )}
         </View>
       </ScrollView>
+
+      <Modal
+        visible={beforeAfterPickerVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setBeforeAfterPickerVisible(false)}
+      >
+        <Pressable style={styles.beforeAfterPickerBackdrop} onPress={() => setBeforeAfterPickerVisible(false)}>
+          <Pressable
+            style={[styles.beforeAfterPickerSheet, { backgroundColor: colors.card, paddingBottom: insets.bottom + 14 }]}
+            onStartShouldSetResponder={() => true}
+          >
+            <View style={[styles.beforeAfterPickerHandle, { backgroundColor: colors.border }]} />
+            <View style={styles.beforeAfterPickerHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.progressLabel, { color: colors.foreground }]}>Photos Avant / Après</Text>
+                <Text style={[styles.progressSub, { color: colors.mutedForeground }]}>Projet · {project.name}</Text>
+              </View>
+              <Pressable accessibilityRole="button" accessibilityLabel="Fermer la sélection"
+                onPress={() => setBeforeAfterPickerVisible(false)} hitSlop={8}>
+                <MaterialCommunityIcons name="close" size={22} color={colors.mutedForeground} />
+              </Pressable>
+            </View>
+            <Text style={[styles.progressSub, { color: colors.mutedForeground }]}>
+              Choisis parmi toutes les photos du projet, y compris celles des tâches en cours.
+            </Text>
+            <View style={styles.beforeAfterPickerSlots}>
+              {(['before', 'after'] as const).map(slot => {
+                const active = beforeAfterPickerSlot === slot;
+                const label = slot === 'before' ? 'AVANT' : 'APRÈS';
+                return <Pressable key={slot} testID={`project-before-after-slot-${slot}`}
+                  accessibilityRole="button" accessibilityState={{ selected: active }}
+                  onPress={() => setBeforeAfterPickerSlot(slot)}
+                  style={[styles.beforeAfterPickerSlot, {
+                    borderColor: active ? colors.primary : colors.border,
+                    backgroundColor: active ? colors.primary + '18' : colors.background,
+                  }]}>
+                  <Text style={[styles.beforeAfterLabel, { color: active ? colors.primary : colors.mutedForeground }]}>
+                    {label} · {beforeAfterDraft[slot].length}/2
+                  </Text>
+                </Pressable>;
+              })}
+            </View>
+            <Text style={[styles.progressSub, { color: colors.mutedForeground }]}>
+              Sélectionne jusqu’à deux photos pour chaque côté.
+            </Text>
+            {beforeAfterOptions.length ? (
+              <ScrollView style={styles.beforeAfterPickerScroll} contentContainerStyle={styles.beforeAfterPickerGrid}
+                showsVerticalScrollIndicator={false}>
+                {beforeAfterOptions.map((photo, index) => {
+                  const selected = beforeAfterDraft[beforeAfterPickerSlot].some(item => item.uri === photo.uri);
+                  const atLimit = beforeAfterDraft[beforeAfterPickerSlot].length >= 2;
+                  return <Pressable key={photo.uri} testID={`project-before-after-photo-${beforeAfterPickerSlot}-${index}`}
+                    accessibilityRole="checkbox" accessibilityState={{ checked: selected, disabled: !selected && atLimit }}
+                    accessibilityLabel={`${photo.dateLabel}, ${photo.sourceTitle}`}
+                    disabled={!selected && atLimit} onPress={() => toggleBeforeAfterPhoto(photo)}
+                    style={[styles.beforeAfterPickerPhoto, {
+                      borderColor: selected ? colors.primary : colors.border,
+                      opacity: !selected && atLimit ? 0.55 : 1,
+                    }]}>
+                    <ProjectPhoto uri={photo.uri} style={styles.beforeAfterPickerImage} contentFit="cover" />
+                    {selected && <View style={[styles.beforeAfterPickerCheck, { backgroundColor: colors.primary }]}>
+                      <MaterialCommunityIcons name="check" size={14} color={colors.primaryForeground} />
+                    </View>}
+                    <Text numberOfLines={1} style={[styles.progressSub, { color: colors.foreground }]}>{photo.dateLabel}</Text>
+                    <Text numberOfLines={1} style={[styles.beforeAfterPickerSource, { color: colors.mutedForeground }]}>{photo.sourceTitle}</Text>
+                  </Pressable>;
+                })}
+              </ScrollView>
+            ) : (
+              <View style={styles.beforeAfterPickerEmpty}>
+                <MaterialCommunityIcons name="image-multiple-outline" size={30} color={colors.mutedForeground} />
+                <Text style={[styles.progressSub, { color: colors.mutedForeground }]}>Aucune photo dans ce projet ni dans ses tâches.</Text>
+              </View>
+            )}
+            <View style={styles.beforeAfterPickerActions}>
+              <Pressable testID="cancel-project-before-after" onPress={() => setBeforeAfterPickerVisible(false)}
+                disabled={savingBeforeAfter} style={[styles.beforeAfterPickerCancel, { borderColor: colors.border }]}>
+                <Text style={[styles.beforeAfterPickerActionText, { color: colors.mutedForeground }]}>Annuler</Text>
+              </Pressable>
+              <Pressable testID="save-project-before-after" accessibilityRole="button"
+                onPress={() => void saveBeforeAfterPhotos()} disabled={savingBeforeAfter}
+                style={[styles.beforeAfterPickerSave, { backgroundColor: colors.primary, opacity: savingBeforeAfter ? 0.6 : 1 }]}>
+                <MaterialCommunityIcons name={savingBeforeAfter ? 'timer-sand' : 'content-save-outline'}
+                  size={18} color={colors.primaryForeground} />
+                <Text style={[styles.beforeAfterPickerActionText, { color: colors.primaryForeground }]}>
+                  {savingBeforeAfter ? 'Lecture des dates…' : 'Enregistrer'}
+                </Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       <GalleryPhotoPicker
         visible={galleryPickerVisible}
@@ -1260,7 +1426,25 @@ const styles = StyleSheet.create({
   beforeAfterImage: { width: '100%', height: 132, borderRadius: 9 },
   beforeAfterImageCompact: { height: 88 },
   beforeAfterEmpty: { height: 132, borderWidth: 1, borderRadius: 9, alignItems: 'center', justifyContent: 'center', gap: 6 },
+  beforeAfterEdit: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 4 },
   beforeAfterLabel: { fontSize: 11, fontFamily: 'Inter_700Bold', letterSpacing: 0.5 },
+  beforeAfterPickerBackdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.62)' },
+  beforeAfterPickerSheet: { maxHeight: '88%', borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingHorizontal: 18, paddingTop: 10, gap: 12 },
+  beforeAfterPickerHandle: { alignSelf: 'center', width: 40, height: 4, borderRadius: 2, marginBottom: 2 },
+  beforeAfterPickerHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  beforeAfterPickerSlots: { flexDirection: 'row', gap: 10 },
+  beforeAfterPickerSlot: { flex: 1, minHeight: 42, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderRadius: 11 },
+  beforeAfterPickerScroll: { maxHeight: 280, flexGrow: 0 },
+  beforeAfterPickerGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingBottom: 4 },
+  beforeAfterPickerPhoto: { width: '31.5%', aspectRatio: 1, borderWidth: 2, borderRadius: 10, overflow: 'hidden', padding: 2 },
+  beforeAfterPickerImage: { width: '100%', height: '72%', borderRadius: 7 },
+  beforeAfterPickerCheck: { position: 'absolute', top: 6, right: 6, width: 21, height: 21, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  beforeAfterPickerEmpty: { minHeight: 150, alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 20 },
+  beforeAfterPickerActions: { flexDirection: 'row', gap: 10, marginTop: 2 },
+  beforeAfterPickerCancel: { minHeight: 48, paddingHorizontal: 16, borderWidth: 1, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  beforeAfterPickerSave: { flex: 1, minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 12 },
+  beforeAfterPickerActionText: { fontSize: 13, fontFamily: 'Inter_600SemiBold' },
+  beforeAfterPickerSource: { fontSize: 10, fontFamily: 'Inter_400Regular' },
   budgetBreakdown: { gap: 3 },
   tabs: { flexDirection: 'row', paddingHorizontal: 16, marginBottom: 8 },
   tab: { flex: 1, alignItems: 'center', paddingVertical: 10 },

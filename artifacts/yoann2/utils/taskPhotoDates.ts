@@ -53,10 +53,10 @@ async function readPhotoDate(uri: string): Promise<number | undefined> {
 }
 
 /**
- * Read capture dates from the files already attached to this task.
+ * Read capture dates only from the supplied local photo URIs.
  * This avoids scanning unrelated gallery photos and does not need gallery permission.
  */
-export async function scanTaskPhotoDates(
+export async function scanPhotoDates(
   uris: string[],
   onProgress: (message: string) => void = () => {},
 ): Promise<{ dates: Record<string, number>; unmatched: number; scanned: number }> {
@@ -71,3 +71,5 @@ export async function scanTaskPhotoDates(
   }
   return { dates, unmatched: uris.length - Object.keys(dates).length, scanned };
 }
+
+export const scanTaskPhotoDates = scanPhotoDates;

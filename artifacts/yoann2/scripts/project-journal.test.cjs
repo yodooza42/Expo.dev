@@ -85,6 +85,20 @@ test('undated task photos retain their original order after dated photos', () =>
   assert.deepEqual(clone(output.entries[0].photos.map(photo => photo.uri)),
     ['file://early', 'file://late', 'file://unknown-a', 'file://unknown-b']);
 });
+test('before-after choices include project photos and photos from unfinished tasks', () => {
+  const project = { ...projects[0], photos: ['file://album', 'file://shared'] };
+  const unfinished = {
+    id: 'in-progress', projectId: project.id, title: 'Peinture en cours', status: 'inprogress',
+    photos: ['file://work', 'file://shared'],
+    photoTakenAt: { 'file://work': Date.parse('2026-02-03T10:30:00Z') },
+  };
+  const options = journal.getProjectBeforeAfterPhotoOptions(project, [unfinished]);
+  assert.deepEqual(clone(options.map(photo => photo.uri)),
+    ['file://work', 'file://album', 'file://shared']);
+  assert.equal(options[0].sourceTitle, 'Peinture en cours');
+  assert.equal(options[0].dateLabel, new Date(unfinished.photoTakenAt['file://work']).toLocaleDateString('fr-FR'));
+  assert.equal(options[2].sourceTitle, 'Peinture en cours');
+});
 test('single-project carnet keeps before/after selections and adds a dated final comparison', () => {
   const beforeId = journal.journalPhotoId('task:later', 'file://a');
   const afterId = journal.journalPhotoId('project:p1', 'file://p');
@@ -104,6 +118,21 @@ test('single-project carnet keeps before/after selections and adds a dated final
   assert.equal(journal.buildProjectJournal(projects, comparisonTasks, { ...opts, projectIds: ['p1', 'p2'] }).request.finalComparison, undefined);
   assert.equal(journal.validateJournalChoices(opts), true);
   assert.equal(journal.validateJournalChoices({ ...opts, beforeAfterByProjectId: { p1: { beforePhotoId: 2 } } }), false);
+});
+test('saved project before-after photos override an old carnet draft and allow unfinished task photos', () => {
+  const before = { photoId: 'project-before', uri: 'file://unfinished-before', dateLabel: '3 février 2026', sourceTitle: 'En cours' };
+  const after = { photoId: 'project-after', uri: 'file://project-after', dateLabel: '4 février 2026', sourceTitle: 'Projet' };
+  const project = { ...projects[0], journalBeforeAfter: { before: [before], after: [after] } };
+  const unfinished = {
+    id: 'not-finished', projectId: project.id, title: 'En cours', status: 'inprogress',
+    completedAt: undefined, dueDate: '2026-02-04', photos: [before.uri],
+  };
+  const output = journal.buildProjectJournal([project], [unfinished], {
+    ...choices(), projectIds: [project.id],
+    beforeAfterByProjectId: { [project.id]: { beforePhotoIds: ['old-before'], afterPhotoIds: ['old-after'] } },
+  });
+  assert.deepEqual(clone(output.request.finalComparison.before.map(photo => photo.uri)), [before.uri]);
+  assert.deepEqual(clone(output.request.finalComparison.after.map(photo => photo.uri)), [after.uri]);
 });
 test('single-project comparison selects and counts up to two photos on each side', () => {
   const p = { ...projects[0], photos: ['file://p', 'file://p2'] };

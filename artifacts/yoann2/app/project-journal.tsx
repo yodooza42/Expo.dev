@@ -66,6 +66,12 @@ export default function ProjectJournalScreen() {
   }, [comparisonProject, journal]);
   const comparisonPhotoIds = (slot: 'before' | 'after') => {
     if (!comparisonProject || !choices) return undefined;
+    const projectSelection = comparisonProject.journalBeforeAfter?.[slot];
+    if (projectSelection !== undefined) {
+      return normalizeJournalProjectPhotos(projectSelection)
+        .map(saved => comparisonPhotos.find(photo => photo.uri === saved.uri)?.id ?? saved.photoId)
+        .slice(0, 2);
+    }
     const stored = choices.beforeAfterByProjectId?.[comparisonProject.id];
     const idsKey = slot === 'before' ? 'beforePhotoIds' : 'afterPhotoIds';
     const legacyKey = slot === 'before' ? 'beforePhotoId' : 'afterPhotoId';
