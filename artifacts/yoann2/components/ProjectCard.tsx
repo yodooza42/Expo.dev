@@ -5,12 +5,14 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useColors } from '@/hooks/useColors';
 import type { Project, Task } from '@/types';
+import { fmtEuro } from '@/utils/money';
 import { PriorityBadge } from './PriorityBadge';
 import { ProgressBar } from './ProgressBar';
 
 interface Props {
   project: Project;
   tasks: Task[];
+  spent: number;
   onLongPress?: () => void;
 }
 
@@ -32,7 +34,7 @@ const STATUS_COLORS: Record<Project['status'], string> = {
   abandoned: '#F44336',
 };
 
-export function ProjectCard({ project, tasks, onLongPress }: Props) {
+export function ProjectCard({ project, tasks, spent, onLongPress }: Props) {
   const colors = useColors();
   const router = useRouter();
 
@@ -42,10 +44,10 @@ export function ProjectCard({ project, tasks, onLongPress }: Props) {
   const dueDate = new Date(project.dueDate);
   const now = new Date();
   const isOverdue = dueDate < now && project.status !== 'done' && project.status !== 'abandoned';
-  const isBudgetOver = project.budget > 0 && project.spent > project.budget;
+  const isBudgetOver = project.budget > 0 && spent > project.budget;
   const daysToDue = (dueDate.getTime() - now.getTime()) / 86400000;
   const isNearDue = !isOverdue && daysToDue <= 7 && project.status !== 'done' && project.status !== 'abandoned';
-  const isBudgetNear = !isBudgetOver && project.budget > 0 && project.spent / project.budget > 0.8;
+  const isBudgetNear = !isBudgetOver && project.budget > 0 && spent / project.budget > 0.8;
 
   const healthColor =
     project.status === 'done' ? '#4CAF50' :
@@ -108,7 +110,7 @@ export function ProjectCard({ project, tasks, onLongPress }: Props) {
           </Text>
           {project.budget > 0 && (
             <Text style={[styles.taskCount, { color: colors.mutedForeground }]}>
-              {project.spent}€/{project.budget}€
+              {fmtEuro(spent)}/{fmtEuro(project.budget)}
             </Text>
           )}
         </View>

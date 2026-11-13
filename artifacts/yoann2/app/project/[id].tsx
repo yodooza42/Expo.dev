@@ -37,6 +37,7 @@ import { mergeRecoveredPhotoUris } from '@/utils/photoReferences';
 import { protectPhoto } from '@/utils/photoProtection';
 import { getProjectBeforeAfterPhotoOptions, normalizeJournalProjectPhotos } from '@/utils/projectJournal';
 import { scanPhotoDates } from '@/utils/taskPhotoDates';
+import { fmtEuro, sumEuroAmounts } from '@/utils/money';
 
 const { width } = Dimensions.get('window');
 
@@ -247,9 +248,11 @@ export default function ProjectDetailScreen() {
   const totalTasks = tasks.length;
   const doneTasks = tasks.filter(t => t.status === 'done').length;
   const progress = totalTasks > 0 ? (doneTasks / totalTasks) * 100 : 0;
-  const totalSpent = expenses.reduce((sum, e) => sum + e.amount, 0);
+  const totalSpent = sumEuroAmounts(expenses);
   const directExpenses = expenses.filter(e => !e.taskId);
   const taskExpenses = expenses.filter(e => !!e.taskId);
+  const directExpensesTotal = sumEuroAmounts(directExpenses);
+  const taskExpensesTotal = sumEuroAmounts(taskExpenses);
   const budgetPct = project.budget > 0 ? (totalSpent / project.budget) * 100 : 0;
   const dueDate = new Date(project.dueDate);
   const isOverdue = dueDate < new Date() && project.status !== 'done';
@@ -474,7 +477,7 @@ export default function ProjectDetailScreen() {
           <td class="exp-name">${e.label}</td>
           <td class="exp-cat">${e.category || '—'}</td>
           <td class="exp-date">${new Date(e.date).toLocaleDateString('fr-FR')}</td>
-          <td class="exp-amount">${e.amount.toFixed(2)} €</td>
+          <td class="exp-amount">${fmtEuro(e.amount)}</td>
         </tr>`).join('');
 
       const html = `<!DOCTYPE html>
@@ -620,8 +623,8 @@ export default function ProjectDetailScreen() {
       <div class="stat-label">Progression</div>
     </div>
     <div class="stat-card" style="border-top-color:${project.budget > 0 ? budgetColor : '#FFC107'}">
-      <div class="stat-value" style="color:${project.budget > 0 && budgetOver ? '#F44336' : '#111'}">${totalSpent.toFixed(0)}<span style="font-size:14px;color:#CCC"> €</span></div>
-      <div class="stat-label">${project.budget > 0 ? `Budget / ${project.budget} €` : 'Total dépenses'}</div>
+      <div class="stat-value" style="color:${project.budget > 0 && budgetOver ? '#F44336' : '#111'}">${fmtEuro(totalSpent)}</div>
+      <div class="stat-label">${project.budget > 0 ? `Budget / ${fmtEuro(project.budget)}` : 'Total dépenses'}</div>
     </div>
   </div>
 
@@ -645,7 +648,7 @@ export default function ProjectDetailScreen() {
     <div class="prog-track">
       <div class="prog-fill" style="width:${Math.min(budgetPct, 100)}%;background:${budgetColor}"></div>
     </div>
-    <div class="prog-sub">${totalSpent.toFixed(2)} € &nbsp;/&nbsp; ${project.budget} € &nbsp;·&nbsp; Reste ${(project.budget - totalSpent).toFixed(2)} €</div>
+    <div class="prog-sub">${fmtEuro(totalSpent)} &nbsp;/&nbsp; ${fmtEuro(project.budget)} &nbsp;·&nbsp; Reste ${fmtEuro(project.budget - totalSpent)}</div>
   </div>` : ''}
 
   ${tasks.length > 0 ? `
@@ -665,7 +668,7 @@ export default function ProjectDetailScreen() {
     ${expenseRows}
     <tr class="exp-total">
       <td colspan="3" style="font-weight:800">Total</td>
-      <td class="exp-amount">${totalSpent.toFixed(2)} €</td>
+      <td class="exp-amount">${fmtEuro(totalSpent)}</td>
     </tr>
   </table>` : ''}
 
@@ -806,7 +809,7 @@ export default function ProjectDetailScreen() {
             <View style={[styles.metaCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <MaterialCommunityIcons name="currency-eur" size={16} color={colors.primary} />
               <Text style={[styles.metaLabel, { color: colors.mutedForeground }]}>Budget</Text>
-              <Text style={[styles.metaValue, { color: colors.foreground }]}>{project.budget}€</Text>
+              <Text style={[styles.metaValue, { color: colors.foreground }]}>{fmtEuro(project.budget)}</Text>
             </View>
           </View>
 
@@ -837,16 +840,16 @@ export default function ProjectDetailScreen() {
               <View style={styles.budgetBreakdown}>
                 {directExpenses.length > 0 && (
                   <Text style={[styles.progressSub, { color: colors.mutedForeground }]}>
-                    Dépenses directes : {directExpenses.reduce((s, e) => s + e.amount, 0)}€
+                    Dépenses directes : {fmtEuro(directExpensesTotal)}
                   </Text>
                 )}
                 {taskExpenses.length > 0 && (
                   <Text style={[styles.progressSub, { color: colors.mutedForeground }]}>
-                    Dépenses des tâches : {taskExpenses.reduce((s, e) => s + e.amount, 0)}€
+                    Dépenses des tâches : {fmtEuro(taskExpensesTotal)}
                   </Text>
                 )}
                 <Text style={[styles.progressSub, { color: budgetPct > 90 ? colors.destructive : colors.foreground, fontFamily: 'Inter_600SemiBold' }]}>
-                  Total : {totalSpent}€ / {project.budget}€  ·  Reste : {project.budget - totalSpent}€
+                  Total : {fmtEuro(totalSpent)} / {fmtEuro(project.budget)}  ·  Reste : {fmtEuro(project.budget - totalSpent)}
                 </Text>
               </View>
             </View>
@@ -1030,7 +1033,7 @@ export default function ProjectDetailScreen() {
                             {new Date(e.date).toLocaleDateString('fr-FR')}
                           </Text>
                         </View>
-                        <Text style={[styles.expAmount, { color: colors.primary }]}>{e.amount}€</Text>
+                        <Text style={[styles.expAmount, { color: colors.primary }]}>{fmtEuro(e.amount)}</Text>
                         <Pressable onPress={() => openEditExpense(e)} hitSlop={8}>
                           <MaterialCommunityIcons name="pencil-outline" size={18} color={colors.mutedForeground} />
                         </Pressable>
@@ -1044,7 +1047,7 @@ export default function ProjectDetailScreen() {
                   })}
                   <View style={[styles.expTotal, { backgroundColor: colors.card, borderColor: colors.border }]}>
                     <Text style={[styles.expTotalLabel, { color: colors.mutedForeground }]}>Total toutes dépenses</Text>
-                    <Text style={[styles.expTotalValue, { color: colors.primary }]}>{totalSpent}€</Text>
+                    <Text style={[styles.expTotalValue, { color: colors.primary }]}>{fmtEuro(totalSpent)}</Text>
                   </View>
                 </>
               )}

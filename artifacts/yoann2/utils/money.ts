@@ -11,3 +11,8 @@ export function fmtEuro(n: number): string {
   const int   = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, '\u00A0');
   return `${sign}${int},${parts[1]}\u00A0€`;
 }
+
+export function sumEuroAmounts(items: readonly { amount: number }[]): number {
+  const cents = items.reduce((total, item) => total + Math.round(item.amount * 100), 0);
+  return cents / 100;
+}

@@ -17,6 +17,7 @@ import { ProjectCard } from '@/components/ProjectCard';
 import { useApp } from '@/contexts/AppContext';
 import { useColors } from '@/hooks/useColors';
 import type { Priority, Project, ProjectStatus } from '@/types';
+import { sumEuroAmounts } from '@/utils/money';
 
 const STATUS_FILTERS: { label: string; value: ProjectStatus | 'all' }[] = [
   { label: 'Tous', value: 'all' },
@@ -49,7 +50,7 @@ export default function ProjectsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { projects, getProjectTasks, categories, reorderProjects } = useApp();
+  const { projects, getProjectTasks, getProjectExpenses, categories, reorderProjects } = useApp();
 
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<ProjectStatus | 'all'>('all');
@@ -287,6 +288,7 @@ export default function ProjectsScreen() {
               <ProjectCard
                 project={p}
                 tasks={getProjectTasks(p.id)}
+                spent={sumEuroAmounts(getProjectExpenses(p.id))}
                 onLongPress={showArchived ? undefined : enterReorderMode}
               />
             </View>

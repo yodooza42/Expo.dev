@@ -25,6 +25,7 @@ import { useColors } from '@/hooks/useColors';
 import type { Appointment, Project, SubTask, Task } from '@/types';
 import { getCompletionPrompts, getUndismissedCompletionPrompts } from '@/utils/completionPrompts';
 import { parseCompletionDate } from '@/utils/completionDate';
+import { sumEuroAmounts } from '@/utils/money';
 import { pH } from '@/styles/header';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -107,7 +108,7 @@ export default function DashboardScreen() {
   const colors   = useColors();
   const insets   = useSafeAreaInsets();
   const router   = useRouter();
-  const { projects, tasks, appointments, getStats, updateTask, updateProject } = useApp();
+  const { projects, tasks, appointments, getStats, getProjectExpenses, updateTask, updateProject } = useApp();
   useSplash();
 
   const [dismissedCompletionPrompts, setDismissedCompletionPrompts] = useState<Record<string, string>>({});
@@ -248,10 +249,10 @@ export default function DashboardScreen() {
     for (const p of projects) {
       if (p.archived || p.status === 'done' || p.status === 'abandoned') continue;
       if (new Date(p.dueDate) < todayStart) out.push({ project: p, type: 'overdue' });
-      if (p.budget > 0 && p.spent > p.budget) out.push({ project: p, type: 'budget' });
+      if (p.budget > 0 && sumEuroAmounts(getProjectExpenses(p.id)) > p.budget) out.push({ project: p, type: 'budget' });
     }
     return out;
-  }, [projects, todayStart]);
+  }, [getProjectExpenses, projects, todayStart]);
 
   // Critical tasks not done
   const criticalTasks = useMemo(() =>
