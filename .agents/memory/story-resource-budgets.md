@@ -20,3 +20,9 @@ Pour le carnet de projets, transférer les images au moteur WebView à la demand
 **Why:** Un grand script peut dupliquer les données d’image entre le processus React Native et WebView et faire bloquer le rendu Android même lorsque le carnet respecte ses limites visibles.
 
 **How to apply:** Garder les métadonnées du carnet légères, demander seulement les photos visibles ou imminentes, et tester le protocole d’envoi progressif en plus des limites de mémoire décodée.
+
+Chaque source d’image doit conserver `assetKey` lorsqu’elle est transformée en élément du moteur de rendu, y compris les comparatifs et récapitulatifs. Le champ `img` étant vidé avant le transfert, perdre cette clé empêche le moteur de demander l’image.
+
+**Why:** Un oubli dans le chemin Avant/Après a laissé le carnet sans données ni clé de récupération, bien que la photo ait été préparée correctement.
+
+**How to apply:** Pour tout nouveau type de photo du carnet, ajouter un test qui passe par le transfert à la demande et vérifie que le moteur demande puis reçoit son image.
