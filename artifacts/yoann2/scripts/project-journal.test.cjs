@@ -345,6 +345,33 @@ test('photo preparation reuses comparison images already included in the montage
   assert.equal(prepared.finalComparisonImages.before[0].img, montageBefore.img);
   assert.equal(prepared.finalComparisonImages.after[0].dateLabel, '6 avril 2026');
 });
+test('export metadata keeps image payloads separate and deduplicates matching photo data', () => {
+  const prepare = load('utils/prepareJournal.ts', {
+    '@/utils/projectJournal': journal,
+    '@/utils/storyPhoto': { prepareStoryPhoto: async () => '' },
+  });
+  const first = 'data:image/jpeg;base64,Zmlyc3Q=';
+  const second = 'data:image/jpeg;base64,c2Vjb25k';
+  const third = 'data:image/jpeg;base64,dGhpcmQ=';
+  const payload = {
+    jobId: 'job', journal: true, title: 'Carnet', periodLabel: 'Avril', projectNames: ['Garage'],
+    entryCount: 1, photoCount: 4, secondsPerPhoto: 3,
+    entries: [{ id: 'e1', title: 'Étape', photos: [
+      { id: 'p1', img: first, caption: '' }, { id: 'p2', img: second, caption: '' },
+    ] }],
+    finalComparisonImages: {
+      projectName: 'Garage',
+      before: [{ id: 'before', img: first, dateLabel: '1 avril' }],
+      after: [{ id: 'after', img: third, dateLabel: '2 avril' }],
+    },
+  };
+  const result = prepare.splitJournalPayloadImages(payload);
+  assert.equal(result.assets.length, 3);
+  assert.deepEqual(clone(result.assets.map(asset => asset.dataUri)), [first, second, third]);
+  assert.equal(result.payload.entries[0].photos[0].assetKey, result.payload.finalComparisonImages.before[0].assetKey);
+  assert.ok(result.payload.entries.every(entry => entry.photos.every(photo => photo.img === '')));
+  assert.equal(result.payload.finalComparisonImages.after[0].img, '');
+});
 
 /** A single shared clock drives rAF, all timers and recorder callbacks. */
 function engine({ badPhoto = false, loadDelay = 25 } = {}) {
@@ -539,6 +566,50 @@ test('real renderer protocol advances past 45 seconds, streams honest ordered ch
   assert.equal(e.activeImages, 0);
   assert.equal(e.timerCount, 0);
   assert.equal(e.messages.some(m => m.type === 'story_error'), false);
+});
+test('journal export waits for sequential image chunks before recording and preserves every photo', async () => {
+  const e = engine({ loadDelay: 10 });
+  const data = payload({ count: 3, preview: false });
+  const assetsByKey = new Map();
+  data.entries.forEach((entry, index) => {
+    const photo = entry.photos[0];
+    const key = index === 2 ? 'asset-0' : `asset-${index}`;
+    const dataUri = index === 0
+      ? `data:image/jpeg;base64,${'A'.repeat(120_000)}` : photo.img;
+    if (!assetsByKey.has(key)) assetsByKey.set(key, { key, dataUri });
+    photo.img = '';
+    photo.assetKey = key;
+  });
+  const assets = [...assetsByKey.values()];
+  e.win.generatePeriodStory(data);
+  const sent = new Set();
+  async function fulfillAssetRequests() {
+    const requests = e.messages.filter(message => message.type === 'story_asset_needed');
+    for (const request of requests) {
+      if (sent.has(request.key)) continue;
+      const asset = assets.find(candidate => candidate.key === request.key);
+      assert.ok(asset, `renderer requested unknown ${request.key}`);
+      sent.add(asset.key);
+      const chunks = [];
+      for (let start = 0; start < asset.dataUri.length; start += 98_304)
+        chunks.push(asset.dataUri.slice(start, start + 98_304));
+      chunks.forEach((chunk, index) => {
+        e.win.receivePeriodStoryAssetChunk('job', asset.key, index, chunks.length, chunk);
+        const ack = e.messages.filter(message => message.type === 'story_asset_chunk_received' && message.key === asset.key).at(-1);
+        assert.equal(ack.complete, index === chunks.length - 1);
+      });
+    }
+  }
+  await fulfillAssetRequests();
+  for (let elapsed = 0; elapsed < 30_000; elapsed += 100) {
+    await e.advance(100);
+    await fulfillAssetRequests();
+  }
+  assert.equal(e.messages.some(message => message.type === 'story_error'), false);
+  assert.ok(e.messages.some(message => message.type === 'story_chunk'));
+  for (const asset of assets) assert.ok(e.imageDraws.some(draw => draw.src === asset.dataUri), `missing ${asset.key}`);
+  assert.equal(e.activeImages, 0);
+  assert.equal(e.timerCount, 0);
 });
 test('cancelling recording releases resources and prevents a late video', async () => {
   const e = engine();

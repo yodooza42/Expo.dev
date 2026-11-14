@@ -59,11 +59,11 @@ export type JournalVideoPayload = {
   secondsPerPhoto: number;
   finalComparisonImages?: {
     projectName: string;
-    before: Array<{ id: string; img: string; dateLabel: string }>;
-    after: Array<{ id: string; img: string; dateLabel: string }>;
+    before: Array<{ id: string; img: string; assetKey?: string; dateLabel: string }>;
+    after: Array<{ id: string; img: string; assetKey?: string; dateLabel: string }>;
   };
   entries: Array<Omit<JournalEntry, 'photos'> & {
-    photos: Array<{ id: string; img: string; caption: string }>;
+    photos: Array<{ id: string; img: string; assetKey?: string; caption: string }>;
   }>;
 };
 

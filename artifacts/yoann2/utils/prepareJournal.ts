@@ -2,6 +2,35 @@ import type { JournalGenerationRequest, JournalVideoPayload } from '@/types/proj
 import { JOURNAL_LIMITS } from '@/utils/projectJournal';
 import { prepareStoryPhoto } from '@/utils/storyPhoto';
 
+export type JournalPhotoAsset = { key: string; dataUri: string };
+export type SplitJournalPayload = { payload: JournalVideoPayload; assets: JournalPhotoAsset[] };
+
+/**
+ * Keep image data out of the large WebView initialization script. The same
+ * prepared image is sent only once even when it appears in the comparison too.
+ */
+export function splitJournalPayloadImages(payload: JournalVideoPayload): SplitJournalPayload {
+  const assets: JournalPhotoAsset[] = [];
+  const keysByImage = new Map<string, string>();
+  const split = (photo: { img: string; assetKey?: string }) => {
+    const image = photo.img;
+    if (!image) return;
+    let key = keysByImage.get(image);
+    if (!key) {
+      key = `journal-photo-${assets.length}`;
+      keysByImage.set(image, key);
+      assets.push({ key, dataUri: image });
+    }
+    photo.assetKey = key;
+    photo.img = '';
+  };
+
+  for (const entry of payload.entries) for (const photo of entry.photos) split(photo);
+  for (const photo of payload.finalComparisonImages?.before ?? []) split(photo);
+  for (const photo of payload.finalComparisonImages?.after ?? []) split(photo);
+  return { payload, assets };
+}
+
 export async function prepareJournal(
   request: JournalGenerationRequest, jobId: string, isCurrent: () => boolean,
   onProgress: (completed: number, total: number) => void,

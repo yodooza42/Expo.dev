@@ -14,3 +14,9 @@ Les tests de durée doivent faire avancer les minuteries et les images d’anima
 **Why:** Une animation accélérée séparément des minuteries peut masquer un délai de préparation qui interrompt ensuite une vidéo longue pourtant valide. Les pauses photo ajoutent aussi du temps réel à la durée choisie.
 
 **How to apply:** Couvrir les longues durées et les pauses avec cette horloge commune. Les tests simulés et l’aperçu web ne constituent pas une mesure de mémoire ni une validation du moteur Android réel.
+
+Pour le carnet de projets, transférer les images au moteur WebView à la demande, en petits morceaux acquittés, puis libérer les données encodées après leur dernier affichage. Ne pas injecter toutes les images base64 dans un seul script.
+
+**Why:** Un grand script peut dupliquer les données d’image entre le processus React Native et WebView et faire bloquer le rendu Android même lorsque le carnet respecte ses limites visibles.
+
+**How to apply:** Garder les métadonnées du carnet légères, demander seulement les photos visibles ou imminentes, et tester le protocole d’envoi progressif en plus des limites de mémoire décodée.
