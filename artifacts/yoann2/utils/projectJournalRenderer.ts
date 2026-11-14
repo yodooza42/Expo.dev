@@ -111,9 +111,9 @@ function build(p){
   var comparisonStart=photos.length;
   if(p.finalComparisonImages){
     var beforeItems=p.finalComparisonImages.before||[],afterItems=p.finalComparisonImages.after||[];
-    beforeItems.forEach(function(item,pi){photos.push({ei:-1,pi:pi,ph:{id:item.id,img:item.img,caption:''},
+    beforeItems.forEach(function(item,pi){photos.push({ei:-1,pi:pi,ph:{id:item.id,img:item.img,assetKey:item.assetKey,caption:''},
       title:p.finalComparisonImages.projectName+' · Avant',dateLabel:item.dateLabel,comparisonSide:'before'})});
-    afterItems.forEach(function(item,pi){photos.push({ei:-1,pi:pi,ph:{id:item.id,img:item.img,caption:''},
+    afterItems.forEach(function(item,pi){photos.push({ei:-1,pi:pi,ph:{id:item.id,img:item.img,assetKey:item.assetKey,caption:''},
       title:p.finalComparisonImages.projectName+' · Après',dateLabel:item.dateLabel,comparisonSide:'after'})});
     segs.push({k:'comparison',d:10,photoStart:comparisonStart,photoCount:beforeItems.length+afterItems.length,
       beforeCount:beforeItems.length});

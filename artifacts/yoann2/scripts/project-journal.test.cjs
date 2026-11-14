@@ -552,6 +552,32 @@ test('final comparison renders four dated photos together after the project entr
   assert.ok(!source.includes("fillStyle='#F7F6F1'"));
   assert.ok(!source.includes('var bx=MX-48'));
 });
+test('final comparison requests before/after photos through the on-demand asset transfer', async () => {
+  const data = payload({ count: 1 });
+  data.finalComparisonImages = {
+    projectName: 'Chambre parentale',
+    before: [{ id: 'before-1', img: 'data:image/jpeg;base64,YmVmb3JlMQ==', dateLabel: '5 avril 2026' }],
+    after: [{ id: 'after-1', img: 'data:image/jpeg;base64,YWZ0ZXIx', dateLabel: '9 novembre 2026' }],
+  };
+  const prepare = load('utils/prepareJournal.ts', {
+    '@/utils/projectJournal': journal,
+    '@/utils/storyPhoto': { prepareStoryPhoto: async () => '' },
+  });
+  const { payload: prepared, assets } = prepare.splitJournalPayloadImages(data);
+  const beforeKey = prepared.finalComparisonImages.before[0].assetKey;
+  const afterKey = prepared.finalComparisonImages.after[0].assetKey;
+  const e = engine();
+  e.win.generatePeriodStory(prepared);
+  await e.advance(300);
+  e.win.journalPause();
+  e.win.journalSeek(journal.journalDuration(prepared.entries, 3) - 3);
+  await e.advance(200);
+  const requestedKeys = e.messages.filter(message => message.type === 'story_asset_needed').map(message => message.key);
+  assert.ok(requestedKeys.includes(beforeKey), 'the before photo must retain its transfer key');
+  assert.ok(requestedKeys.includes(afterKey), 'the after photo must retain its transfer key');
+  assert.equal(e.messages.some(message => message.type === 'story_error'), false);
+  assert.ok(assets.some(asset => asset.key === beforeKey) && assets.some(asset => asset.key === afterKey));
+});
 test('real renderer protocol advances past 45 seconds, streams honest ordered chunks and releases resources', async () => {
   const e = engine();
   e.win.generatePeriodStory(payload({ count: 8, preview: false }));
