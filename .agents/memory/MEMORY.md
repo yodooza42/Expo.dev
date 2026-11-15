@@ -8,7 +8,6 @@
 - [react-native-android-widget color format](rn-android-widget-colors.md) — use 6-digit `#RRGGBB` hex only; 8-digit `#AARRGGBB` is Android format (alpha first), not CSS.
 - [react-native-android-widget style API constraints](rn-android-widget-styles.md) — FlexWidgetStyle: use `flexGap` not `gap`; no `flexWrap`, no percentage widths.
 - [RNTP incompatible New Architecture](rntp-new-arch-crash.md) — react-native-track-player 4.1.2 incompatible New Architecture/Bridgeless (RN 0.81+) — l'import JS crashe au module load. Utiliser expo-location FGS à la place.
-- [trip notification non-swipeable — expo-location FGS](trip-notification-fgs.md) — piloter la notification du FGS expo-location (startLocationUpdatesAsync patch les options in-place) plutôt qu'un FGS notifee séparé. notifee shortService/dataSync tué par Samsung One UI 7. Export patchLocationFgsNotification depuis locationTracking.ts.
 - [Expo config plugin — expo/config-plugins](expo-config-plugin-import.md) — utiliser require('expo/config-plugins') pas require('@expo/config-plugins') dans les plugins du projet yoann2.
 - [Builds APK EAS](yoann2-eas-build.md) — utiliser le CLI global en premier plan, sans VCS et avec --no-wait ; incrémenter la version Android.
 - [EAS build — NE JAMAIS lancer sans autorisation explicite](eas-build-no-auto.md) — ne JAMAIS déclencher un build EAS sans que l'utilisateur le demande explicitement. Les quotas sont limités et précieux.
