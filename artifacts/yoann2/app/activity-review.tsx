@@ -20,6 +20,9 @@ import { locatePhotoOnTrip, photoTakenAt, type PhotoGpsPoint, type PhotoPlacemen
 import { tripEvents } from '@/utils/tripEvents';
 import { getTrips, getVehicleSettings, updateTrip } from '@/utils/tripStorage';
 import { galleryPhotoMetadata } from '@/utils/galleryPhotoMetadata';
+import { resolvePhotoRef } from '@/utils/library/catalogue';
+import { importPhotos, reportImportFailures } from '@/utils/library/importPhoto';
+import { tripFolder } from '@/utils/library/placement';
 
 export default function ActivityReviewScreen() {
   const colors = useColors();
@@ -176,6 +179,19 @@ export default function ActivityReviewScreen() {
     drafts.sort((a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0));
     setMoments(previous => [...previous, ...drafts.filter(draft => !previous.some(moment => moment.photo?.uri === draft.photo?.uri))]);
   };
+  /** Copy into Yoann2.0/Photos/Trajets/… before the photo is referenced by a souvenir. */
+  const storeChosen = async (chosen: Array<{ uri: string; takenAt?: number; metadata?: TripPhoto['galleryMetadata'] }>) => {
+    if (!trip || !chosen.length) return [];
+    const { imported, failed } = await importPhotos(
+      chosen.map(item => ({ uri: item.uri, takenAt: item.takenAt, originalName: item.metadata?.filename })), tripFolder(trip),
+    );
+    reportImportFailures(failed);
+    const bySource = new Map(imported.map(item => [item.source, item.ref]));
+    return chosen.flatMap(item => {
+      const ref = bySource.get(item.uri);
+      return ref ? [{ ...item, uri: ref }] : [];
+    });
+  };
   const pickSuggestedPhotos = async (assets: MediaLibrary.Asset[]) => {
     if (photoBusyRef.current) return;
     photoBusyRef.current = true; setPhotoBusy(true);
@@ -185,10 +201,11 @@ export default function ActivityReviewScreen() {
         const takenAt = await readPhotoTime({ assetId: asset.id, creationTime: asset.creationTime });
         chosen.push({ uri: asset.uri, takenAt, metadata: galleryPhotoMetadata(asset, takenAt) });
       }
-      if (photoPickerMode === 'batch') await addPhotoBatch(chosen);
-      else if (chosen[0]) await attachPhoto(chosen[0].uri, chosen[0].takenAt, chosen[0].metadata);
+      const stored = await storeChosen(chosen);
+      if (photoPickerMode === 'batch') { if (stored.length) await addPhotoBatch(stored); }
+      else if (stored[0]) await attachPhoto(stored[0].uri, stored[0].takenAt, stored[0].metadata);
       setPhotoPickerVisible(false);
-    } catch { Alert.alert('Photo indisponible', 'Impossible de joindre cette photo. Tu peux réessayer ou ouvrir toute la galerie.'); }
+    } catch (error) { Alert.alert('Photo indisponible', error instanceof Error ? error.message : 'Impossible de joindre cette photo. Tu peux réessayer ou ouvrir toute la galerie.'); }
     finally { photoBusyRef.current = false; setPhotoBusy(false); }
   };
   const pickPhoto = async () => {
@@ -205,10 +222,11 @@ export default function ActivityReviewScreen() {
           const takenAt = await readPhotoTime(asset);
           chosen.push({ uri: asset.uri, takenAt, metadata: galleryPhotoMetadata(asset, takenAt) });
         }
-        if (photoPickerMode === 'batch') await addPhotoBatch(chosen);
-        else if (chosen[0]) await attachPhoto(chosen[0].uri, chosen[0].takenAt, chosen[0].metadata);
+        const stored = await storeChosen(chosen);
+        if (photoPickerMode === 'batch') { if (stored.length) await addPhotoBatch(stored); }
+        else if (stored[0]) await attachPhoto(stored[0].uri, stored[0].takenAt, stored[0].metadata);
       }
-    } catch { Alert.alert('Photo indisponible', 'Impossible d’ouvrir la galerie. Tu peux ajouter un souvenir sans photo.'); }
+    } catch (error) { Alert.alert('Photo indisponible', error instanceof Error ? error.message : 'Impossible d’ouvrir la galerie. Tu peux ajouter un souvenir sans photo.'); }
     finally { photoBusyRef.current = false; setPhotoBusy(false); }
   };
   const addMoment = () => {
@@ -271,7 +289,7 @@ export default function ActivityReviewScreen() {
         </Pressable>
         {section('Moments de la sortie')}
         {moments.map(moment => <View key={moment.id} style={[s.moment, { borderColor: colors.border }]}>
-          {moment.photo && <Image source={{ uri: moment.photo.uri }} style={s.photo} />}
+          {moment.photo && <Image source={{ uri: resolvePhotoRef(moment.photo.uri) }} style={s.photo} />}
           <Text style={{ color: colors.foreground }}>{moment.note || 'Photo de la sortie'}</Text>
           {moment.photo && <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>{moment.photo.takenAtEstimated ? 'Date de prise inconnue' : `${fmtWeekdayShort(moment.photo.takenAt)} · ${fmtHHMM(moment.photo.takenAt)}`}</Text>}
           {moment.placementMethod === 'estimated' && <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>Position estimée · modifiable sur la carte</Text>}
@@ -290,7 +308,7 @@ export default function ActivityReviewScreen() {
         </Pressable> : <View style={[s.moment, { borderColor: colors.border }]}>
           <TextInput testID="activity-moment-note" value={momentNote} onChangeText={setMomentNote} maxLength={120}
             placeholder="Ex. Pause goûter au bord de l’eau" placeholderTextColor={colors.mutedForeground} style={inputStyle} />
-          {momentPhoto && <Image source={{ uri: momentPhoto.uri }} style={s.photo} />}
+          {momentPhoto && <Image source={{ uri: resolvePhotoRef(momentPhoto.uri) }} style={s.photo} />}
           <View style={s.row}>
             <Pressable disabled={photoBusy} onPress={() => { setPhotoPickerMode('moment'); setPhotoPickerVisible(true); }}><Text style={{ color: colors.primary }}>{momentPhoto ? 'Changer la photo' : 'Joindre une photo'}</Text></Pressable>
             {momentPhoto && <Pressable disabled={photoBusy} onPress={() => { setMomentPhoto(undefined); setPlacementStatus(undefined); }}><Text style={{ color: colors.mutedForeground }}>Retirer</Text></Pressable>}

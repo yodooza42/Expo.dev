@@ -2,6 +2,8 @@ import { Image } from 'expo-image';
 import React, { memo } from 'react';
 import { FlatList, Pressable, StyleSheet } from 'react-native';
 
+import { resolvePhotoRef } from '@/utils/library/catalogue';
+
 type Props = {
   uris: string[];
   size: number;
@@ -31,7 +33,7 @@ export const TaskPhotoStrip = memo(function TaskPhotoStrip({ uris, size, onOpen 
           onPress={event => { event.stopPropagation(); onOpen(uris, index); }}
         >
           <Image
-            source={{ uri }}
+            source={{ uri: resolvePhotoRef(uri) }}
             style={{ width: size, height: size, borderRadius: 8, marginRight: 6 }}
             contentFit="cover"
             allowDownscaling

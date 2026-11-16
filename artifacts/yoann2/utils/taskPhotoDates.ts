@@ -1,6 +1,5 @@
-import { photoCandidates } from '@/utils/photoReferences';
+import { libraryPhotoTakenAt, photoCandidates } from '@/utils/photoReferences';
 import { photoTakenAt } from '@/utils/tripPhotoPlacement';
-import { protectedPhotoSource } from '@/utils/photoProtection';
 import { readImageExifDateFields } from '@/utils/imageExifDate';
 
 export const SUBTASK_PHOTO_GAP_MS = 24 * 60 * 60 * 1000;
@@ -32,13 +31,9 @@ export function hasSubtaskPhotoDateSpread(uris: string[], photoDates: Record<str
 }
 
 async function readPhotoDate(uri: string): Promise<number | undefined> {
-  const source = await protectedPhotoSource(uri);
-  const candidates = [...new Set([
-    uri,
-    ...(await photoCandidates(uri)),
-    source,
-    ...(source === uri ? [] : await photoCandidates(source)),
-  ])];
+  const recorded = libraryPhotoTakenAt(uri);
+  if (recorded) return recorded;
+  const candidates = [...new Set([uri, ...(await photoCandidates(uri))])];
   for (const candidate of candidates) {
     if (/^(https?:|ph:)/i.test(candidate)) continue;
     try {

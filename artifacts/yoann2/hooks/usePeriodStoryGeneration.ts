@@ -13,6 +13,7 @@ import { buildProjectJournalHtml } from '@/utils/projectJournalRenderer';
 import { prepareJournal, splitJournalPayloadImages, type JournalPhotoAsset } from '@/utils/prepareJournal';
 import { journalDuration } from '@/utils/projectJournal';
 import type { JournalGenerationRequest } from '@/types/projectJournal';
+import { resolvePhotoRef } from '@/utils/library/catalogue';
 
 type Phase = 'prepare' | 'maps' | 'photos' | 'recording' | 'export';
 export type PeriodStoryChapter = {
@@ -70,7 +71,8 @@ const TITLES: Record<Phase, string> = {
   export: 'Enregistrement de la vidéo…',
 };
 
-async function preparePhoto(uri: string, isCurrent: () => boolean): Promise<string> {
+async function preparePhoto(reference: string, isCurrent: () => boolean): Promise<string> {
+  const uri = resolvePhotoRef(reference);
   let timer: ReturnType<typeof setTimeout> | undefined;
   const work = (async () => {
     const size = await new Promise<{ width: number; height: number }>((resolve, reject) =>

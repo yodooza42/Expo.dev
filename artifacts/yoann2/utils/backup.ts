@@ -2,273 +2,258 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 
-import { SAF_BACKUP_KEY } from '@/utils/photoStorage';
+import { CATALOGUE_KEY, adoptCatalogue, catalogueSnapshot, flushCatalogue, loadCatalogue, parseCatalogue } from '@/utils/library/catalogue';
+import { flushJournal, logEvent } from '@/utils/library/journal';
+import { BACKUPS_DIR, fileStamp, isLibraryRef, joinRel, refId } from '@/utils/library/paths';
+import { collectReferences } from '@/utils/library/placement';
+import { libraryAccessible, listDir, writeText } from '@/utils/library/saf';
+import type { Project, Task } from '@/types';
+import type { Trip } from '@/types/trips';
 
-const SAF              = FileSystem.StorageAccessFramework;
-const BACKUP_LIST_KEY  = '@yoann2_backup_list';
-const LAST_BACKUP_KEY  = '@yoann2_last_backup_ts';
-const MAX_BACKUPS      = 5;
+/**
+ * Backups of every stored setting and record, written to Yoann2.0/Sauvegardes.
+ * They contain no device-specific links: photos are referenced by id and
+ * found through the catalogue, so a backup works on another phone.
+ */
 
-type BackupEntry = { uri: string; ts: number; filename: string };
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-async function getBackupDir(): Promise<string | null> {
-  try {
-    return await AsyncStorage.getItem(SAF_BACKUP_KEY);
-  } catch {
-    return null;
-  }
-}
-
-async function getBackupList(): Promise<BackupEntry[]> {
-  try {
-    const raw = await AsyncStorage.getItem(BACKUP_LIST_KEY);
-    return raw ? (JSON.parse(raw) as BackupEntry[]) : [];
-  } catch {
-    return [];
-  }
-}
-
-async function setBackupList(list: BackupEntry[]): Promise<void> {
-  await AsyncStorage.setItem(BACKUP_LIST_KEY, JSON.stringify(list));
-}
-
-// ── Collect all app data from AsyncStorage ────────────────────────────────────
-// Préfixes inclus : @yoann2 (principal) + modules Marie, Anna, Work qui
-// utilisent leurs propres préfixes et seraient perdus lors d'un transfert
-// si on ne les capture pas explicitement.
+const LAST_BACKUP_KEY = '@yoann2_last_backup_v2_ts';
 const BACKUP_KEY_PREFIXES = ['@yoann2', '@marie_', '@anna_', '@work_'];
+const DEVICE_LOCAL_PREFIXES = ['@yoann2_saf_', '@yoann2_lock_'];
+const DEVICE_LOCAL_KEYS = new Set([
+  '@yoann2_backup_list', '@yoann2_last_backup_ts', LAST_BACKUP_KEY,
+  '@yoann2_widget_debug_log', '@yoann2_photo_protection_v1', '@yoann2_photo_protection_missing',
+  '@yoann2_trip_detection_state', '@yoann2_last_valid_point', '@yoann2_battery_opt_prompted',
+  '@yoann2_folder_report_v2', '@yoann2_last_maintenance_v2', '@yoann2_library_onboarding_v2',
+  '@yoann2_fresh_install_v2',
+]);
 
-async function collectAllData(): Promise<string> {
-  const allKeys = await AsyncStorage.getAllKeys();
-  const keys = allKeys.filter(k => BACKUP_KEY_PREFIXES.some(p => k.startsWith(p)));
-  const pairs = await AsyncStorage.multiGet(keys);
+export type BackupReason = 'auto' | 'manuel' | 'avant-restauration' | 'avant-detachement';
+export type BackupEntry = { uri: string; ts: number; filename: string; reason: string };
+export type BackupFile = {
+  app?: string;
+  version: number;
+  exportedAt: string;
+  reason?: string;
+  inventory?: { included: number; excluded: string[] };
+  data: Record<string, string | null>;
+};
+
+export function isDeviceLocalKey(key: string): boolean {
+  return DEVICE_LOCAL_KEYS.has(key) || DEVICE_LOCAL_PREFIXES.some(prefix => key.startsWith(prefix))
+    || /^@yoann2_notif_.*_ids$/.test(key);
+}
+
+/** Every stored key, split between what is saved and what only makes sense on this phone. */
+export async function storageInventory(): Promise<{ included: string[]; excluded: string[] }> {
+  const keys = (await AsyncStorage.getAllKeys()).filter(key => BACKUP_KEY_PREFIXES.some(prefix => key.startsWith(prefix)));
+  return {
+    included: keys.filter(key => !isDeviceLocalKey(key)).sort(),
+    excluded: keys.filter(isDeviceLocalKey).sort(),
+  };
+}
+
+async function collect(reason: BackupReason): Promise<BackupFile> {
+  await loadCatalogue();
+  const inventory = await storageInventory();
+  const pairs = await AsyncStorage.multiGet(inventory.included);
   const data: Record<string, string | null> = {};
-  for (const [k, v] of pairs) data[k] = v;
-  return JSON.stringify({
-    exportedAt: new Date().toISOString(),
-    version: 1,
+  for (const [key, value] of pairs) data[key] = value;
+  // Always the in-memory catalogue: it is the newest version.
+  data[CATALOGUE_KEY] = JSON.stringify(catalogueSnapshot());
+  return {
+    app: 'Yoann2.0', version: 2, exportedAt: new Date().toISOString(), reason,
+    inventory: { included: Object.keys(data).length, excluded: inventory.excluded },
     data,
-  }, null, 2);
+  };
 }
 
-// ── Save one backup (SAF write + rotate) ─────────────────────────────────────
+const NAME_PATTERN = /^(\d{4})-(\d{2})-(\d{2})_(\d{2})-(\d{2})-(\d{2})(?:_([a-z-]+))?\.json$/;
 
-export async function saveBackup(): Promise<boolean> {
+export async function listBackups(): Promise<BackupEntry[]> {
   try {
-    const backupDir = await getBackupDir();
-    if (!backupDir) return false;
-
-    const jsonData  = await collectAllData();
-    const ts        = Date.now();
-    const dateStr   = new Date(ts).toISOString().replace(/[:.]/g, '-').slice(0, 19);
-    const filename  = `backup_${dateStr}.json`;
-
-    const tmpPath = `${FileSystem.cacheDirectory}${filename}`;
-    await FileSystem.writeAsStringAsync(tmpPath, jsonData, {
-      encoding: FileSystem.EncodingType.UTF8,
-    });
-    const base64 = await FileSystem.readAsStringAsync(tmpPath, {
-      encoding: FileSystem.EncodingType.Base64,
-    });
-
-    const fileUri = await SAF.createFileAsync(backupDir, filename, 'application/json');
-    await SAF.writeAsStringAsync(fileUri, base64, {
-      encoding: FileSystem.EncodingType.Base64,
-    });
-
-    FileSystem.deleteAsync(tmpPath, { idempotent: true }).catch(() => {});
-
-    const list = await getBackupList();
-    list.push({ uri: fileUri, ts, filename });
-
-    if (list.length > MAX_BACKUPS) {
-      const toDelete = list.splice(0, list.length - MAX_BACKUPS);
-      for (const entry of toDelete) {
-        FileSystem.deleteAsync(entry.uri, { idempotent: true }).catch(() => {});
-      }
+    const children = await listDir(BACKUPS_DIR);
+    const entries: BackupEntry[] = [];
+    for (const [filename, uri] of children) {
+      const match = filename.match(NAME_PATTERN);
+      if (!match) continue;
+      const [, y, mo, d, h, mi, s, reason] = match;
+      const ts = new Date(+y!, +mo! - 1, +d!, +h!, +mi!, +s!).getTime();
+      entries.push({ uri, ts, filename, reason: reason ?? 'auto' });
     }
-
-    await setBackupList(list);
-    await AsyncStorage.setItem(LAST_BACKUP_KEY, String(ts));
-    return true;
-  } catch {
-    return false;
-  }
+    return entries.sort((a, b) => b.ts - a.ts);
+  } catch { return []; }
 }
 
-// ── Daily trigger — call on each foreground ───────────────────────────────────
-//
-// Runs if: no backup today AND current time >= 10:00
+const dayKey = (ts: number) => { const d = new Date(ts); return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`; };
+const monthKey = (ts: number) => { const d = new Date(ts); return `${d.getFullYear()}-${d.getMonth()}`; };
+function weekKey(ts: number) {
+  const d = new Date(ts);
+  const monday = new Date(d.getFullYear(), d.getMonth(), d.getDate() - ((d.getDay() + 6) % 7));
+  return dayKey(monday.getTime());
+}
 
+/** 7 daily, 4 weekly, 12 monthly (newest of each), plus 30 days of safety copies. */
+export function backupsToKeep(entries: BackupEntry[], now = Date.now()): Set<string> {
+  const keep = new Set<string>();
+  const sorted = [...entries].sort((a, b) => b.ts - a.ts);
+  if (sorted[0]) keep.add(sorted[0].uri);
+  const tiers: Array<[(ts: number) => string, number]> = [[dayKey, 7], [weekKey, 4], [monthKey, 12]];
+  for (const [key, count] of tiers) {
+    const seen = new Set<string>();
+    for (const entry of sorted) {
+      const k = key(entry.ts);
+      if (seen.has(k)) continue;
+      if (seen.size >= count) break;
+      seen.add(k);
+      keep.add(entry.uri);
+    }
+  }
+  for (const entry of sorted) {
+    if (entry.reason.startsWith('avant-') && now - entry.ts < 30 * 86_400_000) keep.add(entry.uri);
+  }
+  return keep;
+}
+
+let saving: Promise<boolean> | null = null;
+
+export function saveBackup(reason: BackupReason = 'auto'): Promise<boolean> {
+  if (saving) return saving;
+  saving = (async () => {
+    try {
+      if (!await libraryAccessible()) return false;
+      await flushCatalogue().catch(() => {});
+      const file = await collect(reason);
+      const ts = Date.now();
+      const filename = `${fileStamp(ts)}_${reason}.json`;
+      // writeText reads the file back and compares it before reporting success.
+      await writeText(joinRel(BACKUPS_DIR, filename), JSON.stringify(file));
+      await AsyncStorage.setItem(LAST_BACKUP_KEY, String(ts));
+      const entries = await listBackups();
+      const keep = backupsToKeep(entries);
+      for (const entry of entries) {
+        if (!keep.has(entry.uri)) await FileSystem.deleteAsync(entry.uri, { idempotent: true }).catch(() => {});
+      }
+      logEvent('sauvegarde', `${filename} (${file.inventory?.included ?? 0} clés)`);
+      void flushJournal();
+      return true;
+    } catch (error) {
+      logEvent('erreur', `sauvegarde : ${error instanceof Error ? error.message : 'échec'}`);
+      return false;
+    }
+  })().finally(() => { saving = null; });
+  return saving;
+}
+
+export async function lastBackupTime(): Promise<number | null> {
+  const raw = await AsyncStorage.getItem(LAST_BACKUP_KEY);
+  const local = raw ? Number(raw) : NaN;
+  if (Number.isFinite(local)) return local;
+  return (await listBackups())[0]?.ts ?? null;
+}
+
+/** Once a day from 10:00, on the first time the app is in the foreground. */
 export async function runDailyBackupIfNeeded(): Promise<void> {
   try {
     const now = new Date();
     if (now.getHours() < 10) return;
+    const last = await lastBackupTime();
+    const todayAt10 = new Date(now);
+    todayAt10.setHours(10, 0, 0, 0);
+    if (last && last >= todayAt10.getTime()) return;
+    await saveBackup('auto');
+  } catch { /* retried on the next foreground */ }
+}
 
-    const raw = await AsyncStorage.getItem(LAST_BACKUP_KEY);
-    if (raw) {
-      const last = new Date(parseInt(raw, 10));
-      const todayAt10 = new Date(now);
-      todayAt10.setHours(10, 0, 0, 0);
-      if (last >= todayAt10) return;
-    }
-
-    await saveBackup();
-  } catch {
-    // silently ignore
+export function parseBackup(raw: string): BackupFile {
+  let parsed: BackupFile;
+  try { parsed = JSON.parse(raw) as BackupFile; }
+  catch { throw new Error('Ce fichier n’est pas une sauvegarde lisible (JSON invalide ou incomplet).'); }
+  if (!parsed?.data || typeof parsed.data !== 'object' || (parsed.version !== 1 && parsed.version !== 2)) {
+    throw new Error('Ce fichier n’est pas une sauvegarde Yoann2.0.');
   }
+  return parsed;
 }
 
-// ── Read helpers (for future restore UI) ─────────────────────────────────────
-
-export async function listBackups(): Promise<BackupEntry[]> {
-  const list = await getBackupList();
-  return [...list].reverse();
+export async function readBackupFile(uri: string): Promise<BackupFile> {
+  return parseBackup(await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.UTF8 }));
 }
 
-export async function readBackup(uri: string): Promise<string | null> {
-  try {
-    return await SAF.readAsStringAsync(uri, {
-      encoding: FileSystem.EncodingType.UTF8,
-    });
-  } catch {
-    return null;
+export type BackupReport = {
+  exportedAt: string;
+  version: number;
+  keys: number;
+  projects: number;
+  tasks: number;
+  trips: number;
+  libraryPhotos: number;
+  libraryPhotosKnown: number;
+  legacyLinks: number;
+};
+
+function parseList<T>(raw: string | null | undefined): T[] {
+  try { const value = raw ? JSON.parse(raw) : []; return Array.isArray(value) ? value : []; } catch { return []; }
+}
+
+export function describeBackup(file: BackupFile): BackupReport {
+  const projects = parseList<Project>(file.data['@yoann2_projects']);
+  const tasks = parseList<Task>(file.data['@yoann2_tasks']);
+  const trips = parseList<Trip>(file.data['@yoann2_trips']);
+  const refs = collectReferences({ projects, tasks, trips });
+  const backupCatalogue = parseCatalogue(file.data[CATALOGUE_KEY]);
+  const current = catalogueSnapshot();
+  const known = [...refs.ids].filter(id => backupCatalogue?.photos[id] || current.photos[id]).length;
+  return {
+    exportedAt: file.exportedAt,
+    version: file.version,
+    keys: Object.values(file.data).filter(value => typeof value === 'string').length,
+    projects: projects.length, tasks: tasks.length, trips: trips.length,
+    libraryPhotos: refs.ids.size, libraryPhotosKnown: known, legacyLinks: refs.legacy.size,
+  };
+}
+
+export function formatBackupReport(report: BackupReport): string {
+  const date = new Date(report.exportedAt);
+  const lines = [
+    `Sauvegarde du ${date.toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })} à ${date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`,
+    `${report.projects} projets · ${report.tasks} tâches · ${report.trips} trajets`,
+    `${report.keys} éléments enregistrés`,
+  ];
+  if (report.libraryPhotos) lines.push(`${report.libraryPhotosKnown}/${report.libraryPhotos} photos retrouvées dans le catalogue`);
+  if (report.legacyLinks) lines.push(`${report.legacyLinks} anciens liens photo (ancien système, ne seront pas réparés)`);
+  return lines.join('\n');
+}
+
+/**
+ * Restores the saved values. A safety backup of the current state is made
+ * first when the folder is available. Device-only keys are never imported.
+ * The caller restarts the app afterwards.
+ */
+export async function restoreBackupFile(file: BackupFile): Promise<void> {
+  if (await libraryAccessible()) await saveBackup('avant-restauration');
+  const pairs = Object.entries(file.data)
+    .filter((entry): entry is [string, string] => typeof entry[1] === 'string' && !isDeviceLocalKey(entry[0]) && entry[0] !== CATALOGUE_KEY);
+  await AsyncStorage.multiSet(pairs);
+  await adoptCatalogue(parseCatalogue(file.data[CATALOGUE_KEY]));
+  await flushCatalogue().catch(() => {});
+  logEvent('restauration', `sauvegarde du ${file.exportedAt} (${pairs.length} clés)`);
+  await flushJournal();
+}
+
+/** Pick any backup file (including old version-1 files from the former Sauvegarde folder). */
+export async function pickBackupFile(): Promise<BackupFile | null> {
+  const result = await DocumentPicker.getDocumentAsync({ type: ['application/json', '*/*'], copyToCacheDirectory: true });
+  if (result.canceled || !result.assets[0]) return null;
+  return parseBackup(await FileSystem.readAsStringAsync(result.assets[0].uri, { encoding: FileSystem.EncodingType.UTF8 }));
+}
+
+/** Newest backup in the folder that can actually be read. */
+export async function latestValidBackup(): Promise<{ entry: BackupEntry; file: BackupFile } | null> {
+  for (const entry of (await listBackups()).slice(0, 10)) {
+    try { return { entry, file: await readBackupFile(entry.uri) }; } catch { /* try the previous one */ }
   }
+  return null;
 }
 
-export async function deleteBackup(uri: string): Promise<void> {
-  const list = await getBackupList();
-  const next = list.filter(e => e.uri !== uri);
-  await setBackupList(next);
-  FileSystem.deleteAsync(uri, { idempotent: true }).catch(() => {});
-}
-
-// ── Import from any file picked by the user (document picker) ────────────────
-//
-// Lets the user select any backup_*.json from their device storage, bypassing
-// the AsyncStorage backup list (useful after reinstall where the list was wiped).
-
-export async function importBackupFromFile(): Promise<{ ok: boolean; canceled?: boolean; error?: string }> {
-  try {
-    const result = await DocumentPicker.getDocumentAsync({
-      type: ['application/json', '*/*'],
-      copyToCacheDirectory: true,
-    });
-
-    if (result.canceled) return { ok: false, canceled: true };
-
-    const asset = result.assets[0];
-    if (!asset) return { ok: false, error: 'Aucun fichier sélectionné.' };
-
-    const raw = await FileSystem.readAsStringAsync(asset.uri, {
-      encoding: FileSystem.EncodingType.UTF8,
-    });
-
-    const parsed = JSON.parse(raw) as { version?: number; data?: Record<string, string | null> };
-    if (parsed?.version !== 1 || !parsed?.data || typeof parsed.data !== 'object') {
-      return { ok: false, error: 'Format de fichier invalide. Vérifiez qu\'il s\'agit bien d\'une sauvegarde Yoann2.0 (version 1).' };
-    }
-
-    const pairs: [string, string][] = Object.entries(parsed.data)
-      .filter((entry): entry is [string, string] => typeof entry[1] === 'string')
-      .map(([k, v]) => [k, v]);
-
-    await AsyncStorage.multiSet(pairs);
-
-    const ts = Date.now();
-    const filename = asset.name ?? `backup_importé_${new Date(ts).toISOString().replace(/[:.]/g, '-').slice(0, 19)}.json`;
-
-    // Copy into the managed SAF backup folder so the list entry has a durable URI.
-    // If no folder is configured yet, skip adding to the list (data is restored regardless).
-    const backupDir = await getBackupDir();
-    if (backupDir) {
-      try {
-        const safUri = await SAF.createFileAsync(backupDir, filename, 'application/json');
-        const base64 = Buffer.from(raw).toString('base64');
-        await SAF.writeAsStringAsync(safUri, base64, { encoding: FileSystem.EncodingType.Base64 });
-        const list = await getBackupList();
-        list.push({ uri: safUri, ts, filename });
-        if (list.length > MAX_BACKUPS) list.splice(0, list.length - MAX_BACKUPS);
-        await setBackupList(list);
-      } catch {
-        // Durable copy failed — data is still restored, just not in the list
-      }
-    }
-
-    await AsyncStorage.setItem(LAST_BACKUP_KEY, String(ts));
-    return { ok: true };
-  } catch {
-    return { ok: false, error: 'Impossible de lire ce fichier.' };
-  }
-}
-
-// ── Rebuild backup list from SAF folder ──────────────────────────────────────
-//
-// Scans the configured SAF backup folder for backup_*.json files and
-// reconstructs @yoann2_backup_list from what is actually on disk.
-// Only runs if the list is empty (unless force=true).
-
-export async function rebuildBackupListFromSAF(force = false): Promise<boolean> {
-  try {
-    const backupDir = await getBackupDir();
-    if (!backupDir) return false;
-
-    if (!force) {
-      const existing = await getBackupList();
-      if (existing.length > 0) return false;
-    }
-
-    const uris = await SAF.readDirectoryAsync(backupDir);
-
-    const backupEntries: BackupEntry[] = [];
-    for (const uri of uris) {
-      const decoded = decodeURIComponent(uri);
-      const filename = decoded.split('/').pop() ?? '';
-      if (!filename.startsWith('backup_') || !filename.endsWith('.json')) continue;
-
-      // Filename format: backup_YYYY-MM-DDTHH-MM-SS.json
-      const dateStr = filename.slice('backup_'.length, -'.json'.length);
-      const parts = dateStr.split('T');
-      if (parts.length !== 2) continue;
-      const [datePart, timePart] = parts;
-      const isoStr = `${datePart}T${timePart.replace(/-/g, ':')}`;
-      const ts = new Date(isoStr).getTime();
-      if (isNaN(ts)) continue;
-
-      backupEntries.push({ uri, ts, filename });
-    }
-
-    backupEntries.sort((a, b) => a.ts - b.ts);
-    const kept = backupEntries.slice(-MAX_BACKUPS);
-    await setBackupList(kept);
-    return kept.length > 0;
-  } catch {
-    return false;
-  }
-}
-
-// ── Restore from a backup entry ───────────────────────────────────────────────
-//
-// Reads the JSON file and restores every key back into AsyncStorage.
-// Keys that existed before but are absent from the backup are left untouched.
-
-export async function restoreBackup(uri: string): Promise<boolean> {
-  try {
-    const raw = await SAF.readAsStringAsync(uri, {
-      encoding: FileSystem.EncodingType.UTF8,
-    });
-    const parsed = JSON.parse(raw) as { version: number; data: Record<string, string | null> };
-    if (!parsed?.data || typeof parsed.data !== 'object') return false;
-
-    const pairs: [string, string][] = Object.entries(parsed.data)
-      .filter((entry): entry is [string, string] => typeof entry[1] === 'string')
-      .map(([k, v]) => [k, v]);
-
-    await AsyncStorage.multiSet(pairs);
-    return true;
-  } catch {
-    return false;
-  }
+export function countLibraryRefs(uris: string[]): number {
+  return uris.filter(isLibraryRef).map(refId).length;
 }

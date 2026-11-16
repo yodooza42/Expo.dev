@@ -2,8 +2,8 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import * as MediaLibrary from 'expo-media-library';
-import { sanitize, taskFolderName } from '@/utils/photoStorage';
-import { protectPhoto } from '@/utils/photoProtection';
+import { importPhotos, reportImportFailures } from '@/utils/library/importPhoto';
+import { taskFolder } from '@/utils/library/placement';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useMemo, useState } from 'react';
 import {
@@ -168,27 +168,24 @@ export default function NewTaskScreen() {
 
   async function addTaskPhotoUris(items: Array<{ uri: string; takenAt?: number }>) {
     try {
-    const permanent = await Promise.all(items.map(async item => ({
-      uri: await protectPhoto(item.uri, {
-      project: projects.find(item => item.id === projectId)?.name ?? 'Sans projet',
-      folder: existing ? taskFolderName(title, existing.id) : sanitize(title || 'Nouvelle tâche'),
-      }),
-      takenAt: item.takenAt,
-    })));
-    const photoDates = {
-      ...photoTakenAtByUri,
-      ...Object.fromEntries(permanent.filter(item => item.takenAt).map(item => [item.uri, item.takenAt!])),
-    };
-    setPhotos(previous => {
-      const existingUris = new Set(previous);
-      return sortTaskPhotosChronologically(
-        [...previous, ...permanent.map(item => item.uri).filter(uri => !existingUris.has(uri))],
-        photoDates,
-      );
-    });
-    setPhotoTakenAtByUri(photoDates);
+      const project = projects.find(item => item.id === projectId);
+      const { imported, failed } = await importPhotos(items, taskFolder(project, title || 'Nouvelle tâche'));
+      reportImportFailures(failed);
+      if (!imported.length) return;
+      const photoDates = {
+        ...photoTakenAtByUri,
+        ...Object.fromEntries(imported.filter(item => item.takenAt).map(item => [item.ref, item.takenAt!])),
+      };
+      setPhotos(previous => {
+        const existingUris = new Set(previous);
+        return sortTaskPhotosChronologically(
+          [...previous, ...[...new Set(imported.map(item => item.ref))].filter(uri => !existingUris.has(uri))],
+          photoDates,
+        );
+      });
+      setPhotoTakenAtByUri(photoDates);
     } catch (error) {
-      Alert.alert('Photo non conservée', error instanceof Error ? error.message : 'Copie permanente impossible.');
+      Alert.alert('Photo non ajoutée', error instanceof Error ? error.message : 'Copie dans Yoann2.0 impossible.');
     }
   }
 

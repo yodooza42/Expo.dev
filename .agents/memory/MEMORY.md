@@ -22,7 +22,7 @@
 - [Virements épargne centralisés](savings-transfer-consistency.md) — les virements manuels et automatiques doivent partager la même écriture solde épargne + transaction courant.
 - [Sources de tuiles cartographiques](map-tile-sources.md) — CARTO renvoie « API KEY REQUIRED » ; les fonds ArcGIS testés fonctionnent sans clé et exigent une attribution visible.
 - [WebViews invisibles Android](hidden-native-webview-layout.md) — contraindre aussi le conteneur natif : masquer la vue interne ne supprime pas son espace dans la page.
-- [Protection des photos](photo-protection.md) — copies permanentes et double copie locale vérifiée, masquée de la galerie sans changer les dates ni les originaux.
+- [Stockage durable Yoann2.0](photo-protection.md) — dossier Yoann2.0 = source de vérité ; aucune suppression sans confirmation ; limites Android à rappeler.
 - [Dates EXIF des photos sélectionnées](task-photo-metadata.md) — lire uniquement les photos de tâche ou de projet choisies ; avec Hermes, utiliser l’entrée ESM lite d’exifr.
 - [Dates de fin](project-task-completion.md) — projets et tâches : date du jour à la clôture, correction manuelle possible sans changer l’échéance.
 - [Carnet vidéo des projets](project-journal.md) — stories chronologiques par complétion, période/projets/photos/légendes au choix, style carnet à carreaux de 5 mm.

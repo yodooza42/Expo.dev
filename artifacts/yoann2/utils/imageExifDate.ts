@@ -1,5 +1,7 @@
 import * as FileSystem from 'expo-file-system/legacy';
 
+import { resolvePhotoRefAsync } from '@/utils/library/catalogue';
+
 type ExifDateFields = {
   DateTimeOriginal?: string;
   OffsetTimeOriginal?: string;
@@ -29,7 +31,7 @@ function decodeBase64(value: string): Uint8Array {
   return output.subarray(0, length);
 }
 
-async function readRange(uri: string, position: number, length: number): Promise<Uint8Array> {
+export async function readRange(uri: string, position: number, length: number): Promise<Uint8Array> {
   if (!Number.isSafeInteger(position) || position < 0 || !Number.isSafeInteger(length) || length <= 0) {
     return new Uint8Array();
   }
@@ -335,7 +337,9 @@ async function readHeifExif(uri: string, fileSize: number): Promise<ExifDateFiel
  * Reads only JPEG APP1 or HEIF Exif metadata ranges; image pixels and media-data
  * boxes are skipped. HEIF Exif item reads are bounded to 512 KiB.
  */
-export async function readImageExifDateFields(uri: string): Promise<ExifDateFields | undefined> {
+export async function readImageExifDateFields(reference: string): Promise<ExifDateFields | undefined> {
+  const uri = await resolvePhotoRefAsync(reference);
+  if (!uri) return undefined;
   let fileSize: number | undefined;
   try {
     const info = await FileSystem.getInfoAsync(uri);

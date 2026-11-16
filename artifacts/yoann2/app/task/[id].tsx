@@ -30,8 +30,9 @@ import { SubPageHeader } from '@/components/SubPageHeader';
 import type { SubTask, TaskStatus } from '@/types';
 import { syncGeofences } from '@/utils/geoReminderManager';
 import { computeStreak, recurrenceLabel } from '@/utils/streakUtils';
-import { protectPhoto } from '@/utils/photoProtection';
-import { taskFolderName } from '@/utils/photoStorage';
+import { importPhotos, reportImportFailures } from '@/utils/library/importPhoto';
+import { isLibraryRef } from '@/utils/library/paths';
+import { taskFolder } from '@/utils/library/placement';
 import { completionDateError, formatCompletionDate } from '@/utils/completionDate';
 import { photoTakenAt } from '@/utils/tripPhotoPlacement';
 import { hasSubtaskPhotoDateSpread, scanTaskPhotoDates, sortTaskPhotosChronologically } from '@/utils/taskPhotoDates';
@@ -196,7 +197,8 @@ export default function TaskDetailScreen() {
             subTasks,
             projectPhotoUris: task.projectPhotoUris?.filter(photoUri => photoUri !== uri),
           });
-          if (!isShared) {
+          // Library copies are never deleted here: an unused copy goes to Corbeille via the folder check.
+          if (!isShared && !isLibraryRef(uri)) {
             try {
               const info = await FileSystem.getInfoAsync(uri);
               if (info.exists) await FileSystem.deleteAsync(uri, { idempotent: true });
@@ -235,20 +237,16 @@ export default function TaskDetailScreen() {
 
   async function addTaskPhotoUris(items: Array<{ uri: string; takenAt?: number }>) {
     try {
-      const permanent = await Promise.all(items.map(async item => ({
-        uri: await protectPhoto(item.uri, {
-          project: project?.name ?? 'Sans projet', folder: taskFolderName(task.title, task.id),
-        }),
-        takenAt: item.takenAt,
-      })));
+      const { imported, failed } = await importPhotos(items, taskFolder(project ?? undefined, task.title));
+      reportImportFailures(failed);
       const current = latestTasks.current.find(item => item.id === task.id);
-      if (!current) return;
-      const newUris = permanent.map(item => item.uri).filter(uri => !current.photos.includes(uri));
+      if (!current || !imported.length) return;
+      const newUris = [...new Set(imported.map(item => item.ref))].filter(uri => !current.photos.includes(uri));
       const photoTakenAt = { ...(current.photoTakenAt ?? {}) };
       let metadataChanged = false;
-      permanent.forEach(item => {
-        if (item.takenAt && photoTakenAt[item.uri] !== item.takenAt) {
-          photoTakenAt[item.uri] = item.takenAt;
+      imported.forEach(item => {
+        if (item.takenAt && photoTakenAt[item.ref] !== item.takenAt) {
+          photoTakenAt[item.ref] = item.takenAt;
           metadataChanged = true;
         }
       });
@@ -258,7 +256,7 @@ export default function TaskDetailScreen() {
           photoTakenAt,
         });
     } catch (error) {
-      Alert.alert('Photo non conservée', error instanceof Error ? error.message : 'Copie permanente impossible.');
+      Alert.alert('Photo non ajoutée', error instanceof Error ? error.message : 'Copie dans Yoann2.0 impossible.');
     }
   }
 

@@ -102,9 +102,8 @@ function fileSystemFor(uri, bytes, ranges = []) {
 
 test('photo-date spread starts strictly after 24 hours and ignores missing dates', () => {
   const { hasSubtaskPhotoDateSpread, SUBTASK_PHOTO_GAP_MS } = load('utils/taskPhotoDates.ts', {
-    '@/utils/photoReferences': { photoCandidates: async uri => [uri] },
+    '@/utils/photoReferences': { photoCandidates: async uri => [uri], libraryPhotoTakenAt: () => undefined },
     '@/utils/tripPhotoPlacement': { photoTakenAt: () => undefined },
-    '@/utils/photoProtection': { protectedPhotoSource: async uri => uri },
     '@/utils/imageExifDate': { readImageExifDateFields: async () => undefined },
   });
   const t = 1_800_000_000_000;
@@ -116,9 +115,8 @@ test('photo-date spread starts strictly after 24 hours and ignores missing dates
 
 test('task photos sort by capture date and time, keeping unknown dates stable at the end', () => {
   const { sortTaskPhotosChronologically } = load('utils/taskPhotoDates.ts', {
-    '@/utils/photoReferences': { photoCandidates: async uri => [uri] },
+    '@/utils/photoReferences': { photoCandidates: async uri => [uri], libraryPhotoTakenAt: () => undefined },
     '@/utils/tripPhotoPlacement': { photoTakenAt: () => undefined },
-    '@/utils/photoProtection': { protectedPhotoSource: async uri => uri },
     '@/utils/imageExifDate': { readImageExifDateFields: async () => undefined },
   });
   assert.deepEqual(
@@ -137,6 +135,7 @@ test('reads only metadata ranges from JPEG and extracts its capture date', async
   const fs = fileSystemFor(uri, bytes, ranges);
   const { readImageExifDateFields } = load('utils/imageExifDate.ts', {
     'expo-file-system/legacy': fs,
+    '@/utils/library/catalogue': { resolvePhotoRefAsync: async uri => uri },
   });
   const fields = await readImageExifDateFields(uri);
   assert.equal(fields.DateTime, '2026:11:10 12:34:56');
@@ -151,6 +150,7 @@ test('reads the HEIF Exif item by offset without reading image data', async () =
   const fs = fileSystemFor(uri, bytes, ranges);
   const { readImageExifDateFields } = load('utils/imageExifDate.ts', {
     'expo-file-system/legacy': fs,
+    '@/utils/library/catalogue': { resolvePhotoRefAsync: async uri => uri },
   });
   const fields = await readImageExifDateFields(uri);
   assert.equal(fields.DateTime, '2025:03:04 05:06:07');
@@ -165,9 +165,8 @@ test('scans only the supplied task photos, reports missing dates, and keeps prog
     'file:///vault/two.jpg': { DateTime: 'two' },
   };
   const { scanTaskPhotoDates } = load('utils/taskPhotoDates.ts', {
-    '@/utils/photoReferences': { photoCandidates: async uri => [uri] },
+    '@/utils/photoReferences': { photoCandidates: async uri => [uri], libraryPhotoTakenAt: () => undefined },
     '@/utils/tripPhotoPlacement': { photoTakenAt: exif => exif?.DateTime === 'one' ? 100 : exif?.DateTime === 'two' ? 100 + 3 * 24 * 60 * 60 * 1000 : undefined },
-    '@/utils/photoProtection': { protectedPhotoSource: async uri => uri },
     '@/utils/imageExifDate': { readImageExifDateFields: async uri => metadata[uri] },
   });
   const progress = [];
@@ -182,9 +181,8 @@ test('scans only the supplied task photos, reports missing dates, and keeps prog
 test('falls back to another protected copy if a task photo URI cannot be read', async () => {
   const reads = [];
   const { scanTaskPhotoDates } = load('utils/taskPhotoDates.ts', {
-    '@/utils/photoReferences': { photoCandidates: async uri => [uri, 'file:///backup/photo.jpg'] },
+    '@/utils/photoReferences': { photoCandidates: async uri => [uri, 'file:///backup/photo.jpg'], libraryPhotoTakenAt: () => undefined },
     '@/utils/tripPhotoPlacement': { photoTakenAt: exif => exif?.DateTime === 'found' ? 1234 : undefined },
-    '@/utils/photoProtection': { protectedPhotoSource: async uri => uri },
     '@/utils/imageExifDate': { readImageExifDateFields: async uri => {
       reads.push(uri);
       if (uri === 'file:///vault/photo.jpg') throw new Error('unavailable');
@@ -200,9 +198,8 @@ test('falls back to another protected copy if a task photo URI cannot be read', 
 
 test('returns unmatched when the supported image has no EXIF capture date', async () => {
   const { scanTaskPhotoDates } = load('utils/taskPhotoDates.ts', {
-    '@/utils/photoReferences': { photoCandidates: async uri => [uri] },
+    '@/utils/photoReferences': { photoCandidates: async uri => [uri], libraryPhotoTakenAt: () => undefined },
     '@/utils/tripPhotoPlacement': { photoTakenAt: () => undefined },
-    '@/utils/photoProtection': { protectedPhotoSource: async uri => uri },
     '@/utils/imageExifDate': { readImageExifDateFields: async () => undefined },
   });
   const result = await scanTaskPhotoDates(['file:///vault/large.jpg']);

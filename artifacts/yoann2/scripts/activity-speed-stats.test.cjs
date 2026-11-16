@@ -18,6 +18,7 @@ function loader(overrides = {}) {
       mod, require: name => {
         if (name in overrides) return overrides[name];
         if (name.startsWith('@/')) return load(name.slice(2) + '.ts');
+        if (name === '@/utils/library/catalogue') return { resolvePhotoRef: uri => uri, resolvePhotoRefAsync: async uri => uri };
         throw new Error(`Unexpected dependency: ${name}`);
       },
     });

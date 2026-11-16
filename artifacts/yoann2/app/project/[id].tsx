@@ -1,5 +1,4 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
 import { ProjectPhoto } from '@/components/ProjectPhoto';
 import * as Haptics from 'expo-haptics';
@@ -32,9 +31,8 @@ import { useColors } from '@/hooks/useColors';
 import type { JournalProjectPhoto, ProjectStatus, ProjectTimelineEvent, Task } from '@/types';
 import { parseCompletionDate } from '@/utils/completionDate';
 import { BankTransaction, CategoryConfig, getCategoryConfigs } from '@/utils/bankStorage';
-import { hasExternalPhotos, recoverPhotosFromExternal, savePhotoToProject } from '@/utils/photoStorage';
-import { mergeRecoveredPhotoUris } from '@/utils/photoReferences';
-import { protectPhoto } from '@/utils/photoProtection';
+import { importPhotos, reportImportFailures } from '@/utils/library/importPhoto';
+import { projectFolder } from '@/utils/library/placement';
 import { getProjectBeforeAfterPhotoOptions, normalizeJournalProjectPhotos } from '@/utils/projectJournal';
 import { scanPhotoDates } from '@/utils/taskPhotoDates';
 import { fmtEuro, sumEuroAmounts } from '@/utils/money';
@@ -156,9 +154,9 @@ export default function ProjectDetailScreen() {
   const [photoViewIdx, setPhotoViewIdx] = useState<number | null>(null);
   const [currentPhotoIdx, setCurrentPhotoIdx] = useState(0);
   const photoListRef = useRef<FlatList<AllPhoto>>(null);
+  const latestProjects = useRef(projects);
+  latestProjects.current = projects;
   const [exporting, setExporting] = useState(false);
-  const [canRecover, setCanRecover] = useState(false);
-  const [recovering, setRecovering] = useState(false);
   const [galleryPickerVisible, setGalleryPickerVisible] = useState(false);
   const [beforeAfterPickerVisible, setBeforeAfterPickerVisible] = useState(false);
   const [beforeAfterPickerSlot, setBeforeAfterPickerSlot] = useState<BeforeAfterSlot>('before');
@@ -166,16 +164,6 @@ export default function ProjectDetailScreen() {
     before: [], after: [],
   });
   const [savingBeforeAfter, setSavingBeforeAfter] = useState(false);
-
-  useEffect(() => {
-    if (tab !== 'photos' || !projectMaybe) { setCanRecover(false); return; }
-    let mounted = true;
-    const currentProject = projectMaybe;
-    hasExternalPhotos(currentProject.name).then(v => {
-      if (mounted) setCanRecover(v && currentProject.photos.length === 0);
-    });
-    return () => { mounted = false; };
-  }, [tab, projectMaybe]);
 
   if (!projectMaybe) {
     return (
@@ -257,16 +245,6 @@ export default function ProjectDetailScreen() {
   const dueDate = new Date(project.dueDate);
   const isOverdue = dueDate < new Date() && project.status !== 'done';
 
-  async function persistPhoto(tempUri: string): Promise<string> {
-    const dir = FileSystem.documentDirectory + 'project_photos/';
-    const dirInfo = await FileSystem.getInfoAsync(dir);
-    if (!dirInfo.exists) await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
-    const ext  = tempUri.split('.').pop()?.split('?')[0] ?? 'jpg';
-    const dest = dir + Date.now() + '_' + Math.random().toString(36).slice(2) + '.' + ext;
-    await FileSystem.copyAsync({ from: tempUri, to: dest });
-    return dest;
-  }
-
   async function pickPhoto() {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) {
@@ -274,10 +252,7 @@ export default function ProjectDetailScreen() {
       if (!cam.granted) { Alert.alert('Permission refusée'); return; }
       const result = await ImagePicker.launchCameraAsync({ quality: 0.7 });
       if (!result.canceled && result.assets[0]) {
-        const asset = result.assets[0];
-        const local = await persistPhoto(asset.uri);
-        updateProject(project.id, { photos: [...project.photos, local] });
-        savePhotoToProject(asset.uri, project.name, asset.fileName);
+        await addProjectPhotoUris([result.assets[0].uri]);
       }
       return;
     }
@@ -287,15 +262,12 @@ export default function ProjectDetailScreen() {
         onPress: async () => {
           const r = await ImagePicker.launchCameraAsync({ quality: 0.7 });
           if (!r.canceled && r.assets[0]) {
-            const asset = r.assets[0];
-            const local = await persistPhoto(asset.uri);
-            updateProject(project.id, { photos: [...project.photos, local] });
-            savePhotoToProject(asset.uri, project.name, asset.fileName);
+            await addProjectPhotoUris([r.assets[0].uri]);
           }
         },
       },
       {
-        text: 'Galerie (copie protégée)',
+        text: 'Galerie',
         onPress: async () => {
           setGalleryPickerVisible(true);
         },
@@ -306,13 +278,13 @@ export default function ProjectDetailScreen() {
 
   async function addProjectPhotoUris(uris: string[]) {
     try {
-    const permanent = await Promise.all(uris.map(uri => protectPhoto(uri, { project: project.name })));
-    const newUris = permanent.filter(uri => !project.photos.includes(uri));
-    if (newUris.length > 0) {
-      updateProject(project.id, { photos: [...project.photos, ...newUris] });
-    }
+      const { imported, failed } = await importPhotos(uris.map(uri => ({ uri })), projectFolder(project));
+      reportImportFailures(failed);
+      const current = latestProjects.current.find(item => item.id === project.id) ?? project;
+      const newUris = [...new Set(imported.map(item => item.ref))].filter(uri => !current.photos.includes(uri));
+      if (newUris.length > 0) updateProject(project.id, { photos: [...current.photos, ...newUris] });
     } catch (error) {
-      Alert.alert('Photo non conservée', error instanceof Error ? error.message : 'Copie permanente impossible.');
+      Alert.alert('Photo non ajoutée', error instanceof Error ? error.message : 'Copie dans Yoann2.0 impossible.');
     }
   }
 
@@ -374,27 +346,6 @@ export default function ProjectDetailScreen() {
     setExpName(''); setExpAmount(''); setExpCat(''); setExpDescription('');
     setExpDate(new Date().toLocaleDateString('fr-FR'));
     setEditingExpense(null);
-  }
-
-  async function handleRecover() {
-    if (!project) return;
-    setRecovering(true);
-    try {
-    const recovered = await recoverPhotosFromExternal(project.name);
-    if (recovered.length > 0) {
-      const merged = await mergeRecoveredPhotoUris(project.photos, recovered);
-      updateProject(project.id, { photos: merged.uris });
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert(
-        'Photos récupérées',
-        `${recovered.length} photo${recovered.length > 1 ? 's' : ''} restaurée${recovered.length > 1 ? 's' : ''} depuis le dossier Yoann2.0/Photos.`
-      );
-    } else {
-      Alert.alert('Aucune photo', 'Aucune image trouvée dans le dossier externe du projet.');
-    }
-    } catch (error) {
-      Alert.alert('Récupération impossible', error instanceof Error ? error.message : 'Accès au dossier impossible.');
-    } finally { setRecovering(false); }
   }
 
   function openEditExpense(e: BankTransaction) {
@@ -1063,19 +1014,6 @@ export default function ProjectDetailScreen() {
                 <MaterialCommunityIcons name="camera-plus-outline" size={18} color={colors.primaryForeground} />
                 <Text style={[styles.addBtnLabel, { color: colors.primaryForeground }]}>Ajouter au projet</Text>
               </Pressable>
-
-              {canRecover && (
-                <Pressable
-                  onPress={handleRecover}
-                  disabled={recovering}
-                  style={[styles.addBtn, { backgroundColor: '#2196F3', opacity: recovering ? 0.6 : 1 }]}
-                >
-                  <MaterialCommunityIcons name="folder-download-outline" size={18} color="#FFFFFF" />
-                  <Text style={[styles.addBtnLabel, { color: '#FFFFFF' }]}>
-                    {recovering ? 'Récupération…' : 'Récupérer les photos'}
-                  </Text>
-                </Pressable>
-              )}
 
               {allPhotos.length === 0 ? (
                 <View style={styles.empty}>

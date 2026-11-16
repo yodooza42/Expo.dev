@@ -5,6 +5,7 @@ import { useColors } from '@/hooks/useColors';
 import type { FamilyEvent, StoryDraftChoices } from '@/types/periodStory';
 import type { Trip, TripPhoto } from '@/types/trips';
 import { buildPeriodStoryDraft, eventMatchesTrip, photoKey } from '@/utils/periodStoryDraft';
+import { resolvePhotoRef } from '@/utils/library/catalogue';
 
 type Props = {
   draft: ReturnType<typeof buildPeriodStoryDraft>;
@@ -46,7 +47,7 @@ function PhotoChoice({ trip, photo, photoKeyValue, included, excluded, disabled,
   return (
     <View style={[s.photoBlock, { borderColor: colors.border }]}>
       <View style={s.photoRow}>
-        {!missing ? <Image source={{ uri: photo.uri }} style={s.thumbnail} resizeMode="cover"
+        {!missing ? <Image source={{ uri: resolvePhotoRef(photo.uri) }} style={s.thumbnail} resizeMode="cover"
           onError={() => setMissing(true)} /> :
           <MaterialCommunityIcons name="image-broken-variant" size={32} color={colors.mutedForeground} />}
         <View style={s.flex}>

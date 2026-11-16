@@ -253,7 +253,8 @@ export async function purgeOldTrips(maxAgeDays: number): Promise<void> {
     await serializeWrite(async () => {
       const cutoff = Date.now() - maxAgeDays * 24 * 60 * 60 * 1000;
       const trips = await getTrips();
-      const kept = trips.filter(t => t.endTime >= cutoff);
+      // Trips with photos or souvenirs are kept: their photos live in Yoann2.0/Photos/Trajets.
+      const kept = trips.filter(t => t.endTime >= cutoff || (t.photos?.length ?? 0) > 0 || (t.activityMoments?.length ?? 0) > 0);
       if (kept.length !== trips.length) {
         await AsyncStorage.setItem(KEY_TRIPS, JSON.stringify(kept));
       }

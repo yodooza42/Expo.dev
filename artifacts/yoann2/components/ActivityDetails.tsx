@@ -5,6 +5,7 @@ import { useColors } from '@/hooks/useColors';
 import type { Trip, Vehicle } from '@/types/trips';
 import { activityForTrip, activityInfo } from '@/utils/activities';
 import { ACTIVITY_FEELINGS } from '@/utils/activityReview';
+import { resolvePhotoRef } from '@/utils/library/catalogue';
 
 export function ActivityDetails({ trip, vehicles, onEdit, onSelectType }: {
   trip: Trip;
@@ -47,7 +48,7 @@ export function ActivityMemories({ trip, vehicles }: { trip: Trip; vehicles: Veh
     {trip.activityMoments.map(moment => {
       const photo = trip.photos?.find(item => item.id === moment.photoId);
       return <View key={moment.id} style={{ gap: 5 }}>
-        {photo && <Image source={{ uri: photo.uri }} style={{ height: 150, width: '100%', borderRadius: 10 }} />}
+        {photo && <Image source={{ uri: resolvePhotoRef(photo.uri) }} style={{ height: 150, width: '100%', borderRadius: 10 }} />}
         <Text style={{ color: colors.foreground }}>{moment.note || 'Photo de la sortie'}</Text>
         {moment.lat != null && moment.lng != null && <Text style={{ color: colors.mutedForeground, fontSize: 11 }}>{moment.placementMethod === 'estimated' ? 'Position estimée sur le parcours' : 'Souvenir placé sur le parcours'}</Text>}
       </View>;

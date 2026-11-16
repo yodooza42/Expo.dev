@@ -13,6 +13,7 @@ function load(file, dependencies = {}) {
   }).outputText;
   vm.runInNewContext(js, { exports, require: name => {
     if (name in dependencies) return dependencies[name];
+    if (name === '@/utils/library/catalogue') return { resolvePhotoRef: uri => uri, resolvePhotoRefAsync: async uri => uri };
     throw new Error(`Unexpected dependency: ${name}`);
   } });
   return exports;

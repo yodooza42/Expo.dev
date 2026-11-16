@@ -24,6 +24,7 @@ function load(relative) {
     mod, require: name => {
       if (name === '@react-native-async-storage/async-storage') return asyncStorage;
       if (name.startsWith('@/')) return load(name.slice(2) + '.ts');
+      if (name === '@/utils/library/catalogue') return { resolvePhotoRef: uri => uri, resolvePhotoRefAsync: async uri => uri };
       throw new Error(`Unexpected dependency ${name}`);
     },
   });

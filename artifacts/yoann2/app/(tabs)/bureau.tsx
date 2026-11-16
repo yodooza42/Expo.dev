@@ -28,6 +28,7 @@ import { parseCompletionDate } from '@/utils/completionDate';
 import { sumEuroAmounts } from '@/utils/money';
 import { pH } from '@/styles/header';
 import { buildBureauHistoryRows, type BureauHistoryRow, type DayGroup, type WeekGroup } from '@/utils/bureauHistoryRows';
+import { resolvePhotoRef } from '@/utils/library/catalogue';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -1034,7 +1035,7 @@ export default function DashboardScreen() {
             })}
             renderItem={({ item }) => (
               <View style={styles.photoSlide}>
-                <Image source={{ uri: item }} style={styles.photoFull} contentFit="contain" />
+                <Image source={{ uri: resolvePhotoRef(item) }} style={styles.photoFull} contentFit="contain" />
               </View>
             )}
             keyExtractor={(_, i) => String(i)}
