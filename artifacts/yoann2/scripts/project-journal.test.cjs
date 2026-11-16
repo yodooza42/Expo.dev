@@ -16,8 +16,9 @@ function load(file, deps = {}) {
   return exports;
 }
 const dates = load('utils/completionDate.ts');
-const journal = load('utils/projectJournal.ts', { '@/utils/completionDate': dates });
-const renderer = load('utils/projectJournalRenderer.ts');
+const timing = load('utils/journalPhotoTiming.ts');
+const journal = load('utils/projectJournal.ts', { '@/utils/completionDate': dates, '@/utils/journalPhotoTiming': timing });
+const renderer = load('utils/projectJournalRenderer.ts', { '@/utils/journalPhotoTiming': timing });
 const clone = value => JSON.parse(JSON.stringify(value));
 const projects = [
   { id: 'p1', name: 'Garage', status: 'done', completedAt: '06/04/2026', photos: ['file://p'], description: 'Projet achevé' },
@@ -482,7 +483,9 @@ test('preview and exporter use exactly the calculated duration, expose controls 
   e.win.generatePeriodStory(data);
   assert.equal(e.win.journalDuration, journal.journalDuration(data.entries, 3));
   await e.advance(300);
-  e.win.journalPause(); e.win.journalSeek(5.2);
+  const entry = data.entries[0];
+  const photoStart = journal.journalDuration([entry], 3) - 4 - timing.journalPhotoDuration(entry.photos[0].caption, 3);
+  e.win.journalPause(); e.win.journalSeek(photoStart + 0.5);
   await e.advance(200);
   assert.ok(e.draws.some(draw => draw.text === 'Détail 0'));
   e.win.journalSeek(e.win.journalDuration - 3); await e.advance(200);
@@ -490,36 +493,81 @@ test('preview and exporter use exactly the calculated duration, expose controls 
   assert.ok(e.maxImages <= 8, `at most the current and turning pages, not ${e.maxImages} decoded photos`);
   assert.equal(e.messages.some(m => m.type === 'story_chunk'), false);
 });
-test('task page overlays full-size photos one at a time in half-second steps', async () => {
+test('caption reading time accounts for word length, punctuation, whitespace and pace', () => {
+  assert.equal(timing.journalPhotoDuration(''), 1);
+  assert.equal(timing.journalPhotoDuration('  \n\t '), 1);
+  assert.equal(timing.journalPhotoDuration('', 6), 1);
+  assert.ok(timing.journalPhotoDuration('Sacrément compliqué changements') >
+    timing.journalPhotoDuration('Bien le bonjour'));
+  assert.ok(timing.journalPhotoDuration('Un mur. Une porte !') > timing.journalPhotoDuration('Un mur Une porte'));
+  assert.equal(timing.journalPhotoDuration('Bien   le\nbonjour'), timing.journalPhotoDuration('Bien le bonjour'));
+  assert.ok(timing.journalPhotoDuration('Sacrément compliqué changements', 6) >
+    timing.journalPhotoDuration('Sacrément compliqué changements', 3));
+  assert.ok(timing.journalPhotoDuration('Une longue légende avec beaucoup de détails. '.repeat(10)) > 3);
+});
+test('nine uncaptioned photos each last one second with no fourth/eighth-photo hold or new page', async () => {
   const e = engine(), data = payload({ count: 1 });
-  data.entries[0].photos = Array.from({ length: 6 }, (_, i) => ({
-    id: `photo-${i + 1}`, caption: `Photo ${i + 1}`, img: `data:image/jpeg;base64,cGhvdG8${i}`,
+  data.entries[0].photos = Array.from({ length: 9 }, (_, i) => ({
+    id: `photo-${i + 1}`, caption: '', img: `data:image/jpeg;base64,cGhvdG8${i}`,
   }));
-  data.photoCount = 6;
+  data.photoCount = 9;
   e.win.generatePeriodStory(data);
   await e.advance(300);
   e.win.journalPause();
-  const hasDrawn = id => e.imageDraws.some(draw => draw.src.endsWith(`cGhvdG8${id - 1}`));
-  e.win.journalSeek(5.2); assert.equal(hasDrawn(1), true); assert.equal(hasDrawn(2), false);
-  assert.ok(e.imageDraws.at(-1).dimensions[2] >= 560, 'the source image spans nearly the full page width');
-  await e.advance(500);
-  e.win.journalSeek(5.7); assert.equal(hasDrawn(2), true); assert.equal(hasDrawn(3), false);
-  assert.ok(e.imageDraws.at(-1).src.endsWith('cGhvdG81'), 'the second photo replaces the first in the same frame');
-  await e.advance(500);
-  e.win.journalSeek(6.2); assert.equal(hasDrawn(3), true); assert.equal(hasDrawn(4), false);
-  assert.ok(e.imageDraws.at(-1).src.endsWith('cGhvdG82'));
-  await e.advance(500);
-  e.win.journalSeek(6.7); assert.equal(hasDrawn(4), true); assert.equal(hasDrawn(5), false);
-  assert.ok(e.imageDraws.at(-1).src.endsWith('cGhvdG83'));
-  await e.advance(500);
-  e.win.journalSeek(9.7);
-  await e.advance(100);
-  assert.equal(hasDrawn(5), true, 'photo five starts the continuation page');
-  assert.equal(hasDrawn(6), false, 'photo six still waits for its half-second reveal');
-  await e.advance(500);
-  e.win.journalSeek(10.2);
-  assert.equal(hasDrawn(6), true);
+  const photoStart = journal.journalDuration(data.entries, 3) - 4 - 9;
+  for (let i = 0; i < 9; i++) {
+    for (const offset of [0.25, 0.95]) {
+      e.win.journalSeek(photoStart + i + offset);
+      await e.advance(100);
+      assert.ok(e.imageDraws.at(-1).src.endsWith(`cGhvdG8${i}`), `photo ${i + 1} at +${offset}s`);
+    }
+  }
+  assert.ok(e.imageDraws.at(-1).dimensions[2] >= 560, 'full source frame and original aspect ratio');
+  assert.equal(e.draws.some(draw => draw.text === 'SUITE DE L’ETAPE'), false);
+  assert.ok(e.maxImages <= 3, `only current, next and fading previous, not ${e.maxImages} photos`);
   assert.equal(e.win.journalDuration, journal.journalDuration(data.entries, 3));
+});
+test('each caption gets its own duration in the renderer, including the final photo and backward seeking', async () => {
+  const e = engine(), data = payload({ count: 1 });
+  const captions = ['', 'Bien le bonjour', 'Sacrément compliqué changements', '', 'Une légende, avec une pause !'];
+  data.entries[0].photos = captions.map((caption, i) => ({
+    id: `photo-${i}`, caption, img: `data:image/jpeg;base64,caption${i}`,
+  }));
+  data.photoCount = captions.length;
+  data.secondsPerPhoto = 4.5;
+  const durations = captions.map(caption => timing.journalPhotoDuration(caption));
+  const total = durations.reduce((sum, seconds) => sum + seconds, 0);
+  const expected = journal.journalDuration(data.entries, 4.5);
+  const photoStart = expected - 4 - total;
+  e.win.generatePeriodStory(data);
+  await e.advance(300);
+  e.win.journalPause();
+  let at = photoStart;
+  const positions = durations.map(seconds => { const start = at; at += seconds; return start; });
+  for (const i of [0, 1, 2, 3, 4, 2, 0]) {
+    for (const offset of [0.3, durations[i] - 0.05]) {
+      e.win.journalSeek(positions[i] + offset);
+      await e.advance(100);
+      assert.ok(e.imageDraws.at(-1).src.endsWith(`caption${i}`), `photo ${i} has its full reading time`);
+    }
+  }
+  assert.equal(e.win.journalDuration, expected);
+  e.win.journalSeek(expected - 3);
+  await e.advance(100);
+  assert.ok(e.draws.some(draw => draw.text === 'Fin du carnet.'));
+});
+test('all paces and recap photo sequences keep estimated and rendered caption durations identical', () => {
+  for (const pace of [3, 4.5, 6]) {
+    const e = engine(), data = payload({ count: 2 });
+    const captions = ['', 'Bien le bonjour', 'Sacrément compliqué changements', 'Électricité : terminée !', '一枚の写真', 'Texte plus long. '.repeat(12)];
+    data.secondsPerPhoto = pace;
+    data.entries.forEach(entry => {
+      entry.photos = captions.map((caption, i) => ({ id: `${entry.id}-${i}`, caption, img: `data:image/jpeg;base64,test${i}` }));
+    });
+    data.entries[1].recapTasks = [{ title: 'Projet terminé', dateLabel: '5 avril 2026' }];
+    e.win.generatePeriodStory(data);
+    assert.equal(e.win.journalDuration, journal.journalDuration(data.entries, pace));
+  }
 });
 test('final comparison renders four dated photos together after the project entries', async () => {
   const e = engine(), data = payload({ count: 1 });

@@ -1,10 +1,9 @@
 import type { JournalProjectPhoto, JournalProjectPhotoSelection, Project, Task } from '@/types';
 import type { JournalChoices, JournalEntry, JournalGenerationRequest } from '@/types/projectJournal';
 import { parseCompletionDate } from '@/utils/completionDate';
+import { journalPhotoDuration } from '@/utils/journalPhotoTiming';
 
 export const JOURNAL_LIMITS = { entries: 120, photos: 120, seconds: 900, encodedBytes: 48 * 1024 * 1024 };
-export const JOURNAL_PHOTOS_PER_SLIDE = 4;
-export const JOURNAL_PHOTO_APPEAR_INTERVAL = 0.5;
 export const JOURNAL_FIRST_PHOTO_DELAY = 1;
 export function normalizeJournalProjectPhotos(selection?: JournalProjectPhotoSelection): JournalProjectPhoto[] {
   if (!selection) return [];
@@ -82,24 +81,17 @@ export function journalPhotoId(entryId: string, uri: string): string {
 export const journalPace = (pace: JournalChoices['pace']) => pace === 'calm' ? 6 : pace === 'quick' ? 3 : 4.5;
 export const journalRecapDuration = (entry: JournalEntry) => Math.max(8, Math.min(16,
   4 + Math.ceil((entry.recapTasks?.length ?? 0) / 6) * 4 + Math.ceil(entry.caption.trim().length / 60)));
-const journalPhotoSlideDuration = (count: number, secondsPerPhoto: number, delay = 0) =>
-  delay + Math.max(0, count - 1) * JOURNAL_PHOTO_APPEAR_INTERVAL + secondsPerPhoto;
 const journalTitleDuration = (entry: JournalEntry) => Math.max(entry.photos.length ? 3 : 4,
   Math.min(16, 2 + Math.ceil((entry.title.length + entry.caption.length) / 24)));
 export function journalDuration(entries: JournalEntry[], secondsPerPhoto: number, hasFinalComparison = false): number {
-  return 8 + entries.reduce((sum, entry) => {
-    const pages = Math.ceil(entry.photos.length / JOURNAL_PHOTOS_PER_SLIDE);
+  const duration = 8 + entries.reduce((sum, entry) => {
+    const photoDuration = entry.photos.reduce((total, photo) =>
+      total + journalPhotoDuration(photo.caption, secondsPerPhoto), 0);
     if (entry.recapTasks?.length) return sum + Math.ceil(entry.recapTasks.length / 6) * journalRecapDuration(entry)
-      + Array.from({ length: pages }, (_, page) => journalPhotoSlideDuration(
-        Math.min(JOURNAL_PHOTOS_PER_SLIDE, entry.photos.length - page * JOURNAL_PHOTOS_PER_SLIDE), secondsPerPhoto,
-      )).reduce((total, duration) => total + duration, 0);
-    const firstPageCount = Math.min(JOURNAL_PHOTOS_PER_SLIDE, entry.photos.length);
-    return sum + Math.max(journalTitleDuration(entry),
-      firstPageCount ? journalPhotoSlideDuration(firstPageCount, secondsPerPhoto, JOURNAL_FIRST_PHOTO_DELAY) : 0)
-      + Array.from({ length: Math.max(0, pages - 1) }, (_, page) => journalPhotoSlideDuration(
-        Math.min(JOURNAL_PHOTOS_PER_SLIDE, entry.photos.length - (page + 1) * JOURNAL_PHOTOS_PER_SLIDE), secondsPerPhoto,
-      )).reduce((total, duration) => total + duration, 0);
+      + (entry.photos.length ? JOURNAL_FIRST_PHOTO_DELAY + photoDuration : 0);
+    return sum + journalTitleDuration(entry) + photoDuration;
   }, 0) + (hasFinalComparison ? 10 : 0);
+  return Math.round(duration * 1000) / 1000;
 }
 export function initialJournalChoices(projects: Project[], projectId?: string): JournalChoices {
   const now = new Date();

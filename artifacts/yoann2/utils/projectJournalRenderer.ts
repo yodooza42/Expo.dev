@@ -1,7 +1,10 @@
+import { JOURNAL_PHOTO_TIMING } from '@/utils/journalPhotoTiming';
+
 /**
  * "Carnet de bord" — portrait 720x1280 journal film renderer.
  * One source for preview (interactive controls) and export (MediaRecorder).
- * The inner script avoids backticks, template interpolation and backslashes on purpose.
+ * Embedded regular expressions must escape backslashes for the outer template.
+ * Only shared numeric timing weights are interpolated, never user text or native function source.
  */
 export function buildProjectJournalHtml(): string {
   return `<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8">
@@ -21,7 +24,17 @@ body.preview #ctl{display:flex}
 <div id="ctl"><button id="pp" aria-label="Lecture">&#9654;</button><input id="sk" type="range" min="0" max="1000" value="0" aria-label="Position"><span id="tm">0:00 / 0:00</span></div></div>
 <script>
 (function(){
-var W=720,H=1280,G=24,MX=72,CX=104,CR=672,PHOTO_GROUP=4,PHOTO_INTERVAL=0.5,FIRST_PHOTO_DELAY=1;
+var W=720,H=1280,G=24,MX=72,CX=104,CR=672,FIRST_PHOTO_DELAY=1;
+var photoTiming=${JSON.stringify(JOURNAL_PHOTO_TIMING)};
+function photoDuration(caption,secondsPerPhoto){
+  var text=(caption||'').trim(),w=photoTiming;
+  if(!text)return w.minimum;
+  var words=text.split(/\\s+/u).length,characters=(text.match(/[\\p{L}\\p{N}]/gu)||[]).length;
+  var pauses=(text.match(/[,;:.!?…]/gu)||[]).length;
+  var pace=Number.isFinite(secondsPerPhoto)&&secondsPerPhoto>0?secondsPerPhoto/w.normalPace:1;
+  var seconds=(w.base+words*w.word+characters*w.character+pauses*w.pause)*pace;
+  return Math.max(w.minimum,Math.round(seconds*10)/10);
+}
 var INK='#1E2A47',INK2='#4A5675',RED='#B8414F',OCHRE='#E3B341',PAPER='#EDF0EA';
 var SERIF="'Iowan Old Style','Palatino Linotype',Palatino,'Book Antiqua','Noto Serif',Georgia,serif";
 var MONO="'Courier New','Courier Prime',Courier,monospace";
@@ -88,26 +101,24 @@ function scribble(x,y,w,p,col,lw){if(p<=0)return;ctx.save();ctx.strokeStyle=col;
 
 /* ---------- timeline ---------- */
 function build(p){
-  segs=[];photos=[];assetData={};assetParts={};assetUseCount={};var spp=Math.max(1.5,Number(p.secondsPerPhoto)||3);
+  segs=[];photos=[];assetData={};assetParts={};assetUseCount={};var spp=Number(p.secondsPerPhoto)||4.5;
   segs.push({k:'intro',d:4});
   (p.entries||[]).forEach(function(e,ei){var ph=e.photos||[];
     var first=photos.length;
     ph.forEach(function(x,pi){photos.push({ei:ei,pi:pi,ph:x,title:e.title,dateLabel:e.dateLabel})});
     var titleDur=Math.max(ph.length?3:4,Math.min(16,2+Math.ceil((str(e.title).length+str(e.caption).length)/24)));
+    var offsets=[],photoTime=0;
+    ph.forEach(function(photo){offsets.push(photoTime);photoTime+=photoDuration(photo.caption,spp)});
     if(e.recapTasks&&e.recapTasks.length){
       var pages=Math.ceil(e.recapTasks.length/6),rd=Math.max(8,Math.min(16,4+pages*4+Math.ceil(str(e.caption).length/60)));
       for(var rp=0;rp<pages;rp++)segs.push({k:'recap',ei:ei,rp:rp,pages:pages,d:rd});
+      if(ph.length)segs.push({k:'photos',ei:ei,photoStart:first,photoCount:ph.length,
+        photoOffsets:offsets,photoDelay:FIRST_PHOTO_DELAY,d:FIRST_PHOTO_DELAY+photoTime});
     }else{
-      var firstCount=Math.min(PHOTO_GROUP,ph.length);
-      titleDur=Math.max(titleDur,firstCount?FIRST_PHOTO_DELAY+(firstCount-1)*PHOTO_INTERVAL+spp:0);
-      segs.push({k:'title',ei:ei,d:titleDur,photoStart:first,photoCount:firstCount,photoDelay:FIRST_PHOTO_DELAY});
+      segs.push({k:'title',ei:ei,d:titleDur+photoTime,photoStart:first,photoCount:ph.length,
+        photoOffsets:offsets,photoDelay:titleDur});
     }
-    var start=e.recapTasks&&e.recapTasks.length?0:Math.min(PHOTO_GROUP,ph.length);
-    for(var pi=start;pi<ph.length;pi+=PHOTO_GROUP){
-      var count=Math.min(PHOTO_GROUP,ph.length-pi);
-      segs.push({k:'photos',ei:ei,photoStart:first+pi,photoCount:count,
-        d:(count-1)*PHOTO_INTERVAL+spp});
-    }});
+  });
   var comparisonStart=photos.length;
   if(p.finalComparisonImages){
     var beforeItems=p.finalComparisonImages.before||[],afterItems=p.finalComparisonImages.after||[];
@@ -166,7 +177,9 @@ function acceptAsset(key,dataUri){
 }
 function photoIndex(seg,lt){
   var delay=Number(seg.photoDelay)||0,elapsed=Math.max(0,lt-delay);
-  return Math.min(seg.photoCount-1,Math.floor(elapsed/PHOTO_INTERVAL));
+  var offsets=seg.photoOffsets||[],index=0;
+  while(index+1<seg.photoCount&&elapsed>=offsets[index+1]-0.000001)index++;
+  return index;
 }
 function ensure(seg,lt){
   var keep={},loads={};
@@ -176,7 +189,7 @@ function ensure(seg,lt){
     if(target.k==='comparison'){for(var c=0;c<target.photoCount;c++)include(target.photoStart+c);return}
     var active=photoIndex(target,at),elapsed=Math.max(0,at-(Number(target.photoDelay)||0));
     include(target.photoStart+active);
-    if(active>0&&elapsed-active*PHOTO_INTERVAL<0.2)include(target.photoStart+active-1);
+    if(active>0&&elapsed-target.photoOffsets[active]<0.2)include(target.photoStart+active-1);
     if(active+1<target.photoCount)include(target.photoStart+active+1);
   }
   includeCurrent(seg,lt);
@@ -228,10 +241,11 @@ function drawIntro(lt,a){
   var ec=Number(p.entryCount)||P.entries.length,pc=Number(p.photoCount)||photos.length;
   ctx.fillText(ec+(ec>1?' ENTRÉES':' ENTRÉE')+'  .  '+pc+(pc>1?' PHOTOS':' PHOTO'),CX,H-140);ctx.globalAlpha=1;
 }
-function drawPhotoFrame(start,count,lt,a,delay,top,bottom){
-  if(!count)return;
-  var elapsed=Math.max(0,lt-delay),index=Math.min(count-1,Math.floor(elapsed/PHOTO_INTERVAL));
-  var fade=eo((elapsed-index*PHOTO_INTERVAL)/0.18),gi=start+index;
+function drawPhotoFrame(seg,lt,a,top,bottom){
+  var start=seg.photoStart,count=seg.photoCount,delay=Number(seg.photoDelay)||0;
+  if(!count||lt<delay)return;
+  var elapsed=Math.max(0,lt-delay),index=photoIndex(seg,lt);
+  var fade=eo((elapsed-seg.photoOffsets[index])/0.18);
   function paint(photoIndex,alpha){
     var photo=photos[start+photoIndex],c=cache[start+photoIndex],img=c&&c.st==='ok'?c.img:null;
     ctx.save();ctx.globalAlpha=a*alpha;
@@ -277,7 +291,7 @@ function drawTitle(seg,lt,a){
     ctx.globalAlpha=a*eo((lt-0.8)/0.4);ctx.fillStyle=INK2;ctx.font='bold 15px '+MONO;
     ctx.fillText('PHOTOS '+(photos[seg.photoStart].pi+1)+'–'+
       (photos[seg.photoStart+seg.photoCount-1].pi+1)+' / '+ph,CX,top-14);
-    drawPhotoFrame(seg.photoStart,seg.photoCount,lt,a,seg.photoDelay,top,bottom);
+    drawPhotoFrame(seg,lt,a,top,bottom);
   }else{
     ctx.globalAlpha=a*eo((lt-0.8)/0.5);ctx.fillStyle=INK2;ctx.font='18px '+MONO;
     ctx.fillText((e.kind==='project'?'PROJET':'TÂCHE TERMINÉE')+'  .  sans photo',CX,Math.min(H-110,yy+50));
@@ -296,7 +310,7 @@ function drawPhotos(seg,lt,a){
   lines(tf,'bold #px '+SERIF,CX,e.parentTaskTitle?286:270,1.1,INK,a*eo((lt-0.15)/0.45));
   ctx.globalAlpha=a*eo((lt-0.3)/0.4);ctx.fillStyle=RED;ctx.font='bold 16px '+MONO;
   ctx.fillText('PHOTOS '+(first.pi+1)+'–'+(last.pi+1)+' / '+total,CX,370);
-  drawPhotoFrame(start,count,lt,a,0,405,H-174);
+  drawPhotoFrame(seg,lt,a,405,H-174);
   ctx.globalAlpha=1;
 }
 function drawRecap(seg,lt,a){

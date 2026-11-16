@@ -21,6 +21,12 @@ Dans le carnet, trier les photos de chaque tâche par date/heure de prise connue
 
 **How to apply:** utiliser les dates photo déjà enregistrées pour chaque tâche, garder un ordre stable quand la date manque, et ne pas décoder les images hors de la photo affichée ou imminente.
 
+Ne plus rythmer les photos par groupes de quatre : chaque photo a sa propre durée, avec au moins une seconde et davantage selon le temps de lecture estimé de sa légende.
+
+**Why:** l’utilisateur a constaté que les trois premières photos apparaissaient brièvement puis que la quatrième restait longtemps. Il demande un rythme continu et souligne que trois mots longs demandent plus de lecture que trois mots courts.
+
+**How to apply:** tenir compte de la longueur du texte et de la ponctuation, pas seulement du nombre de mots. Garder les photos superposées en grand sans pause ni changement de page toutes les quatre photos ; appliquer les mêmes durées à l’estimation, l’aperçu et l’export. Le comparatif final avant/après reste un montage distinct.
+
 Pour un carnet limité à un seul projet, proposer jusqu’à deux photos « avant » et deux « après », avec la date de chaque photo. Sauvegarder ces choix sur le projet et les afficher dans sa fiche, puis terminer la vidéo par un montage des photos sélectionnées sur une seule page.
 
 **Why:** l’utilisateur veut plusieurs angles de vue pour la comparaison avant/après, conservée dans le carnet vidéo et dans le récapitulatif du projet consultable dans l’application.
