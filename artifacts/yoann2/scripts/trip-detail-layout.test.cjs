@@ -95,6 +95,7 @@ test('the relocated memories preserve all photos, notes and positions, and hide 
     Image: 'Image', Text: 'Text', View: 'View',
     useColors: () => ({ foreground: '#fff', mutedForeground: '#888', border: '#333' }),
     activityForTrip: () => 'bike',
+    resolvePhotoRef: uri => uri,
   });
   assert.equal(render({ activityMoments: [] }), null);
   assert.equal(render({}), null);

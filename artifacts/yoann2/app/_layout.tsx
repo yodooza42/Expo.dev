@@ -20,7 +20,9 @@ import { TripTagModal } from '@/components/TripTagModal';
 import { AppProvider, useApp } from '@/contexts/AppContext';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 import type { Trip, Vehicle } from '@/types/trips';
-import { rebuildBackupListFromSAF, runDailyBackupIfNeeded } from '@/utils/backup';
+import { runDailyBackupIfNeeded } from '@/utils/backup';
+import { runWeeklyMaintenanceIfNeeded } from '@/utils/library/maintenance';
+import { runLibraryOnboarding } from '@/utils/library/onboarding';
 import { purgeOldData, requestLocationPermissions, startManualTracking, LOCATION_TASK_NAME } from '@/utils/locationTracking';
 import { recoverConfiguredManualTrip } from '@/utils/manualTripRecovery';
 import '@/utils/geoReminderManager'; // enregistre la tâche background geo-reminder
@@ -126,8 +128,8 @@ function RootLayoutNav() {
     bootstrapLocationTracking();
     checkPendingTrips();
     runScheduler();
-    rebuildBackupListFromSAF().catch(() => {});
-    runDailyBackupIfNeeded().catch(() => {});
+    runLibraryOnboarding().catch(() => {})
+      .then(runDailyBackupIfNeeded).then(runWeeklyMaintenanceIfNeeded).catch(() => {});
     getVehicleSettings().then(setVehicles).catch(() => {});
     migrateCleanGhostRoutes().catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps

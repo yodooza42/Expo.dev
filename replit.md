@@ -26,7 +26,9 @@ _Populate as you build — short repo map plus pointers to the source-of-truth f
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- **Stockage Yoann2.0 (app mobile)** : le dossier `Yoann2.0` du téléphone est la source de vérité. Il contient `Photos/` (Catégorie/Projet/Tâche/Sous-tâche et `Trajets/AAAA-MM/…`, masqué de la galerie par `.nomedia`), `Catalogue/` (deux emplacements alternés A/B), `Sauvegardes/` (7 jours, 4 semaines, 12 mois), `Journal/` et `Corbeille/` (vidée après 30 jours). Code : `artifacts/yoann2/utils/library/` et `utils/backup.ts`.
+- Les données référencent les photos par `y2p:<id>` ; l'id est aussi dans le nom du fichier, ce qui permet de retrouver une photo déplacée à la main. Les sauvegardes ne contiennent aucun lien propre au téléphone.
+- Le bilan hebdomadaire ne fait que constater et corriger le catalogue ; ranger, mettre à la corbeille et retirer les anciens liens demandent toujours une confirmation.
 
 ## Product
 

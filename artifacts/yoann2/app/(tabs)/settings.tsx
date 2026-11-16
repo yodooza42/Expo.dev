@@ -1,6 +1,5 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import * as MediaLibrary from 'expo-media-library';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
@@ -31,15 +30,10 @@ import {
   scheduleWeeklyReport,
   setApptReminderPref,
 } from '@/utils/notificationScheduler';
-import { importBackupFromFile, listBackups, rebuildBackupListFromSAF, restoreBackup, saveBackup } from '@/utils/backup';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { reconfigureStorage, recoverAllPhotosFromExternal, SAF_ROOT_KEY } from '@/utils/photoStorage';
-import { mergeRecoveredPhotoUris } from '@/utils/photoReferences';
-import { recoverTripPhotos } from '@/utils/tripPhotoRecovery';
-import { photoProtectionEvents, photoProtectionStatus } from '@/utils/photoProtection';
 import { CategoryConfig, DEFAULT_EXPENSE_CATEGORY_CONFIGS, getCategoryConfigs, saveCategoryConfigs } from '@/utils/bankStorage';
 import { genId } from '@/utils/ids';
-import { GalleryPhotoRecoverySheet } from '@/components/GalleryPhotoRecoverySheet';
+import { LibrarySettings } from '@/components/LibrarySettings';
 
 function SettingRow({
   icon,
@@ -82,14 +76,9 @@ export default function SettingsScreen() {
   const colors = useColors();
   const { baseTheme, setBaseTheme } = useTheme();
   const insets = useSafeAreaInsets();
-  const { resetData, projects, tasks, categories, addCategory, deleteCategory, updateProject, updateTask } = useApp();
+  const { resetData, projects, tasks, categories, addCategory, deleteCategory } = useApp();
   const router = useRouter();
 
-  const [showBackupList,    setShowBackupList]    = useState(false);
-  const [backupList,        setBackupList]        = useState<Awaited<ReturnType<typeof listBackups>>>([]);
-  const [savingBackup,      setSavingBackup]      = useState(false);
-  const [restoringUri,      setRestoringUri]      = useState<string | null>(null);
-  const [importingFile,     setImportingFile]     = useState(false);
   const [catModalVisible,   setCatModalVisible]   = useState(false);
   const [expCatModalVisible,setExpCatModalVisible]= useState(false);
   const [newCatName,        setNewCatName]        = useState('');
@@ -97,15 +86,6 @@ export default function SettingsScreen() {
   const [weeklyNotif,       setWeeklyNotif]       = useState(false);
   const [monthlyNotif,      setMonthlyNotif]      = useState(false);
   const [apptReminder,      setApptReminder]      = useState(false);
-  const [folderConfigured,  setFolderConfigured]  = useState(false);
-  const [lastBackupDate,    setLastBackupDate]    = useState<Date | null>(null);
-  const [backupCount,       setBackupCount]       = useState(0);
-  const [configuringFolder, setConfiguringFolder] = useState(false);
-  const [rebuildingList,    setRebuildingList]    = useState(false);
-  const [recoveringAll,     setRecoveringAll]     = useState(false);
-  const [galleryRecoveryOpen, setGalleryRecoveryOpen] = useState(false);
-  const [protectingPhotos, setProtectingPhotos] = useState(false);
-  const [photoStatus, setPhotoStatus] = useState({ local: 0, backedUp: 0, pending: 0, missing: 0 });
   const [expCatConfigs, setExpCatConfigs] = useState<CategoryConfig[]>(DEFAULT_EXPENSE_CATEGORY_CONFIGS);
   const [widgetLogVisible, setWidgetLogVisible] = useState(false);
   const [widgetLogEntries, setWidgetLogEntries] = useState<{ t: string; tag: string; data: string }[]>([]);
@@ -138,50 +118,7 @@ export default function SettingsScreen() {
       setMonthlyNotif(prefs.monthly);
     });
     getApptReminderPref().then(setApptReminder);
-    loadStorageStatus();
-    photoProtectionStatus().then(setPhotoStatus).catch(console.warn);
   }, []);
-
-  async function loadStorageStatus() {
-    const [root, backups] = await Promise.all([
-      AsyncStorage.getItem(SAF_ROOT_KEY),
-      listBackups(),
-    ]);
-    setFolderConfigured(!!root);
-    setBackupCount(backups.length);
-    setLastBackupDate(backups.length > 0 ? new Date(backups[0].ts) : null);
-  }
-
-  async function handleConfigureFolder() {
-    setConfiguringFolder(true);
-    const ok = await reconfigureStorage();
-    setConfiguringFolder(false);
-    if (ok) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert('Dossier configuré', 'Les dossiers Photos et Sauvegarde sont prêts.');
-      loadStorageStatus();
-      void photoProtectionEvents.retry().then(() => photoProtectionStatus()).then(setPhotoStatus).catch(console.warn);
-    }
-  }
-
-  async function handleProtectPhotos() {
-    if (protectingPhotos) return;
-    setProtectingPhotos(true);
-    try {
-      if (Platform.OS === 'web') throw new Error('La protection des fichiers est disponible sur le téléphone.');
-      // Explicit user action may re-authorize gallery originals after an app restore.
-      await MediaLibrary.requestPermissionsAsync(false, ['photo']);
-      await photoProtectionEvents.retry();
-      const status = await photoProtectionStatus();
-      setPhotoStatus(status);
-      Alert.alert('Protection des photos',
-        `${status.local} copie(s) permanente(s) dans l’application.\n${status.backedUp} copie(s) externe(s) vérifiée(s).\n${status.pending} copie(s) externe(s) en attente.\n${status.missing} source(s) inaccessible(s).`
-        + (status.pending ? '\n\nConfigure ou réautorise le dossier Yoann2.0 puis relance la protection.' : '')
-        + '\n\nLe vidage du cache ne supprime pas ces copies. Les deux copies restent sur le téléphone : elles ne couvrent pas sa perte ou sa panne.');
-    } catch (error) {
-      Alert.alert('Protection incomplète', error instanceof Error ? error.message : 'Impossible de protéger les photos.');
-    } finally { setProtectingPhotos(false); }
-  }
 
   async function handleWeeklyToggle(value: boolean) {
     setWeeklyNotif(value);
@@ -204,168 +141,6 @@ export default function SettingsScreen() {
       await cancelAppointmentReminders();
       Haptics.selectionAsync();
     }
-  }
-
-  async function handleManualBackup() {
-    if (!folderConfigured) {
-      Alert.alert('Dossier non configuré', 'Configurez d\'abord le dossier Yoann2.0 ci-dessous.');
-      return;
-    }
-    setSavingBackup(true);
-    const ok = await saveBackup();
-    setSavingBackup(false);
-    if (ok) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      loadStorageStatus();
-      Alert.alert('Sauvegarde créée', 'Vos données ont été sauvegardées dans le dossier Sauvegarde.');
-    } else {
-      Alert.alert('Erreur', 'Impossible de créer la sauvegarde. Vérifiez le dossier Yoann2.0.');
-    }
-  }
-
-  async function handleOpenRestoreList() {
-    const list = await listBackups();
-    setBackupList(list);
-    setShowBackupList(true);
-  }
-
-  async function handleImportFromFile() {
-    setImportingFile(true);
-    const result = await importBackupFromFile();
-    setImportingFile(false);
-    if (result.canceled) return;
-    if (result.ok) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert(
-        'Restauration réussie',
-        'Les données ont été restaurées. L\'app va redémarrer.',
-        [{ text: 'OK', onPress: () => router.replace('/') }],
-      );
-    } else {
-      Alert.alert('Erreur', result.error ?? 'Impossible d\'importer ce fichier.');
-    }
-  }
-
-  async function handleRebuildList() {
-    if (!folderConfigured) {
-      Alert.alert('Dossier non configuré', 'Configurez d\'abord le dossier Yoann2.0 ci-dessous.');
-      return;
-    }
-    setRebuildingList(true);
-    const found = await rebuildBackupListFromSAF(true);
-    setRebuildingList(false);
-    if (found) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      loadStorageStatus();
-      Alert.alert('Liste reconstruite', 'Les sauvegardes ont été retrouvées dans le dossier et la liste a été mise à jour.');
-    } else {
-      Alert.alert('Aucune sauvegarde trouvée', 'Aucun fichier backup_*.json n\'a été trouvé dans le dossier Sauvegarde.');
-    }
-  }
-
-  async function handleRecoverAllPhotos() {
-    if (!folderConfigured) {
-      Alert.alert('Dossier non configur\u00e9', 'Configurez d\u2019abord le dossier Yoann2.0 ci-dessus.');
-      return;
-    }
-    setRecoveringAll(true);
-    try {
-    const names = [...new Set([...projects.map(p => p.name), 'Trajets'])];
-    const report = await recoverAllPhotosFromExternal(names);
-    const recovered = report.projects;
-    const projectUpdates = new Map<string, string[]>();
-    const taskUpdates = new Map<string, string[]>();
-
-    let totalProject = 0;
-    let totalTask = 0;
-    for (const r of recovered) {
-      const proj = projects.find(p => p.name === r.projectName);
-      if (!proj) continue;
-
-      // Project photos (root folder)
-      if (r.projectUris.length > 0) {
-        const merged = await mergeRecoveredPhotoUris(projectUpdates.get(proj.id) ?? proj.photos, r.projectUris);
-        projectUpdates.set(proj.id, merged.uris);
-        totalProject += merged.added + merged.repaired;
-      }
-
-      // Task photos — match by embedded ID (_tache_<id>), fallback to sanitized name
-      if (r.taskFolders.length > 0) {
-        const projTasks = tasks.filter(t => t.projectId === proj.id);
-        for (const folder of r.taskFolders) {
-          const matched =
-            // 1) ID direct (nouveau schéma de nommage)
-            (folder.taskId ? projTasks.find(t => t.id === folder.taskId) : undefined) ??
-            // 2) Fallback : correspondance par titre sanitisé (anciens dossiers)
-            projTasks.find(
-              t => t.title.replace(/[/\\:*?"<>|]/g, '_').trim().toLowerCase()
-                === folder.folderName.toLowerCase(),
-            );
-          if (matched) {
-            const merged = await mergeRecoveredPhotoUris(taskUpdates.get(matched.id) ?? matched.photos, folder.uris);
-            taskUpdates.set(matched.id, merged.uris);
-            totalTask += merged.added + merged.repaired;
-          } else {
-            // Aucune tâche trouvée → photos du projet en fallback
-            const merged = await mergeRecoveredPhotoUris(projectUpdates.get(proj.id) ?? proj.photos, folder.uris);
-            projectUpdates.set(proj.id, merged.uris);
-            totalProject += merged.added + merged.repaired;
-          }
-        }
-      }
-    }
-    for (const [id, photos] of projectUpdates) updateProject(id, { photos });
-    for (const [id, photos] of taskUpdates) updateTask(id, { photos });
-
-    const tripRecovery = await recoverTripPhotos(recovered);
-    const total = totalProject + totalTask + tripRecovery.repaired;
-    const missingTrips = tripRecovery.missing
-      ? `\n\n${tripRecovery.missing} photo(s) de trajet restent inaccessibles : aucune copie correspondante lisible n’a été retrouvée. Les liens, légendes et positions ont été conservés. Vérifie le dossier Yoann2.0/Photos/Trajets ; le JSON seul ne contient pas les images.`
-      : '';
-    const issues = report.errors.length
-      ? `\n\nRécupération partielle : ${report.errors.length} erreur(s).\n${report.errors.slice(0, 2).join('\n')}`
-      : '';
-    if (total > 0) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert(
-        'Photos récupérées',
-        `${total} photo${total > 1 ? 's' : ''} ajoutée${total > 1 ? 's' : ''} ou réparée${total > 1 ? 's' : ''} (${totalProject} projet / ${totalTask} tâches / ${tripRecovery.repaired} trajets).${issues}${missingTrips}`
-      );
-    } else {
-      Alert.alert(report.errors.length ? 'Accès incomplet' : tripRecovery.missing ? 'Photos de trajets non retrouvées' : report.scannedImages ? 'Photos déjà liées' : 'Aucune image trouvée',
-        report.scannedImages
-          ? `${report.scannedImages} image(s) trouvée(s). Aucun nouveau lien à ajouter.${issues}${missingTrips}`
-          : `Aucune image lisible dans les dossiers parcourus. Vérifie que le dossier Yoann2.0 sélectionné contient bien Photos et ses images. La sauvegarde JSON contient les liens, pas les fichiers.${issues}${missingTrips}`);
-    }
-    } catch (error) {
-      Alert.alert('Récupération impossible', error instanceof Error ? error.message : 'Impossible de lire les photos.');
-    } finally { setRecoveringAll(false); }
-  }
-
-  async function handleRestore(uri: string, filename: string) {
-    Alert.alert(
-      'Restaurer cette sauvegarde ?',
-      `${filename}\n\nL'app redémarrera après la restauration pour appliquer les changements.`,
-      [
-        { text: 'Annuler', style: 'cancel' },
-        {
-          text: 'Restaurer',
-          style: 'destructive',
-          onPress: async () => {
-            setRestoringUri(uri);
-            setShowBackupList(false);
-            const ok = await restoreBackup(uri);
-            setRestoringUri(null);
-            if (ok) {
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-              Alert.alert('Restauration réussie', 'Fermez et relancez l\'app pour voir vos données restaurées.');
-            } else {
-              Alert.alert('Erreur', 'Impossible de lire ce fichier de sauvegarde.');
-            }
-          },
-        },
-      ],
-    );
   }
 
   function handleReset() {
@@ -515,101 +290,9 @@ export default function SettingsScreen() {
           colors={colors}
         />
 
-        {/* ── SAUVEGARDE ── */}
-        <Text style={[styles.section, { color: colors.mutedForeground }]}>Sauvegarde</Text>
-        <Pressable
-          onPress={handleConfigureFolder}
-          disabled={configuringFolder}
-          style={({ pressed }) => [
-            styles.row,
-            { backgroundColor: colors.card, borderColor: colors.border },
-            pressed && { opacity: 0.75 },
-          ]}
-        >
-          <View style={[styles.rowIcon, { backgroundColor: '#2196F320' }]}>
-            <MaterialCommunityIcons name="folder-cog-outline" size={20} color="#2196F3" />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.rowLabel, { color: colors.foreground }]}>Dossier Yoann2.0</Text>
-            <Text style={[styles.rowSub, { color: colors.mutedForeground }]}>
-              {configuringFolder
-                ? 'Sélection en cours…'
-                : folderConfigured
-                  ? 'Configuré · toucher pour reconfigurer'
-                  : 'Non configuré — toucher pour choisir le dossier'}
-            </Text>
-          </View>
-          <View style={[styles.folderBadge, { backgroundColor: folderConfigured ? '#4CAF5020' : '#FF980020' }]}>
-            <MaterialCommunityIcons
-              name={folderConfigured ? 'check-circle-outline' : 'alert-outline'}
-              size={16}
-              color={folderConfigured ? '#4CAF50' : '#FF9800'}
-            />
-          </View>
-        </Pressable>
-        <View style={[styles.row, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <View style={[styles.rowIcon, { backgroundColor: '#4CAF5020' }]}>
-            <MaterialCommunityIcons name="shield-check-outline" size={20} color="#4CAF50" />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.rowLabel, { color: colors.foreground }]}>Sauvegarde automatique</Text>
-            <Text style={[styles.rowSub, { color: colors.mutedForeground }]}>
-              {lastBackupDate
-                ? `Dernière : ${lastBackupDate.toLocaleDateString('fr-FR', { day: '2-digit', month: 'long' })} à ${lastBackupDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })} · ${backupCount}/5 archives`
-                : 'Aucune archive encore · se déclenche à 10h chaque jour'}
-            </Text>
-          </View>
-        </View>
-        <SettingRow
-          icon="content-save-outline"
-          label={savingBackup ? 'Sauvegarde en cours…' : 'Sauvegarde manuelle'}
-          sublabel="Crée immédiatement une archive dans le dossier Sauvegarde"
-          onPress={handleManualBackup}
-          colors={colors}
-        />
-        <SettingRow
-          icon="restore"
-          label={restoringUri ? 'Restauration en cours…' : 'Restaurer une sauvegarde'}
-          sublabel="Choisir parmi les 5 dernières archives"
-          onPress={handleOpenRestoreList}
-          colors={colors}
-        />
-        <SettingRow
-          icon="file-import-outline"
-          label={importingFile ? 'Sélection en cours…' : 'Importer depuis un fichier'}
-          sublabel="Pointer manuellement un fichier backup_*.json existant"
-          onPress={handleImportFromFile}
-          colors={colors}
-        />
-        <SettingRow
-          icon="folder-search-outline"
-          label={rebuildingList ? 'Scan en cours…' : 'Scanner le dossier Sauvegarde'}
-          sublabel="Reconstruire la liste depuis les fichiers présents sur le disque"
-          onPress={handleRebuildList}
-          colors={colors}
-        />
-        <SettingRow
-          icon="image-search-outline"
-          label="Retrouver les photos des trajets"
-          sublabel="Comparer les métadonnées de la galerie ; choisir si la correspondance est incertaine"
-          onPress={() => setGalleryRecoveryOpen(true)}
-          colors={colors}
-        />
-        <GalleryPhotoRecoverySheet visible={galleryRecoveryOpen} onClose={() => setGalleryRecoveryOpen(false)} />
-        <SettingRow
-          icon="image-multiple"
-          label={recoveringAll ? 'Récupération en cours…' : 'Récupérer toutes les photos'}
-          sublabel="Réparer les photos des projets, tâches et trajets depuis Yoann2.0/Photos"
-          onPress={handleRecoverAllPhotos}
-          colors={colors}
-        />
-        <SettingRow
-          icon="shield-check-outline"
-          label={protectingPhotos ? 'Protection en cours…' : 'Sécuriser toutes les photos'}
-          sublabel={`${photoStatus.local} copies permanentes · ${photoStatus.pending} copies externes en attente · ${photoStatus.missing} sources inaccessibles`}
-          onPress={handleProtectPhotos}
-          colors={colors}
-        />
+        {/* ── DOSSIER YOANN2.0 ── */}
+        <Text style={[styles.section, { color: colors.mutedForeground }]}>Dossier Yoann2.0</Text>
+        <LibrarySettings />
 
         {/* ── WIDGET ANDROID ── */}
         <Text style={[styles.section, { color: colors.mutedForeground }]}>Widget Android</Text>
@@ -665,52 +348,6 @@ export default function SettingsScreen() {
         />
 
       </ScrollView>
-
-      {/* ── MODAL : Restaurer une sauvegarde ── */}
-      <Modal visible={showBackupList} animationType="slide" transparent>
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.7)' }]}>
-          <Pressable style={{ flex: 1 }} onPress={() => setShowBackupList(false)} />
-          <View style={[styles.modal, { backgroundColor: colors.card, borderColor: colors.border, paddingBottom: 24 + insets.bottom }]}>
-            <Text style={[styles.modalTitle, { color: colors.foreground }]}>Restaurer une sauvegarde</Text>
-            <Text style={[styles.modalSub, { color: colors.mutedForeground }]}>
-              Choisissez une archive. Toutes les données actuelles seront remplacées.
-            </Text>
-            {backupList.length === 0 ? (
-              <Text style={[styles.modalSub, { color: colors.mutedForeground, textAlign: 'center', marginVertical: 16 }]}>
-                Aucune sauvegarde disponible.
-              </Text>
-            ) : (
-              <ScrollView style={{ maxHeight: 280 }}>
-                {backupList.map(entry => (
-                  <Pressable
-                    key={entry.uri}
-                    onPress={() => handleRestore(entry.uri, entry.filename)}
-                    style={({ pressed }) => [
-                      styles.backupRow,
-                      { backgroundColor: colors.background, borderColor: colors.border },
-                      pressed && { opacity: 0.7 },
-                    ]}
-                  >
-                    <MaterialCommunityIcons name="file-restore-outline" size={20} color={colors.primary} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.backupRowDate, { color: colors.foreground }]}>
-                        {new Date(entry.ts).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })}
-                        {' à '}
-                        {new Date(entry.ts).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
-                      </Text>
-                      <Text style={[styles.backupRowFile, { color: colors.mutedForeground }]}>{entry.filename}</Text>
-                    </View>
-                    <MaterialCommunityIcons name="chevron-right" size={18} color={colors.mutedForeground} />
-                  </Pressable>
-                ))}
-              </ScrollView>
-            )}
-            <Pressable onPress={() => setShowBackupList(false)} style={[styles.cancelBtn, { borderColor: colors.border, marginTop: 8 }]}>
-              <Text style={[styles.cancelLabel, { color: colors.mutedForeground }]}>Fermer</Text>
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
 
       {/* ── MODAL : Catégories projets ── */}
       <Modal visible={catModalVisible} animationType="slide" transparent>

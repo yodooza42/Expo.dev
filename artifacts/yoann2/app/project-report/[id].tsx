@@ -24,6 +24,7 @@ import { SubPageHeader } from '@/components/SubPageHeader';
 import type { Task } from '@/types';
 import { generateProjectReportHtml } from '@/utils/reportGenerator';
 import { fmtDateLong } from '@/utils/date';
+import { resolvePhotoRef } from '@/utils/library/catalogue';
 
 const SUMMARY_KEY_PREFIX = '@yoann2_report_summary_';
 
@@ -305,7 +306,7 @@ function TaskSlide({
                 return (
                   <View key={`${uri}-${pi}`} style={styles.photoWrap}>
                     <Image
-                      source={{ uri }}
+                      source={{ uri: resolvePhotoRef(uri) }}
                       style={styles.photoImg}
                       contentFit="cover"
                     />

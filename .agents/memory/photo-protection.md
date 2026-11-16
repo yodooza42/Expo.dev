@@ -1,40 +1,18 @@
 ---
-name: Protection durable des photos
-description: Copies locales permanentes et sauvegardes masquées, sans changer les dates des images.
+name: Stockage durable Yoann2.0
+description: Règles validées par l'utilisateur pour le dossier Yoann2.0 (photos, sauvegardes, restauration, changement de téléphone).
 ---
 
-Protéger les photos de l’application contre les mises à jour normales et le vidage du cache avec des copies permanentes et une seconde copie locale vérifiée.
+Le dossier Yoann2.0 du téléphone est la seule source de vérité : après une réinstallation ou un changement de téléphone, l'utilisateur copie ce dossier, le choisit à nouveau dans l'app et tout doit fonctionner. Ce fonctionnement couvre aussi les photos des trajets.
 
-**Why:** L’utilisateur a demandé que ses photos ne puissent plus être perdues lors d’une mise à jour ou d’un vidage du cache après avoir signalé des photos de tâches invisibles.
+**Why:** l'utilisateur a perdu des liens photo lors de réinstallations et a demandé une refonte complète du stockage (novembre 2026).
 
-**How to apply:** Ne jamais présenter une référence JSON comme une sauvegarde du fichier. Conserver les liens introuvables et distinguer les sources absentes, les erreurs d’accès et les copies en attente. Ne pas affirmer qu’une photo est récupérable sans avoir trouvé ses octets.
+**How to apply:**
+- Copies locales uniquement, pas de cloud, masquées de la galerie (`.nomedia`). Ne jamais modifier les originaux, leurs dates ni leurs EXIF.
+- Rien n'est déplacé ni supprimé sans confirmation explicite. Seule exception validée : la Corbeille est vidée 30 jours après la mise à la corbeille confirmée.
+- Ne pas toucher aux anciens dossiers (`Photos/<Projet>`, `Sauvegarde`). Les anciens liens photo ne sont pas migrés : l'utilisateur remet ses photos à la main.
+- Retirer une photo d'une tâche ne supprime jamais le fichier ; le bilan propose ensuite la corbeille.
+- Les trajets qui ont des photos ou des souvenirs ne sont jamais purgés automatiquement, sinon leurs photos deviendraient orphelines.
+- Toujours dire les limites : Android redemande l'accès au dossier après une réinstallation ou sur un nouveau téléphone ; une copie externe régulière (PC, clé USB) reste conseillée.
 
-L’utilisateur a choisi des copies durables sur le téléphone, pas de sauvegarde cloud, et a validé « Masquer les copies de sauvegarde ».
-
-**Why:** L’utilisateur veut éviter les doublons dans sa galerie. Il a accepté le masquage par `.nomedia` à la place de son idée initiale de décaler les années.
-
-**How to apply:** Masquer les copies externes de la galerie sans modifier les originaux, leurs dates ou leurs métadonnées. Expliquer que deux copies sur le même téléphone ne protègent pas contre sa perte ou sa panne.
-
-Ne pas assimiler un lien de photo de trajet cassé à la disparition de son original.
-
-**Why:** L’utilisateur a confirmé qu’il choisit les photos des trajets depuis sa galerie et que les originaux y sont toujours présents après la réinstallation.
-
-**How to apply:** Vérifier les originaux de la galerie avant de conclure à une perte. Lors d’un rattachement, conserver le souvenir existant, sa légende, sa date et sa position plutôt que créer une nouvelle photo avec une nouvelle ancre.
-
-Pour les photos de trajets, privilégier la recherche de correspondances dans les métadonnées de la galerie : rattachement automatique lorsqu’il est certain, choix proposé à l’utilisateur en cas de doute.
-
-**Why:** L’utilisateur préfère ce fonctionnement à une resélection manuelle de chaque original dans toute la galerie.
-
-**How to apply:** Ne pas transformer une ancienne heure d’import estimée en preuve de prise de vue. Les rafales, plusieurs souvenirs concurrents et une galerie partiellement accessible imposent une confirmation, sans modifier les légendes ni les placements existants.
-
-Après l’annulation d’un rattachement, les recherches ultérieures doivent demander une confirmation pour ce souvenir, même si une correspondance paraît certaine.
-
-**Why:** Une annulation remet en cause la correspondance ; réappliquer automatiquement le même résultat rendrait la correction de l’utilisateur inutile.
-
-**How to apply:** Conserver cette prudence après fermeture de l’écran. Permettre une nouvelle sélection explicite, sans supprimer les sources ni les copies de la correspondance annulée.
-
-Un changement de compte Expo doit privilégier une mise à jour sur place, sans désinstallation. L’utilisateur demande de préserver les projets, les photos et leurs liens ainsi que les données GPS.
-
-**Why:** L’utilisateur a signalé que ses builds depuis un autre compte Expo imposaient généralement une réinstallation et veut éviter toute perte de données.
-
-**How to apply:** Vérifier la continuité de la signature Android et de l’identifiant d’application avant installation. Ne jamais garantir une restauration après désinstallation sur la seule présence d’une sauvegarde JSON : les fichiers et les autorisations d’accès doivent aussi être vérifiés.
+SAF : une réécriture doit supprimer puis recréer le fichier ; `getInfoAsync` sur content:// n'indique pas les dossiers ; les destinations de `copyAsync` doivent être en file:// ; seul le fournisseur `com.android.externalstorage.documents` est accepté (ses ids de document sont des chemins).

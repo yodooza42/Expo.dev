@@ -7,4 +7,4 @@ Les photos de la galerie d’un projet — celles de l’album et celles des tâ
 
 **Why:** l’utilisateur veut rattacher les photos du projet à une tâche depuis son écran Photos, sans refaire l’import.
 
-**How to apply:** inclure les photos de l’album et des tâches du même projet, puis ne proposer que celles qui ne sont pas déjà dans la tâche. Quand une tâche retire une photo partagée, retirer seulement son association ; ne supprimer le fichier que si aucune autre tâche ou l’album ne le référence.
+**How to apply:** inclure les photos de l’album et des tâches du même projet, puis ne proposer que celles qui ne sont pas déjà dans la tâche. Quand une tâche retire une photo partagée, retirer seulement son association. Le fichier n’est jamais supprimé à ce moment : le bilan du dossier propose ensuite la corbeille pour les photos plus utilisées.

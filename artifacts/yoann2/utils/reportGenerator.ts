@@ -4,6 +4,7 @@ import { Image as RNImage } from 'react-native';
 
 import type { Project, Task } from '@/types';
 import { fmtDateLong } from '@/utils/date';
+import { resolvePhotoRef } from '@/utils/library/catalogue';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -44,7 +45,8 @@ function getImageDimensions(uri: string): Promise<{ width: number; height: numbe
 const MAX_DIM = 1080;
 const JPEG_QUALITY = 0.75;
 
-async function toDataUri(uri: string): Promise<string> {
+async function toDataUri(reference: string): Promise<string> {
+  const uri = resolvePhotoRef(reference);
   try {
     const { width, height } = await getImageDimensions(uri);
     const maxDim = Math.max(width, height);

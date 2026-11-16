@@ -7,8 +7,7 @@ import { AppState } from 'react-native';
 import type { Appointment, AppStats, CalendarPeriod, Category, Priority, Project, Task, TaskStatus } from '@/types';
 import { saveBackup } from '@/utils/backup';
 import { genId } from '@/utils/ids';
-import { ensureAllTaskFolders, ensureTaskFolder } from '@/utils/photoStorage';
-import { usePhotoProtection } from '@/hooks/usePhotoProtection';
+import { loadCatalogue } from '@/utils/library/catalogue';
 import {
   BankTransaction,
   getTransactions,
@@ -238,28 +237,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => { categoriesRef.current = categories; }, [categories]);
   useEffect(() => { appointmentsRef.current = appointments; }, [appointments]);
 
-  usePhotoProtection({
-    projects, tasks, loading,
-    replaceProject: (id, replacements) => {
-      setProjects(previous => {
-        const next = previous.map(project => project.id === id
-          ? { ...project, photos: project.photos.map(uri => replacements.get(uri) ?? uri) } : project);
-        AsyncStorage.setItem(STORAGE_KEYS.PROJECTS, JSON.stringify(next)).catch(console.warn);
-        dirtyRef.current = true;
-        return next;
-      });
-    },
-    replaceTask: (id, replacements) => {
-      setTasks(previous => {
-        const next = previous.map(task => task.id === id
-          ? { ...task, photos: task.photos.map(uri => replacements.get(uri) ?? uri) } : task);
-        AsyncStorage.setItem(STORAGE_KEYS.TASKS, JSON.stringify(next)).catch(console.warn);
-        dirtyRef.current = true;
-        return next;
-      });
-    },
-  });
-
   useEffect(() => {
     loadData();
   }, []);
@@ -362,21 +339,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const txs = await getTransactions();
       setTransactions(txs);
 
-      // Pré-créer les dossiers SAF de toutes les tâches existantes (fire-and-forget)
-      // Permet de déposer des photos depuis le gestionnaire de fichiers sans ouvrir l'app.
-      {
-        const pRaw = await AsyncStorage.getItem(STORAGE_KEYS.PROJECTS);
-        const tRaw = await AsyncStorage.getItem(STORAGE_KEYS.TASKS);
-        const loadedProjects: Project[] = pRaw ? JSON.parse(pRaw) : [];
-        const loadedTasks: Task[] = tRaw ? JSON.parse(tRaw) : [];
-        const taskItems = loadedTasks
-          .filter(t => t.status !== 'done')
-          .map(t => {
-            const proj = loadedProjects.find(p => p.id === t.projectId);
-            return { id: t.id, title: t.title, projectName: proj?.name ?? 'Divers' };
-          });
-        ensureAllTaskFolders(taskItems).catch(() => {});
-      }
+      // Photo catalogue (y2p: references → files in Yoann2.0) before the first render.
+      await loadCatalogue().catch(error => console.warn('Photo catalogue unavailable', error));
     } catch (e) {
       console.error('Error loading data', e);
     } finally {
@@ -490,9 +454,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       markDirty();
       return next;
     });
-    // Pré-créer le dossier SAF de la tâche en arrière-plan (fire-and-forget)
-    const proj = projects.find(p => p.id === newT.projectId);
-    if (proj) ensureTaskFolder(proj.name, newT.title, newT.id).catch(() => {});
   }, [projects]);
 
   const updateTask = useCallback((id: string, updates: Partial<Task>) => {

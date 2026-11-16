@@ -2,21 +2,31 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Image, type ImageProps } from 'expo-image';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { useCatalogueVersion } from '@/hooks/useCatalogueVersion';
 import { useColors } from '@/hooks/useColors';
+import { resolvePhotoRef } from '@/utils/library/catalogue';
+import { isLibraryRef } from '@/utils/library/paths';
 import { photoCandidates } from '@/utils/photoReferences';
 
 type Props = { uri: string; style?: ImageProps['style']; contentFit?: ImageProps['contentFit'] };
 
 /** Shared task/project rendering: never leave an unexplained empty black tile. */
 export function ProjectPhoto(props: Props) {
-  return <ResolvedPhoto key={props.uri} {...props} />;
+  const version = useCatalogueVersion();
+  return <ResolvedPhoto key={`${props.uri}:${version}`} {...props} />;
 }
 
 function ResolvedPhoto({ uri, style, contentFit = 'cover' }: Props) {
   const colors = useColors();
-  const [candidates, setCandidates] = useState<string[] | null>(null);
+  // Library references resolve synchronously: no loading flash when the catalogue changes.
+  const [candidates, setCandidates] = useState<string[] | null>(() => {
+    if (!isLibraryRef(uri)) return null;
+    const resolved = resolvePhotoRef(uri);
+    return resolved === uri ? [] : [resolved];
+  });
   const [index, setIndex] = useState(0);
   useEffect(() => {
+    if (isLibraryRef(uri)) return;
     let current = true;
     photoCandidates(uri).then(result => {
       if (current) setCandidates(result);

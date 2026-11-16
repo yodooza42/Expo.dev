@@ -20,6 +20,7 @@ function loadTypeScript(file, dependencies = {}) {
     exports: module.exports,
     require(name) {
       if (Object.prototype.hasOwnProperty.call(dependencies, name)) return dependencies[name];
+      if (name === '@/utils/library/catalogue') return { resolvePhotoRef: uri => uri, resolvePhotoRefAsync: async uri => uri };
       throw new Error(`Unexpected dependency: ${name}`);
     },
     Date,

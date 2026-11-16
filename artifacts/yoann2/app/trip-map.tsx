@@ -43,7 +43,10 @@ import type { KnownPlace, PlaceCategory, WalkRoute } from '@/types/places';
 import type { ActivityKind, RoutePoint, Trip, TripPhoto, Vehicle, WalkParticipant } from '@/types/trips';
 import { ProjectPhoto } from '@/components/ProjectPhoto';
 import { relinkTripPhoto } from '@/utils/tripPhotoRecovery';
-import { GalleryPhotoRecoverySheet } from '@/components/GalleryPhotoRecoverySheet';
+import { photoCandidates } from '@/utils/photoReferences';
+import { getEntry } from '@/utils/library/catalogue';
+import { importPhotos, reportImportFailures } from '@/utils/library/importPhoto';
+import { tripFolder } from '@/utils/library/placement';
 import { galleryPhotoMetadata } from '@/utils/galleryPhotoMetadata';
 import { simplifyRoute, EPSILON_DEG_WALK } from '@/utils/routeSimplification';
 import {
@@ -414,6 +417,31 @@ const routePickerStyles = StyleSheet.create({
 
 // ── Main screen ───────────────────────────────────────────────────────────────
 
+/** Copy picked photos into Yoann2.0/Photos/Trajets/… and keep only those that were stored. */
+async function storeTripPhotos(trip: Trip, photos: TripPhoto[]): Promise<TripPhoto[]> {
+  if (!photos.length) return [];
+  try {
+    const { imported, failed } = await importPhotos(
+      photos.map(photo => ({
+        uri: photo.uri,
+        takenAt: photo.takenAtEstimated ? undefined : photo.takenAt,
+        originalName: photo.galleryMetadata?.filename,
+      })),
+      tripFolder(trip),
+    );
+    reportImportFailures(failed);
+    const bySource = new Map(imported.map(item => [item.source, item.ref]));
+    const existing = new Set((trip.photos ?? []).map(photo => photo.uri));
+    return photos.flatMap(photo => {
+      const ref = bySource.get(photo.uri);
+      return ref && !existing.has(ref) ? [{ ...photo, uri: ref }] : [];
+    });
+  } catch (error) {
+    Alert.alert('Photos non ajoutées', error instanceof Error ? error.message : 'Copie dans Yoann2.0 impossible.');
+    return [];
+  }
+}
+
 export default function TripMapScreen() {
   const colors = useColors();
   const router = useRouter();
@@ -462,7 +490,6 @@ export default function TripMapScreen() {
   const [pendingStoryDuration, setPendingStoryDuration] = useState<number | undefined>();
 
   const [photoModalOpen, setPhotoModalOpen] = useState(false);
-  const [galleryRecoveryOpen, setGalleryRecoveryOpen] = useState(false);
   const [addingPhotos, setAddingPhotos] = useState(false);
   const [galleryPickerOpen, setGalleryPickerOpen] = useState(false);
   const [galleryLoading, setGalleryLoading] = useState(false);
@@ -646,12 +673,14 @@ export default function TripMapScreen() {
           placementMethod: forceRouteIndex != null ? 'manual' : placement?.method,
         });
       }
-      const merged = [...(trip.photos ?? []), ...newPhotos]
+      const stored = await storeTripPhotos(trip, newPhotos);
+      if (!stored.length) return;
+      const merged = [...(trip.photos ?? []), ...stored]
         .sort((a, b) => (a.routeIndex ?? Infinity) - (b.routeIndex ?? Infinity) || a.takenAt - b.takenAt);
       setTrip({ ...trip, photos: merged });
       await updateTrip(trip.id, { photos: merged });
-      if (forceRouteIndex != null && newPhotos.length > 0) {
-        setPhotoNoteEditId(newPhotos[newPhotos.length - 1]!.id);
+      if (forceRouteIndex != null && stored.length > 0) {
+        setPhotoNoteEditId(stored[stored.length - 1]!.id);
         setPhotoNoteDraft('');
       }
     } finally {
@@ -721,7 +750,8 @@ export default function TripMapScreen() {
           lat: point?.lat, lng: point?.lng,
         };
       });
-      const merged = [...(trip.photos ?? []), ...newPhotos]
+      const stored = await storeTripPhotos(trip, newPhotos);
+      const merged = [...(trip.photos ?? []), ...stored]
         .sort((a, b) => (a.routeIndex ?? Infinity) - (b.routeIndex ?? Infinity) || a.takenAt - b.takenAt);
       setTrip({ ...trip, photos: merged });
       await updateTrip(trip.id, { photos: merged });
@@ -808,10 +838,12 @@ export default function TripMapScreen() {
   }, [scrubTs, tripLocPts]);
 
   /** Encode une photo de galerie en data URI base64 pour que le WebView puisse la dessiner. */
-  const photoToDataUri = useCallback(async (uri: string): Promise<string | null> => {
+  const photoToDataUri = useCallback(async (reference: string): Promise<string | null> => {
     try {
+      const uri = (await photoCandidates(reference))[0];
+      if (!uri) return null;
       const b64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
-      const ext = (uri.split('.').pop() || 'jpg').toLowerCase().split('?')[0];
+      const ext = (getEntry(reference.startsWith('y2p:') ? reference.slice(4) : '')?.rel ?? uri).split('.').pop()?.toLowerCase().split('?')[0] || 'jpg';
       const mime = ext === 'png' ? 'image/png' : ext === 'heic' ? 'image/heic' : 'image/jpeg';
       return `data:${mime};base64,${b64}`;
     } catch {
@@ -1716,16 +1748,8 @@ export default function TripMapScreen() {
             </ScrollView>
             {(trip?.photos ?? []).length === 0 && (
               <Text style={{ color: colors.mutedForeground, fontSize: 12, marginTop: 8 }}>
-                Ajoute des photos depuis ta galerie. Les originaux restent inchangés ; les copies de protection sont masquées de la galerie.
+                Ajoute des photos depuis ta galerie. Une copie est rangée dans Yoann2.0/Photos/Trajets ; les originaux restent inchangés.
               </Text>
-            )}
-            {(trip?.photos ?? []).length > 0 && (
-              <Pressable testID="recover-trip-gallery" accessibilityRole="button"
-                onPress={() => { setPhotoModalOpen(false); setGalleryRecoveryOpen(true); }}
-                style={{ paddingVertical: 14, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <MaterialCommunityIcons name="image-search-outline" size={20} color={colors.primary} />
-                <Text style={{ color: colors.primary, fontSize: 13, flex: 1 }}>Retrouver les photos dans la galerie</Text>
-              </Pressable>
             )}
           </Pressable>
         </Pressable>
@@ -1895,14 +1919,6 @@ export default function TripMapScreen() {
         }}
       />
 
-      {trip && <GalleryPhotoRecoverySheet visible={galleryRecoveryOpen}
-        tripId={trip.id} onClose={() => {
-          setGalleryRecoveryOpen(false);
-          void getTrips().then(items => {
-            const updated = items.find(item => item.id === trip.id);
-            if (updated) setTrip(current => current?.id === updated.id ? updated : current);
-          });
-        }} />}
 
       {/* Note d'une photo */}
       <Modal visible={photoNoteEditId !== null} transparent animationType="fade" onRequestClose={() => setPhotoNoteEditId(null)}>

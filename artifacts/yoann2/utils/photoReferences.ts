@@ -2,6 +2,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Platform } from 'react-native';
 
+import { getEntry, loadCatalogue, resolvePhotoRef } from '@/utils/library/catalogue';
+import { isLibraryRef, refId } from '@/utils/library/paths';
+
 export function photoFilename(uri: string): string {
   try { return decodeURIComponent(uri).split('/').pop() ?? ''; }
   catch { return uri.split('/').pop() ?? ''; }
@@ -31,6 +34,11 @@ export async function photoExists(uri: string): Promise<boolean> {
 
 /** No dialogs, no writes, no filename guessing in the gallery. */
 export async function photoCandidates(uri: string): Promise<string[]> {
+  if (isLibraryRef(uri)) {
+    await loadCatalogue().catch(() => {});
+    const resolved = resolvePhotoRef(uri);
+    return resolved === uri ? [] : [resolved];
+  }
   if (Platform.OS === 'web') return [uri];
   const candidates = [uri];
   if (/\/(?:task_photos|project_photos)\//.test(uri) && FileSystem.documentDirectory) {
@@ -81,3 +89,8 @@ export async function mergeRecoveredPhotoUris(existing: string[], incoming: stri
   return { uris, added, repaired };
 }
 
+
+/** Capture date recorded when the photo entered the Yoann2.0 folder. */
+export function libraryPhotoTakenAt(uri: string): number | undefined {
+  return isLibraryRef(uri) ? getEntry(refId(uri))?.takenAt : undefined;
+}
