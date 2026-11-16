@@ -11,7 +11,6 @@ import {
   Modal,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -19,6 +18,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BottomSheet } from '@/components/BottomSheet';
+import { TaskPhotoStrip } from '@/components/TaskPhotoStrip';
 import { useApp } from '@/contexts/AppContext';
 import { useSplash } from '@/contexts/SplashContext';
 import { useColors } from '@/hooks/useColors';
@@ -27,6 +27,7 @@ import { getCompletionPrompts, getUndismissedCompletionPrompts } from '@/utils/c
 import { parseCompletionDate } from '@/utils/completionDate';
 import { sumEuroAmounts } from '@/utils/money';
 import { pH } from '@/styles/header';
+import { buildBureauHistoryRows, type BureauHistoryRow, type DayGroup, type WeekGroup } from '@/utils/bureauHistoryRows';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -92,16 +93,6 @@ const PRIORITY_LABELS: Record<string, string> = {
 };
 const COMPLETION_PROMPT_DISMISSED_KEY = '@yoann2_completion_prompt_dismissed_v1';
 
-type DayGroup  = {
-  dateKey: string;
-  date: Date;
-  label: string;
-  tasks: Task[];
-  subTasks?: { task: Task; subTask: SubTask }[];
-  projects?: Project[];
-};
-type WeekGroup = { weekKey: string; label: string; days: DayGroup[] };
-
 // ── Component ──────────────────────────────────────────────────────────────
 
 export default function DashboardScreen() {
@@ -144,8 +135,8 @@ export default function DashboardScreen() {
 
   const stats    = getStats();
   const now      = new Date();
-  const todayStart = startOfDay(now);
-  const todayKey   = isoDate(todayStart);
+  const todayKey = isoDate(now);
+  const todayStart = useMemo(() => startOfDay(new Date()), [todayKey]);
   const upcomingAppts = appointments.filter(a => {
     if (!a.date) return false;
     const d = new Date(a.date);
@@ -365,6 +356,16 @@ export default function DashboardScreen() {
     return result;
   }, [tasks, projects, todayStart]);
 
+  const historyRows = useMemo(() => showHistory
+    ? buildBureauHistoryRows(pastWeekGroups, showAppts, apptsByDay) : [],
+  [showHistory, pastWeekGroups, showAppts, apptsByDay]);
+
+  const openTaskPhotos = useCallback((uris: string[], index: number) => {
+    setPhotoViewer(uris);
+    setPhotoIndex(index);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  }, []);
+
   // ── Sub-component: ApptEntry ──────────────────────────────────────────
 
   function ApptEntry({ appt }: { appt: Appointment }) {
@@ -498,20 +499,7 @@ export default function DashboardScreen() {
             </Text>
           )}
           {showPhotos && hasPhotos && (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.photoStrip}>
-              {task.photos.map((uri, i) => (
-                <Pressable
-                  key={i}
-                  onPress={() => {
-                    setPhotoViewer(task.photos);
-                    setPhotoIndex(i);
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  }}
-                >
-                  <Image source={{ uri }} style={styles.photoThumb} contentFit="cover" />
-                </Pressable>
-              ))}
-            </ScrollView>
+            <TaskPhotoStrip uris={task.photos} size={PHOTO_H} onOpen={openTaskPhotos} />
           )}
         </View>
       </Pressable>
@@ -560,6 +548,47 @@ export default function DashboardScreen() {
   }
 
   // ── Render ────────────────────────────────────────────────────────────
+
+  function renderHistoryRow(item: BureauHistoryRow) {
+    if (item.kind === 'week') return (
+      <View style={styles.weekRow}>
+        <View style={[styles.weekLineFrag, { backgroundColor: colors.border }]} />
+        <Text style={[styles.weekHead, { color: colors.mutedForeground }]}>{item.label}</Text>
+        <View style={[styles.weekLineFrag, { backgroundColor: colors.border }]} />
+      </View>
+    );
+    if (item.kind === 'day') return (
+      <View style={styles.dayHeadRow}>
+        <View style={[styles.dayDot, { backgroundColor: colors.background, borderColor: colors.border }]} />
+        <Text style={[styles.dayHead, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>{item.label}</Text>
+      </View>
+    );
+    return (
+      <View style={[styles.branch, styles.historyRow, { borderLeftColor: colors.border }]}>
+        {item.kind === 'task' && (
+          <TaskEntry task={item.task} isDone testID={`completed-task-${item.task.id}`}
+            accessibilityLabel={`Ouvrir la tâche ${item.task.title}`}
+            onPress={() => router.push({ pathname: '/task/[id]', params: { id: item.task.id } })} />
+        )}
+        {item.kind === 'subtask' && <HistorySubTaskEntry task={item.task} subTask={item.subTask} />}
+        {item.kind === 'appointment' && <ApptEntry appt={item.appointment} />}
+        {item.kind === 'project' && (
+          <Pressable testID={`completed-project-${item.project.id}`}
+            onPress={() => router.push(`/project/${item.project.id}` as any)}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12 }}>
+            <MaterialCommunityIcons name="folder-check-outline" size={20} color={colors.primary} />
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: colors.foreground, fontFamily: 'Inter_500Medium', fontSize: 14 }}>{item.project.name}</Text>
+              <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>
+                Projet terminé{item.project.completedAt ? ` · ${item.project.completedAt}` : ' · date à préciser'}
+              </Text>
+            </View>
+            <MaterialCommunityIcons name="chevron-right" size={18} color={colors.mutedForeground} />
+          </Pressable>
+        )}
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -632,10 +661,20 @@ export default function DashboardScreen() {
       </LinearGradient>
 
       {/* SCROLL BODY */}
-      <ScrollView
+      <FlatList
+        testID="bureau-timeline"
+        data={historyRows}
+        keyExtractor={item => item.key}
+        renderItem={({ item }) => renderHistoryRow(item)}
+        initialNumToRender={8}
+        maxToRenderPerBatch={5}
+        windowSize={5}
+        updateCellsBatchingPeriod={32}
+        extraData={showPhotos}
+        removeClippedSubviews={false}
         contentContainerStyle={[styles.scroll, { paddingBottom: 120 }]}
         showsVerticalScrollIndicator={false}
-      >
+        ListHeaderComponent={<>
         {currentCompletionPrompt && (
           <View style={[styles.completionPromptCard, { backgroundColor: colors.card, borderColor: colors.primary + '55' }]}
             accessibilityLiveRegion="polite">
@@ -770,67 +809,13 @@ export default function DashboardScreen() {
           )}
         </Pressable>
 
-        {/* ── SEMAINES PASSÉES ── */}
-        {showHistory && (
-          pastWeekGroups.length === 0 ? (
+        {showHistory && pastWeekGroups.length === 0 && (
             <Text style={[styles.historyEmpty, { color: colors.mutedForeground }]}>
               Aucun projet ni tâche terminé
             </Text>
-          ) : (
-            pastWeekGroups.map(week => (
-              <View key={week.weekKey} style={styles.section}>
-                <View style={styles.weekRow}>
-                  <View style={[styles.weekLineFrag, { backgroundColor: colors.border }]} />
-                  <Text style={[styles.weekHead, { color: colors.mutedForeground }]}>{week.label}</Text>
-                  <View style={[styles.weekLineFrag, { backgroundColor: colors.border }]} />
-                </View>
-                {week.days.map(day => (
-                  <View key={day.dateKey} style={styles.dayGroup}>
-                    <View style={styles.dayHeadRow}>
-                      <View style={[styles.dayDot, { backgroundColor: colors.background, borderColor: colors.border }]} />
-                      <Text style={[styles.dayHead, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
-                        {day.label}
-                      </Text>
-                    </View>
-                    <View style={[styles.branch, { borderLeftColor: colors.border }]}>
-                      {day.tasks.map(t => (
-                        <TaskEntry
-                          key={t.id}
-                          task={t}
-                          isDone
-                          testID={`completed-task-${t.id}`}
-                          accessibilityLabel={`Ouvrir la tâche ${t.title}`}
-                          onPress={() => router.push({ pathname: '/task/[id]', params: { id: t.id } })}
-                        />
-                      ))}
-                      {day.subTasks?.map(({ task, subTask }) => (
-                        <HistorySubTaskEntry key={`${task.id}-${subTask.id}`} task={task} subTask={subTask} />
-                      ))}
-                      {day.projects?.map(project => (
-                        <Pressable
-                          key={`project-${project.id}`}
-                          testID={`completed-project-${project.id}`}
-                          onPress={() => router.push(`/project/${project.id}` as any)}
-                          style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12 }}
-                        >
-                          <MaterialCommunityIcons name="folder-check-outline" size={20} color={colors.primary} />
-                          <View style={{ flex: 1 }}>
-                            <Text style={{ color: colors.foreground, fontFamily: 'Inter_500Medium', fontSize: 14 }}>{project.name}</Text>
-                            <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>Projet terminé{project.completedAt ? ` · ${project.completedAt}` : ' · date à préciser'}</Text>
-                          </View>
-                          <MaterialCommunityIcons name="chevron-right" size={18} color={colors.mutedForeground} />
-                        </Pressable>
-                      ))}
-                      {showAppts && (apptsByDay.get(day.dateKey) ?? []).map(a => (
-                        <ApptEntry key={a.id} appt={a} />
-                      ))}
-                    </View>
-                  </View>
-                ))}
-              </View>
-            ))
-          )
         )}
+        </>}
+        ListFooterComponent={<>
 
         {/* ── EN RETARD ── */}
         {overdueTasks.length > 0 && (
@@ -954,7 +939,8 @@ export default function DashboardScreen() {
             </View>
           </View>
         )}
-      </ScrollView>
+        </>}
+      />
 
       {/* ── BOTTOM SHEET ── */}
       <BottomSheet visible={selectedTask !== null} onClose={() => setSelectedTask(null)}>
@@ -1126,6 +1112,7 @@ const styles = StyleSheet.create({
 
   // Branch (axis line)
   branch: { paddingLeft: 18, borderLeftWidth: 1.5, marginLeft: 5, gap: 6 },
+  historyRow: { paddingBottom: 6 },
 
   // Task entry
   taskEntry:    { borderRadius: 12, borderWidth: 1, overflow: 'hidden', flexDirection: 'row' },
@@ -1139,10 +1126,6 @@ const styles = StyleSheet.create({
   prioBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10 },
   prioDot:   { width: 6, height: 6, borderRadius: 3 },
   prioTxt:   { fontSize: 11, fontFamily: 'Inter_600SemiBold' },
-
-  // Photo strip
-  photoStrip: { marginTop: 8 },
-  photoThumb: { width: PHOTO_H, height: PHOTO_H, borderRadius: 8, marginRight: 6 },
 
   // Empty
   emptyState: { alignItems: 'center', paddingVertical: 56, gap: 10 },
