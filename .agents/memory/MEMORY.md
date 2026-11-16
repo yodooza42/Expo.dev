@@ -1,7 +1,7 @@
 - [Périmètre des activités](activity-scope.md) — suivi par type et participants, sans gestion du matériel.
 - [Provenance des souvenirs](memory-placement-provenance.md) — préserver les anciennes positions sans mode connu, car elles peuvent être des corrections manuelles.
 - [EAS build git lock workaround](eas-build-git-lock.md) — prefix `GIT_OPTIONAL_LOCKS=0` to run `eas-cli build`; use global binary `/home/runner/workspace/.config/npm/node_global/bin/eas` + grep -m1 "See logs" to exit quickly.
-- [EAS Build fix — yoann2](eas-build-fix.md) — le build GitHub doit utiliser l’identifiant Expo actuellement associé au dépôt dans `app.json`.
+- [Identité du projet Expo](eas-build-fix.md) — avant un build GitHub, vérifier le propriétaire et le Project ID du dépôt lié, pas seulement son nom ou slug.
 - [expo-file-system legacy import](expo-file-system-legacy.md) — dans SDK 54, expo-file-system@19 supprime `documentDirectory` du default export. Utiliser `expo-file-system/legacy` pour accéder à l'ancienne API (documentDirectory, copyAsync, etc.).
 - [expo-video timeUpdate payload](expo-video-timeupdate.md) — `TimeUpdateEventPayload` n'a PAS de champ `duration`. Utiliser `player.duration` directement (propriété de l'instance VideoPlayer).
 - [Expo Android crash diagnosis](expo-android-crash-diagnosis.md) — splash-then-close = uncaught JS error in index.js/root render before React; Reanimated 4 requires New Arch.

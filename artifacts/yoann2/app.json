@@ -1,8 +1,8 @@
 {
   "expo": {
     "name": "Yoann2.0",
-    "slug": "yoann-20",
-    "owner": "yo3007s-team",
+    "slug": "application-yoann20",
+    "owner": "yoann42s-team",
     "version": "1.0.110",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -126,7 +126,7 @@
         "origin": "https://replit.com/"
       },
       "eas": {
-        "projectId": "123f87a4-0fe7-4f38-9f47-659eb26fd300"
+        "projectId": "875e84e9-1621-4df5-bc36-3ca7c757f39a"
       }
     }
   }
