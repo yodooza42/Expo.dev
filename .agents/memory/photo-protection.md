@@ -38,3 +38,13 @@ Un changement de compte Expo doit privilégier une mise à jour sur place, sans 
 **Why:** L’utilisateur a signalé que ses builds depuis un autre compte Expo imposaient généralement une réinstallation et veut éviter toute perte de données.
 
 **How to apply:** Vérifier la continuité de la signature Android et de l’identifiant d’application avant installation. Ne jamais garantir une restauration après désinstallation sur la seule présence d’une sauvegarde JSON : les fichiers et les autorisations d’accès doivent aussi être vérifiés.
+
+## Périmètre de la nouvelle organisation
+
+L’utilisateur veut une organisation `Yoann2.0/Photos/Catégorie/Projet/Tâche/Sous-tâche`, accompagnée d’un catalogue. Il prévoit de remettre manuellement les photos des projets, tâches et sous-tâches.
+
+Les photos des trajets doivent conserver leur système actuel. Leur réorganisation est reportée et nécessitera une nouvelle demande.
+
+**Why:** L’utilisateur ne veut pas refaire les photos des trajets maintenant ; il souhaite d’abord juger le nouveau fonctionnement des projets.
+
+**How to apply:** Isoler la refonte des projets du stockage et des associations des trajets, y compris dans les fonctions partagées. La réintroduction manuelle annoncée n’autorise aucune suppression automatique de photos ou de données.
