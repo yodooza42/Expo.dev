@@ -1057,10 +1057,15 @@ export default function ProjectDetailScreen() {
         animationType="slide"
         onRequestClose={() => setBeforeAfterPickerVisible(false)}
       >
-        <Pressable style={styles.beforeAfterPickerBackdrop} onPress={() => setBeforeAfterPickerVisible(false)}>
+        <View style={styles.beforeAfterPickerBackdrop}>
           <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Fermer la sélection de photos"
+            style={StyleSheet.absoluteFillObject}
+            onPress={() => setBeforeAfterPickerVisible(false)}
+          />
+          <View
             style={[styles.beforeAfterPickerSheet, { backgroundColor: colors.card, paddingBottom: insets.bottom + 14 }]}
-            onStartShouldSetResponder={() => true}
           >
             <View style={[styles.beforeAfterPickerHandle, { backgroundColor: colors.border }]} />
             <View style={styles.beforeAfterPickerHeader}>
@@ -1094,11 +1099,41 @@ export default function ProjectDetailScreen() {
               })}
             </View>
             <Text style={[styles.progressSub, { color: colors.mutedForeground }]}>
-              Sélectionne jusqu’à deux photos pour chaque côté.
+              Jusqu’à deux photos par côté. Retire d’abord une photo cochée pour la remplacer.
             </Text>
+            {beforeAfterDraft[beforeAfterPickerSlot].length > 0 && (
+              <View style={styles.beforeAfterSelectedList}>
+                {beforeAfterDraft[beforeAfterPickerSlot].map((photo, index) => (
+                  <View key={photo.uri} style={[styles.beforeAfterSelectedChip, {
+                    borderColor: colors.border,
+                    backgroundColor: colors.background,
+                  }]}>
+                    <ProjectPhoto uri={photo.uri} style={styles.beforeAfterSelectedImage} contentFit="cover" />
+                    <View style={{ flex: 1 }}>
+                      <Text numberOfLines={1} style={[styles.progressSub, { color: colors.foreground }]}>
+                        {photo.dateLabel}
+                      </Text>
+                      <Text numberOfLines={1} style={[styles.beforeAfterPickerSource, { color: colors.mutedForeground }]}>
+                        {photo.sourceTitle}
+                      </Text>
+                    </View>
+                    <Pressable
+                      testID={`remove-project-before-after-${beforeAfterPickerSlot}-${index}`}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Retirer cette photo du côté ${beforeAfterPickerSlot === 'before' ? 'avant' : 'après'}`}
+                      hitSlop={8}
+                      onPress={() => toggleBeforeAfterPhoto(photo)}
+                      style={styles.beforeAfterSelectedRemove}
+                    >
+                      <MaterialCommunityIcons name="close-circle-outline" size={21} color={colors.mutedForeground} />
+                    </Pressable>
+                  </View>
+                ))}
+              </View>
+            )}
             {beforeAfterOptions.length ? (
               <ScrollView style={styles.beforeAfterPickerScroll} contentContainerStyle={styles.beforeAfterPickerGrid}
-                showsVerticalScrollIndicator={false}>
+                showsVerticalScrollIndicator persistentScrollbar>
                 {beforeAfterOptions.map((photo, index) => {
                   const selected = beforeAfterDraft[beforeAfterPickerSlot].some(item => item.uri === photo.uri);
                   const atLimit = beforeAfterDraft[beforeAfterPickerSlot].length >= 2;
@@ -1140,8 +1175,8 @@ export default function ProjectDetailScreen() {
                 </Text>
               </Pressable>
             </View>
-          </Pressable>
-        </Pressable>
+          </View>
+        </View>
       </Modal>
 
       <GalleryPhotoPicker
@@ -1370,12 +1405,16 @@ const styles = StyleSheet.create({
   beforeAfterEdit: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 4 },
   beforeAfterLabel: { fontSize: 11, fontFamily: 'Inter_700Bold', letterSpacing: 0.5 },
   beforeAfterPickerBackdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.62)' },
-  beforeAfterPickerSheet: { maxHeight: '88%', borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingHorizontal: 18, paddingTop: 10, gap: 12 },
+  beforeAfterPickerSheet: { height: '84%', borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingHorizontal: 18, paddingTop: 10, gap: 12 },
   beforeAfterPickerHandle: { alignSelf: 'center', width: 40, height: 4, borderRadius: 2, marginBottom: 2 },
   beforeAfterPickerHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   beforeAfterPickerSlots: { flexDirection: 'row', gap: 10 },
   beforeAfterPickerSlot: { flex: 1, minHeight: 42, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderRadius: 11 },
-  beforeAfterPickerScroll: { maxHeight: 280, flexGrow: 0 },
+  beforeAfterSelectedList: { gap: 6 },
+  beforeAfterSelectedChip: { minHeight: 46, flexDirection: 'row', alignItems: 'center', gap: 8, padding: 5, borderWidth: 1, borderRadius: 10 },
+  beforeAfterSelectedImage: { width: 34, height: 34, borderRadius: 6 },
+  beforeAfterSelectedRemove: { minWidth: 32, minHeight: 32, alignItems: 'center', justifyContent: 'center' },
+  beforeAfterPickerScroll: { flex: 1, minHeight: 0 },
   beforeAfterPickerGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingBottom: 4 },
   beforeAfterPickerPhoto: { width: '31.5%', aspectRatio: 1, borderWidth: 2, borderRadius: 10, overflow: 'hidden', padding: 2 },
   beforeAfterPickerImage: { width: '100%', height: '72%', borderRadius: 7 },
