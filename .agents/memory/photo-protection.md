@@ -32,3 +32,9 @@ Après l’annulation d’un rattachement, les recherches ultérieures doivent d
 **Why:** Une annulation remet en cause la correspondance ; réappliquer automatiquement le même résultat rendrait la correction de l’utilisateur inutile.
 
 **How to apply:** Conserver cette prudence après fermeture de l’écran. Permettre une nouvelle sélection explicite, sans supprimer les sources ni les copies de la correspondance annulée.
+
+Un changement de compte Expo doit privilégier une mise à jour sur place, sans désinstallation. L’utilisateur demande de préserver les projets, les photos et leurs liens ainsi que les données GPS.
+
+**Why:** L’utilisateur a signalé que ses builds depuis un autre compte Expo imposaient généralement une réinstallation et veut éviter toute perte de données.
+
+**How to apply:** Vérifier la continuité de la signature Android et de l’identifiant d’application avant installation. Ne jamais garantir une restauration après désinstallation sur la seule présence d’une sauvegarde JSON : les fichiers et les autorisations d’accès doivent aussi être vérifiés.
