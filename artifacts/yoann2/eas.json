@@ -6,6 +6,7 @@
   "build": {
     "apk": {
       "distribution": "internal",
+      "pnpm": "10.26.1",
       "android": {
         "image": "latest",
         "buildType": "apk"
@@ -13,6 +14,7 @@
     },
     "production": {
       "distribution": "internal",
+      "pnpm": "10.26.1",
       "android": {
         "image": "latest",
         "buildType": "apk"
