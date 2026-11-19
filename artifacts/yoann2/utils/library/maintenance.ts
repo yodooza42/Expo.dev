@@ -11,6 +11,7 @@ import { collectReferences, expectedFolders, selectionUris, type PhotoData } fro
 import { createFile, deleteRel, fileUri, libraryAccessible, listDir, md5Of } from '@/utils/library/saf';
 import { readRange } from '@/utils/imageExifDate';
 import { getTrips } from '@/utils/tripStorage';
+import { loadLifeAlbum } from '@/utils/lifeAlbum';
 
 /**
  * "Bilan du dossier": compares the data, the catalogue and the files really
@@ -54,6 +55,7 @@ export async function readPhotoData(): Promise<PhotoData> {
     projects: parseList<Project>(projects[1]),
     tasks: parseList<Task>(tasks[1]),
     trips: await getTrips(),
+    album: await loadLifeAlbum(),
   };
 }
 

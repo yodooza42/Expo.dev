@@ -1,5 +1,6 @@
 import type { JournalProjectPhotoSelection, Project, Task } from '@/types';
 import type { Trip } from '@/types/trips';
+import type { LifeAlbum } from '@/utils/lifeAlbumCore';
 import { PHOTOS_DIR, isLibraryRef, joinRel, monthStamp, refId, safeName, tripFolderName } from '@/utils/library/paths';
 
 /**
@@ -32,7 +33,7 @@ export function selectionUris(selection: JournalProjectPhotoSelection | undefine
   return (Array.isArray(selection) ? selection : [selection]).map(item => item.uri);
 }
 
-export type PhotoData = { projects: Project[]; tasks: Task[]; trips: Trip[] };
+export type PhotoData = { projects: Project[]; tasks: Task[]; trips: Trip[]; album?: LifeAlbum };
 
 /** Every photo reference held by the data (library ids and legacy links). */
 export function collectReferences(data: PhotoData): { ids: Set<string>; legacy: Set<string> } {
@@ -53,6 +54,7 @@ export function collectReferences(data: PhotoData): { ids: Set<string>; legacy: 
     task.subTasks?.forEach(subTask => subTask.photoUris?.forEach(add));
   }
   for (const trip of data.trips) trip.photos?.forEach(photo => add(photo.uri));
+  for (const photo of data.album?.photos ?? []) add(photo.uri);
   return { ids, legacy };
 }
 
@@ -80,6 +82,10 @@ export function expectedFolders(data: PhotoData): Map<string, string> {
     for (const photo of trip.photos ?? []) {
       if (isLibraryRef(photo.uri) && !result.has(refId(photo.uri))) result.set(refId(photo.uri), tripFolder(trip));
     }
+  }
+  const albumFolder = joinRel(PHOTOS_DIR, 'Album de vie');
+  for (const photo of data.album?.photos ?? []) {
+    if (isLibraryRef(photo.uri) && !result.has(refId(photo.uri))) result.set(refId(photo.uri), albumFolder);
   }
   return result;
 }

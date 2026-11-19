@@ -269,6 +269,7 @@ function RootLayoutNav() {
         <Stack.Screen name="vehicle-settings" options={{ headerShown: false, presentation: 'modal' }} />
         <Stack.Screen name="project-reports" options={{ headerShown: false, presentation: 'modal' }} />
         <Stack.Screen name="project-journal" options={{ headerShown: false, presentation: 'card' }} />
+        <Stack.Screen name="life-album" options={{ headerShown: false, presentation: 'card', gestureEnabled: false }} />
         <Stack.Screen name="project-report/[id]" options={{ headerShown: false, presentation: 'card' }} />
         <Stack.Screen name="trip/new" options={{ headerShown: false, presentation: 'modal' }} />
         <Stack.Screen name="activity-review" options={{ headerShown: false, presentation: 'modal', gestureEnabled: false }} />
