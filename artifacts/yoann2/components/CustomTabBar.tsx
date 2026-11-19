@@ -1,7 +1,7 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
-import React from 'react';
+import React, { useRef } from 'react';
 import {
   Platform,
   Pressable,
@@ -53,6 +53,7 @@ export function CustomTabBar({ state, navigation }: TabBarProps) {
   const router    = useRouter();
   const isWeb     = Platform.OS === 'web';
   const bottomPad = isWeb ? 8 : insets.bottom;
+  const lastHomePress = useRef(0);
 
   const currentRouteName: string = state.routes[state.index]?.name ?? '';
 
@@ -77,6 +78,13 @@ export function CustomTabBar({ state, navigation }: TabBarProps) {
                   key={route.key}
                   onPress={() => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                    const now = Date.now();
+                    if (now - lastHomePress.current <= 420) {
+                      lastHomePress.current = 0;
+                      router.push('/life-album' as any);
+                      return;
+                    }
+                    lastHomePress.current = now;
                     const event = navigation.emit({
                       type: 'tabPress',
                       target: route.key,
@@ -86,6 +94,10 @@ export function CustomTabBar({ state, navigation }: TabBarProps) {
                       navigation.navigate(route.name);
                     }
                   }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Accueil"
+                  accessibilityHint="Appuie deux fois rapidement pour ouvrir l’album de vie"
+                  testID="home-tab"
                   style={styles.homeTabItem}
                 >
                   {/* Raised home button */}

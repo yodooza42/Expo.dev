@@ -1,0 +1,67 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
+const test = require('node:test');
+const ts = require('typescript');
+
+const source = fs.readFileSync(path.join(__dirname, '../utils/lifeAlbumCore.ts'), 'utf8');
+const compiled = ts.transpileModule(source, {
+  compilerOptions: { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.CommonJS, esModuleInterop: true },
+}).outputText;
+const moduleExports = {};
+vm.runInNewContext(compiled, { exports: moduleExports, Date, Math });
+
+const {
+  albumAgeAt,
+  albumDay,
+  chronologicalMemories,
+  emptyLifeAlbum,
+  isAlbumDate,
+  isLifeAlbum,
+  unassignedAlbumPhotos,
+} = moduleExports;
+
+test('validates calendar dates instead of accepting impossible days', () => {
+  assert.equal(isAlbumDate('2024-02-29'), true);
+  assert.equal(isAlbumDate('2023-02-29'), false);
+  assert.equal(isAlbumDate('2024-13-01'), false);
+  assert.equal(isAlbumDate('2024-2-01'), false);
+});
+
+test('formats a timestamp as its local calendar day', () => {
+  const timestamp = new Date(2025, 2, 9, 23, 30).getTime();
+  assert.equal(albumDay(timestamp), '2025-03-09');
+});
+
+test('calculates age by anniversary and handles events before birth', () => {
+  assert.equal(albumAgeAt('2020-08-14', '2025-08-13'), '4 ans');
+  assert.equal(albumAgeAt('2020-08-14', '2025-08-14'), '5 ans');
+  assert.equal(albumAgeAt('2020-08-14', '2020-08-20'), '6 jours');
+  assert.equal(albumAgeAt('2020-08-14', '2021-01-14'), '5 mois');
+  assert.equal(albumAgeAt('2020-08-14', '2019-01-01'), null);
+  assert.equal(albumAgeAt(null, '2025-01-01'), null);
+});
+
+test('orders memories by their event date without mutating the source list', () => {
+  const newer = { id: 'later', date: '2024-07-12', createdAt: 1 };
+  const older = { id: 'earlier', date: '2021-02-01', createdAt: 2 };
+  const album = { memories: [newer, older] };
+  assert.deepEqual(Array.from(chronologicalMemories(album), item => item.id), ['earlier', 'later']);
+  assert.deepEqual(Array.from(album.memories, item => item.id), ['later', 'earlier']);
+});
+
+test('returns photos not assigned to any memory to the sorting inbox', () => {
+  const album = {
+    photos: [{ id: 'a' }, { id: 'b' }, { id: 'c' }],
+    memories: [{ photoIds: ['b', 'c'] }, { photoIds: ['c'] }],
+  };
+  assert.deepEqual(Array.from(unassignedAlbumPhotos(album), item => item.id), ['a']);
+});
+
+test('starts with an empty, valid album and rejects corrupted structures', () => {
+  const album = emptyLifeAlbum();
+  assert.equal(isLifeAlbum(album), true);
+  assert.equal(isLifeAlbum({ ...album, profile: { ...album.profile, birthDate: '2023-02-29' } }), false);
+  assert.equal(isLifeAlbum({ ...album, memories: [{ id: 'x', date: 'not-a-date' }] }), false);
+});
