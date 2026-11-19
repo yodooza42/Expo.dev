@@ -15,6 +15,7 @@ vm.runInNewContext(compiled, { exports: moduleExports, Date, Math });
 const {
   albumAgeAt,
   albumDay,
+  buildAlbumTimeline,
   chronologicalMemories,
   emptyLifeAlbum,
   isAlbumDate,
@@ -49,6 +50,16 @@ test('orders memories by their event date without mutating the source list', () 
   const album = { memories: [newer, older] };
   assert.deepEqual(Array.from(chronologicalMemories(album), item => item.id), ['earlier', 'later']);
   assert.deepEqual(Array.from(album.memories, item => item.id), ['later', 'earlier']);
+});
+
+test('allows and places memories before birth ahead of the birth marker', () => {
+  const prenatal = { id: 'echo', date: '2025-09-25', createdAt: 1 };
+  const afterBirth = { id: 'first-steps', date: '2026-04-03', createdAt: 2 };
+  const rows = buildAlbumTimeline([afterBirth, prenatal], '2026-01-14', '2026-11-19');
+  assert.deepEqual(
+    Array.from(rows, row => row.kind === 'memory' ? row.memory.id : row.kind),
+    ['year', 'beforeBirth', 'echo', 'year', 'birth', 'first-steps', 'today'],
+  );
 });
 
 test('returns photos not assigned to any memory to the sorting inbox', () => {

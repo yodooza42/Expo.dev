@@ -15,6 +15,12 @@ export type AlbumMemory = {
   updatedAt: number;
 };
 
+export type AlbumTimelineRow =
+  | { kind: 'year'; key: string; year: string }
+  | { kind: 'memory'; key: string; memory: AlbumMemory }
+  | { kind: 'birth' | 'today'; key: string; date: string }
+  | { kind: 'beforeBirth'; key: string; date: string };
+
 export type LifeAlbum = {
   version: 1;
   profile: {
@@ -68,6 +74,41 @@ export function chronologicalMemories(album: LifeAlbum): AlbumMemory[] {
   return [...album.memories].sort((a, b) =>
     a.date.localeCompare(b.date) || a.createdAt - b.createdAt || a.id.localeCompare(b.id),
   );
+}
+
+export function buildAlbumTimeline(
+  memories: AlbumMemory[],
+  birthDate: string | null,
+  today: string,
+): AlbumTimelineRow[] {
+  const events: Array<{ kind: 'memory' | 'birth' | 'today'; date: string; memory?: AlbumMemory }> = [
+    ...memories.map(memory => ({ kind: 'memory' as const, date: memory.date, memory })),
+    ...(birthDate ? [{ kind: 'birth' as const, date: birthDate }] : []),
+    { kind: 'today', date: today },
+  ];
+  const rank = { birth: 0, memory: 1, today: 2 };
+  events.sort((a, b) => a.date.localeCompare(b.date) || rank[a.kind] - rank[b.kind]);
+
+  const rows: AlbumTimelineRow[] = [];
+  let lastYear = '';
+  let beforeBirthAdded = false;
+  for (const event of events) {
+    const year = event.date.slice(0, 4);
+    if (year !== lastYear) {
+      rows.push({ kind: 'year', key: `year-${year}`, year });
+      lastYear = year;
+    }
+    if (event.kind === 'memory') {
+      if (birthDate && event.date < birthDate && !beforeBirthAdded) {
+        rows.push({ kind: 'beforeBirth', key: 'album-before-birth', date: birthDate });
+        beforeBirthAdded = true;
+      }
+      rows.push({ kind: 'memory', key: `memory-${event.memory!.id}`, memory: event.memory! });
+    } else {
+      rows.push({ kind: event.kind, key: `album-${event.kind}`, date: event.date });
+    }
+  }
+  return rows;
 }
 
 export function unassignedAlbumPhotos(album: LifeAlbum): AlbumPhoto[] {
