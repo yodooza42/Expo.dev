@@ -452,7 +452,6 @@ export default function DashboardScreen() {
     const pColor    = proj ? projectColor(proj.id) : colors.primary;
     const prioColor = PRIORITY_COLORS[task.priority] ?? colors.primary;
     const hasPhotos = task.photos.length > 0;
-    const dimmed    = isDone || isOverdue;
 
     return (
       <Pressable
@@ -462,9 +461,9 @@ export default function DashboardScreen() {
         style={({ pressed }) => [
           styles.taskEntry,
           {
-            backgroundColor: isDone ? colors.card + '80' : colors.card,
+            backgroundColor: colors.card,
             borderColor: isOverdue ? '#F4433640' : colors.border,
-            opacity: pressed ? 0.75 : isDone ? 0.55 : 1,
+            opacity: pressed ? 0.75 : 1,
           },
         ]}
       >
@@ -477,8 +476,7 @@ export default function DashboardScreen() {
             <Text
               style={[
                 styles.taskTitle,
-                { color: isOverdue ? '#FF5722' : isDone ? colors.mutedForeground : colors.foreground },
-                isDone && { textDecorationLine: 'line-through' },
+                { color: isOverdue ? '#FF5722' : colors.foreground },
               ]}
               numberOfLines={1}
             >
@@ -509,6 +507,7 @@ export default function DashboardScreen() {
 
   function HistorySubTaskEntry({ task, subTask }: { task: Task; subTask: SubTask }) {
     const project = projects.find(item => item.id === task.projectId);
+    const photos = [...new Set((subTask.photoUris ?? []).filter(uri => task.photos.includes(uri)))];
     return (
       <Pressable
         testID={`completed-subtask-${task.id}-${subTask.id}`}
@@ -537,6 +536,9 @@ export default function DashboardScreen() {
           <Text style={[styles.taskProj, { color: colors.mutedForeground }]} numberOfLines={1}>
             Sous-tâche de {task.title}{project ? ` · ${project.name}` : ''}
           </Text>
+          {showPhotos && photos.length > 0 && (
+            <TaskPhotoStrip uris={photos} size={PHOTO_H} onOpen={openTaskPhotos} />
+          )}
         </View>
         <MaterialCommunityIcons
           name="chevron-right"
