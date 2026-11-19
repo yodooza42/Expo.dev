@@ -23,6 +23,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BottomSheet } from '@/components/BottomSheet';
 import { GalleryPhotoPicker } from '@/components/GalleryPhotoPicker';
+import { ProjectPhotoDistributionModal } from '@/components/ProjectPhotoDistributionModal';
 import { PriorityBadge } from '@/components/PriorityBadge';
 import { ProgressBar } from '@/components/ProgressBar';
 import { TaskCard } from '@/components/TaskCard';
@@ -33,6 +34,7 @@ import { parseCompletionDate } from '@/utils/completionDate';
 import { BankTransaction, CategoryConfig, getCategoryConfigs } from '@/utils/bankStorage';
 import { importPhotos, reportImportFailures } from '@/utils/library/importPhoto';
 import { projectFolder } from '@/utils/library/placement';
+import { buildProjectPhotoAssignmentUpdates } from '@/utils/projectPhotoLinks';
 import { getProjectBeforeAfterPhotoOptions, normalizeJournalProjectPhotos } from '@/utils/projectJournal';
 import { scanPhotoDates } from '@/utils/taskPhotoDates';
 import { fmtEuro, sumEuroAmounts } from '@/utils/money';
@@ -74,7 +76,7 @@ export default function ProjectDetailScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { projects, getProjectTasks, getProjectExpenses, updateProject, deleteProject, archiveProject, unarchiveProject, addTransactionCtx, updateTransactionCtx, deleteTransactionCtx, deleteTask } = useApp();
+  const { projects, getProjectTasks, getProjectExpenses, updateProject, updateTasksBulk, deleteProject, archiveProject, unarchiveProject, addTransactionCtx, updateTransactionCtx, deleteTransactionCtx, deleteTask } = useApp();
 
   const projectMaybe = projects.find(p => p.id === id);
   const tasks = useMemo(() => getProjectTasks(id ?? ''), [getProjectTasks, id]);
@@ -127,10 +129,15 @@ export default function ProjectDetailScreen() {
 
   const allPhotos = useMemo<AllPhoto[]>(() => {
     if (!projectMaybe) return [];
+    const seen = new Set<string>();
     return [
       ...projectMaybe.photos.map(uri => ({ uri, deletable: true, source: 'Projet' })),
       ...tasks.flatMap(t => (t.photos ?? []).map(uri => ({ uri, deletable: false, source: t.title }))),
-    ];
+    ].filter(photo => {
+      if (seen.has(photo.uri)) return false;
+      seen.add(photo.uri);
+      return true;
+    });
   }, [projectMaybe, tasks]);
   const beforeAfterOptions = useMemo(
     () => projectMaybe ? getProjectBeforeAfterPhotoOptions(projectMaybe, tasks) : [],
@@ -158,6 +165,7 @@ export default function ProjectDetailScreen() {
   latestProjects.current = projects;
   const [exporting, setExporting] = useState(false);
   const [galleryPickerVisible, setGalleryPickerVisible] = useState(false);
+  const [projectPhotoDistributionVisible, setProjectPhotoDistributionVisible] = useState(false);
   const [beforeAfterPickerVisible, setBeforeAfterPickerVisible] = useState(false);
   const [beforeAfterPickerSlot, setBeforeAfterPickerSlot] = useState<BeforeAfterSlot>('before');
   const [beforeAfterDraft, setBeforeAfterDraft] = useState<Record<BeforeAfterSlot, JournalProjectPhoto[]>>({
@@ -302,6 +310,11 @@ export default function ProjectDetailScreen() {
       const uris = await Promise.all(assets.map(async asset => (await MediaLibrary.getAssetInfoAsync(asset)).localUri ?? asset.uri));
       await addProjectPhotoUris(uris);
     } catch { Alert.alert('Photo inaccessible', 'Autorise l’accès aux photos, puis réessaie.'); }
+  }
+
+  function saveProjectPhotoDistribution(assignments: Record<string, string>) {
+    updateTasksBulk(buildProjectPhotoAssignmentUpdates(tasks, project.photos, assignments));
+    setProjectPhotoDistributionVisible(false);
   }
 
   function openPhoto(idx: number) {
@@ -1008,12 +1021,27 @@ export default function ProjectDetailScreen() {
           {tab === 'photos' && (
             <>
               <Pressable
+                testID="add-project-photo"
                 onPress={pickPhoto}
                 style={[styles.addBtn, { backgroundColor: colors.primary }]}
               >
                 <MaterialCommunityIcons name="camera-plus-outline" size={18} color={colors.primaryForeground} />
                 <Text style={[styles.addBtnLabel, { color: colors.primaryForeground }]}>Ajouter au projet</Text>
               </Pressable>
+
+              {project.photos.length > 0 && tasks.some(task => (task.subTasks?.length ?? 0) > 0) && (
+                <Pressable
+                  testID="open-project-photo-distribution"
+                  accessibilityRole="button"
+                  onPress={() => setProjectPhotoDistributionVisible(true)}
+                  style={[styles.distributePhotosBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+                >
+                  <MaterialCommunityIcons name="format-list-checks" size={18} color={colors.primary} />
+                  <Text style={[styles.addBtnLabel, { color: colors.primary }]}>
+                    Répartir les photos entre les sous-tâches ({project.photos.length})
+                  </Text>
+                </Pressable>
+              )}
 
               {allPhotos.length === 0 ? (
                 <View style={styles.empty}>
@@ -1143,6 +1171,16 @@ export default function ProjectDetailScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+
+      {projectPhotoDistributionVisible && (
+        <ProjectPhotoDistributionModal
+          projectName={project.name}
+          photos={project.photos}
+          tasks={tasks}
+          onClose={() => setProjectPhotoDistributionVisible(false)}
+          onSave={saveProjectPhotoDistribution}
+        />
+      )}
 
       <GalleryPhotoPicker
         visible={galleryPickerVisible}
@@ -1402,6 +1440,7 @@ const styles = StyleSheet.create({
   timelineEventDate: { fontSize: 12, fontFamily: 'Inter_400Regular', marginTop: 3 },
   addBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, padding: 12, borderRadius: 12, justifyContent: 'center' },
   addBtnLabel: { fontSize: 14, fontFamily: 'Inter_600SemiBold' },
+  distributePhotosBtn: { minHeight: 46, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, justifyContent: 'center' },
   empty: { alignItems: 'center', paddingVertical: 40, gap: 8 },
   emptyTxt: { fontSize: 14, fontFamily: 'Inter_400Regular' },
   expRow: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 12, borderWidth: 1 },

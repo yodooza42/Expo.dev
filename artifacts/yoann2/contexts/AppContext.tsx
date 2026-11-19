@@ -193,6 +193,7 @@ interface AppContextValue {
   unarchiveProject: (id: string) => void;
   addTask: (t: Omit<Task, 'id' | 'createdAt' | 'eisenhower'>) => void;
   updateTask: (id: string, updates: Partial<Task>) => void;
+  updateTasksBulk: (updates: Array<{ id: string; updates: Partial<Task> }>) => void;
   deleteTask: (id: string) => void;
   addTransactionCtx: (tx: Omit<BankTransaction, 'id'>) => Promise<BankTransaction>;
   updateTransactionCtx: (id: string, updates: Partial<Omit<BankTransaction, 'id'>>) => Promise<void>;
@@ -524,6 +525,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   }, [projects, tasks]);
 
+  const updateTasksBulk = useCallback((updates: Array<{ id: string; updates: Partial<Task> }>) => {
+    if (!updates.length) return;
+    const updatesById = new Map(updates.map(item => [item.id, item.updates]));
+    const next = tasks.map(task => {
+      const taskUpdates = updatesById.get(task.id);
+      return taskUpdates ? { ...task, ...taskUpdates } : task;
+    });
+    setTasks(next);
+    AsyncStorage.setItem(STORAGE_KEYS.TASKS, JSON.stringify(next));
+    markDirty();
+  }, [tasks]);
+
   const deleteTask = useCallback((id: string) => {
     const next = tasks.filter(task => task.id !== id);
     setTasks(next);
@@ -715,6 +728,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         reorderProjects,
         addTask,
         updateTask,
+        updateTasksBulk,
         deleteTask,
         addTransactionCtx,
         updateTransactionCtx,
