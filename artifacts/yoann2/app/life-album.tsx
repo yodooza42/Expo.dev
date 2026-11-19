@@ -29,6 +29,7 @@ import {
   loadLifeAlbum,
   makeAlbumId,
   saveLifeAlbum,
+  suggestedAlbumDate,
   unassignedAlbumPhotos,
   type AlbumMemory,
   type AlbumPhoto,
@@ -37,7 +38,7 @@ import {
 } from '@/utils/lifeAlbum';
 import { lifeAlbumTheme as ink } from '@/constants/lifeAlbumTheme';
 
-type MemoryDraft = { id: string; title: string; date: string; note: string; photoIds: string[]; createdAt: number };
+type MemoryDraft = { id: string; title: string; date: string; note: string; photoIds: string[]; createdAt: number; dateEdited: boolean };
 
 const dateFormatter = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
 const shortDateFormatter = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -115,15 +116,12 @@ export default function LifeAlbumScreen() {
   const openMemory = useCallback((memory?: AlbumMemory, photoIds: string[] = []) => {
     if (!album) return;
     const now = Date.now();
-    const preferredPhotoDate = photoIds
-      .map(id => album.photos.find(photo => photo.id === id)?.takenAt)
-      .filter((date): date is number => typeof date === 'number')
-      .sort((a, b) => a - b)[0];
+    const preferredPhotoDate = suggestedAlbumDate(photoIds, album.photos);
     const draft: MemoryDraft = memory
-      ? { ...memory, photoIds: [...memory.photoIds] }
+      ? { ...memory, photoIds: [...memory.photoIds], dateEdited: true }
       : {
-          id: makeAlbumId(), title: '', date: preferredPhotoDate ? albumDay(preferredPhotoDate) : albumDay(now),
-          note: '', photoIds: [...photoIds], createdAt: now,
+          id: makeAlbumId(), title: '', date: preferredPhotoDate ?? albumDay(now),
+          note: '', photoIds: [...photoIds], createdAt: now, dateEdited: false,
         };
     setMemoryDraft(draft);
     setEditorPhotoLimit(60);
@@ -257,7 +255,12 @@ export default function LifeAlbumScreen() {
       const photoIds = current.photoIds.includes(id)
         ? current.photoIds.filter(item => item !== id)
         : [...current.photoIds, id];
-      return { ...current, photoIds };
+      const suggestedDate = suggestedAlbumDate(photoIds, album?.photos ?? []);
+      return {
+        ...current,
+        photoIds,
+        date: current.dateEdited ? current.date : suggestedDate ?? albumDay(Date.now()),
+      };
     });
   }
 
@@ -288,6 +291,9 @@ export default function LifeAlbumScreen() {
   const inbox = useMemo(() => album ? unassignedAlbumPhotos(album) : [], [album]);
   const orderedInbox = useMemo(() => [...inbox].sort((a, b) => b.addedAt - a.addedAt), [inbox]);
   const orderedAlbumPhotos = useMemo(() => album ? [...album.photos].sort((a, b) => b.addedAt - a.addedAt) : [], [album]);
+  const suggestedMemoryDate = memoryDraft && album
+    ? suggestedAlbumDate(memoryDraft.photoIds, album.photos)
+    : null;
   const cover = album?.photos.find(photo => photo.id === album.profile.coverPhotoId);
   const currentAge = album?.profile.birthDate ? albumAgeAt(album.profile.birthDate, albumDay(Date.now())) : null;
   const viewerIndex = viewerPhoto && album ? album.photos.findIndex(photo => photo.id === viewerPhoto.id) : -1;
@@ -625,14 +631,22 @@ export default function LifeAlbumScreen() {
                   testID="life-memory-date-input"
                   accessibilityLabel="Date du souvenir"
                   value={memoryDraft.date}
-                  onChangeText={date => setMemoryDraft(current => current ? { ...current, date } : current)}
+                  onChangeText={date => setMemoryDraft(current => current ? { ...current, date, dateEdited: true } : current)}
                   placeholder="AAAA-MM-JJ"
                   placeholderTextColor={ink.quiet}
                   style={[styles.input, { color: ink.ink, borderColor: ink.rule, backgroundColor: ink.surface }]}
                   autoCapitalize="none"
                   maxLength={10}
                 />
-                <Text style={[styles.formHelp, { color: ink.quiet }]}>Préremplie avec la date d’une photo si elle est connue. Tu peux la corriger.</Text>
+                <Text style={[styles.formHelp, { color: ink.quiet }]}>
+                  {memoryDraft.dateEdited
+                    ? 'Date modifiée manuellement.'
+                    : suggestedMemoryDate
+                      ? 'Date proposée selon les photos choisies ; si elles diffèrent, la plus ancienne est retenue. Tu peux la corriger.'
+                      : memoryDraft.photoIds.length > 0
+                        ? 'Aucune date connue dans les photos choisies : la date du jour est proposée.'
+                      : 'La date d’une photo sera proposée dès que tu en sélectionnes une.'}
+                </Text>
                 <Text style={[styles.formLabel, { color: ink.quiet, marginTop: 20 }]}>TITRE (FACULTATIF AVEC PHOTO)</Text>
                 <TextInput
                   testID="life-memory-title-input"

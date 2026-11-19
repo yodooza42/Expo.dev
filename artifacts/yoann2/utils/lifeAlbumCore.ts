@@ -53,6 +53,16 @@ export function albumDay(timestamp: number): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
+export function suggestedAlbumDate(photoIds: string[], photos: AlbumPhoto[]): string | null {
+  const selected = new Set(photoIds);
+  const timestamps = photos
+    .filter(photo => selected.has(photo.id) && typeof photo.takenAt === 'number' && Number.isFinite(photo.takenAt))
+    .map(photo => photo.takenAt!);
+  return timestamps.length
+    ? albumDay(timestamps.reduce((earliest, timestamp) => Math.min(earliest, timestamp), Number.POSITIVE_INFINITY))
+    : null;
+}
+
 export function albumAgeAt(birthDate: string | null, date: string): string | null {
   if (!birthDate || !isAlbumDate(birthDate) || !isAlbumDate(date) || date < birthDate) return null;
   const [birthYear, birthMonth, birthDay] = birthDate.split('-').map(Number);

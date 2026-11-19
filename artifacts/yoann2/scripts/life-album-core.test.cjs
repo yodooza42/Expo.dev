@@ -20,6 +20,7 @@ const {
   emptyLifeAlbum,
   isAlbumDate,
   isLifeAlbum,
+  suggestedAlbumDate,
   unassignedAlbumPhotos,
 } = moduleExports;
 
@@ -33,6 +34,18 @@ test('validates calendar dates instead of accepting impossible days', () => {
 test('formats a timestamp as its local calendar day', () => {
   const timestamp = new Date(2025, 2, 9, 23, 30).getTime();
   assert.equal(albumDay(timestamp), '2025-03-09');
+});
+
+test('suggests the earliest known selected photo date and ignores undated photos', () => {
+  const photos = [
+    { id: 'later', takenAt: new Date(2025, 10, 20, 18).getTime() },
+    { id: 'same-day', takenAt: new Date(2025, 10, 20, 9).getTime() },
+    { id: 'older', takenAt: new Date(2025, 10, 19, 14).getTime() },
+    { id: 'undated' },
+  ];
+  assert.equal(suggestedAlbumDate(['later', 'same-day'], photos), '2025-11-20');
+  assert.equal(suggestedAlbumDate(['later', 'same-day', 'older', 'undated'], photos), '2025-11-19');
+  assert.equal(suggestedAlbumDate(['undated'], photos), null);
 });
 
 test('calculates age by anniversary and handles events before birth', () => {
