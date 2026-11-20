@@ -291,7 +291,7 @@ test('actual history grouping repositions projects and tasks by corrected date, 
 test('global history opens each completed item and preserves the selected subtask', () => {
   const bureau = read('app/(tabs)/bureau.tsx');
   const taskDetail = read('app/task/[id].tsx');
-  assert.match(bureau, /params: \{ id: t\.id \}/);
+  assert.match(bureau, /params: \{ id: item\.task\.id \}/);
   assert.match(bureau, /params: \{ id: task\.id, subTaskId: subTask\.id \}/);
   assert.match(taskDetail, /backgroundColor: subTaskId === st\.id/);
 });

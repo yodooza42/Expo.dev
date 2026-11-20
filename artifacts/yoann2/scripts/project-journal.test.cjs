@@ -682,8 +682,8 @@ test('real renderer protocol advances past 45 seconds, streams honest ordered ch
   const progress = e.messages.filter(m => m.type === 'story_progress').map(m => m.p);
   assert.ok(progress.some(p => p > 50 && p <= 100));
   const chunks = e.messages.filter(m => m.type === 'story_chunk');
-  assert.equal(chunks.length, 3);
-  assert.deepEqual(chunks.map(m => m.index), [0, 1, 2]);
+  assert.equal(chunks.length, 2);
+  assert.deepEqual(chunks.map(m => m.index), [0, 1]);
   assert.ok(chunks.every(m => m.mime === 'video/webm' && m.total === undefined && m.data.length <= 96 * 1024));
   assert.equal(Buffer.concat(chunks.map(m => Buffer.from(m.data, 'base64'))).length, 140_000);
   assert.equal(e.messages.find(m => m.type === 'story_done')?.total, chunks.length);
