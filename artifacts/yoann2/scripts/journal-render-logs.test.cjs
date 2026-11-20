@@ -54,6 +54,20 @@ test('journal render logs retain only the five newest runs', async () => {
   assert.equal(JSON.parse(values.get(store.JOURNAL_RENDER_LOGS_KEY)).length, 5);
 });
 
+test('copyable carnet logs include only failures and interrupted renders', async () => {
+  const { store } = loadStore();
+  const logs = [
+    { status: 'success' },
+    { status: 'error' },
+    { status: 'cancelled' },
+    { status: 'interrupted' },
+  ];
+  assert.deepEqual(
+    Array.from(store.failedJournalRenderLogs(logs), log => log.status),
+    ['error', 'interrupted'],
+  );
+});
+
 test('journal render logs keep bounded progress and final diagnostics', async () => {
   const { store } = loadStore();
   await store.beginJournalRenderLog({ id: 'run', startedAt: 1000, entries: 12, photos: 51 });
@@ -73,15 +87,34 @@ test('journal render logs keep bounded progress and final diagnostics', async ()
     progress: 70,
     writtenBytes: 7_000_000,
     writtenChunks: 100,
-    idleMs: 45_000,
-    errorCode: 'watchdog_45s',
+    idleMs: 60_000,
+    errorCode: 'watchdog_60s',
+    engineState: {
+      receivedAt: 1_000,
+      heartbeatAgeMs: 60_000,
+      stage: 'waiting_native_ack',
+      storyTimeMs: 18_000,
+      storyDurationMs: 20_000,
+      segmentKind: 'title',
+      segmentIndex: 3,
+      photoIndex: 7,
+      photoState: 'ok',
+      recorderState: 'paused',
+      awaitingAck: true,
+      blobRemainingBytes: 24_576,
+      pendingBlobs: 1,
+      chunkIndex: 42,
+      bytes: 2_900_000,
+    },
   });
   const [log] = await store.loadJournalRenderLogs();
   assert.equal(log.status, 'error');
   assert.equal(log.phase, 'export');
   assert.equal(log.progress, 70);
   assert.equal(log.writtenBytes, 7_000_000);
-  assert.equal(log.idleMs, 45_000);
+  assert.equal(log.idleMs, 60_000);
+  assert.equal(log.engineState.stage, 'waiting_native_ack');
+  assert.equal(log.events.at(-1).engineStage, 'waiting_native_ack');
   assert.equal(log.events.at(-1).kind, 'error');
 });
 

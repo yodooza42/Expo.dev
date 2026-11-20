@@ -37,6 +37,7 @@ import { genId } from '@/utils/ids';
 import { LibrarySettings } from '@/components/LibrarySettings';
 import {
   clearJournalRenderLogs,
+  failedJournalRenderLogs,
   loadJournalRenderLogs,
   type JournalRenderLog,
 } from '@/utils/journalRenderLogs';
@@ -97,6 +98,7 @@ export default function SettingsScreen() {
   const [widgetLogEntries, setWidgetLogEntries] = useState<{ t: string; tag: string; data: string }[]>([]);
   const [journalLogVisible, setJournalLogVisible] = useState(false);
   const [journalLogEntries, setJournalLogEntries] = useState<JournalRenderLog[]>([]);
+  const failedJournalLogs = failedJournalRenderLogs(journalLogEntries);
 
   async function handleAddExpCat(name: string) {
     const allConfigs = await getCategoryConfigs();
@@ -176,9 +178,14 @@ export default function SettingsScreen() {
   }
 
   async function copyJournalLogs() {
+    const errors = failedJournalLogs;
+    if (!errors.length) {
+      Alert.alert('Aucune erreur', 'Aucun carnet en échec ou interrompu à copier.');
+      return;
+    }
     try {
-      await Clipboard.setStringAsync(JSON.stringify(journalLogEntries, null, 2));
-      Alert.alert('Journaux copiés', 'Tu peux maintenant les coller dans la conversation.');
+      await Clipboard.setStringAsync(JSON.stringify(errors, null, 2));
+      Alert.alert('Erreurs copiées', `${errors.length} journal${errors.length > 1 ? 'x' : ''} en échec ou interrompu${errors.length > 1 ? 's' : ''} prêt${errors.length > 1 ? 's' : ''} à coller.`);
     } catch {
       Alert.alert('Copie impossible', 'Réessaie d’ouvrir les journaux puis de les copier.');
     }
@@ -199,7 +206,7 @@ export default function SettingsScreen() {
 
   function journalErrorLabel(code: string, idleMs?: number) {
     switch (code) {
-      case 'watchdog_45s': return `Aucune activité depuis ${Math.round((idleMs ?? 45_000) / 1000)} s`;
+      case 'watchdog_60s': return `Aucun signal du moteur depuis ${Math.round((idleMs ?? 60_000) / 1000)} s`;
       case 'app_closed': return 'L’application s’est fermée avant la fin';
       case 'background': return 'Application passée en arrière-plan';
       case 'user_cancelled': return 'Annulation demandée';
@@ -556,6 +563,16 @@ export default function SettingsScreen() {
                         {journalErrorLabel(log.errorCode, log.idleMs)}
                       </Text>
                     )}
+                    {log.engineState && (
+                      <Text style={[styles.journalLogMeta, { color: colors.primary }]}>
+                        Dernier état : {log.engineState.stage} · page {log.engineState.segmentIndex} ({log.engineState.segmentKind})
+                        {log.engineState.photoIndex ? ` · photo ${log.engineState.photoIndex} ${log.engineState.photoState}` : ''}
+                        {` · enregistreur ${log.engineState.recorderState}`}
+                        {log.engineState.awaitingAck ? ' · accusé attendu' : ''}
+                        {` · film ${Math.round(log.engineState.storyTimeMs / 1000)} / ${Math.round(log.engineState.storyDurationMs / 1000)} s`}
+                        {log.engineState.heartbeatAgeMs !== undefined ? ` · dernier signal il y a ${Math.round(log.engineState.heartbeatAgeMs / 1000)} s` : ''}
+                      </Text>
+                    )}
                     {log.metrics && (
                       <Text style={[styles.journalLogMeta, { color: colors.mutedForeground }]}>
                         Export {Math.round(log.metrics.durationMs / 1000)} s · pauses {log.metrics.recorderPauses} · photos en échec {log.metrics.photoFailures}
@@ -568,6 +585,13 @@ export default function SettingsScreen() {
                         {event.completed !== undefined && event.total !== undefined ? ` · ${event.completed}/${event.total}` : ''}
                         {event.bytes !== undefined ? ` · ${(event.bytes / (1024 * 1024)).toFixed(1)} Mo` : ''}
                         {event.idleMs !== undefined ? ` · silence ${Math.round(event.idleMs / 1000)} s` : ''}
+                        {event.engineStage ? ` · moteur ${event.engineStage}` : ''}
+                        {event.segmentKind ? ` · page ${event.segmentIndex} ${event.segmentKind}` : ''}
+                        {event.photoIndex ? ` · photo ${event.photoIndex} ${event.photoState}` : ''}
+                        {event.recorderState ? ` · enregistreur ${event.recorderState}` : ''}
+                        {event.awaitingAck ? ' · accusé attendu' : ''}
+                        {event.storyTimeMs !== undefined && event.storyDurationMs !== undefined
+                          ? ` · film ${Math.round(event.storyTimeMs / 1000)}/${Math.round(event.storyDurationMs / 1000)} s` : ''}
                       </Text>
                     ))}
                   </View>
@@ -576,14 +600,15 @@ export default function SettingsScreen() {
             )}
             <Pressable
               onPress={() => { void copyJournalLogs(); }}
-              disabled={!journalLogEntries.length}
+              disabled={!failedJournalLogs.length}
               style={({ pressed }) => [{
                 minHeight: 48, borderRadius: 12, alignItems: 'center', justifyContent: 'center',
-                flexDirection: 'row', gap: 8, backgroundColor: colors.primary, opacity: pressed ? 0.75 : 1,
-              }, !journalLogEntries.length && { opacity: 0.5 }]}
+                flexDirection: 'row', gap: 8, backgroundColor: colors.primary,
+                opacity: pressed ? 0.75 : failedJournalLogs.length ? 1 : 0.5,
+              }, !failedJournalLogs.length && { opacity: 0.5 }]}
             >
               <MaterialCommunityIcons name="content-copy" size={18} color={colors.primaryForeground} />
-              <Text style={[styles.cancelLabel, { color: colors.primaryForeground }]}>Copier les journaux</Text>
+              <Text style={[styles.cancelLabel, { color: colors.primaryForeground }]}>Copier les erreurs</Text>
             </Pressable>
             {!!journalLogEntries.length && (
               <Pressable onPress={clearJournalLogs} style={[styles.cancelBtn, { borderColor: colors.destructive, flex: 0 }]}>

@@ -953,12 +953,23 @@ test('journal watchdog stores the last phase and inactivity duration without con
   const id = await prepareStart(harness, journalRequest());
   ready(harness, id);
   send(harness, id, { type: 'story_phase', jobId: id, phase: 'recording', completed: 4, total: 10 });
-  harness.clock.tick(45_001);
+  send(harness, id, {
+    type: 'story_heartbeat', jobId: id, stage: 'waiting_native_ack',
+    storyTimeMs: 18_200, storyDurationMs: 20_000,
+    segmentKind: 'title', segmentIndex: 3, photoIndex: 7, photoState: 'ok',
+    recorderState: 'paused', awaitingAck: true, blobRemainingBytes: 24_576,
+    pendingBlobs: 1, chunkIndex: 42, bytes: 2_900_000,
+  });
+  harness.clock.tick(60_001);
   await settle();
   const failure = harness.native.journalLogCalls.finishes.at(-1)[1];
   assert.equal(failure.status, 'error');
   assert.equal(failure.phase, 'recording');
   assert.equal(failure.progress, 40);
-  assert.equal(failure.idleMs, 45_001);
-  assert.equal(failure.errorCode, 'watchdog_45s');
+  assert.equal(failure.idleMs, 60_001);
+  assert.equal(failure.errorCode, 'watchdog_60s');
+  assert.equal(failure.engineState.stage, 'waiting_native_ack');
+  assert.equal(failure.engineState.segmentKind, 'title');
+  assert.equal(failure.engineState.storyTimeMs, 18_200);
+  assert.equal(failure.engineState.heartbeatAgeMs, 60_001);
 });

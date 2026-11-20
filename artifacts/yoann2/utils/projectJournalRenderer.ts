@@ -418,6 +418,7 @@ function cleanup(j){
   if(j)j.dead=true;stopLoop();playing=false;mode='idle';
   if(j&&j.hb)clearInterval(j.hb);
   if(j&&j.ackTimer)clearTimeout(j.ackTimer);
+  if(j&&j.stateTimer)clearInterval(j.stateTimer);
   if(j&&j.rec){j.rec.ondataavailable=null;j.rec.onstop=null;try{if(j.rec.state!=='inactive')j.rec.stop()}catch(e){}}
   if(j&&j.stream)j.stream.getTracks().forEach(function(tr){try{tr.stop()}catch(e){}});
   if(j){j.currentBlob=null;j.pendingBlobs=[];j.rec=j.stream=null}
@@ -430,17 +431,21 @@ function fail(j,msg){if(j.dead)return;var id=j.id,metrics=getMetrics(j);cleanup(
 function exportStep(seg,dt){
   var j=job;if(!j||j.dead)return;
   dt=Math.min(dt,0.1);
-  if(j.currentBlob||j.awaitingAck||j.pendingBlobs.length)return;
+  if(j.currentBlob||j.awaitingAck||j.pendingBlobs.length){
+    j.engineStage=j.awaitingAck?'waiting_native_ack':'transferring_blob';return}
   var nextT=Math.min(dur,t+dt),nextSeg=segAt(nextT);
   if(!ready(nextSeg,nextT-nextSeg.s)){ensure(nextSeg,nextT-nextSeg.s);
+    j.engineStage='waiting_photo';
     if(j.rec.state==='recording'){try{j.rec.pause();j.recorderPauses++}catch(e){}}
     if(!j.waitAt)j.waitAt=performance.now();return}
   if(!ready(seg,t-seg.s)){if(j.rec.state==='recording'){try{j.rec.pause();j.recorderPauses++}catch(e){}}
+    j.engineStage='waiting_photo';
     if(!j.waitAt)j.waitAt=performance.now();return}
-  if(j.waitAt){j.waitAt=0;if(j.rec.state==='paused'){try{j.rec.resume()}catch(e){}}lastTick=performance.now();return}
+  if(j.waitAt){j.waitAt=0;if(j.rec.state==='paused'){try{j.rec.resume()}catch(e){}}j.engineStage='recording';lastTick=performance.now();return}
   t=Math.min(dur,t+dt);
+  j.engineStage='recording';j.lastStoryTimeMs=Math.round(t*1000);
   var now=performance.now();if(now-j.lastP>500){j.lastP=now;post({type:'story_progress',jobId:j.id,p:Math.round(t/dur*100),metrics:getMetrics(j)})}
-  if(t>=dur&&!j.ending){j.ending=true;render();setTimeout(function(){if(!j.dead&&j.rec)try{j.rec.stop()}catch(e){fail(j,e.message)}},250)}
+  if(t>=dur&&!j.ending){j.ending=true;j.engineStage='finalizing';render();setTimeout(function(){if(!j.dead&&j.rec)try{j.rec.stop()}catch(e){fail(j,e.message)}},250)}
 }
 function b64(u8){var s='';for(var i=0;i<u8.length;i+=0x8000)s+=String.fromCharCode.apply(null,u8.subarray(i,i+0x8000));return btoa(s)}
 function sliceBuf(b){return b.arrayBuffer?b.arrayBuffer():new Response(b).arrayBuffer()}
@@ -463,13 +468,14 @@ function pumpVideoBlob(j){
     return;
   }
   var start=j.currentOffset,end=Math.min(start+72*1024,j.currentBlob.size);
+  j.engineStage='reading_blob';
   sliceBuf(j.currentBlob.slice(start,end)).then(function(buffer){
     if(j.dead)return;
     var bytes=new Uint8Array(buffer),encoded=b64(bytes);
     if(encoded.length>96*1024)return fail(j,'Un fragment vidéo dépasse 96 Ko. Réessaie la création.');
     j.size+=bytes.byteLength;
     if(j.size>96*1024*1024)return fail(j,'La vidéo dépasse 96 Mo. Réduisez le nombre de photos ou la durée.');
-    j.awaitingAck=true;j.awaitingAckIndex=j.chunkIndex;j.awaitingBytes=bytes.byteLength;
+    j.awaitingAck=true;j.engineStage='waiting_native_ack';j.awaitingAckIndex=j.chunkIndex;j.awaitingBytes=bytes.byteLength;
     j.ackTimer=setTimeout(function(){if(!j.dead&&j.awaitingAck)fail(j,'Le téléphone n’a pas confirmé l’enregistrement d’un fragment vidéo. Réessaie le carnet.')},45000);
     post({type:'story_chunk',jobId:j.id,index:j.chunkIndex,mime:j.mime,data:encoded});
   }).catch(function(e){if(!j.dead)fail(j,'Impossible de lire un fragment vidéo : '+(e&&e.message||'erreur'))});
@@ -478,8 +484,21 @@ window.ackPeriodStoryChunk=function(jobId,index){
   var j=job;if(!j||j.dead||j.id!==jobId||!j.awaitingAck||j.awaitingAckIndex!==index)return;
   if(j.ackTimer)clearTimeout(j.ackTimer);j.ackTimer=0;
   j.awaitingAck=false;j.awaitingAckIndex=-1;j.currentOffset+=j.awaitingBytes;j.awaitingBytes=0;j.chunkIndex++;
-  j.lastTick=performance.now();
+  j.lastTick=performance.now();j.engineStage='transferring_blob';
   pumpVideoBlob(j);
+}
+function engineSnapshot(j){
+  var seg=segAt(t),index=seg&&seg.photoCount
+    ?seg.photoStart+photoIndex(seg,Math.max(0,t-seg.s)):-1;
+  var photo=index>=0?cache[index]:null;
+  return {type:'story_heartbeat',jobId:j.id,stage:j.engineStage||'starting',
+    storyTimeMs:Math.round(t*1000),storyDurationMs:Math.round(dur*1000),
+    segmentKind:seg&&seg.k||'unknown',segmentIndex:seg?seg.i+1:0,
+    photoIndex:index>=0?index+1:0,photoState:photo&&photo.st||'none',
+    recorderState:j.rec&&j.rec.state||'inactive',awaitingAck:!!j.awaitingAck,
+    blobRemainingBytes:j.currentBlob?Math.max(0,j.currentBlob.size-j.currentOffset):0,
+    pendingBlobs:j.pendingBlobs?j.pendingBlobs.length:0,
+    chunkIndex:j.chunkIndex||0,bytes:j.size||0};
 }
 function waitPhoto(j,gi){return new Promise(function(res,rej){if(gi>=photos.length)return res();load(gi);
   var iv=setInterval(function(){if(j.dead){clearInterval(iv);return rej(new Error('cancel'))}var c=cache[gi];
@@ -488,6 +507,7 @@ async function runExport(j){
   var mimeFull=pickMime();if(!mimeFull||!cv.captureStream)throw new Error("L'enregistrement vidéo n'est pas disponible sur cet appareil.");
   var mime=mimeFull.indexOf('mp4')>=0?'video/mp4':'video/webm';
   post({type:'story_phase',jobId:j.id,phase:'prepare'});
+  j.engineStage='waiting_first_photo';
   j.hb=setInterval(function(){if(!j.dead)post({type:'story_progress',jobId:j.id,p:0})},1000);
   t=0;ensure(segs[0],0);await waitPhoto(j,0);clearInterval(j.hb);j.hb=0;if(j.dead)return;
   render();j.stream=cv.captureStream(30);j.size=0;j.chunkIndex=0;j.pendingBlobs=[];j.recorderPauses=0;
@@ -497,6 +517,7 @@ async function runExport(j){
   j.mime=mime;
   j.rec.ondataavailable=function(ev){
     if(j.dead||!ev.data||!ev.data.size)return;
+    j.engineStage='transferring_blob';
     if(!j.currentBlob){j.currentBlob=ev.data;j.currentOffset=0}
     else if(j.pendingBlobs.length<1)j.pendingBlobs.push(ev.data);
     else return fail(j,'Le transfert vidéo a pris du retard. Aucun fragment n’a été supprimé ; réessaie avec moins de photos.');
@@ -504,11 +525,13 @@ async function runExport(j){
     pumpVideoBlob(j);
   };
   j.rec.onerror=function(ev){fail(j,'Enregistrement interrompu : '+((ev&&ev.error&&ev.error.message)||'erreur'))};
-  j.rec.onstop=function(){if(j.dead)return;j.stopped=true;if(j.stream)j.stream.getTracks().forEach(function(tr){tr.stop()});
+  j.rec.onstop=function(){if(j.dead)return;j.stopped=true;j.engineStage='finalizing_chunks';if(j.stream)j.stream.getTracks().forEach(function(tr){tr.stop()});
     stopLoop();playing=false;finishStreamIfReady(j)};
   post({type:'story_phase',jobId:j.id,phase:'recording'});
    /* Larger recorder slices reduce pause/resume churn while the app acknowledges video fragments. */
-   j.lastP=0;mode='export';playing=true;j.rec.start(1000);startLoop();
+   j.lastP=0;j.engineStage='recording';mode='export';playing=true;j.rec.start(1000);
+   j.stateTimer=setInterval(function(){if(!j.dead)post(engineSnapshot(j))},2000);
+   startLoop();
 }
 function startExport(j){
   runExport(j).catch(function(e){if(!j.dead&&e.message!=='cancel')fail(j,e.message)});

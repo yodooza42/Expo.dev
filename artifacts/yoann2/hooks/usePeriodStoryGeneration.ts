@@ -20,6 +20,7 @@ import {
   appendJournalRenderLogEvent,
   beginJournalRenderLog,
   finishJournalRenderLog,
+  type JournalRenderEngineState,
   type JournalRenderMetrics,
 } from '@/utils/journalRenderLogs';
 
@@ -80,8 +81,11 @@ type Run = {
   journalLastLoggedProgress?: number;
   journalLastLoggedPhotos?: number;
   journalLastLoggedMegabytes?: number;
+  journalLastLoggedEngineAt?: number;
   debugMetrics?: JournalRenderMetrics;
+  engineState?: JournalRenderEngineState;
 };
+const JOURNAL_INACTIVITY_TIMEOUT_MS = 60_000;
 const JOURNAL_ASSET_CHUNK_CHARS = 96 * 1024;
 function parseDebugMetrics(value: unknown): JournalRenderMetrics | undefined {
   if (!value || typeof value !== 'object') return undefined;
@@ -101,7 +105,7 @@ function formatDebugMetrics(value: unknown): string {
   return `Export : ${Math.round(metrics.durationMs / 1000)} s · pauses : ${metrics.recorderPauses} · photos en échec : ${metrics.photoFailures}`;
 }
 function journalErrorCode(message: string): string {
-  if (/ne répond plus/i.test(message)) return 'watchdog_45s';
+  if (/ne répond plus/i.test(message)) return 'watchdog_60s';
   if (/arrière-plan/i.test(message)) return 'background';
   if (/mediarecorder/i.test(message)) return 'media_recorder';
   if (/photo|image/i.test(message)) return 'photo';
@@ -218,6 +222,10 @@ export function usePeriodStoryGeneration(mode: 'period' | 'journal' = 'period') 
         idleMs: Math.max(0, endedAt - run.lastActivity),
         errorCode: journalErrorCode(message),
         metrics: run.debugMetrics,
+        engineState: run.engineState ? {
+          ...run.engineState,
+          heartbeatAgeMs: Math.max(0, endedAt - run.engineState.receivedAt),
+        } : undefined,
       }).catch(() => {});
     }
     stop();
@@ -229,9 +237,10 @@ export function usePeriodStoryGeneration(mode: 'period' | 'journal' = 'period') 
     mounted.current = true;
     const timer = setInterval(() => {
       const run = runRef.current;
+      const inactivityLimit = mode === 'journal' ? JOURNAL_INACTIVITY_TIMEOUT_MS : 45_000;
       if (run && (Date.now() > run.deadline
         || (!run.preparingJournalAsset && !run.preparingJournalAssetKeys?.size &&
-          Date.now() - run.lastActivity > 45_000))) {
+          Date.now() - run.lastActivity > inactivityLimit))) {
         fail(mode === 'journal'
           ? 'Le moteur du carnet ne répond plus. Le brouillon est conservé ; tu peux réessayer.'
           : 'La génération ne répond plus. Tu peux réessayer avec le thème Sombre ou une période plus courte. Tes trajets sont conservés.');
@@ -425,6 +434,7 @@ export function usePeriodStoryGeneration(mode: 'period' | 'journal' = 'period') 
         writtenBytes: run.transfer.writtenBytes,
         writtenChunks: run.transfer.written,
         metrics: run.debugMetrics,
+        engineState: run.engineState,
       }).catch(() => {});
     }
     stop(true);
@@ -452,6 +462,50 @@ export function usePeriodStoryGeneration(mode: 'period' | 'journal' = 'period') 
       if (metrics) setDebugMetrics(metrics);
       run.debugMetrics = parseDebugMetrics(msg.metrics) ?? run.debugMetrics;
       fail(typeof msg.message === 'string' ? msg.message : 'Le moteur vidéo a rencontré une erreur. Réessaie en thème Sombre.');
+      return;
+    }
+    if (msg.type === 'story_heartbeat') {
+      const number = (value: unknown) => typeof value === 'number' && Number.isFinite(value) ? value : 0;
+      const text = (value: unknown) => typeof value === 'string' ? value.slice(0, 32) : 'unknown';
+      const state: JournalRenderEngineState = {
+        receivedAt: Date.now(),
+        stage: text(msg.stage),
+        storyTimeMs: number(msg.storyTimeMs),
+        storyDurationMs: number(msg.storyDurationMs),
+        segmentKind: text(msg.segmentKind),
+        segmentIndex: number(msg.segmentIndex),
+        photoIndex: number(msg.photoIndex),
+        photoState: text(msg.photoState),
+        recorderState: text(msg.recorderState),
+        awaitingAck: msg.awaitingAck === true,
+        blobRemainingBytes: number(msg.blobRemainingBytes),
+        pendingBlobs: number(msg.pendingBlobs),
+        chunkIndex: number(msg.chunkIndex),
+        bytes: number(msg.bytes),
+      };
+      run.engineState = state;
+      if (mode === 'journal' && Date.now() - (run.journalLastLoggedEngineAt ?? 0) >= 10_000) {
+        run.journalLastLoggedEngineAt = Date.now();
+        void appendJournalRenderLogEvent(id, {
+          elapsedMs: Date.now() - run.startedAt,
+          kind: 'engine',
+          phase: run.currentPhase ?? 'recording',
+          progress: run.currentProgress,
+          engineStage: state.stage,
+          storyTimeMs: state.storyTimeMs,
+          storyDurationMs: state.storyDurationMs,
+          segmentKind: state.segmentKind,
+          segmentIndex: state.segmentIndex,
+          photoIndex: state.photoIndex,
+          photoState: state.photoState,
+          recorderState: state.recorderState,
+          awaitingAck: state.awaitingAck,
+          blobRemainingBytes: state.blobRemainingBytes,
+          pendingBlobs: state.pendingBlobs,
+          bytes: state.bytes,
+          chunks: state.chunkIndex,
+        }).catch(() => {});
+      }
       return;
     }
     if (msg.type === 'story_done') {

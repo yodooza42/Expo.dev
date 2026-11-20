@@ -691,6 +691,11 @@ test('real renderer protocol advances past 45 seconds, streams honest ordered ch
   assert.equal(e.activeImages, 0);
   assert.equal(e.timerCount, 0);
   assert.equal(e.messages.some(m => m.type === 'story_error'), false);
+  const heartbeat = e.messages.find(message => message.type === 'story_heartbeat');
+  assert.equal(heartbeat?.jobId, 'job');
+  assert.ok(['recording', 'transferring_blob', 'waiting_native_ack'].includes(heartbeat?.stage));
+  assert.ok(heartbeat?.storyDurationMs > 0);
+  assert.ok(heartbeat?.segmentKind);
 });
 test('journal export waits for sequential image chunks before recording and preserves every photo', async () => {
   const e = engine({ loadDelay: 10 });

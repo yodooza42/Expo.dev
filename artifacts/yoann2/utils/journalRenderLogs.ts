@@ -5,9 +5,26 @@ export const JOURNAL_RENDER_LOGS_LIMIT = 5;
 export const JOURNAL_RENDER_LOG_EVENTS_LIMIT = 120;
 
 export type JournalRenderStatus = 'running' | 'success' | 'error' | 'cancelled' | 'interrupted';
+export type JournalRenderEngineState = {
+  receivedAt: number;
+  stage: string;
+  storyTimeMs: number;
+  storyDurationMs: number;
+  segmentKind: string;
+  segmentIndex: number;
+  photoIndex: number;
+  photoState: string;
+  recorderState: string;
+  awaitingAck: boolean;
+  blobRemainingBytes: number;
+  pendingBlobs: number;
+  chunkIndex: number;
+  bytes: number;
+  heartbeatAgeMs?: number;
+};
 export type JournalRenderEvent = {
   elapsedMs: number;
-  kind: 'start' | 'phase' | 'progress' | 'photos' | 'video' | 'finish' | 'error' | 'cancel';
+  kind: 'start' | 'phase' | 'progress' | 'photos' | 'video' | 'engine' | 'finish' | 'error' | 'cancel';
   phase: string;
   progress?: number;
   completed?: number;
@@ -15,6 +32,17 @@ export type JournalRenderEvent = {
   bytes?: number;
   chunks?: number;
   idleMs?: number;
+  engineStage?: string;
+  storyTimeMs?: number;
+  storyDurationMs?: number;
+  segmentKind?: string;
+  segmentIndex?: number;
+  photoIndex?: number;
+  photoState?: string;
+  recorderState?: string;
+  awaitingAck?: boolean;
+  blobRemainingBytes?: number;
+  pendingBlobs?: number;
 };
 export type JournalRenderMetrics = {
   durationMs: number;
@@ -36,8 +64,13 @@ export type JournalRenderLog = {
   idleMs?: number;
   errorCode?: string;
   metrics?: JournalRenderMetrics;
+  engineState?: JournalRenderEngineState;
   events: JournalRenderEvent[];
 };
+
+export function failedJournalRenderLogs(logs: JournalRenderLog[]): JournalRenderLog[] {
+  return logs.filter(log => log.status === 'error' || log.status === 'interrupted');
+}
 
 let writes: Promise<unknown> = Promise.resolve();
 
@@ -124,6 +157,7 @@ export function finishJournalRenderLog(
     idleMs?: number;
     errorCode?: string;
     metrics?: JournalRenderMetrics;
+    engineState?: JournalRenderEngineState;
   },
 ): Promise<void> {
   return serialize(async () => {
@@ -139,6 +173,19 @@ export function finishJournalRenderLog(
       bytes: input.writtenBytes,
       chunks: input.writtenChunks,
       ...(input.idleMs !== undefined ? { idleMs: input.idleMs } : {}),
+      ...(input.engineState ? {
+        engineStage: input.engineState.stage,
+        storyTimeMs: input.engineState.storyTimeMs,
+        storyDurationMs: input.engineState.storyDurationMs,
+        segmentKind: input.engineState.segmentKind,
+        segmentIndex: input.engineState.segmentIndex,
+        photoIndex: input.engineState.photoIndex,
+        photoState: input.engineState.photoState,
+        recorderState: input.engineState.recorderState,
+        awaitingAck: input.engineState.awaitingAck,
+        blobRemainingBytes: input.engineState.blobRemainingBytes,
+        pendingBlobs: input.engineState.pendingBlobs,
+      } : {}),
     };
     logs[index] = {
       ...current,
