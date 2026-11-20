@@ -553,3 +553,17 @@ mtime_ms = 1789076122632
 storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:afa5c5e0-5de2-424a-8554-0e30d20ab9d3/82b69489-9393-4108-b9bb-e52c79c670c0/f00a2ebb-3e04-4c2d-b5da-e7ff3295760a"
 storage_version_token = "1789076172035817"
 content_type = "image/jpeg"
+
+[[outputs]]
+id = "3NuMFQL26raiaGbmnr8EZ"
+uri = "file://.local/share/carnet-source-review.html"
+type = "html"
+title = "Code source de création des carnets"
+description = "Fichier HTML avec les six sources clés pour demander une analyse à ChatGPT ou Claude."
+logical_id = "5152489e-729b-4990-9660-f6df5fe98fae"
+content_hash = "sha256:729747a9a4774a632a9762b770b200aabf234b3aa962d850272b06910cfda4e8"
+size = 97449
+mtime_ms = 1795194568000
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:afa5c5e0-5de2-424a-8554-0e30d20ab9d3/5152489e-729b-4990-9660-f6df5fe98fae/a005898e-a2ec-411a-b82e-ed56cdc79e83"
+storage_version_token = "1795194568698005"
+content_type = "text/html"
