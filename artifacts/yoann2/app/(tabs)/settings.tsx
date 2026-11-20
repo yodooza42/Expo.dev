@@ -1,4 +1,5 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
@@ -34,6 +35,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { CategoryConfig, DEFAULT_EXPENSE_CATEGORY_CONFIGS, getCategoryConfigs, saveCategoryConfigs } from '@/utils/bankStorage';
 import { genId } from '@/utils/ids';
 import { LibrarySettings } from '@/components/LibrarySettings';
+import {
+  clearJournalRenderLogs,
+  loadJournalRenderLogs,
+  type JournalRenderLog,
+} from '@/utils/journalRenderLogs';
 
 function SettingRow({
   icon,
@@ -89,6 +95,8 @@ export default function SettingsScreen() {
   const [expCatConfigs, setExpCatConfigs] = useState<CategoryConfig[]>(DEFAULT_EXPENSE_CATEGORY_CONFIGS);
   const [widgetLogVisible, setWidgetLogVisible] = useState(false);
   const [widgetLogEntries, setWidgetLogEntries] = useState<{ t: string; tag: string; data: string }[]>([]);
+  const [journalLogVisible, setJournalLogVisible] = useState(false);
+  const [journalLogEntries, setJournalLogEntries] = useState<JournalRenderLog[]>([]);
 
   async function handleAddExpCat(name: string) {
     const allConfigs = await getCategoryConfigs();
@@ -160,6 +168,48 @@ export default function SettingsScreen() {
 
   function handleAddCategory() {
     if (newCatName.trim()) { addCategory(newCatName.trim()); setNewCatName(''); }
+  }
+
+  async function openJournalLogs() {
+    setJournalLogEntries(await loadJournalRenderLogs());
+    setJournalLogVisible(true);
+  }
+
+  async function copyJournalLogs() {
+    try {
+      await Clipboard.setStringAsync(JSON.stringify(journalLogEntries, null, 2));
+      Alert.alert('Journaux copiés', 'Tu peux maintenant les coller dans la conversation.');
+    } catch {
+      Alert.alert('Copie impossible', 'Réessaie d’ouvrir les journaux puis de les copier.');
+    }
+  }
+
+  function clearJournalLogs() {
+    Alert.alert('Effacer les journaux ?', 'Seuls les diagnostics des rendus seront supprimés.', [
+      { text: 'Annuler', style: 'cancel' },
+      {
+        text: 'Effacer',
+        style: 'destructive',
+        onPress: () => {
+          void clearJournalRenderLogs().then(() => setJournalLogEntries([]));
+        },
+      },
+    ]);
+  }
+
+  function journalErrorLabel(code: string, idleMs?: number) {
+    switch (code) {
+      case 'watchdog_45s': return `Aucune activité depuis ${Math.round((idleMs ?? 45_000) / 1000)} s`;
+      case 'app_closed': return 'L’application s’est fermée avant la fin';
+      case 'background': return 'Application passée en arrière-plan';
+      case 'user_cancelled': return 'Annulation demandée';
+      case 'screen_closed': return 'Écran du carnet fermé pendant le rendu';
+      case 'media_recorder': return 'Erreur du moteur d’enregistrement vidéo';
+      case 'photo': return 'Erreur pendant la préparation d’une photo';
+      case 'video_transfer': return 'Erreur pendant l’enregistrement de la vidéo';
+      case 'webview': return 'Moteur vidéo interrompu';
+      default: return 'Erreur générale de génération';
+    }
   }
 
   return (
@@ -320,6 +370,16 @@ export default function SettingsScreen() {
           colors={colors}
         />
 
+        {/* ── DIAGNOSTICS ── */}
+        <Text style={[styles.section, { color: colors.mutedForeground }]}>Diagnostics</Text>
+        <SettingRow
+          icon="movie-open-cog-outline"
+          label="Logs des carnets vidéo"
+          sublabel="Les 5 derniers rendus"
+          onPress={() => { void openJournalLogs(); }}
+          colors={colors}
+        />
+
         {/* ── À PROPOS ── */}
         <Text style={[styles.section, { color: colors.mutedForeground }]}>À propos</Text>
         <SettingRow
@@ -456,6 +516,81 @@ export default function SettingsScreen() {
               <Text style={[styles.cancelLabel, { color: colors.destructive }]}>Effacer les logs</Text>
             </Pressable>
             <Pressable onPress={() => setWidgetLogVisible(false)} style={[styles.cancelBtn, { borderColor: colors.border }]}>
+              <Text style={[styles.cancelLabel, { color: colors.mutedForeground }]}>Fermer</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ── MODAL : Logs des carnets vidéo ── */}
+      <Modal visible={journalLogVisible} animationType="slide" transparent onRequestClose={() => setJournalLogVisible(false)}>
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.7)' }]}>
+          <Pressable style={{ flex: 1 }} onPress={() => setJournalLogVisible(false)} />
+          <View style={[styles.modal, { backgroundColor: colors.card, borderColor: colors.border, paddingBottom: 24 + insets.bottom }]}>
+            <Text style={[styles.modalTitle, { color: colors.foreground }]}>Logs des carnets vidéo</Text>
+            <Text style={[styles.modalSub, { color: colors.mutedForeground }]}>
+              Les 5 derniers rendus. Les journaux indiquent les étapes, durées, volumes et erreurs, sans noms de projets ni photos.
+            </Text>
+            {journalLogEntries.length === 0 ? (
+              <Text style={[styles.modalSub, { color: colors.mutedForeground, textAlign: 'center', marginVertical: 16 }]}>
+                Aucun rendu enregistré pour le moment. Les prochains essais apparaîtront ici.
+              </Text>
+            ) : (
+              <ScrollView style={{ maxHeight: 360 }} showsVerticalScrollIndicator>
+                {journalLogEntries.map(log => (
+                  <View key={log.id} style={[styles.journalLogCard, { borderColor: colors.border, backgroundColor: colors.background }]}>
+                    <View style={styles.journalLogHeading}>
+                      <Text style={[styles.rowLabel, { color: log.status === 'success' ? colors.primary : log.status === 'error' ? colors.destructive : colors.foreground }]}>
+                        {log.status === 'success' ? 'Terminé' : log.status === 'error' ? 'Échec' : log.status === 'cancelled' ? 'Annulé' : log.status === 'interrupted' ? 'Interrompu' : 'En cours'}
+                      </Text>
+                      <Text style={[styles.journalLogMeta, { color: colors.mutedForeground }]}>
+                        {new Date(log.startedAt).toLocaleString()}
+                      </Text>
+                    </View>
+                    <Text style={[styles.journalLogMeta, { color: colors.mutedForeground }]}>
+                      {log.entries} étapes · {log.photos} photos · {log.durationMs !== undefined ? `${Math.round(log.durationMs / 1000)} s` : 'durée inconnue'}
+                      {log.writtenBytes ? ` · ${(log.writtenBytes / (1024 * 1024)).toFixed(1)} Mo` : ''}
+                    </Text>
+                    {log.errorCode && (
+                      <Text style={[styles.journalLogMeta, { color: colors.destructive }]}>
+                        {journalErrorLabel(log.errorCode, log.idleMs)}
+                      </Text>
+                    )}
+                    {log.metrics && (
+                      <Text style={[styles.journalLogMeta, { color: colors.mutedForeground }]}>
+                        Export {Math.round(log.metrics.durationMs / 1000)} s · pauses {log.metrics.recorderPauses} · photos en échec {log.metrics.photoFailures}
+                      </Text>
+                    )}
+                    {log.events.map((event, index) => (
+                      <Text key={`${event.elapsedMs}-${event.kind}-${index}`} style={[styles.journalLogEvent, { color: colors.mutedForeground }]}>
+                        +{Math.round(event.elapsedMs / 1000)} s · {event.phase}
+                        {event.progress !== undefined ? ` · ${event.progress}%` : ''}
+                        {event.completed !== undefined && event.total !== undefined ? ` · ${event.completed}/${event.total}` : ''}
+                        {event.bytes !== undefined ? ` · ${(event.bytes / (1024 * 1024)).toFixed(1)} Mo` : ''}
+                        {event.idleMs !== undefined ? ` · silence ${Math.round(event.idleMs / 1000)} s` : ''}
+                      </Text>
+                    ))}
+                  </View>
+                ))}
+              </ScrollView>
+            )}
+            <Pressable
+              onPress={() => { void copyJournalLogs(); }}
+              disabled={!journalLogEntries.length}
+              style={({ pressed }) => [{
+                minHeight: 48, borderRadius: 12, alignItems: 'center', justifyContent: 'center',
+                flexDirection: 'row', gap: 8, backgroundColor: colors.primary, opacity: pressed ? 0.75 : 1,
+              }, !journalLogEntries.length && { opacity: 0.5 }]}
+            >
+              <MaterialCommunityIcons name="content-copy" size={18} color={colors.primaryForeground} />
+              <Text style={[styles.cancelLabel, { color: colors.primaryForeground }]}>Copier les journaux</Text>
+            </Pressable>
+            {!!journalLogEntries.length && (
+              <Pressable onPress={clearJournalLogs} style={[styles.cancelBtn, { borderColor: colors.destructive, flex: 0 }]}>
+                <Text style={[styles.cancelLabel, { color: colors.destructive }]}>Effacer les journaux</Text>
+              </Pressable>
+            )}
+            <Pressable onPress={() => setJournalLogVisible(false)} style={[styles.cancelBtn, { borderColor: colors.border, flex: 0 }]}>
               <Text style={[styles.cancelLabel, { color: colors.mutedForeground }]}>Fermer</Text>
             </Pressable>
           </View>
@@ -637,5 +772,28 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     fontFamily: 'Inter_500Medium',
+  },
+  journalLogCard: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 10,
+    gap: 4,
+  },
+  journalLogHeading: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 8,
+  },
+  journalLogMeta: {
+    fontSize: 11,
+    lineHeight: 16,
+    fontFamily: 'Inter_400Regular',
+  },
+  journalLogEvent: {
+    fontSize: 10,
+    lineHeight: 14,
+    fontFamily: 'Inter_400Regular',
   },
 });

@@ -16,6 +16,12 @@ import { JOURNAL_LIMITS, journalDuration } from '@/utils/projectJournal';
 import type { JournalGenerationRequest } from '@/types/projectJournal';
 import { resolvePhotoRef } from '@/utils/library/catalogue';
 import { prepareStoryPhoto } from '@/utils/storyPhoto';
+import {
+  appendJournalRenderLogEvent,
+  beginJournalRenderLog,
+  finishJournalRenderLog,
+  type JournalRenderMetrics,
+} from '@/utils/journalRenderLogs';
 
 type Phase = 'prepare' | 'maps' | 'photos' | 'recording' | 'export';
 export type PeriodStoryChapter = {
@@ -69,15 +75,39 @@ type Run = {
   preparingJournalAssetKeys?: Set<string>;
   exportStarted?: boolean;
   currentJournalAssetData?: string;
+  currentPhase?: Phase;
+  currentProgress?: number;
+  journalLastLoggedProgress?: number;
+  journalLastLoggedPhotos?: number;
+  journalLastLoggedMegabytes?: number;
+  debugMetrics?: JournalRenderMetrics;
 };
 const JOURNAL_ASSET_CHUNK_CHARS = 96 * 1024;
-function formatDebugMetrics(value: unknown): string {
-  if (!value || typeof value !== 'object') return '';
+function parseDebugMetrics(value: unknown): JournalRenderMetrics | undefined {
+  if (!value || typeof value !== 'object') return undefined;
   const metrics = value as Record<string, unknown>;
   if (typeof metrics.durationMs !== 'number' || !Number.isFinite(metrics.durationMs) ||
       typeof metrics.recorderPauses !== 'number' || !Number.isFinite(metrics.recorderPauses) ||
-      typeof metrics.photoFailures !== 'number' || !Number.isFinite(metrics.photoFailures)) return '';
+      typeof metrics.photoFailures !== 'number' || !Number.isFinite(metrics.photoFailures)) return undefined;
+  return {
+    durationMs: metrics.durationMs,
+    recorderPauses: metrics.recorderPauses,
+    photoFailures: metrics.photoFailures,
+  };
+}
+function formatDebugMetrics(value: unknown): string {
+  const metrics = parseDebugMetrics(value);
+  if (!metrics) return '';
   return `Export : ${Math.round(metrics.durationMs / 1000)} s · pauses : ${metrics.recorderPauses} · photos en échec : ${metrics.photoFailures}`;
+}
+function journalErrorCode(message: string): string {
+  if (/ne répond plus/i.test(message)) return 'watchdog_45s';
+  if (/arrière-plan/i.test(message)) return 'background';
+  if (/mediarecorder/i.test(message)) return 'media_recorder';
+  if (/photo|image/i.test(message)) return 'photo';
+  if (/fragment|transfert|fichier vidéo|96 mo/i.test(message)) return 'video_transfer';
+  if (/moteur/i.test(message)) return 'webview';
+  return 'generation_error';
 }
 const TITLES: Record<Phase, string> = {
   prepare: 'Préparation des trajets…',
@@ -173,11 +203,27 @@ export function usePeriodStoryGeneration(mode: 'period' | 'journal' = 'period') 
   }, []);
 
   const fail = useCallback((message: string) => {
-    if (!runRef.current) return;
+    const run = runRef.current;
+    if (!run) return;
+    if (mode === 'journal') {
+      const endedAt = Date.now();
+      void finishJournalRenderLog(run.id, {
+        endedAt,
+        durationMs: Math.max(0, endedAt - run.startedAt),
+        status: 'error',
+        phase: run.currentPhase ?? 'prepare',
+        progress: run.currentProgress ?? 0,
+        writtenBytes: run.transfer?.writtenBytes ?? 0,
+        writtenChunks: run.transfer?.written ?? 0,
+        idleMs: Math.max(0, endedAt - run.lastActivity),
+        errorCode: journalErrorCode(message),
+        metrics: run.debugMetrics,
+      }).catch(() => {});
+    }
     stop();
     if (mounted.current) setError(message);
     if (mounted.current) Alert.alert('Story interrompue', message);
-  }, [stop]);
+  }, [stop, mode]);
 
   useEffect(() => {
     mounted.current = true;
@@ -201,6 +247,20 @@ export function usePeriodStoryGeneration(mode: 'period' | 'journal' = 'period') 
       mounted.current = false;
       clearInterval(timer);
       appState.remove();
+      const run = runRef.current;
+      if (mode === 'journal' && run) {
+        const endedAt = Date.now();
+        void finishJournalRenderLog(run.id, {
+          endedAt,
+          durationMs: Math.max(0, endedAt - run.startedAt),
+          status: 'interrupted',
+          phase: run.currentPhase ?? 'prepare',
+          progress: run.currentProgress ?? 0,
+          writtenBytes: run.transfer?.writtenBytes ?? 0,
+          writtenChunks: run.transfer?.written ?? 0,
+          errorCode: 'screen_closed',
+        }).catch(() => {});
+      }
       stop();
       clearCachedResult();
     };
@@ -323,8 +383,12 @@ export function usePeriodStoryGeneration(mode: 'period' | 'journal' = 'period') 
     const chunk = dataUri.slice(chunkIndex * JOURNAL_ASSET_CHUNK_CHARS, (chunkIndex + 1) * JOURNAL_ASSET_CHUNK_CHARS);
     run.awaitingJournalAssetAck = true;
     run.lastActivity = Date.now();
+    run.currentPhase = 'photos';
+    run.currentProgress = run.journalAssetTotal
+      ? Math.round(((run.journalAssetIndex ?? 0) / run.journalAssetTotal) * 100)
+      : 0;
     setPhase('photos');
-    setProgress(run.journalAssetTotal ? Math.round(((run.journalAssetIndex ?? 0) / run.journalAssetTotal) * 100) : 0);
+    setProgress(run.currentProgress);
     setDetail(`Transfert des photos ${(run.journalAssetIndex ?? 0) + 1} / ${run.journalAssetTotal ?? 0}`);
     const webView = webViewRef.current;
     if (!webView) {
@@ -350,11 +414,24 @@ export function usePeriodStoryGeneration(mode: 'period' | 'journal' = 'period') 
     const uri = Platform.OS === 'web'
       ? URL.createObjectURL(new Blob(run.webChunks!.map(bytes => bytes.slice().buffer as ArrayBuffer), { type: mimeType }))
       : run.file!.uri;
+    if (mode === 'journal') {
+      const endedAt = Date.now();
+      void finishJournalRenderLog(id, {
+        endedAt,
+        durationMs: Math.max(0, endedAt - run.startedAt),
+        status: 'success',
+        phase: 'export',
+        progress: 100,
+        writtenBytes: run.transfer.writtenBytes,
+        writtenChunks: run.transfer.written,
+        metrics: run.debugMetrics,
+      }).catch(() => {});
+    }
     stop(true);
     const cached: CachedPeriodStoryResult = { uri, mimeType, file: run.file, webUrl: Platform.OS === 'web' };
     resultRef.current = cached;
     if (mounted.current) setResult({ uri, mimeType });
-  }, [fail, stop]);
+  }, [fail, mode, stop]);
 
   const onMessage = useCallback((id: string, event: { nativeEvent: { data: string } }) => {
     const run = runRef.current;
@@ -373,6 +450,7 @@ export function usePeriodStoryGeneration(mode: 'period' | 'journal' = 'period') 
     if (msg.type === 'story_error') {
       const metrics = formatDebugMetrics(msg.metrics);
       if (metrics) setDebugMetrics(metrics);
+      run.debugMetrics = parseDebugMetrics(msg.metrics) ?? run.debugMetrics;
       fail(typeof msg.message === 'string' ? msg.message : 'Le moteur vidéo a rencontré une erreur. Réessaie en thème Sombre.');
       return;
     }
@@ -387,6 +465,7 @@ export function usePeriodStoryGeneration(mode: 'period' | 'journal' = 'period') 
         run.lastActivity = Date.now();
         const metrics = formatDebugMetrics(msg.metrics);
         if (metrics) setDebugMetrics(metrics);
+        run.debugMetrics = parseDebugMetrics(msg.metrics) ?? run.debugMetrics;
         setProgress(100);
         setDetail(`${run.transfer.writtenBytes} octets enregistrés`);
         completeVideoTransfer(run, id);
@@ -433,8 +512,22 @@ export function usePeriodStoryGeneration(mode: 'period' | 'journal' = 'period') 
         run.journalAssetIndex = (run.journalAssetIndex ?? 0) + 1;
         run.journalAssetChunkIndex = 0;
         const total = run.journalAssetTotal ?? 0;
-        setProgress(total ? Math.round((run.journalAssetIndex / total) * 100) : 100);
+        const progress = total ? Math.round((run.journalAssetIndex / total) * 100) : 100;
+        run.currentPhase = 'photos';
+        run.currentProgress = progress;
+        setProgress(progress);
         setDetail(`${run.journalAssetIndex} / ${total} photos transférées`);
+        if (mode === 'journal' && (run.journalAssetIndex % 10 === 0 || run.journalAssetIndex === total)) {
+          run.journalLastLoggedPhotos = run.journalAssetIndex;
+          void appendJournalRenderLogEvent(id, {
+            elapsedMs: Date.now() - run.startedAt,
+            kind: 'photos',
+            phase: 'photos',
+            progress,
+            completed: run.journalAssetIndex,
+            total,
+          }, { phase: 'photos', progress }).catch(() => {});
+        }
       } else {
         run.journalAssetChunkIndex = (run.journalAssetChunkIndex ?? 0) + 1;
       }
@@ -447,9 +540,25 @@ export function usePeriodStoryGeneration(mode: 'period' | 'journal' = 'period') 
       const completed = typeof msg.completed === 'number' && Number.isFinite(msg.completed) ? msg.completed : 0;
       const total = typeof msg.total === 'number' && Number.isFinite(msg.total) ? msg.total : 0;
       const signal = `${nextPhase}:${completed}/${total}`;
-      if (signal !== run.signal) { run.signal = signal; run.lastActivity = Date.now(); }
+      const progress = total > 0 ? Math.min(100, Math.max(0, Math.round(completed / total * 100))) : 0;
+      if (signal !== run.signal) {
+        run.signal = signal;
+        run.lastActivity = Date.now();
+        run.currentPhase = nextPhase;
+        run.currentProgress = progress;
+        if (mode === 'journal') {
+          void appendJournalRenderLogEvent(id, {
+            elapsedMs: Date.now() - run.startedAt,
+            kind: 'phase',
+            phase: nextPhase,
+            progress,
+            completed,
+            total,
+          }, { phase: nextPhase, progress }).catch(() => {});
+        }
+      }
       setPhase(nextPhase);
-      setProgress(total > 0 ? Math.min(100, Math.max(0, Math.round(completed / total * 100))) : 0);
+      setProgress(progress);
       const unit = nextPhase === 'maps' ? 'cartes' : nextPhase === 'export' ? 'fragments' : 'photos';
       setDetail(total > 0 ? `${completed} / ${total} ${unit}` : '');
       return;
@@ -459,7 +568,22 @@ export function usePeriodStoryGeneration(mode: 'period' | 'journal' = 'period') 
       if (metrics) setDebugMetrics(metrics);
       const p = Math.min(100, Math.max(0, Math.round(msg.p)));
       const signal = `recording:${p}`;
-      if (signal !== run.signal) { run.signal = signal; run.lastActivity = Date.now(); }
+      if (signal !== run.signal) {
+        run.signal = signal;
+        run.lastActivity = Date.now();
+        run.currentPhase = 'recording';
+        run.currentProgress = p;
+      }
+      run.debugMetrics = parseDebugMetrics(msg.metrics) ?? run.debugMetrics;
+      if (mode === 'journal' && (p === 100 || p >= (run.journalLastLoggedProgress ?? -5) + 5)) {
+        run.journalLastLoggedProgress = p;
+        void appendJournalRenderLogEvent(id, {
+          elapsedMs: Date.now() - run.startedAt,
+          kind: 'progress',
+          phase: 'recording',
+          progress: p,
+        }, { phase: 'recording', progress: p }).catch(() => {});
+      }
       setPhase('recording');
       setProgress(p);
       setDetail(`${p} %`);
@@ -490,10 +614,31 @@ export function usePeriodStoryGeneration(mode: 'period' | 'journal' = 'period') 
       }
       const accepted = run.transfer.accept(chunk);
       run.lastActivity = Date.now();
+      run.currentPhase = 'export';
+      run.currentProgress = 0;
       setPhase('export');
       if (mode === 'journal') {
-        setProgress(Math.min(99, Math.round(run.transfer.writtenBytes / (96 * 1024 * 1024) * 100)));
+        const progress = Math.min(99, Math.round(run.transfer.writtenBytes / (96 * 1024 * 1024) * 100));
+        run.currentProgress = progress;
+        setProgress(progress);
         setDetail(`${(run.transfer.writtenBytes / (1024 * 1024)).toFixed(1)} Mo écrits`);
+        const megabytes = Math.floor(run.transfer.writtenBytes / (5 * 1024 * 1024));
+        if (megabytes > (run.journalLastLoggedMegabytes ?? 0)) {
+          run.journalLastLoggedMegabytes = megabytes;
+          void appendJournalRenderLogEvent(id, {
+            elapsedMs: Date.now() - run.startedAt,
+            kind: 'video',
+            phase: 'export',
+            progress,
+            bytes: run.transfer.writtenBytes,
+            chunks: run.transfer.written,
+          }, {
+            phase: 'export',
+            progress,
+            writtenBytes: run.transfer.writtenBytes,
+            writtenChunks: run.transfer.written,
+          }).catch(() => {});
+        }
         webViewRef.current?.injectJavaScript(
           `window.ackPeriodStoryChunk&&window.ackPeriodStoryChunk(${JSON.stringify(id)},${chunk.index});true;`,
         );
@@ -541,10 +686,19 @@ export function usePeriodStoryGeneration(mode: 'period' | 'journal' = 'period') 
       : request.videoDurationSec + photoCount * (request.photoPauseSecPerPhoto ?? 2);
     runRef.current = {
       id, startedAt: Date.now(), ready: false, injected: false, lastActivity: Date.now(), signal: '',
+      currentPhase: 'prepare', currentProgress: 0,
       deadline: Date.now() + 90_000 +
         duration * 3000 +
         photoCount * 100_000,
     };
+    if (journal) {
+      void beginJournalRenderLog({
+        id,
+        startedAt: runRef.current.startedAt,
+        entries: request.entries.length,
+        photos: request.photoCount,
+      }).catch(() => {});
+    }
     setJobId(id);
     setPhase('prepare');
     setProgress(0);
@@ -692,7 +846,23 @@ export function usePeriodStoryGeneration(mode: 'period' | 'journal' = 'period') 
   return {
     jobId, isGenerating: jobId !== null, progress, detail,
     title: mode === 'journal' && phase === 'prepare' ? 'Préparation du carnet…' : TITLES[phase], fallbackNote, error,
-    webViewRef, source, start, cancel: () => stop(), onMessage, onLoadEnd, onEngineError,
+    webViewRef, source, start, cancel: () => {
+      const run = runRef.current;
+      if (mode === 'journal' && run) {
+        const endedAt = Date.now();
+        void finishJournalRenderLog(run.id, {
+          endedAt,
+          durationMs: Math.max(0, endedAt - run.startedAt),
+          status: 'cancelled',
+          phase: run.currentPhase ?? 'prepare',
+          progress: run.currentProgress ?? 0,
+          writtenBytes: run.transfer?.writtenBytes ?? 0,
+          writtenChunks: run.transfer?.written ?? 0,
+          errorCode: 'user_cancelled',
+        }).catch(() => {});
+      }
+      stop();
+    }, onMessage, onLoadEnd, onEngineError,
     result, shareResult, discardResult, isSharing, debugMetrics,
   };
 }

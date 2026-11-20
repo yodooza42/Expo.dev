@@ -211,6 +211,7 @@ function makeNativeMocks(clock, options = {}) {
     injections: [],
     shares: [],
     files: [],
+    journalLogCalls: { begins: [], events: [], finishes: [] },
     getSizeCalls: 0,
     resolvePhoto: null,
     appStateListeners: [],
@@ -309,6 +310,10 @@ function makeNativeMocks(clock, options = {}) {
         native.shares.push({ uri, config });
       },
     },
+    'expo-keep-awake': {
+      activateKeepAwakeAsync: async () => { native.keepAwakeActivations++; },
+      deactivateKeepAwake: async () => { native.keepAwakeDeactivations++; },
+    },
     react: null,
     'react-native': {
       Image,
@@ -317,6 +322,7 @@ function makeNativeMocks(clock, options = {}) {
           native.alerts.push({ title, message: messageText });
         },
       },
+      Platform: { OS: 'android' },
       AppState: {
         addEventListener(_type, listener) {
           native.appStateListeners.push(listener);
@@ -325,11 +331,6 @@ function makeNativeMocks(clock, options = {}) {
           } };
         },
       },
-      Platform: { OS: 'android' },
-    },
-    'expo-keep-awake': {
-      activateKeepAwakeAsync: async () => { native.keepAwakeActivations++; },
-      deactivateKeepAwake: async () => { native.keepAwakeDeactivations++; },
     },
     '@/utils/storyGeneratorPeriod': {
       buildStoryPeriodHtml: () => '<html data-synthetic-story />',
@@ -363,6 +364,11 @@ function makeNativeMocks(clock, options = {}) {
       if (options.journalPhotoError) throw new Error('Photo de la tâche indisponible');
       return 'data:image/jpeg;base64,YWJj';
     } },
+    '@/utils/journalRenderLogs': {
+      appendJournalRenderLogEvent: async (...args) => { native.journalLogCalls.events.push(args); },
+      beginJournalRenderLog: async (...args) => { native.journalLogCalls.begins.push(args); },
+      finishJournalRenderLog: async (...args) => { native.journalLogCalls.finishes.push(args); },
+    },
   };
 
   native.emitAppState = state => native.appStateListeners.forEach(listener => listener(state));
@@ -849,6 +855,8 @@ function journalRequestWithPhotos(count) {
 test('native journal shares the proven bridge but injects journal photos/captions, not GPS trips', async () => {
   const harness = makeHarness({ mode: 'journal' });
   const id = await prepareStart(harness, journalRequest());
+  assert.equal(harness.native.journalLogCalls.begins[0][0].entries, 1);
+  assert.equal(harness.native.journalLogCalls.begins[0][0].photos, 1);
   assert.match(harness.api.source.html, /journal/);
   ready(harness, id);
   const injected = harness.native.injections.find(script => script.includes('generatePeriodStory'));
@@ -869,6 +877,9 @@ test('native journal shares the proven bridge but injects journal photos/caption
     metrics: { durationMs: 12_000, recorderPauses: 3, photoFailures: 0 } });
   assert.equal(harness.api.jobId, null);
   assert.equal(harness.api.result.mimeType, 'video/mp4');
+  assert.equal(harness.native.journalLogCalls.finishes.at(-1)[1].status, 'success');
+  assert.equal(harness.native.journalLogCalls.finishes.at(-1)[1].writtenChunks, 1);
+  assert.equal(harness.native.journalLogCalls.finishes.at(-1)[1].metrics.recorderPauses, 3);
   assert.match(harness.api.debugMetrics, /pauses : 3/);
   assert.equal(harness.native.files[0].handle.closed, true);
   assert.equal(harness.native.shares.length, 0);
@@ -933,18 +944,21 @@ test('journal watchdog stays alive while one requested photo is being prepared',
   assert.equal(harness.api.jobId, id, 'photo work in progress is not mistaken for a stalled renderer');
   assert.equal(harness.native.alerts.length, 0);
   harness.api.cancel();
+  assert.equal(harness.native.journalLogCalls.finishes.at(-1)[1].status, 'cancelled');
   harness.native.resolveJournalPhoto();
 });
-test('journal watchdog stays alive while one requested photo is being prepared', async () => {
-  const harness = makeHarness({ mode: 'journal', journalPhotoBlocked: true });
+
+test('journal watchdog stores the last phase and inactivity duration without content names', async () => {
+  const harness = makeHarness({ mode: 'journal' });
   const id = await prepareStart(harness, journalRequest());
   ready(harness, id);
-  send(harness, id, { type: 'story_asset_needed', jobId: id, key: 'journal-photo-0' });
+  send(harness, id, { type: 'story_phase', jobId: id, phase: 'recording', completed: 4, total: 10 });
+  harness.clock.tick(45_001);
   await settle();
-  harness.clock.tick(50_000);
-  await settle();
-  assert.equal(harness.api.jobId, id, 'photo work in progress is not mistaken for a stalled renderer');
-  assert.equal(harness.native.alerts.length, 0);
-  harness.api.cancel();
-  harness.native.resolveJournalPhoto();
+  const failure = harness.native.journalLogCalls.finishes.at(-1)[1];
+  assert.equal(failure.status, 'error');
+  assert.equal(failure.phase, 'recording');
+  assert.equal(failure.progress, 40);
+  assert.equal(failure.idleMs, 45_001);
+  assert.equal(failure.errorCode, 'watchdog_45s');
 });

@@ -22,6 +22,7 @@ const DEVICE_LOCAL_PREFIXES = ['@yoann2_saf_', '@yoann2_lock_'];
 const DEVICE_LOCAL_KEYS = new Set([
   '@yoann2_backup_list', '@yoann2_last_backup_ts', LAST_BACKUP_KEY,
   '@yoann2_widget_debug_log', '@yoann2_photo_protection_v1', '@yoann2_photo_protection_missing',
+  '@yoann2_journal_render_logs_v1',
   '@yoann2_trip_detection_state', '@yoann2_last_valid_point', '@yoann2_battery_opt_prompted',
   '@yoann2_folder_report_v2', '@yoann2_last_maintenance_v2', '@yoann2_library_onboarding_v2',
   '@yoann2_fresh_install_v2',
