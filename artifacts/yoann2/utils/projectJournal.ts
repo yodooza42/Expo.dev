@@ -3,7 +3,7 @@ import type { JournalChoices, JournalEntry, JournalGenerationRequest } from '@/t
 import { parseCompletionDate } from '@/utils/completionDate';
 import { journalPhotoDuration } from '@/utils/journalPhotoTiming';
 
-export const JOURNAL_LIMITS = { entries: 120, photos: 120, seconds: 900, encodedBytes: 48 * 1024 * 1024 };
+export const JOURNAL_LIMITS = { entries: 400, photos: 500, seconds: 900, photoBytes: 8 * 1024 * 1024 };
 export const JOURNAL_FIRST_PHOTO_DELAY = 1;
 export function normalizeJournalProjectPhotos(selection?: JournalProjectPhotoSelection): JournalProjectPhoto[] {
   if (!selection) return [];

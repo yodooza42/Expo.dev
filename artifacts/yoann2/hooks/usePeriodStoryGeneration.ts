@@ -10,10 +10,11 @@ import type { Trip } from '@/types/trips';
 import { buildStoryPeriodHtml } from '@/utils/storyGeneratorPeriod';
 import { PeriodStoryTransfer, type StoryVideoChunk } from '@/utils/periodStoryTransfer';
 import { buildProjectJournalHtml } from '@/utils/projectJournalRenderer';
-import { prepareJournal, splitJournalPayloadImages, type JournalPhotoAsset } from '@/utils/prepareJournal';
-import { journalDuration } from '@/utils/projectJournal';
+import { prepareJournal, type JournalPhotoAsset } from '@/utils/prepareJournal';
+import { JOURNAL_LIMITS, journalDuration } from '@/utils/projectJournal';
 import type { JournalGenerationRequest } from '@/types/projectJournal';
 import { resolvePhotoRef } from '@/utils/library/catalogue';
+import { prepareStoryPhoto } from '@/utils/storyPhoto';
 
 type Phase = 'prepare' | 'maps' | 'photos' | 'recording' | 'export';
 export type PeriodStoryChapter = {
@@ -61,6 +62,8 @@ type Run = {
   journalAssetIndex?: number;
   journalAssetChunkIndex?: number;
   awaitingJournalAssetAck?: boolean;
+  preparingJournalAsset?: boolean;
+  currentJournalAssetData?: string;
 };
 const JOURNAL_ASSET_CHUNK_CHARS = 96 * 1024;
 const TITLES: Record<Phase, string> = {
@@ -147,6 +150,7 @@ export function usePeriodStoryGeneration(mode: 'period' | 'journal' = 'period') 
     run.transfer?.clear();
     run.webChunks = undefined;
     run.journalAssets = undefined;
+    run.currentJournalAssetData = undefined;
     try { run.handle?.close(); } catch {}
     if (!keepFile) { try { run.file?.delete(); } catch {} }
     if (mounted.current) setJobId(null); // Unmount the renderer, releasing native memory too.
@@ -163,9 +167,10 @@ export function usePeriodStoryGeneration(mode: 'period' | 'journal' = 'period') 
     mounted.current = true;
     const timer = setInterval(() => {
       const run = runRef.current;
-      if (run && (Date.now() - run.lastActivity > 45_000 || Date.now() > run.deadline)) {
+      if (run && (Date.now() > run.deadline
+        || (!run.preparingJournalAsset && Date.now() - run.lastActivity > 45_000))) {
         fail(mode === 'journal'
-          ? 'Le carnet ne répond plus. Réessaie avec moins de photos. Tes projets, tâches et légendes sont conservés.'
+          ? 'Le moteur du carnet ne répond plus. Le brouillon est conservé ; tu peux réessayer.'
           : 'La génération ne répond plus. Tu peux réessayer avec le thème Sombre ou une période plus courte. Tes trajets sont conservés.');
       }
     }, 1000);
@@ -189,20 +194,57 @@ export function usePeriodStoryGeneration(mode: 'period' | 'journal' = 'period') 
     catch { fail('Impossible de démarrer le moteur vidéo. Réessaie la génération.'); }
   }, [fail]);
 
-  const sendNextJournalAssetChunk = useCallback((id: string) => {
-    const run = runRef.current;
-    if (!run || run.id !== id || run.awaitingJournalAssetAck) return;
+  const sendNextJournalAssetChunk = useCallback(async (id: string) => {
+    let run = runRef.current;
+    if (!run || run.id !== id || run.awaitingJournalAssetAck || run.preparingJournalAsset) return;
     if (!run.currentJournalAssetKey) run.currentJournalAssetKey = run.journalAssetQueue?.shift();
-    const asset = run.currentJournalAssetKey ? run.journalAssets?.get(run.currentJournalAssetKey) : undefined;
-    if (!asset) return;
+    let key = run.currentJournalAssetKey;
+    let asset = key ? run.journalAssets?.get(key) : undefined;
+    if (!key || !asset) return;
+
+    if (!run.currentJournalAssetData) {
+      run.preparingJournalAsset = true;
+      run.lastActivity = Date.now();
+      setPhase('photos');
+      setDetail(`Préparation de la photo ${(run.journalAssetIndex ?? 0) + 1} / ${run.journalAssetTotal ?? 0}`);
+      try {
+        const dataUri = await prepareStoryPhoto(asset.uri, () => runRef.current?.id === id);
+        run = runRef.current;
+        if (!run || run.id !== id) return;
+        const encodedBytes = Math.ceil(dataUri.slice(dataUri.indexOf(',') + 1).length * 3 / 4);
+        if (encodedBytes > JOURNAL_LIMITS.photoBytes) {
+          throw new Error('Cette photo préparée dépasse la taille autorisée. Retire-la du carnet.');
+        }
+        run.currentJournalAssetData = dataUri;
+        run.lastActivity = Date.now();
+      } catch (error) {
+        if (runRef.current?.id === id) {
+          fail(`${asset.title} · photo ${asset.index + 1} : ${error instanceof Error ? error.message : 'Photo illisible.'}`);
+        }
+        return;
+      } finally {
+        const active = runRef.current;
+        if (active?.id === id) {
+          active.preparingJournalAsset = false;
+          active.lastActivity = Date.now();
+        }
+      }
+    }
+
+    run = runRef.current;
+    if (!run || run.id !== id || !run.currentJournalAssetData) return;
+    key = run.currentJournalAssetKey;
+    asset = key ? run.journalAssets?.get(key) : undefined;
+    if (!key || !asset) return;
+    const dataUri = run.currentJournalAssetData;
     const chunkIndex = run.journalAssetChunkIndex ?? 0;
-    const chunkCount = Math.ceil(asset.dataUri.length / JOURNAL_ASSET_CHUNK_CHARS);
-    const chunk = asset.dataUri.slice(chunkIndex * JOURNAL_ASSET_CHUNK_CHARS, (chunkIndex + 1) * JOURNAL_ASSET_CHUNK_CHARS);
+    const chunkCount = Math.ceil(dataUri.length / JOURNAL_ASSET_CHUNK_CHARS);
+    const chunk = dataUri.slice(chunkIndex * JOURNAL_ASSET_CHUNK_CHARS, (chunkIndex + 1) * JOURNAL_ASSET_CHUNK_CHARS);
     run.awaitingJournalAssetAck = true;
     run.lastActivity = Date.now();
     setPhase('photos');
     setProgress(run.journalAssetTotal ? Math.round(((run.journalAssetIndex ?? 0) / run.journalAssetTotal) * 100) : 0);
-    setDetail(`Transfert des photos ${Math.min((run.journalAssetIndex ?? 0) + 1, run.journalAssetTotal ?? 0)} / ${run.journalAssetTotal ?? 0}`);
+    setDetail(`Transfert des photos ${(run.journalAssetIndex ?? 0) + 1} / ${run.journalAssetTotal ?? 0}`);
     const webView = webViewRef.current;
     if (!webView) {
       run.awaitingJournalAssetAck = false;
@@ -253,7 +295,7 @@ export function usePeriodStoryGeneration(mode: 'period' | 'journal' = 'period') 
         requested.add(key);
         (run.journalAssetQueue ??= []).push(key);
       }
-      sendNextJournalAssetChunk(id);
+      void sendNextJournalAssetChunk(id);
       return;
     }
     if (msg.type === 'story_asset_chunk_received') {
@@ -266,7 +308,7 @@ export function usePeriodStoryGeneration(mode: 'period' | 'journal' = 'period') 
       run.awaitingJournalAssetAck = false;
       run.lastActivity = Date.now();
       if (msg.complete === true) {
-        run.journalAssets?.delete(asset.key);
+        run.currentJournalAssetData = undefined;
         run.currentJournalAssetKey = undefined;
         run.journalAssetIndex = (run.journalAssetIndex ?? 0) + 1;
         run.journalAssetChunkIndex = 0;
@@ -276,7 +318,7 @@ export function usePeriodStoryGeneration(mode: 'period' | 'journal' = 'period') 
       } else {
         run.journalAssetChunkIndex = (run.journalAssetChunkIndex ?? 0) + 1;
       }
-      sendNextJournalAssetChunk(id);
+      void sendNextJournalAssetChunk(id);
       return;
     }
     if (msg.type === 'story_phase' && ['maps', 'photos', 'recording', 'export'].includes(String(msg.phase))) {
@@ -380,14 +422,9 @@ export function usePeriodStoryGeneration(mode: 'period' | 'journal' = 'period') 
     setError('');
     try {
       if ('journal' in request) {
-        const prepared = await prepareJournal(request, id, () => runRef.current?.id === id, (done, total) => {
-          if (runRef.current?.id !== id) return;
-          runRef.current.lastActivity = Date.now();
-          setProgress(total ? Math.round(done / total * 100) : 100);
-          setDetail(`${done} / ${total} photos préparées`);
-        });
+        const prepared = prepareJournal(request, id, () => runRef.current?.id === id);
         if (runRef.current?.id !== id) return;
-        const { payload, assets } = splitJournalPayloadImages(prepared);
+        const { payload, assets } = prepared;
         runRef.current.journalAssets = new Map(assets.map(asset => [asset.key, asset]));
         runRef.current.requestedJournalAssets = new Set();
         runRef.current.journalAssetQueue = [];
@@ -395,7 +432,7 @@ export function usePeriodStoryGeneration(mode: 'period' | 'journal' = 'period') 
         runRef.current.journalAssetIndex = 0;
         runRef.current.journalAssetChunkIndex = 0;
         runRef.current.script = `(function(){try{window.generatePeriodStory(${JSON.stringify(payload)});}catch(e){window.ReactNativeWebView.postMessage(JSON.stringify({type:'story_error',jobId:${JSON.stringify(id)},message:'Impossible de démarrer le carnet vidéo.'}));}})();true;`;
-        setDetail(assets.length ? `Ouverture du moteur · ${assets.length} photos` : 'Ouverture du carnet…');
+        setDetail(assets.length ? `${assets.length} photos à préparer au fil de la vidéo` : 'Ouverture du carnet…');
         injectIfReady();
         return;
       }
