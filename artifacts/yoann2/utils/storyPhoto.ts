@@ -43,7 +43,7 @@ export async function prepareStoryPhoto(uri: string, isCurrent: () => boolean): 
   })();
   try {
     return await Promise.race([work, new Promise<never>((_, reject) => {
-      timer = setTimeout(() => reject(new Error('Une photo ne répond pas. Vérifie son accès ou décoche-la.')), 20_000);
+      timer = setTimeout(() => reject(new Error('La préparation d’une photo a dépassé 90 secondes. Vérifie son accès ou retire-la du carnet.')), 90_000);
     })]);
   } finally { if (timer) clearTimeout(timer); }
 }
