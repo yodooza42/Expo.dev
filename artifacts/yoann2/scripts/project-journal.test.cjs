@@ -437,7 +437,11 @@ function engine({ badPhoto = false, loadDelay = 25 } = {}) {
   }
   const messageListeners = [];
   const win = {
-    ReactNativeWebView: { postMessage: data => messages.push(JSON.parse(data)) },
+    ReactNativeWebView: { postMessage: data => {
+      const message = JSON.parse(data);
+      messages.push(message);
+      if (message.type === 'story_chunk') set(() => win.ackPeriodStoryChunk?.(message.jobId, message.index), 0);
+    } },
     MediaRecorder: Recorder, addEventListener: (type, listener) => {
       if (type === 'message') messageListeners.push(listener);
     },
@@ -680,8 +684,10 @@ test('real renderer protocol advances past 45 seconds, streams honest ordered ch
   const chunks = e.messages.filter(m => m.type === 'story_chunk');
   assert.equal(chunks.length, 2);
   assert.deepEqual(chunks.map(m => m.index), [0, 1]);
-  assert.ok(chunks.every(m => m.mime === 'video/webm' && m.data.length <= 200_000));
+  assert.ok(chunks.every(m => m.mime === 'video/webm' && m.total === undefined && m.data.length <= 96 * 1024));
   assert.equal(Buffer.concat(chunks.map(m => Buffer.from(m.data, 'base64'))).length, 140_000);
+  assert.equal(e.messages.find(m => m.type === 'story_done')?.total, chunks.length);
+  assert.equal(e.messages.find(m => m.type === 'story_done')?.bytes, 140_000);
   assert.equal(e.activeImages, 0);
   assert.equal(e.timerCount, 0);
   assert.equal(e.messages.some(m => m.type === 'story_error'), false);

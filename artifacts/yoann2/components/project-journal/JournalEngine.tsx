@@ -41,7 +41,7 @@ export function JournalEngine({ generation }: { generation: Generation }) {
         } as WebView : null;
       },
       onLoad: () => generation.onLoadEnd(jobId),
-      style: { width: 1, height: 1, border: 0 },
+      style: { width: '100%', height: '100%', border: 0, display: 'block' },
     }) : <WebView key={jobId} ref={generation.webViewRef} source={generation.source}
       onMessage={event => generation.onMessage(jobId, event)} onLoadEnd={() => generation.onLoadEnd(jobId)}
       onError={() => generation.onEngineError(jobId)} onRenderProcessGone={() => generation.onEngineError(jobId)}
@@ -51,6 +51,6 @@ export function JournalEngine({ generation }: { generation: Generation }) {
   </View>;
 }
 const s = StyleSheet.create({
-  host: { position: 'absolute', top: -4, left: -4, width: 1, height: 1, opacity: 0.01, overflow: 'hidden' },
-  webview: { width: 1, height: 1, flex: 0 },
+  host: { width: '100%', maxWidth: 230, aspectRatio: 720 / 1280, alignSelf: 'center', overflow: 'hidden', borderRadius: 8 },
+  webview: { flex: 1 },
 });

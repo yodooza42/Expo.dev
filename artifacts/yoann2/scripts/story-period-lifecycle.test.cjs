@@ -213,6 +213,10 @@ function makeNativeMocks(clock, options = {}) {
     files: [],
     getSizeCalls: 0,
     resolvePhoto: null,
+    appStateListeners: [],
+    keepAwakeActivations: 0,
+    keepAwakeDeactivations: 0,
+    journalPhotoPreparations: [],
   };
 
   class MockHandle {
@@ -313,7 +317,19 @@ function makeNativeMocks(clock, options = {}) {
           native.alerts.push({ title, message: messageText });
         },
       },
+      AppState: {
+        addEventListener(_type, listener) {
+          native.appStateListeners.push(listener);
+          return { remove() {
+            native.appStateListeners = native.appStateListeners.filter(item => item !== listener);
+          } };
+        },
+      },
       Platform: { OS: 'android' },
+    },
+    'expo-keep-awake': {
+      activateKeepAwakeAsync: async () => { native.keepAwakeActivations++; },
+      deactivateKeepAwake: async () => { native.keepAwakeDeactivations++; },
     },
     '@/utils/storyGeneratorPeriod': {
       buildStoryPeriodHtml: () => '<html data-synthetic-story />',
@@ -324,16 +340,24 @@ function makeNativeMocks(clock, options = {}) {
       if (options.mode !== 'journal') throw new Error('Unexpected journal preparation in period test');
       if (options.journalError) throw new Error('Photo de la tâche indisponible');
       if (!current()) throw new Error('Annulé');
-      const key = 'journal-photo-0';
+      let assetIndex = 0;
+      const assets = request.entries.flatMap(entry => entry.photos.map(photo => ({
+        key: `journal-photo-${assetIndex}`,
+        uri: photo.uri,
+        title: entry.title,
+        index: assetIndex++,
+      })));
+      const assetByUri = new Map(assets.map(asset => [asset.uri, asset]));
       return {
         payload: { ...request, jobId, entries: request.entries.map(entry => ({
-          ...entry, photos: entry.photos.map(photo => ({ id: photo.id, img: '', assetKey: key, caption: photo.caption })),
+          ...entry, photos: entry.photos.map(photo => ({ id: photo.id, img: '', assetKey: assetByUri.get(photo.uri).key, caption: photo.caption })),
         })) },
-        assets: [{ key, uri: 'file://source', title: 'Étagères', index: 0 }],
+        assets,
       };
     } },
     '@/utils/projectJournal': { JOURNAL_LIMITS: { photoBytes: 8 * 1024 * 1024 }, journalDuration: () => 20 },
     '@/utils/storyPhoto': { prepareStoryPhoto: async (_uri, current) => {
+      native.journalPhotoPreparations.push(_uri);
       if (options.journalPhotoBlocked) await new Promise(resolve => { native.resolveJournalPhoto = resolve; });
       if (!current()) throw new Error('Génération annulée.');
       if (options.journalPhotoError) throw new Error('Photo de la tâche indisponible');
@@ -341,6 +365,7 @@ function makeNativeMocks(clock, options = {}) {
     } },
   };
 
+  native.emitAppState = state => native.appStateListeners.forEach(listener => listener(state));
   return { native, dependencies, webView };
 }
 
@@ -507,6 +532,31 @@ test('PeriodStoryTransfer rejects inconsistent metadata, indexes and chunk data'
   ]) {
     assert.throws(() => transferBuffer.accept(chunk), /Transfert vidéo incohérent/);
   }
+});
+
+test('PeriodStoryTransfer accepts an unknown total, writes in order and validates final byte metadata', () => {
+  const writes = [];
+  const transferBuffer = new transfer.PeriodStoryTransfer(
+    { index: 0, mime: 'video/mp4', data: chunkData(2, 1) },
+    value => writes.push(Array.from(value)),
+    10,
+  );
+  assert.equal(transferBuffer.total, null);
+  assert.equal(transferBuffer.accept({ index: 0, mime: 'video/mp4', data: chunkData(2, 1) }), true);
+  assert.equal(transferBuffer.complete, false, 'stream remains open until final metadata arrives');
+  transferBuffer.accept({ index: 1, mime: 'video/mp4', data: chunkData(3, 2) });
+  assert.equal(transferBuffer.writtenBytes, 5);
+  assert.throws(() => transferBuffer.finish(3, 5), /Transfert vidéo incomplet/);
+  transferBuffer.finish(2, 5);
+  assert.equal(transferBuffer.complete, true);
+  assert.equal(writes.flat().length, 5);
+
+  const limited = new transfer.PeriodStoryTransfer(
+    { index: 0, mime: 'video/webm', data: chunkData(2) }, () => {}, 1,
+  );
+  assert.throws(() => limited.accept({
+    index: 0, mime: 'video/webm', data: chunkData(2),
+  }), /La vidéo dépasse 96 Mo/);
 });
 
 test('hook starts only one job for an immediate double tap and waits for ready before injecting options', async () => {
@@ -789,6 +839,13 @@ function journalRequest() {
       photos: [{ id: 'photo', uri: 'file://source', caption: 'Photo légendée' }] }],
   };
 }
+function journalRequestWithPhotos(count) {
+  const request = journalRequest();
+  request.entries[0].photos = Array.from({ length: count }, (_, index) => ({
+    id: `photo-${index}`, uri: `file://source-${index}`, caption: `Photo ${index}`,
+  }));
+  return request;
+}
 test('native journal shares the proven bridge but injects journal photos/captions, not GPS trips', async () => {
   const harness = makeHarness({ mode: 'journal' });
   const id = await prepareStart(harness, journalRequest());
@@ -805,12 +862,43 @@ test('native journal shares the proven bridge but injects journal photos/caption
   send(harness, id, { type: 'story_asset_chunk_received', jobId: id, key: 'journal-photo-0', index: 0, complete: true });
   send(harness, id, { type: 'story_progress', jobId: id, p: 64 });
   assert.equal(harness.api.progress, 64);
-  send(harness, id, { type: 'story_chunk', jobId: id, index: 0, total: 1, mime: 'video/mp4', data: chunkData(10) });
+  send(harness, id, { type: 'story_chunk', jobId: id, index: 0, mime: 'video/mp4', data: chunkData(10) });
+  assert.equal(harness.api.jobId, id, 'unknown total waits for the renderer final message');
+  assert.ok(harness.native.injections.some(script => script.includes('ackPeriodStoryChunk')));
+  send(harness, id, { type: 'story_done', jobId: id, total: 1, bytes: 10, mime: 'video/mp4',
+    metrics: { durationMs: 12_000, recorderPauses: 3, photoFailures: 0 } });
   assert.equal(harness.api.jobId, null);
   assert.equal(harness.api.result.mimeType, 'video/mp4');
+  assert.match(harness.api.debugMetrics, /pauses : 3/);
+  assert.equal(harness.native.files[0].handle.closed, true);
   assert.equal(harness.native.shares.length, 0);
   await harness.api.shareResult();
   assert.equal(harness.native.shares[0].config.dialogTitle, 'Partager le carnet de bord');
+});
+test('journal keeps the display awake and aborts explicitly if recording enters background', async () => {
+  const harness = makeHarness({ mode: 'journal' });
+  const id = await prepareStart(harness, journalRequest());
+  await settle();
+  assert.ok(harness.native.keepAwakeActivations > 0);
+  ready(harness, id);
+  send(harness, id, { type: 'story_phase', jobId: id, phase: 'recording' });
+  harness.native.emitAppState('background');
+  assert.equal(harness.api.jobId, null);
+  assert.match(harness.api.error, /passée en arrière-plan/);
+  assert.ok(harness.native.keepAwakeDeactivations > 0);
+});
+test('journal prepares the next two requested photos before the current transfer finishes', async () => {
+  const harness = makeHarness({ mode: 'journal' });
+  const id = await prepareStart(harness, journalRequestWithPhotos(4));
+  ready(harness, id);
+  for (let index = 0; index < 4; index++) {
+    send(harness, id, { type: 'story_asset_needed', jobId: id, key: `journal-photo-${index}` });
+  }
+  await settle();
+  assert.deepEqual(harness.native.journalPhotoPreparations.sort(), [
+    'file://source-0', 'file://source-1', 'file://source-2',
+  ]);
+  harness.api.cancel();
 });
 test('journal photo preparation errors preserve a retryable editor and cancellation rejects late preparation', async () => {
   const failed = makeHarness({ mode: 'journal', journalPhotoError: true });

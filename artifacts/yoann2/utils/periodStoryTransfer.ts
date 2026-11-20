@@ -1,7 +1,8 @@
 /** A small, ordered buffer: the video is written to disk, never joined in JS memory. */
 export type StoryVideoChunk = {
   index: number;
-  total: number;
+  /** Older renderers know this up front; journal streaming announces it at the end. */
+  total?: number;
   mime: string;
   data: string;
 };
@@ -29,41 +30,77 @@ export function decodeStoryChunk(data: string): Uint8Array {
 }
 
 export class PeriodStoryTransfer {
-  readonly total: number;
   readonly mime: 'video/mp4' | 'video/webm';
   private next = 0;
+  private expectedTotal: number | null;
+  private byteCount = 0;
   private pending = new Map<number, Uint8Array>();
 
-  constructor(first: StoryVideoChunk, private write: (bytes: Uint8Array) => void) {
-    if (!Number.isInteger(first.total) || first.total < 1 || first.total > 100_000 ||
+  constructor(
+    first: StoryVideoChunk,
+    private write: (bytes: Uint8Array) => void,
+    private maxBytes = Number.POSITIVE_INFINITY,
+  ) {
+    const totalIsValid = first.total === undefined ||
+      (Number.isInteger(first.total) && first.total >= 1 && first.total <= 100_000);
+    if (!totalIsValid ||
         !['video/mp4', 'video/webm'].includes(first.mime)) {
       throw new Error('Format vidéo invalide.');
     }
-    this.total = first.total;
+    this.expectedTotal = first.total ?? null;
     this.mime = first.mime as 'video/mp4' | 'video/webm';
   }
 
   get written(): number { return this.next; }
-  get complete(): boolean { return this.next === this.total; }
+  get total(): number | null { return this.expectedTotal; }
+  get writtenBytes(): number { return this.byteCount; }
+  get complete(): boolean { return this.expectedTotal !== null && this.next === this.expectedTotal; }
 
   /** Returns false for a duplicate: duplicates must not reset the watchdog. */
   accept(chunk: StoryVideoChunk): boolean {
-    if (chunk.total !== this.total || chunk.mime !== this.mime ||
-        !Number.isInteger(chunk.index) || chunk.index < 0 || chunk.index >= this.total ||
+    if ((this.expectedTotal !== null && chunk.total !== this.expectedTotal) ||
+        (this.expectedTotal === null && chunk.total !== undefined) || chunk.mime !== this.mime ||
+        !Number.isInteger(chunk.index) || chunk.index < 0 ||
+        (this.expectedTotal !== null && chunk.index >= this.expectedTotal) ||
         typeof chunk.data !== 'string') {
       throw new Error('Transfert vidéo incohérent.');
     }
     if (chunk.index < this.next || this.pending.has(chunk.index)) return false;
+    if (this.expectedTotal === null && chunk.index !== this.next) {
+      throw new Error('Des fragments de la vidéo sont manquants.');
+    }
     if (this.pending.size >= 8 && chunk.index !== this.next) {
       throw new Error('Des fragments de la vidéo sont manquants.');
     }
     this.pending.set(chunk.index, decodeStoryChunk(chunk.data));
     while (this.pending.has(this.next)) {
       const bytes = this.pending.get(this.next)!;
+      if (this.byteCount + bytes.byteLength > this.maxBytes) {
+        throw new Error('La vidéo dépasse 96 Mo. Réduisez le nombre de photos ou la durée.');
+      }
       this.write(bytes);
+      this.byteCount += bytes.byteLength;
       this.pending.delete(this.next++);
     }
     return true;
+  }
+
+  /** Final metadata closes a streaming transfer whose chunk count was unknown. */
+  finish(total: number, bytes: number): void {
+    if (!Number.isInteger(total) || total < 1 || total > 100_000 ||
+        !Number.isSafeInteger(bytes) || bytes < 1 || bytes > this.maxBytes) {
+      if (bytes > this.maxBytes) {
+        throw new Error('La vidéo dépasse 96 Mo. Réduisez le nombre de photos ou la durée.');
+      }
+      throw new Error('Transfert vidéo incomplet.');
+    }
+    if (this.expectedTotal !== null && this.expectedTotal !== total) {
+      throw new Error('Transfert vidéo incomplet.');
+    }
+    if (this.next !== total || this.pending.size !== 0 || this.byteCount !== bytes) {
+      throw new Error('Transfert vidéo incomplet.');
+    }
+    this.expectedTotal = total;
   }
 
   clear(): void { this.pending.clear(); }

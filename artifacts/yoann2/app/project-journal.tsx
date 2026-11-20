@@ -373,6 +373,8 @@ export default function ProjectJournalScreen() {
           <Text accessibilityLiveRegion="polite" style={[s.body, { color: c.destructive }]}>{error || generation.error || draft.error}</Text>
           {!!draft.error && button('Réessayer l’enregistrement', draft.retry)}
         </View>}
+        {__DEV__ && !!generation.debugMetrics && <Text testID="journal-debug-metrics"
+          style={[s.small, { color: c.mutedForeground }]}>{generation.debugMetrics}</Text>}
         {!!journal.error && <Text testID="journal-validation" style={[s.small, { color: c.mutedForeground }]}>{journal.error}</Text>}
       </KeyboardAwareScrollViewCompat>
       <View style={[s.footer, { borderColor: c.border, paddingBottom: (Platform.OS === 'web' ? 34 : insets.bottom) + 12 }]}>
@@ -386,6 +388,7 @@ export default function ProjectJournalScreen() {
     </>}
     <Modal visible={preparing || generation.isGenerating} transparent animationType="fade" onRequestClose={cancel}>
       <View style={[s.overlay, { backgroundColor: c.background }]}>
+        {!preparing && <JournalEngine generation={generation} />}
         <MaterialCommunityIcons name="notebook-outline" size={46} color={c.primary} />
         <ActivityIndicator size="large" color={c.primary} />
         <Text style={[s.section, { color: c.foreground }]}>{preparing ? 'Préparation de l’aperçu' : generation.title}</Text>
@@ -393,11 +396,10 @@ export default function ProjectJournalScreen() {
         {!preparing && <View style={[s.progress, { backgroundColor: c.muted }]}>
           <View style={{ backgroundColor: c.primary, height: 5, width: `${generation.progress}%` }} />
         </View>}
-        <Text style={[s.small, { color: c.mutedForeground, textAlign: 'center' }]}>Ton carnet se prépare. Garde l’app ouverte ; les originaux restent intacts.</Text>
+        <Text style={[s.small, { color: c.mutedForeground, textAlign: 'center' }]}>Garde l’application ouverte pendant la création. Les originaux restent intacts.</Text>
         {button('Annuler', cancel, false, false, 'journal-cancel')}
       </View>
     </Modal>
-    <JournalEngine generation={generation} />
   </View>;
 }
 const s = StyleSheet.create({

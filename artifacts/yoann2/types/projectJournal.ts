@@ -49,6 +49,8 @@ export type JournalComparison = {
 /** All media are temporary story copies. Never modify the source tasks/photos. */
 export type JournalVideoPayload = {
   jobId: string;
+  /** Native wall-clock start, used only for debug export measurements. */
+  startedAtMs?: number;
   journal: true;
   preview?: boolean;
   title: string;
