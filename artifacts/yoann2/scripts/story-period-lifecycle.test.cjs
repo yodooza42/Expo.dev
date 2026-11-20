@@ -320,17 +320,25 @@ function makeNativeMocks(clock, options = {}) {
     },
     '@/utils/periodStoryTransfer': transfer,
     '@/utils/projectJournalRenderer': { buildProjectJournalHtml: () => '<html data-synthetic-journal />' },
-    '@/utils/prepareJournal': { prepareJournal: async (request, jobId, current, progress) => {
+    '@/utils/prepareJournal': { prepareJournal: (request, jobId, current) => {
       if (options.mode !== 'journal') throw new Error('Unexpected journal preparation in period test');
-      if (options.journalBlocked) await new Promise(resolve => { native.resolveJournal = resolve; });
       if (options.journalError) throw new Error('Photo de la tâche indisponible');
       if (!current()) throw new Error('Annulé');
-      progress(request.photoCount, request.photoCount);
-      return { ...request, jobId, entries: request.entries.map(entry => ({
-        ...entry, photos: entry.photos.map(photo => ({ id: photo.id, img: 'data:image/jpeg;base64,YWJj', caption: photo.caption })),
-      })) };
+      const key = 'journal-photo-0';
+      return {
+        payload: { ...request, jobId, entries: request.entries.map(entry => ({
+          ...entry, photos: entry.photos.map(photo => ({ id: photo.id, img: '', assetKey: key, caption: photo.caption })),
+        })) },
+        assets: [{ key, uri: 'file://source', title: 'Étagères', index: 0 }],
+      };
     } },
-    '@/utils/projectJournal': { journalDuration: () => 20 },
+    '@/utils/projectJournal': { JOURNAL_LIMITS: { photoBytes: 8 * 1024 * 1024 }, journalDuration: () => 20 },
+    '@/utils/storyPhoto': { prepareStoryPhoto: async (_uri, current) => {
+      if (options.journalPhotoBlocked) await new Promise(resolve => { native.resolveJournalPhoto = resolve; });
+      if (!current()) throw new Error('Génération annulée.');
+      if (options.journalPhotoError) throw new Error('Photo de la tâche indisponible');
+      return 'data:image/jpeg;base64,YWJj';
+    } },
   };
 
   return { native, dependencies, webView };
@@ -788,7 +796,13 @@ test('native journal shares the proven bridge but injects journal photos/caption
   ready(harness, id);
   const injected = harness.native.injections.find(script => script.includes('generatePeriodStory'));
   assert.ok(injected.includes('Mon atelier') && injected.includes('Légende conservée') && injected.includes('Photo légendée'));
-  assert.equal(injected.includes('"uri":"file://source"'), false, 'renderer receives resized media, not local file paths');
+  assert.equal(injected.includes('"uri":"file://source"'), false, 'renderer receives no local photo paths');
+  assert.equal(injected.includes('data:image/jpeg;base64'), false, 'large photo data is not embedded in the initial payload');
+  send(harness, id, { type: 'story_asset_needed', jobId: id, key: 'journal-photo-0' });
+  await settle();
+  const transfer = harness.native.injections.find(script => script.includes('receivePeriodStoryAssetChunk'));
+  assert.ok(transfer?.includes('data:image/jpeg;base64,YWJj'), 'the image is prepared only after the renderer requests it');
+  send(harness, id, { type: 'story_asset_chunk_received', jobId: id, key: 'journal-photo-0', index: 0, complete: true });
   send(harness, id, { type: 'story_progress', jobId: id, p: 64 });
   assert.equal(harness.api.progress, 64);
   send(harness, id, { type: 'story_chunk', jobId: id, index: 0, total: 1, mime: 'video/mp4', data: chunkData(10) });
@@ -799,19 +813,37 @@ test('native journal shares the proven bridge but injects journal photos/caption
   assert.equal(harness.native.shares[0].config.dialogTitle, 'Partager le carnet de bord');
 });
 test('journal photo preparation errors preserve a retryable editor and cancellation rejects late preparation', async () => {
-  const failed = makeHarness({ mode: 'journal', journalError: true });
+  const failed = makeHarness({ mode: 'journal', journalPhotoError: true });
   await prepareStart(failed, journalRequest());
+  ready(failed, failed.api.jobId);
+  send(failed, failed.api.jobId, { type: 'story_asset_needed', jobId: failed.api.jobId, key: 'journal-photo-0' });
+  await settle();
   assert.equal(failed.api.jobId, null);
-  assert.match(failed.api.error, /Photo de la tâche/);
+  assert.match(failed.api.error, /Étagères · photo 1 : Photo de la tâche/);
   assert.equal(failed.native.files.length, 0);
 
-  const blocked = makeHarness({ mode: 'journal', journalBlocked: true });
-  const promise = blocked.api.start(journalRequest());
+  const blocked = makeHarness({ mode: 'journal', journalPhotoBlocked: true });
+  const id = await prepareStart(blocked, journalRequest());
+  ready(blocked, id);
+  send(blocked, id, { type: 'story_asset_needed', jobId: id, key: 'journal-photo-0' });
   await settle();
   blocked.api.cancel();
-  blocked.native.resolveJournal();
-  await promise;
+  blocked.native.resolveJournalPhoto();
+  await settle();
   assert.equal(blocked.api.jobId, null);
-  assert.equal(blocked.native.injections.some(script => script.includes('generatePeriodStory')), false);
+  assert.equal(blocked.native.injections.some(script => script.includes('receivePeriodStoryAssetChunk')), false);
   assert.equal(blocked.native.files.length, 0);
+});
+test('journal watchdog stays alive while one requested photo is being prepared', async () => {
+  const harness = makeHarness({ mode: 'journal', journalPhotoBlocked: true });
+  const id = await prepareStart(harness, journalRequest());
+  ready(harness, id);
+  send(harness, id, { type: 'story_asset_needed', jobId: id, key: 'journal-photo-0' });
+  await settle();
+  harness.clock.tick(50_000);
+  await settle();
+  assert.equal(harness.api.jobId, id, 'photo work in progress is not mistaken for a stalled renderer');
+  assert.equal(harness.native.alerts.length, 0);
+  harness.api.cancel();
+  harness.native.resolveJournalPhoto();
 });

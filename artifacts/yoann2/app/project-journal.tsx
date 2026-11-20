@@ -15,9 +15,10 @@ import { JournalEngine } from '@/components/project-journal/JournalEngine';
 import { JournalPreview } from '@/components/project-journal/JournalPreview';
 import { ProjectPhoto } from '@/components/ProjectPhoto';
 import { StoryVideoReview } from '@/components/period-story/StoryVideoReview';
-import type { JournalChoices, JournalVideoPayload } from '@/types/projectJournal';
+import type { JournalChoices } from '@/types/projectJournal';
 import { buildProjectJournal, journalDateKey, journalHistoryStart, normalizeJournalProjectPhotos } from '@/utils/projectJournal';
 import { prepareJournal } from '@/utils/prepareJournal';
+import type { PreparedJournal } from '@/utils/prepareJournal';
 
 const timeLabel = (seconds: number) => `${Math.floor(seconds / 60)} min ${String(Math.round(seconds % 60)).padStart(2, '0')} s`;
 const STEPS = ['Sélection', 'Montage', 'Vidéo'];
@@ -30,7 +31,7 @@ export default function ProjectJournalScreen() {
   const generation = usePeriodStoryGeneration('journal');
   const [step, setStep] = useState(0);
   const [expanded, setExpanded] = useState<string | null>(null);
-  const [preview, setPreview] = useState<JournalVideoPayload | null>(null);
+  const [preview, setPreview] = useState<PreparedJournal | null>(null);
   const [preparing, setPreparing] = useState(false);
   const [previewDetail, setPreviewDetail] = useState('');
   const [error, setError] = useState('');
@@ -147,10 +148,11 @@ export default function ProjectJournalScreen() {
     setPreparing(true); setError('');
     const current = () => alive.current && previewRun.current === token;
     try {
-      const payload = await prepareJournal(journal.request, `preview-${token}`, current, (done, total) => {
-        if (current()) setPreviewDetail(`${done} / ${total} photos`);
-      });
-      if (current()) setPreview(payload);
+      const prepared = prepareJournal(journal.request, `preview-${token}`, current);
+      if (current()) {
+        setPreview(prepared);
+        setPreviewDetail('Les photos se chargeront au fil de l’aperçu.');
+      }
     } catch (err) {
       if (current()) setError(err instanceof Error ? err.message : 'Impossible de préparer l’aperçu.');
     } finally { if (current()) setPreparing(false); }
@@ -304,7 +306,7 @@ export default function ProjectJournalScreen() {
             </View>
           )}
           <Text style={[s.small, { color: c.mutedForeground }]}>
-            Un carnet peut contenir jusqu’à 120 photos et 120 étapes, pour 15 minutes maximum. Les photos préparées sont limitées à 48 Mo et la vidéo exportée à 96 Mo.
+            Un carnet peut contenir jusqu’à 500 photos et 400 étapes, pour 15 minutes maximum. Les photos sont préparées une par une ; chaque copie vidéo est limitée à 8 Mo et la vidéo exportée à 96 Mo.
           </Text>
           <Text style={[s.small, { color: c.mutedForeground }]}>
             Sur la page de chaque tâche, jusqu’à 4 photos apparaissent l’une après l’autre, espacées de 0,5 seconde ; les suivantes passent sur une page de suite.
@@ -320,7 +322,8 @@ export default function ProjectJournalScreen() {
             discardLabel="Fermer la vidéo et revenir au montage"
             shareLabel={Platform.OS === 'web' ? 'Télécharger la vidéo' : 'Partager / enregistrer la vidéo'} /> : <>
             <Text style={[s.section, { color: c.foreground }]}>03 / Ton carnet, en mouvement</Text>
-            {preview ? <JournalPreview payload={preview} onError={message => { setPreview(null); setError(message); }} />
+            {preview ? <JournalPreview payload={preview.payload} assets={preview.assets}
+              onProgress={setPreviewDetail} onError={message => { setPreview(null); setError(message); }} />
               : <JournalCover title={choices.title} summary={`${journal.request.periodLabel}\n${journal.entries.length} étapes · ${journal.photoCount} photos`} />}
             {button(preview ? 'Recommencer l’aperçu' : 'Lire l’aperçu animé', () => { setPreview(null); void openPreview(); }, !ready, false, 'journal-preview')}
           </>}

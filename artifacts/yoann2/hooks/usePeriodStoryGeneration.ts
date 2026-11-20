@@ -412,7 +412,7 @@ export function usePeriodStoryGeneration(mode: 'period' | 'journal' = 'period') 
       id, ready: false, injected: false, lastActivity: Date.now(), signal: '',
       deadline: Date.now() + 90_000 +
         duration * 3000 +
-        photoCount * 20_000,
+        photoCount * 100_000,
     };
     setJobId(id);
     setPhase('prepare');

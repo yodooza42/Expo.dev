@@ -305,7 +305,7 @@ test('draft hook reopens after pending writes, migrates old choices, and keeps m
   assert.deepEqual(clone(scoped.render().choices.taskOrderByDate), {});
   assert.deepEqual(clone(scoped.render().choices.projectIds), ['p1']);
 });
-test('empty/invalid ranges, malformed drafts and oversized selections fail explicitly without truncation', () => {
+test('empty/invalid ranges and malformed drafts fail explicitly without truncation', () => {
   assert.ok(journal.buildProjectJournal(projects, tasks, { ...choices(), from: '2026-05-01', to: '2026-04-01' }).error);
   assert.ok(journal.buildProjectJournal(projects, tasks, { ...choices(), projectIds: [] }).error);
   assert.ok(journal.buildProjectJournal(projects, tasks, { ...choices(), title: '' }).error);
@@ -316,27 +316,33 @@ test('empty/invalid ranges, malformed drafts and oversized selections fail expli
   for (const taskOrderByDate of [null, [], { bad: [] }, { '2026-04-05': 'task:a' },
     { '2026-04-05': [2] }, { '2026-04-05': ['project:p1'] }, { '2026-04-05': ['task:a', 'task:a'] }])
     assert.equal(journal.validateJournalChoices({ ...choices(), taskOrderByDate }), false);
-  const huge = { ...tasks[0], photos: Array.from({ length: 121 }, (_, i) => `file://${i}`) };
+  const huge = { ...tasks[0], photos: Array.from({ length: 501 }, (_, i) => `file://${i}`) };
   const output = journal.buildProjectJournal(projects, [huge], choices());
-  assert.ok(output.error.includes('120 photos'));
-  assert.equal(output.photoCount, 122, 'limits never silently drop photos');
+  assert.ok(output.error.includes('500 photos'));
+  assert.equal(output.photoCount, 502, 'limits never silently drop photos');
 });
-test('photo preparation is sequential, preserves captions and reports a precise inaccessible photo', async () => {
-  const calls = [];
+test('four projects with 100 photos each fit the large-carnet selection limit', () => {
+  const selectedProjects = Array.from({ length: 4 }, (_, i) => ({
+    id: `large-${i}`, name: `Projet ${i + 1}`, status: 'inprogress', photos: [],
+  }));
+  const selectedTasks = selectedProjects.map((project, projectIndex) => ({
+    id: `task-${project.id}`, projectId: project.id, title: `Étape ${projectIndex + 1}`, status: 'done',
+    completedAt: '05/04/2026', photos: Array.from({ length: 100 }, (_, photoIndex) =>
+      `file://${project.id}-${photoIndex}`),
+  }));
+  const selectedChoices = {
+    ...journal.initialJournalChoices(selectedProjects),
+    from: '2026-04-01', to: '2026-04-30', projectIds: selectedProjects.map(project => project.id),
+  };
+  const output = journal.buildProjectJournal(selectedProjects, selectedTasks, selectedChoices);
+  assert.equal(output.error, '');
+  assert.equal(output.photoCount, 400);
+  assert.ok(output.request.entries.length >= 4 && output.request.entries.length <= 400);
+});
+test('journal preparation builds metadata only and preserves captions and comparison photo keys', () => {
   const prepare = load('utils/prepareJournal.ts', {
     '@/utils/projectJournal': journal,
-    '@/utils/storyPhoto': { prepareStoryPhoto: async uri => { calls.push(uri); if (uri === 'file://b') throw new Error('Accès refusé'); return 'data:image/jpeg;base64,YWJj'; } },
-  });
-  const request = journal.buildProjectJournal(projects, tasks, choices()).request;
-  await assert.rejects(prepare.prepareJournal(request, 'job', () => true, () => {}), /Finition · photo 2 : Accès refusé/);
-  assert.deepEqual(calls, ['file://a', 'file://b']);
-  await assert.rejects(prepare.prepareJournal(request, 'job', () => false, () => {}), /annulée/);
-});
-test('photo preparation reuses comparison images already included in the montage', async () => {
-  const calls = [];
-  const prepare = load('utils/prepareJournal.ts', {
-    '@/utils/projectJournal': journal,
-    '@/utils/storyPhoto': { prepareStoryPhoto: async uri => { calls.push(uri); return `data:image/jpeg;base64,${uri}`; } },
+    '@/utils/storyPhoto': { prepareStoryPhoto: () => { throw new Error('Photos must be prepared on demand'); } },
   });
   const request = {
     ...journal.buildProjectJournal(projects, tasks, choices()).request,
@@ -346,35 +352,40 @@ test('photo preparation reuses comparison images already included in the montage
       after: [{ id: 'after', uri: 'file://compare', dateLabel: '6 avril 2026' }],
     },
   };
-  const prepared = await prepare.prepareJournal(request, 'job', () => true, () => {});
-  assert.deepEqual(calls, ['file://a', 'file://b', 'file://p', 'file://compare']);
-  const montageBefore = prepared.entries.flatMap(entry => entry.photos).find(photo => photo.id === journal.journalPhotoId('task:later', 'file://a'));
-  assert.equal(prepared.finalComparisonImages.before[0].img, montageBefore.img);
-  assert.equal(prepared.finalComparisonImages.after[0].dateLabel, '6 avril 2026');
+  request.entries.flatMap(entry => entry.photos)
+    .find(photo => photo.id === journal.journalPhotoId('task:later', 'file://a')).caption = 'Photo légendée';
+  const prepared = prepare.prepareJournal(request, 'job', () => true);
+  assert.deepEqual(clone(prepared.assets.map(asset => asset.uri)), ['file://a', 'file://b', 'file://p', 'file://compare']);
+  const montageBefore = prepared.payload.entries.flatMap(entry => entry.photos).find(photo => photo.id === journal.journalPhotoId('task:later', 'file://a'));
+  assert.equal(prepared.payload.finalComparisonImages.before[0].assetKey, montageBefore.assetKey);
+  assert.equal(prepared.payload.finalComparisonImages.after[0].dateLabel, '6 avril 2026');
+  assert.equal(montageBefore.caption, 'Photo légendée');
+  assert.ok(prepared.payload.entries.every(entry => entry.photos.every(photo => photo.img === '')));
+  assert.ok(!JSON.stringify(prepared.payload).includes('file://'));
+  assert.throws(() => prepare.prepareJournal(request, 'job', () => false), /annulée/);
 });
-test('export metadata keeps image payloads separate and deduplicates matching photo data', () => {
+test('journal metadata keeps image payloads separate and deduplicates identical source photos', () => {
   const prepare = load('utils/prepareJournal.ts', {
     '@/utils/projectJournal': journal,
-    '@/utils/storyPhoto': { prepareStoryPhoto: async () => '' },
+    '@/utils/storyPhoto': { prepareStoryPhoto: () => { throw new Error('Unexpected eager preparation'); } },
   });
-  const first = 'data:image/jpeg;base64,Zmlyc3Q=';
-  const second = 'data:image/jpeg;base64,c2Vjb25k';
-  const third = 'data:image/jpeg;base64,dGhpcmQ=';
-  const payload = {
-    jobId: 'job', journal: true, title: 'Carnet', periodLabel: 'Avril', projectNames: ['Garage'],
-    entryCount: 1, photoCount: 4, secondsPerPhoto: 3,
-    entries: [{ id: 'e1', title: 'Étape', photos: [
-      { id: 'p1', img: first, caption: '' }, { id: 'p2', img: second, caption: '' },
-    ] }],
-    finalComparisonImages: {
+  const request = {
+    title: 'Carnet', periodLabel: 'Avril', projectNames: ['Garage'],
+    entryCount: 1, photoCount: 4, secondsPerPhoto: 3, entries: [{
+      id: 'e1', title: 'Étape', photos: [
+        { id: 'p1', uri: 'file://first', caption: '' },
+        { id: 'p2', uri: 'file://second', caption: '' },
+      ],
+    }],
+    finalComparison: {
       projectName: 'Garage',
-      before: [{ id: 'before', img: first, dateLabel: '1 avril' }],
-      after: [{ id: 'after', img: third, dateLabel: '2 avril' }],
+      before: [{ id: 'before', uri: 'file://first', dateLabel: '1 avril' }],
+      after: [{ id: 'after', uri: 'file://third', dateLabel: '2 avril' }],
     },
   };
-  const result = prepare.splitJournalPayloadImages(payload);
+  const result = prepare.prepareJournal(request, 'job', () => true);
   assert.equal(result.assets.length, 3);
-  assert.deepEqual(clone(result.assets.map(asset => asset.dataUri)), [first, second, third]);
+  assert.deepEqual(clone(result.assets.map(asset => asset.uri)), ['file://first', 'file://second', 'file://third']);
   assert.equal(result.payload.entries[0].photos[0].assetKey, result.payload.finalComparisonImages.before[0].assetKey);
   assert.ok(result.payload.entries.every(entry => entry.photos.every(photo => photo.img === '')));
   assert.equal(result.payload.finalComparisonImages.after[0].img, '');
@@ -424,10 +435,14 @@ function engine({ badPhoto = false, loadDelay = 25 } = {}) {
       this.onstop?.();
     }
   }
+  const messageListeners = [];
   const win = {
     ReactNativeWebView: { postMessage: data => messages.push(JSON.parse(data)) },
-    MediaRecorder: Recorder, addEventListener() {},
+    MediaRecorder: Recorder, addEventListener: (type, listener) => {
+      if (type === 'message') messageListeners.push(listener);
+    },
   };
+  win.parent = win;
   const html = renderer.buildProjectJournalHtml();
   const script = html.slice(html.indexOf('<script>') + 8, html.lastIndexOf('</script>'));
   vm.runInNewContext(script, {
@@ -452,7 +467,9 @@ function engine({ badPhoto = false, loadDelay = 25 } = {}) {
     now = until;
     await new Promise(resolve => setImmediate(resolve));
   }
-  return { win, messages, draws, imageDraws, elements, advance, get maxImages() { return maxImages; }, get activeImages() { return activeImages; },
+  return { win, messages, draws, imageDraws, elements, advance,
+    sendWindowMessage: data => messageListeners.forEach(listener => listener({ source: win, data })),
+    get maxImages() { return maxImages; }, get activeImages() { return activeImages; },
     get recorder() { return recorder; }, get timerCount() { return timers.size; } };
 }
 function payload({ count = 3, preview = true } = {}) {
@@ -498,6 +515,36 @@ test('preview and exporter use exactly the calculated duration, expose controls 
   assert.ok(e.draws.some(draw => draw.text === 'Fin du carnet.'));
   assert.ok(e.maxImages <= 8, `at most the current and turning pages, not ${e.maxImages} decoded photos`);
   assert.equal(e.messages.some(m => m.type === 'story_chunk'), false);
+});
+test('large preview photos arrive as acknowledged chunks and render without embedding them in page metadata', async () => {
+  const e = engine();
+  const data = payload({ count: 1, preview: true });
+  data.entries[0].photos[0].img = '';
+  data.entries[0].photos[0].assetKey = 'preview-photo-0';
+  e.win.generatePeriodStory(data);
+  await e.advance(300);
+  assert.ok(e.messages.some(message => message.type === 'story_asset_needed' && message.key === 'preview-photo-0'));
+  const first = `data:image/jpeg;base64,${'A'.repeat(100_000)}`;
+  const second = 'B'.repeat(30_000);
+  e.sendWindowMessage({ type: 'journal_preview_asset_chunk', key: 'preview-photo-0', index: 0, total: 2, chunk: first });
+  assert.ok(e.messages.some(message => message.type === 'story_asset_chunk_received' && message.preview && message.complete === false));
+  e.sendWindowMessage({ type: 'journal_preview_asset_chunk', key: 'preview-photo-0', index: 1, total: 2, chunk: second });
+  await e.advance(200);
+  assert.ok(e.messages.some(message => message.type === 'story_asset_chunk_received' && message.preview && message.complete === true));
+  e.win.journalPause();
+  const photoStart = journal.journalDuration(data.entries, 3) - 4 - timing.journalPhotoDuration(data.entries[0].photos[0].caption, 3);
+  e.win.journalSeek(photoStart + 0.5);
+  await e.advance(200);
+  assert.ok(e.imageDraws.some(draw => draw.src === `${first}${second}`));
+  assert.equal(e.messages.some(message => message.type === 'story_error'), false);
+  const previousRequests = e.messages.filter(message => message.type === 'story_asset_needed'
+    && message.key === 'preview-photo-0').length;
+  e.win.journalSeek(e.win.journalDuration - 1);
+  await e.advance(100);
+  e.win.journalSeek(photoStart + 0.5);
+  assert.ok(e.messages.filter(message => message.type === 'story_asset_needed'
+    && message.key === 'preview-photo-0').length > previousRequests,
+  'preview releases encoded images and requests them again when seeking backward');
 });
 test('caption reading time accounts for word length, punctuation, whitespace and pace', () => {
   assert.equal(timing.journalPhotoDuration(''), 1);
@@ -610,27 +657,19 @@ test('final comparison requests before/after photos through the on-demand asset 
   const data = payload({ count: 1 });
   data.finalComparisonImages = {
     projectName: 'Chambre parentale',
-    before: [{ id: 'before-1', img: 'data:image/jpeg;base64,YmVmb3JlMQ==', dateLabel: '5 avril 2026' }],
-    after: [{ id: 'after-1', img: 'data:image/jpeg;base64,YWZ0ZXIx', dateLabel: '9 novembre 2026' }],
+    before: [{ id: 'before-1', img: '', assetKey: 'comparison-before', dateLabel: '5 avril 2026' }],
+    after: [{ id: 'after-1', img: '', assetKey: 'comparison-after', dateLabel: '9 novembre 2026' }],
   };
-  const prepare = load('utils/prepareJournal.ts', {
-    '@/utils/projectJournal': journal,
-    '@/utils/storyPhoto': { prepareStoryPhoto: async () => '' },
-  });
-  const { payload: prepared, assets } = prepare.splitJournalPayloadImages(data);
-  const beforeKey = prepared.finalComparisonImages.before[0].assetKey;
-  const afterKey = prepared.finalComparisonImages.after[0].assetKey;
   const e = engine();
-  e.win.generatePeriodStory(prepared);
+  e.win.generatePeriodStory(data);
   await e.advance(300);
   e.win.journalPause();
-  e.win.journalSeek(journal.journalDuration(prepared.entries, 3) - 3);
+  e.win.journalSeek(journal.journalDuration(data.entries, 3) - 3);
   await e.advance(200);
   const requestedKeys = e.messages.filter(message => message.type === 'story_asset_needed').map(message => message.key);
-  assert.ok(requestedKeys.includes(beforeKey), 'the before photo must retain its transfer key');
-  assert.ok(requestedKeys.includes(afterKey), 'the after photo must retain its transfer key');
+  assert.ok(requestedKeys.includes('comparison-before'), 'the before photo must retain its transfer key');
+  assert.ok(requestedKeys.includes('comparison-after'), 'the after photo must retain its transfer key');
   assert.equal(e.messages.some(message => message.type === 'story_error'), false);
-  assert.ok(assets.some(asset => asset.key === beforeKey) && assets.some(asset => asset.key === afterKey));
 });
 test('real renderer protocol advances past 45 seconds, streams honest ordered chunks and releases resources', async () => {
   const e = engine();
