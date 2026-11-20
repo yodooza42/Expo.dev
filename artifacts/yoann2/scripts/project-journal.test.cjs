@@ -426,7 +426,7 @@ function engine({ badPhoto = false, loadDelay = 25 } = {}) {
     static isTypeSupported = mime => mime === 'video/webm;codecs=vp8';
     state = 'inactive';
     constructor() { recorder = this; }
-    start() { this.state = 'recording'; }
+    start(timeslice) { this.startTimeslice = timeslice; this.state = 'recording'; }
     pause() { this.state = 'paused'; }
     resume() { this.state = 'recording'; }
     stop() {
@@ -732,6 +732,7 @@ test('journal export waits for sequential image chunks before recording and pres
   }
   assert.equal(e.messages.some(message => message.type === 'story_error'), false);
   assert.ok(e.messages.some(message => message.type === 'story_chunk'));
+  assert.equal(e.recorder.startTimeslice, 1000, 'larger timeslices limit MediaRecorder pause/resume churn');
   for (const asset of assets) assert.ok(e.imageDraws.some(draw => draw.src === asset.dataUri), `missing ${asset.key}`);
   assert.equal(e.activeImages, 0);
   assert.equal(e.timerCount, 0);

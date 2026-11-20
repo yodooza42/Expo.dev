@@ -507,7 +507,8 @@ async function runExport(j){
   j.rec.onstop=function(){if(j.dead)return;j.stopped=true;if(j.stream)j.stream.getTracks().forEach(function(tr){tr.stop()});
     stopLoop();playing=false;finishStreamIfReady(j)};
   post({type:'story_phase',jobId:j.id,phase:'recording'});
-  j.lastP=0;mode='export';playing=true;j.rec.start(250);startLoop();
+   /* Larger recorder slices reduce pause/resume churn while the app acknowledges video fragments. */
+   j.lastP=0;mode='export';playing=true;j.rec.start(1000);startLoop();
 }
 function startExport(j){
   runExport(j).catch(function(e){if(!j.dead&&e.message!=='cancel')fail(j,e.message)});
