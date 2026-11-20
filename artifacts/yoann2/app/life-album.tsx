@@ -22,24 +22,23 @@ import { useColors } from '@/hooks/useColors';
 import {
   albumAgeAt,
   albumDay,
+  buildAlbumTimeline,
   chronologicalMemories,
   importAlbumPhotos,
   isAlbumDate,
   loadLifeAlbum,
   makeAlbumId,
   saveLifeAlbum,
+  suggestedAlbumDate,
   unassignedAlbumPhotos,
   type AlbumMemory,
   type AlbumPhoto,
+  type AlbumTimelineRow,
   type LifeAlbum,
 } from '@/utils/lifeAlbum';
 import { lifeAlbumTheme as ink } from '@/constants/lifeAlbumTheme';
 
-type MemoryDraft = { id: string; title: string; date: string; note: string; photoIds: string[]; createdAt: number };
-type TimelineRow =
-  | { kind: 'year'; key: string; year: string }
-  | { kind: 'memory'; key: string; memory: AlbumMemory }
-  | { kind: 'birth' | 'today'; key: string; date: string };
+type MemoryDraft = { id: string; title: string; date: string; note: string; photoIds: string[]; createdAt: number; dateEdited: boolean };
 
 const dateFormatter = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
 const shortDateFormatter = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -51,28 +50,6 @@ function dateFromKey(value: string): Date {
 
 function formattedDate(value: string): string {
   return isAlbumDate(value) ? dateFormatter.format(dateFromKey(value)) : value;
-}
-
-function rowsForAlbum(memories: AlbumMemory[], birthDate: string | null): TimelineRow[] {
-  const rows: TimelineRow[] = [];
-  let lastYear = '';
-  if (birthDate) {
-    lastYear = birthDate.slice(0, 4);
-    rows.push({ kind: 'year', key: `year-${lastYear}`, year: lastYear });
-    rows.push({ kind: 'birth', key: 'album-birth', date: birthDate });
-  }
-  for (const memory of memories) {
-    const year = memory.date.slice(0, 4);
-    if (year !== lastYear) {
-      rows.push({ kind: 'year', key: `year-${year}`, year });
-      lastYear = year;
-    }
-    rows.push({ kind: 'memory', key: `memory-${memory.id}`, memory });
-  }
-  const today = albumDay(Date.now());
-  if (today.slice(0, 4) !== lastYear) rows.push({ kind: 'year', key: `year-${today.slice(0, 4)}`, year: today.slice(0, 4) });
-  rows.push({ kind: 'today', key: 'album-today', date: today });
-  return rows;
 }
 
 export default function LifeAlbumScreen() {
@@ -139,15 +116,12 @@ export default function LifeAlbumScreen() {
   const openMemory = useCallback((memory?: AlbumMemory, photoIds: string[] = []) => {
     if (!album) return;
     const now = Date.now();
-    const preferredPhotoDate = photoIds
-      .map(id => album.photos.find(photo => photo.id === id)?.takenAt)
-      .filter((date): date is number => typeof date === 'number')
-      .sort((a, b) => a - b)[0];
+    const preferredPhotoDate = suggestedAlbumDate(photoIds, album.photos);
     const draft: MemoryDraft = memory
-      ? { ...memory, photoIds: [...memory.photoIds] }
+      ? { ...memory, photoIds: [...memory.photoIds], dateEdited: true }
       : {
-          id: makeAlbumId(), title: '', date: preferredPhotoDate ? albumDay(preferredPhotoDate) : albumDay(now),
-          note: '', photoIds: [...photoIds], createdAt: now,
+          id: makeAlbumId(), title: '', date: preferredPhotoDate ?? albumDay(now),
+          note: '', photoIds: [...photoIds], createdAt: now, dateEdited: false,
         };
     setMemoryDraft(draft);
     setEditorPhotoLimit(60);
@@ -248,10 +222,6 @@ export default function LifeAlbumScreen() {
       setMessage('Un souvenir ne peut pas être daté dans le futur.');
       return;
     }
-    if (album.profile.birthDate && memoryDraft.date < album.profile.birthDate) {
-      setMessage('La date du souvenir ne peut pas précéder sa date de naissance.');
-      return;
-    }
     const photoIds = [...new Set(memoryDraft.photoIds)].filter(id => album.photos.some(photo => photo.id === id));
     const title = memoryDraft.title.trim();
     if (!title && photoIds.length === 0) {
@@ -285,7 +255,12 @@ export default function LifeAlbumScreen() {
       const photoIds = current.photoIds.includes(id)
         ? current.photoIds.filter(item => item !== id)
         : [...current.photoIds, id];
-      return { ...current, photoIds };
+      const suggestedDate = suggestedAlbumDate(photoIds, album?.photos ?? []);
+      return {
+        ...current,
+        photoIds,
+        date: current.dateEdited ? current.date : suggestedDate ?? albumDay(Date.now()),
+      };
     });
   }
 
@@ -309,10 +284,16 @@ export default function LifeAlbumScreen() {
   }
 
   const orderedMemories = useMemo(() => album ? chronologicalMemories(album) : [], [album]);
-  const timelineRows = useMemo(() => rowsForAlbum(orderedMemories, album?.profile.birthDate ?? null), [orderedMemories, album?.profile.birthDate]);
+  const timelineRows = useMemo(
+    () => buildAlbumTimeline(orderedMemories, album?.profile.birthDate ?? null, albumDay(Date.now())),
+    [orderedMemories, album?.profile.birthDate],
+  );
   const inbox = useMemo(() => album ? unassignedAlbumPhotos(album) : [], [album]);
   const orderedInbox = useMemo(() => [...inbox].sort((a, b) => b.addedAt - a.addedAt), [inbox]);
   const orderedAlbumPhotos = useMemo(() => album ? [...album.photos].sort((a, b) => b.addedAt - a.addedAt) : [], [album]);
+  const suggestedMemoryDate = memoryDraft && album
+    ? suggestedAlbumDate(memoryDraft.photoIds, album.photos)
+    : null;
   const cover = album?.photos.find(photo => photo.id === album.profile.coverPhotoId);
   const currentAge = album?.profile.birthDate ? albumAgeAt(album.profile.birthDate, albumDay(Date.now())) : null;
   const viewerIndex = viewerPhoto && album ? album.photos.findIndex(photo => photo.id === viewerPhoto.id) : -1;
@@ -368,7 +349,7 @@ export default function LifeAlbumScreen() {
     );
   }
 
-  function renderTimelineRow({ item }: { item: TimelineRow }) {
+  function renderTimelineRow({ item }: { item: AlbumTimelineRow }) {
     if (item.kind === 'year') {
       return (
         <View style={styles.yearRow}>
@@ -378,6 +359,18 @@ export default function LifeAlbumScreen() {
       );
     }
     if (item.kind === 'memory') return renderMemory(item.memory);
+    if (item.kind === 'beforeBirth') {
+      return (
+        <View style={styles.memoryRow}>
+          <View style={[styles.timelineSpine, { backgroundColor: ink.rule }]} />
+          <View style={[styles.timelineDot, { backgroundColor: ink.black, borderColor: ink.accent }]} />
+          <View style={[styles.memoryContent, styles.dateMarker]}>
+            <Text style={[styles.markerTitle, { color: ink.ink }]}>Avant sa naissance</Text>
+            <Text style={[styles.memoryDate, { color: ink.accent }]}>Souvenirs avant le {formattedDate(item.date)}</Text>
+          </View>
+        </View>
+      );
+    }
     const isToday = item.kind === 'today';
     const age = isToday && album ? albumAgeAt(album.profile.birthDate, item.date) : null;
     return (
@@ -638,14 +631,22 @@ export default function LifeAlbumScreen() {
                   testID="life-memory-date-input"
                   accessibilityLabel="Date du souvenir"
                   value={memoryDraft.date}
-                  onChangeText={date => setMemoryDraft(current => current ? { ...current, date } : current)}
+                  onChangeText={date => setMemoryDraft(current => current ? { ...current, date, dateEdited: true } : current)}
                   placeholder="AAAA-MM-JJ"
                   placeholderTextColor={ink.quiet}
                   style={[styles.input, { color: ink.ink, borderColor: ink.rule, backgroundColor: ink.surface }]}
                   autoCapitalize="none"
                   maxLength={10}
                 />
-                <Text style={[styles.formHelp, { color: ink.quiet }]}>Préremplie avec la date d’une photo si elle est connue. Tu peux la corriger.</Text>
+                <Text style={[styles.formHelp, { color: ink.quiet }]}>
+                  {memoryDraft.dateEdited
+                    ? 'Date modifiée manuellement.'
+                    : suggestedMemoryDate
+                      ? 'Date proposée selon les photos choisies ; si elles diffèrent, la plus ancienne est retenue. Tu peux la corriger.'
+                      : memoryDraft.photoIds.length > 0
+                        ? 'Aucune date connue dans les photos choisies : la date du jour est proposée.'
+                      : 'La date d’une photo sera proposée dès que tu en sélectionnes une.'}
+                </Text>
                 <Text style={[styles.formLabel, { color: ink.quiet, marginTop: 20 }]}>TITRE (FACULTATIF AVEC PHOTO)</Text>
                 <TextInput
                   testID="life-memory-title-input"

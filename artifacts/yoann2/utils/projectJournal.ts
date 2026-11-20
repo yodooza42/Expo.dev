@@ -68,6 +68,14 @@ export function getProjectBeforeAfterPhotoOptions(project: Project, tasks: Task[
 export function journalDateKey(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
+export function journalHistoryStart(projects: Project[], tasks: Task[], projectIds: string[], now = Date.now()): string {
+  const selectedIds = new Set(projectIds);
+  const dates = [...projects.filter(item => selectedIds.has(item.id)), ...tasks.filter(item => selectedIds.has(item.projectId))]
+    .filter(item => item.status === 'done')
+    .map(item => item.completedAt ? parseCompletionDate(item.completedAt) : null)
+    .filter((date): date is Date => !!date);
+  return journalDateKey(new Date(Math.min(now, ...dates.map(date => date.getTime()))));
+}
 export function parseJournalDate(value: string): Date | null {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
   const [year, month, day] = value.split('-');

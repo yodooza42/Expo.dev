@@ -16,8 +16,7 @@ import { JournalPreview } from '@/components/project-journal/JournalPreview';
 import { ProjectPhoto } from '@/components/ProjectPhoto';
 import { StoryVideoReview } from '@/components/period-story/StoryVideoReview';
 import type { JournalChoices, JournalVideoPayload } from '@/types/projectJournal';
-import { buildProjectJournal, journalDateKey, normalizeJournalProjectPhotos } from '@/utils/projectJournal';
-import { parseCompletionDate } from '@/utils/completionDate';
+import { buildProjectJournal, journalDateKey, journalHistoryStart, normalizeJournalProjectPhotos } from '@/utils/projectJournal';
 import { prepareJournal } from '@/utils/prepareJournal';
 
 const timeLabel = (seconds: number) => `${Math.floor(seconds / 60)} min ${String(Math.round(seconds % 60)).padStart(2, '0')} s`;
@@ -204,9 +203,12 @@ export default function ProjectJournalScreen() {
               const now = new Date(); change({ ...choices, from: journalDateKey(new Date(now.getFullYear(), now.getMonth(), 1)), to: journalDateKey(now) });
             })}
             {button('Tout l’historique', () => {
-              const dates = [...projects, ...tasks].filter(item => item.status === 'done')
-                .map(item => item.completedAt ? parseCompletionDate(item.completedAt) : null).filter((date): date is Date => !!date);
-              change({ ...choices, from: journalDateKey(new Date(Math.min(Date.now(), ...dates.map(d => d.getTime())))), to: journalDateKey(new Date()) });
+              const now = new Date();
+              change({
+                ...choices,
+                from: journalHistoryStart(projects, tasks, choices.projectIds, now.getTime()),
+                to: journalDateKey(now),
+              });
             })}
           </View>
           <View style={s.row}>

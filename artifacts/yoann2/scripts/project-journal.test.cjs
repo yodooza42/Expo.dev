@@ -63,6 +63,12 @@ test('project selection, excluded entries/photos and independent captions never 
   assert.equal(tasks[0].photos.length, 2);
   assert.equal(journal.buildProjectJournal(projects, tasks, { ...chosen, excludedPhotoIds: [] }).photoCount, 2);
 });
+test('whole-history range starts at the earliest completed date among selected projects only', () => {
+  const now = new Date(2026, 3, 30, 12).getTime();
+  assert.equal(journal.journalHistoryStart(projects, tasks, ['p1'], now), '2026-04-05');
+  assert.equal(journal.journalHistoryStart(projects, tasks, ['p2'], now), '2026-04-02');
+  assert.equal(journal.journalHistoryStart(projects, tasks, [], now), '2026-04-30');
+});
 test('task photos use capture hour to order photos from the same day', () => {
   const task = {
     ...tasks[0],
