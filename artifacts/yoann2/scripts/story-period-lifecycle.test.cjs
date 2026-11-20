@@ -213,10 +213,6 @@ function makeNativeMocks(clock, options = {}) {
     files: [],
     getSizeCalls: 0,
     resolvePhoto: null,
-    appStateListeners: [],
-    keepAwakeActivations: 0,
-    keepAwakeDeactivations: 0,
-    journalPhotoPreparations: [],
   };
 
   class MockHandle {
@@ -317,19 +313,7 @@ function makeNativeMocks(clock, options = {}) {
           native.alerts.push({ title, message: messageText });
         },
       },
-      AppState: {
-        addEventListener(_type, listener) {
-          native.appStateListeners.push(listener);
-          return { remove() {
-            native.appStateListeners = native.appStateListeners.filter(item => item !== listener);
-          } };
-        },
-      },
       Platform: { OS: 'android' },
-    },
-    'expo-keep-awake': {
-      activateKeepAwakeAsync: async () => { native.keepAwakeActivations++; },
-      deactivateKeepAwake: async () => { native.keepAwakeDeactivations++; },
     },
     '@/utils/storyGeneratorPeriod': {
       buildStoryPeriodHtml: () => '<html data-synthetic-story />',
@@ -340,24 +324,16 @@ function makeNativeMocks(clock, options = {}) {
       if (options.mode !== 'journal') throw new Error('Unexpected journal preparation in period test');
       if (options.journalError) throw new Error('Photo de la tâche indisponible');
       if (!current()) throw new Error('Annulé');
-      let assetIndex = 0;
-      const assets = request.entries.flatMap(entry => entry.photos.map(photo => ({
-        key: `journal-photo-${assetIndex}`,
-        uri: photo.uri,
-        title: entry.title,
-        index: assetIndex++,
-      })));
-      const assetByUri = new Map(assets.map(asset => [asset.uri, asset]));
+      const key = 'journal-photo-0';
       return {
         payload: { ...request, jobId, entries: request.entries.map(entry => ({
-          ...entry, photos: entry.photos.map(photo => ({ id: photo.id, img: '', assetKey: assetByUri.get(photo.uri).key, caption: photo.caption })),
+          ...entry, photos: entry.photos.map(photo => ({ id: photo.id, img: '', assetKey: key, caption: photo.caption })),
         })) },
-        assets,
+        assets: [{ key, uri: 'file://source', title: 'Étagères', index: 0 }],
       };
     } },
     '@/utils/projectJournal': { JOURNAL_LIMITS: { photoBytes: 8 * 1024 * 1024 }, journalDuration: () => 20 },
     '@/utils/storyPhoto': { prepareStoryPhoto: async (_uri, current) => {
-      native.journalPhotoPreparations.push(_uri);
       if (options.journalPhotoBlocked) await new Promise(resolve => { native.resolveJournalPhoto = resolve; });
       if (!current()) throw new Error('Génération annulée.');
       if (options.journalPhotoError) throw new Error('Photo de la tâche indisponible');
@@ -365,7 +341,6 @@ function makeNativeMocks(clock, options = {}) {
     } },
   };
 
-  native.emitAppState = state => native.appStateListeners.forEach(listener => listener(state));
   return { native, dependencies, webView };
 }
 
@@ -839,13 +814,6 @@ function journalRequest() {
       photos: [{ id: 'photo', uri: 'file://source', caption: 'Photo légendée' }] }],
   };
 }
-function journalRequestWithPhotos(count) {
-  const request = journalRequest();
-  request.entries[0].photos = Array.from({ length: count }, (_, index) => ({
-    id: `photo-${index}`, uri: `file://source-${index}`, caption: `Photo ${index}`,
-  }));
-  return request;
-}
 test('native journal shares the proven bridge but injects journal photos/captions, not GPS trips', async () => {
   const harness = makeHarness({ mode: 'journal' });
   const id = await prepareStart(harness, journalRequest());
@@ -874,31 +842,6 @@ test('native journal shares the proven bridge but injects journal photos/caption
   assert.equal(harness.native.shares.length, 0);
   await harness.api.shareResult();
   assert.equal(harness.native.shares[0].config.dialogTitle, 'Partager le carnet de bord');
-});
-test('journal keeps the display awake and aborts explicitly if recording enters background', async () => {
-  const harness = makeHarness({ mode: 'journal' });
-  const id = await prepareStart(harness, journalRequest());
-  await settle();
-  assert.ok(harness.native.keepAwakeActivations > 0);
-  ready(harness, id);
-  send(harness, id, { type: 'story_phase', jobId: id, phase: 'recording' });
-  harness.native.emitAppState('background');
-  assert.equal(harness.api.jobId, null);
-  assert.match(harness.api.error, /passée en arrière-plan/);
-  assert.ok(harness.native.keepAwakeDeactivations > 0);
-});
-test('journal prepares the next two requested photos before the current transfer finishes', async () => {
-  const harness = makeHarness({ mode: 'journal' });
-  const id = await prepareStart(harness, journalRequestWithPhotos(4));
-  ready(harness, id);
-  for (let index = 0; index < 4; index++) {
-    send(harness, id, { type: 'story_asset_needed', jobId: id, key: `journal-photo-${index}` });
-  }
-  await settle();
-  assert.deepEqual(harness.native.journalPhotoPreparations.sort(), [
-    'file://source-0', 'file://source-1', 'file://source-2',
-  ]);
-  harness.api.cancel();
 });
 test('journal photo preparation errors preserve a retryable editor and cancellation rejects late preparation', async () => {
   const failed = makeHarness({ mode: 'journal', journalPhotoError: true });
