@@ -567,3 +567,17 @@ mtime_ms = 1795194568000
 storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:afa5c5e0-5de2-424a-8554-0e30d20ab9d3/5152489e-729b-4990-9660-f6df5fe98fae/ca19ea1a-8181-4d8b-9cd0-bcd37689621e"
 storage_version_token = "1795194685704607"
 content_type = "text/html"
+
+[[outputs]]
+id = "69rU3RHg0OrgH2ZHhqOvi"
+uri = "file://attached_assets/carnet-source-review.txt"
+type = "text"
+title = "Code du carnet à transmettre"
+description = "Fichier texte téléchargeable avec les six sources clés et le contexte à donner à ChatGPT ou Claude."
+logical_id = "c82b6279-86ba-4789-8c66-893efacf0f27"
+content_hash = "sha256:079a580956ed564e95f8d7119c6d7aa43d18969ec51bc3224320c564aaf30bb1"
+size = 95810
+mtime_ms = 1795194736672
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:afa5c5e0-5de2-424a-8554-0e30d20ab9d3/c82b6279-86ba-4789-8c66-893efacf0f27/47c071f4-2910-43c8-ab0a-6a3206b53575"
+storage_version_token = "1795194737287113"
+content_type = "text/plain"
