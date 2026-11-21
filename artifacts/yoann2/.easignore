@@ -22,6 +22,11 @@ scripts/
 **/dist
 **/*.tsbuildinfo
 
+# These native projects are generated from app.json during EAS prebuild.
+# Excluding local copies avoids stale settings.gradle and missing Expo autolinking.
+android/
+ios/
+
 # Exclude conversation assets, screenshots, patches
 attached_assets
 screenshots

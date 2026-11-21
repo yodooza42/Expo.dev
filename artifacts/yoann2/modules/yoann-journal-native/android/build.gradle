@@ -6,6 +6,10 @@ plugins {
 group = 'expo.modules.yoannjournal'
 version = '0.1.0'
 
+expoModule {
+  canBePublished false
+}
+
 android {
   namespace "expo.modules.yoannjournal"
 }
