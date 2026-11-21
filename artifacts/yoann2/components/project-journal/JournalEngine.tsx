@@ -29,7 +29,7 @@ export function JournalEngine({ generation }: { generation: Generation }) {
     window.addEventListener('message', receive);
     return () => window.removeEventListener('message', receive);
   }, [jobId, generation.onMessage]);
-  if (!jobId) return null;
+  if (!jobId || generation.usesNativeEngine) return null;
   return <View pointerEvents="none" collapsable={false} accessibilityElementsHidden
     importantForAccessibility="no-hide-descendants" style={s.host}>
     {Platform.OS === 'web' ? React.createElement('iframe', {

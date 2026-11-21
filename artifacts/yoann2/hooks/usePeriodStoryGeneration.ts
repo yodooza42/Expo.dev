@@ -17,6 +17,13 @@ import type { JournalGenerationRequest } from '@/types/projectJournal';
 import { resolvePhotoRef } from '@/utils/library/catalogue';
 import { prepareStoryPhoto } from '@/utils/storyPhoto';
 import {
+  addNativeJournalProgressListener,
+  cancelNativeJournal,
+  generateNativeJournal,
+  isNativeJournalEncoderAvailable,
+} from '@/modules/yoann-journal-native/src';
+import { buildNativeJournalPlan } from '@/utils/nativeJournalPlan';
+import {
   appendJournalRenderLogEvent,
   beginJournalRenderLog,
   finishJournalRenderLog,
@@ -84,6 +91,10 @@ type Run = {
   journalLastLoggedEngineAt?: number;
   debugMetrics?: JournalRenderMetrics;
   engineState?: JournalRenderEngineState;
+  nativeEngine?: boolean;
+  nativeWrittenBytes?: number;
+  nativeFrames?: number;
+  nativeLastLoggedProgress?: number;
 };
 const JOURNAL_INACTIVITY_TIMEOUT_MS = 60_000;
 const JOURNAL_ASSET_CHUNK_CHARS = 96 * 1024;
@@ -157,6 +168,7 @@ export function usePeriodStoryGeneration(mode: 'period' | 'journal' = 'period') 
   const mounted = useRef(true);
   const sequence = useRef(0);
   const [jobId, setJobId] = useState<string | null>(null);
+  const [usesNativeEngine, setUsesNativeEngine] = useState(false);
   const [phase, setPhase] = useState<Phase>('prepare');
   const [progress, setProgress] = useState(0);
   const [detail, setDetail] = useState('');
@@ -193,7 +205,10 @@ export function usePeriodStoryGeneration(mode: 'period' | 'journal' = 'period') 
     const run = runRef.current;
     if (!run) return;
     runRef.current = null; // Invalidate before any late native/WebView callback.
-    try { webViewRef.current?.injectJavaScript(`window.cancelPeriodStory&&window.cancelPeriodStory(${JSON.stringify(run.id)});true;`); } catch {}
+    if (run.nativeEngine) cancelNativeJournal(run.id);
+    else {
+      try { webViewRef.current?.injectJavaScript(`window.cancelPeriodStory&&window.cancelPeriodStory(${JSON.stringify(run.id)});true;`); } catch {}
+    }
     run.script = undefined;
     run.transfer?.clear();
     run.webChunks = undefined;
@@ -203,7 +218,10 @@ export function usePeriodStoryGeneration(mode: 'period' | 'journal' = 'period') 
     run.currentJournalAssetData = undefined;
     try { run.handle?.close(); } catch {}
     if (!keepFile) { try { run.file?.delete(); } catch {} }
-    if (mounted.current) setJobId(null); // Unmount the renderer, releasing native memory too.
+    if (mounted.current) {
+      setJobId(null); // Unmount the renderer, releasing native memory too.
+      setUsesNativeEngine(false);
+    }
   }, []);
 
   const fail = useCallback((message: string) => {
@@ -217,7 +235,7 @@ export function usePeriodStoryGeneration(mode: 'period' | 'journal' = 'period') 
         status: 'error',
         phase: run.currentPhase ?? 'prepare',
         progress: run.currentProgress ?? 0,
-        writtenBytes: run.transfer?.writtenBytes ?? 0,
+        writtenBytes: run.transfer?.writtenBytes ?? run.nativeWrittenBytes ?? 0,
         writtenChunks: run.transfer?.written ?? 0,
         idleMs: Math.max(0, endedAt - run.lastActivity),
         errorCode: journalErrorCode(message),
@@ -476,6 +494,10 @@ export function usePeriodStoryGeneration(mode: 'period' | 'journal' = 'period') 
         segmentIndex: number(msg.segmentIndex),
         photoIndex: number(msg.photoIndex),
         photoState: text(msg.photoState),
+        waitingPhotoIndex: number(msg.waitingPhotoIndex),
+        waitingPhotoState: text(msg.waitingPhotoState),
+        waitingSegmentKind: text(msg.waitingSegmentKind),
+        waitingSegmentIndex: number(msg.waitingSegmentIndex),
         recorderState: text(msg.recorderState),
         awaitingAck: msg.awaitingAck === true,
         blobRemainingBytes: number(msg.blobRemainingBytes),
@@ -498,6 +520,10 @@ export function usePeriodStoryGeneration(mode: 'period' | 'journal' = 'period') 
           segmentIndex: state.segmentIndex,
           photoIndex: state.photoIndex,
           photoState: state.photoState,
+          waitingPhotoIndex: state.waitingPhotoIndex,
+          waitingPhotoState: state.waitingPhotoState,
+          waitingSegmentKind: state.waitingSegmentKind,
+          waitingSegmentIndex: state.waitingSegmentIndex,
           recorderState: state.recorderState,
           awaitingAck: state.awaitingAck,
           blobRemainingBytes: state.blobRemainingBytes,
@@ -736,7 +762,7 @@ export function usePeriodStoryGeneration(mode: 'period' | 'journal' = 'period') 
     clearCachedResult();
     const id = `${Date.now()}-${++sequence.current}`;
     const photoCount = journal ? request.photoCount : request.trips.reduce((n, t) => n + (t.photos?.filter(p => p.routeIndex != null).length ?? 0), 0);
-    const duration = journal ? journalDuration(request.entries, request.secondsPerPhoto)
+    const duration = journal ? journalDuration(request.entries, request.secondsPerPhoto, !!request.finalComparison)
       : request.videoDurationSec + photoCount * (request.photoPauseSecPerPhoto ?? 2);
     runRef.current = {
       id, startedAt: Date.now(), ready: false, injected: false, lastActivity: Date.now(), signal: '',
@@ -754,6 +780,7 @@ export function usePeriodStoryGeneration(mode: 'period' | 'journal' = 'period') 
       }).catch(() => {});
     }
     setJobId(id);
+    setUsesNativeEngine(false);
     setPhase('prepare');
     setProgress(0);
     setDetail(`0 / ${count} ${journal ? 'étapes' : 'trajets'}`);
@@ -773,6 +800,113 @@ export function usePeriodStoryGeneration(mode: 'period' | 'journal' = 'period') 
         runRef.current.journalAssetTotal = assets.length;
         runRef.current.journalAssetIndex = 0;
         runRef.current.journalAssetChunkIndex = 0;
+        if (Platform.OS === 'android') {
+          if (isNativeJournalEncoderAvailable()) {
+            const plan = buildNativeJournalPlan(payload, assets);
+            runRef.current.nativeEngine = true;
+            runRef.current.exportStarted = true;
+            runRef.current.currentPhase = 'recording';
+            setUsesNativeEngine(true);
+            setPhase('recording');
+            setProgress(0);
+            setDetail('Préparation du moteur vidéo Android…');
+            const subscription = addNativeJournalProgressListener(event => {
+              const run = runRef.current;
+              if (!run || run.id !== id || event.jobId !== id) return;
+              run.lastActivity = Date.now();
+              run.nativeWrittenBytes = event.bytes;
+              run.nativeFrames = event.frames;
+              run.currentPhase = event.stage === 'finalizing' ? 'export' : 'recording';
+              run.currentProgress = event.progress;
+              run.engineState = {
+                receivedAt: Date.now(),
+                stage: `native_${event.stage}`,
+                storyTimeMs: Math.round(event.frames / plan.fps * 1000),
+                storyDurationMs: Math.round(event.totalFrames / plan.fps * 1000),
+                segmentKind: 'native',
+                segmentIndex: event.scene,
+                photoIndex: 0,
+                photoState: 'none',
+                recorderState: 'native',
+                awaitingAck: false,
+                blobRemainingBytes: 0,
+                pendingBlobs: 0,
+                chunkIndex: event.frames,
+                bytes: event.bytes,
+              };
+              setPhase(run.currentPhase);
+              setProgress(event.progress);
+              setDetail(event.stage === 'preparing'
+                ? `Préparation · étape ${event.scene} / ${event.scenes}`
+                : `${event.progress} % · ${(event.bytes / (1024 * 1024)).toFixed(1)} Mo écrits`);
+              if (event.progress >= (run.nativeLastLoggedProgress ?? -5) + 5) {
+                run.nativeLastLoggedProgress = event.progress;
+                void appendJournalRenderLogEvent(id, {
+                  elapsedMs: Date.now() - run.startedAt,
+                  kind: 'engine',
+                  phase: run.currentPhase,
+                  progress: event.progress,
+                  completed: event.frames,
+                  total: event.totalFrames,
+                  engineStage: `native_${event.stage}`,
+                  segmentKind: 'native',
+                  segmentIndex: event.scene,
+                  storyTimeMs: run.engineState.storyTimeMs,
+                  storyDurationMs: run.engineState.storyDurationMs,
+                  bytes: event.bytes,
+                }, {
+                  phase: run.currentPhase,
+                  progress: event.progress,
+                  writtenBytes: event.bytes,
+                  writtenChunks: 0,
+                }).catch(() => {});
+              }
+            });
+            try {
+              const nativeResult = await generateNativeJournal(id, plan);
+              if (runRef.current?.id !== id) return;
+              const endedAt = Date.now();
+              const nativeFile = new File(nativeResult.uri);
+              runRef.current.file = nativeFile;
+              runRef.current.nativeWrittenBytes = nativeResult.bytes;
+              runRef.current.nativeFrames = nativeResult.frames;
+              runRef.current.debugMetrics = {
+                durationMs: endedAt - runRef.current.startedAt,
+                recorderPauses: 0,
+                photoFailures: 0,
+              };
+              setDebugMetrics(formatDebugMetrics(runRef.current.debugMetrics));
+              setProgress(100);
+              setPhase('export');
+              setDetail(`${(nativeResult.bytes / (1024 * 1024)).toFixed(1)} Mo · vidéo prête`);
+              void finishJournalRenderLog(id, {
+                endedAt,
+                durationMs: Math.max(0, endedAt - runRef.current.startedAt),
+                status: 'success',
+                phase: 'export',
+                progress: 100,
+                writtenBytes: nativeResult.bytes,
+                writtenChunks: 0,
+                metrics: runRef.current.debugMetrics,
+                engineState: runRef.current.engineState,
+              }).catch(() => {});
+              stop(true);
+              const cached: CachedPeriodStoryResult = {
+                uri: nativeFile.uri,
+                mimeType: 'video/mp4',
+                file: nativeFile,
+              };
+              resultRef.current = cached;
+              if (mounted.current) setResult({ uri: nativeFile.uri, mimeType: 'video/mp4' });
+            } finally {
+              subscription?.remove();
+            }
+            return;
+          }
+          if (photoCount > 15) {
+            throw new Error('Ce carnet nécessite le nouveau moteur vidéo Android. Mets à jour l’application avant de créer plus de 15 photos.');
+          }
+        }
         const payloadWithStart = { ...payload, startedAtMs: runRef.current.startedAt };
         runRef.current.script = `(function(){try{window.generatePeriodStory(${JSON.stringify(payloadWithStart)});}catch(e){window.ReactNativeWebView.postMessage(JSON.stringify({type:'story_error',jobId:${JSON.stringify(id)},message:'Impossible de démarrer le carnet vidéo.'}));}})();true;`;
         setDetail(assets.length ? `${assets.length} photos à préparer au fil de la vidéo` : 'Ouverture du carnet…');
@@ -898,7 +1032,7 @@ export function usePeriodStoryGeneration(mode: 'period' | 'journal' = 'period') 
   }, [clearCachedResult]);
 
   return {
-    jobId, isGenerating: jobId !== null, progress, detail,
+    jobId, isGenerating: jobId !== null, progress, detail, usesNativeEngine,
     title: mode === 'journal' && phase === 'prepare' ? 'Préparation du carnet…' : TITLES[phase], fallbackNote, error,
     webViewRef, source, start, cancel: () => {
       const run = runRef.current;

@@ -14,6 +14,10 @@ export type JournalRenderEngineState = {
   segmentIndex: number;
   photoIndex: number;
   photoState: string;
+  waitingPhotoIndex?: number;
+  waitingPhotoState?: string;
+  waitingSegmentKind?: string;
+  waitingSegmentIndex?: number;
   recorderState: string;
   awaitingAck: boolean;
   blobRemainingBytes: number;
@@ -39,6 +43,10 @@ export type JournalRenderEvent = {
   segmentIndex?: number;
   photoIndex?: number;
   photoState?: string;
+  waitingPhotoIndex?: number;
+  waitingPhotoState?: string;
+  waitingSegmentKind?: string;
+  waitingSegmentIndex?: number;
   recorderState?: string;
   awaitingAck?: boolean;
   blobRemainingBytes?: number;
@@ -70,6 +78,13 @@ export type JournalRenderLog = {
 
 export function failedJournalRenderLogs(logs: JournalRenderLog[]): JournalRenderLog[] {
   return logs.filter(log => log.status === 'error' || log.status === 'interrupted');
+}
+
+export function latestFailedJournalRenderLog(logs: JournalRenderLog[]): JournalRenderLog | undefined {
+  return failedJournalRenderLogs(logs).reduce<JournalRenderLog | undefined>(
+    (latest, log) => !latest || log.startedAt > latest.startedAt ? log : latest,
+    undefined,
+  );
 }
 
 let writes: Promise<unknown> = Promise.resolve();
@@ -181,6 +196,10 @@ export function finishJournalRenderLog(
         segmentIndex: input.engineState.segmentIndex,
         photoIndex: input.engineState.photoIndex,
         photoState: input.engineState.photoState,
+        waitingPhotoIndex: input.engineState.waitingPhotoIndex,
+        waitingPhotoState: input.engineState.waitingPhotoState,
+        waitingSegmentKind: input.engineState.waitingSegmentKind,
+        waitingSegmentIndex: input.engineState.waitingSegmentIndex,
         recorderState: input.engineState.recorderState,
         awaitingAck: input.engineState.awaitingAck,
         blobRemainingBytes: input.engineState.blobRemainingBytes,

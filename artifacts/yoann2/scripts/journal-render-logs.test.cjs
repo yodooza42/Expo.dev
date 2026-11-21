@@ -57,15 +57,16 @@ test('journal render logs retain only the five newest runs', async () => {
 test('copyable carnet logs include only failures and interrupted renders', async () => {
   const { store } = loadStore();
   const logs = [
-    { status: 'success' },
-    { status: 'error' },
-    { status: 'cancelled' },
-    { status: 'interrupted' },
+    { id: 'success-newer', status: 'success', startedAt: 4000 },
+    { id: 'error-older', status: 'error', startedAt: 2000 },
+    { id: 'cancelled', status: 'cancelled', startedAt: 5000 },
+    { id: 'interrupted-newer', status: 'interrupted', startedAt: 3000 },
   ];
   assert.deepEqual(
     Array.from(store.failedJournalRenderLogs(logs), log => log.status),
     ['error', 'interrupted'],
   );
+  assert.equal(store.latestFailedJournalRenderLog(logs).id, 'interrupted-newer');
 });
 
 test('journal render logs keep bounded progress and final diagnostics', async () => {
@@ -99,6 +100,10 @@ test('journal render logs keep bounded progress and final diagnostics', async ()
       segmentIndex: 3,
       photoIndex: 7,
       photoState: 'ok',
+      waitingPhotoIndex: 8,
+      waitingPhotoState: 'loading',
+      waitingSegmentKind: 'title',
+      waitingSegmentIndex: 4,
       recorderState: 'paused',
       awaitingAck: true,
       blobRemainingBytes: 24_576,
@@ -114,7 +119,9 @@ test('journal render logs keep bounded progress and final diagnostics', async ()
   assert.equal(log.writtenBytes, 7_000_000);
   assert.equal(log.idleMs, 60_000);
   assert.equal(log.engineState.stage, 'waiting_native_ack');
+  assert.equal(log.engineState.waitingPhotoIndex, 8);
   assert.equal(log.events.at(-1).engineStage, 'waiting_native_ack');
+  assert.equal(log.events.at(-1).waitingPhotoIndex, 8);
   assert.equal(log.events.at(-1).kind, 'error');
 });
 

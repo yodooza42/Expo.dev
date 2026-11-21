@@ -218,6 +218,9 @@ function makeNativeMocks(clock, options = {}) {
     keepAwakeActivations: 0,
     keepAwakeDeactivations: 0,
     journalPhotoPreparations: [],
+    nativeJournalGenerations: [],
+    nativeJournalCancellations: [],
+    nativeJournalProgressListeners: [],
   };
 
   class MockHandle {
@@ -239,10 +242,11 @@ function makeNativeMocks(clock, options = {}) {
 
   class MockFile {
     constructor(directory, name) {
-      this.directory = directory;
-      this.name = name;
-      this.uri = `${directory}://${name}`;
-      this.created = false;
+      const resultUri = name === undefined ? directory : `${directory}://${name}`;
+      this.directory = name === undefined ? 'native-result' : directory;
+      this.name = name === undefined ? resultUri.split('/').pop() : name;
+      this.uri = resultUri;
+      this.created = name === undefined;
       this.deleted = false;
       this.handle = null;
       native.files.push(this);
@@ -356,6 +360,29 @@ function makeNativeMocks(clock, options = {}) {
         assets,
       };
     } },
+    '@/modules/yoann-journal-native/src': {
+      addNativeJournalProgressListener: listener => {
+        native.nativeJournalProgressListeners.push(listener);
+        return { remove: () => {
+          native.nativeJournalProgressListeners = native.nativeJournalProgressListeners.filter(item => item !== listener);
+        } };
+      },
+      cancelNativeJournal: jobId => native.nativeJournalCancellations.push(jobId),
+      generateNativeJournal: async (jobId, plan) => {
+        native.nativeJournalGenerations.push({ jobId, plan });
+        for (const listener of native.nativeJournalProgressListeners) {
+          listener({ jobId, stage: 'encoding', progress: 50, scene: 1, scenes: 2, frames: 75, totalFrames: 150, bytes: 2048 });
+        }
+        return { uri: 'file://native-journal.mp4', bytes: 4096, frames: 150, durationMs: 10_000, encoderName: 'synthetic-h264' };
+      },
+      isNativeJournalEncoderAvailable: () => options.nativeJournalAvailable === true,
+    },
+    '@/utils/nativeJournalPlan': {
+      buildNativeJournalPlan: (_payload, assets) => ({
+        fps: 15,
+        scenes: assets.map(asset => ({ photoUri: asset.uri })),
+      }),
+    },
     '@/utils/projectJournal': { JOURNAL_LIMITS: { photoBytes: 8 * 1024 * 1024 }, journalDuration: () => 20 },
     '@/utils/storyPhoto': { prepareStoryPhoto: async (_uri, current) => {
       native.journalPhotoPreparations.push(_uri);
@@ -886,6 +913,28 @@ test('native journal shares the proven bridge but injects journal photos/caption
   await harness.api.shareResult();
   assert.equal(harness.native.shares[0].config.dialogTitle, 'Partager le carnet de bord');
 });
+
+test('Android journal uses the native encoder and returns its completed MP4', async () => {
+  const harness = makeHarness({ mode: 'journal', nativeJournalAvailable: true });
+  const id = await prepareStart(harness, journalRequest());
+  await settle();
+
+  assert.ok(id);
+  assert.equal(harness.api.jobId, null);
+  assert.equal(harness.native.nativeJournalGenerations.length, 1);
+  assert.equal(harness.native.nativeJournalGenerations[0].jobId, id);
+  assert.equal(harness.native.nativeJournalGenerations[0].plan.scenes[0].photoUri, 'file://source');
+  assert.equal(harness.native.injections.some(script => script.includes('generatePeriodStory')), false);
+  assert.equal(harness.api.result.uri, 'file://native-journal.mp4');
+  assert.equal(harness.api.result.mimeType, 'video/mp4');
+  assert.equal(harness.native.journalLogCalls.finishes.at(-1)[1].status, 'success');
+  assert.equal(harness.native.journalLogCalls.finishes.at(-1)[1].writtenBytes, 4096);
+  assert.equal(harness.native.journalLogCalls.events[0][1].completed, 75);
+  assert.equal(harness.native.journalLogCalls.events[0][1].total, 150);
+  assert.equal(harness.native.nativeJournalProgressListeners.length, 0);
+  assert.match(harness.api.debugMetrics, /pauses : 0/);
+});
+
 test('journal keeps the display awake and aborts explicitly if recording enters background', async () => {
   const harness = makeHarness({ mode: 'journal' });
   const id = await prepareStart(harness, journalRequest());

@@ -37,7 +37,7 @@ import { genId } from '@/utils/ids';
 import { LibrarySettings } from '@/components/LibrarySettings';
 import {
   clearJournalRenderLogs,
-  failedJournalRenderLogs,
+  latestFailedJournalRenderLog,
   loadJournalRenderLogs,
   type JournalRenderLog,
 } from '@/utils/journalRenderLogs';
@@ -98,7 +98,7 @@ export default function SettingsScreen() {
   const [widgetLogEntries, setWidgetLogEntries] = useState<{ t: string; tag: string; data: string }[]>([]);
   const [journalLogVisible, setJournalLogVisible] = useState(false);
   const [journalLogEntries, setJournalLogEntries] = useState<JournalRenderLog[]>([]);
-  const failedJournalLogs = failedJournalRenderLogs(journalLogEntries);
+  const latestFailedJournalLog = latestFailedJournalRenderLog(journalLogEntries);
 
   async function handleAddExpCat(name: string) {
     const allConfigs = await getCategoryConfigs();
@@ -178,14 +178,13 @@ export default function SettingsScreen() {
   }
 
   async function copyJournalLogs() {
-    const errors = failedJournalLogs;
-    if (!errors.length) {
+    if (!latestFailedJournalLog) {
       Alert.alert('Aucune erreur', 'Aucun carnet en échec ou interrompu à copier.');
       return;
     }
     try {
-      await Clipboard.setStringAsync(JSON.stringify(errors, null, 2));
-      Alert.alert('Erreurs copiées', `${errors.length} journal${errors.length > 1 ? 'x' : ''} en échec ou interrompu${errors.length > 1 ? 's' : ''} prêt${errors.length > 1 ? 's' : ''} à coller.`);
+      await Clipboard.setStringAsync(JSON.stringify(latestFailedJournalLog, null, 2));
+      Alert.alert('Journal copié', 'Le dernier carnet en échec ou interrompu est prêt à coller.');
     } catch {
       Alert.alert('Copie impossible', 'Réessaie d’ouvrir les journaux puis de les copier.');
     }
@@ -567,6 +566,7 @@ export default function SettingsScreen() {
                       <Text style={[styles.journalLogMeta, { color: colors.primary }]}>
                         Dernier état : {log.engineState.stage} · page {log.engineState.segmentIndex} ({log.engineState.segmentKind})
                         {log.engineState.photoIndex ? ` · photo ${log.engineState.photoIndex} ${log.engineState.photoState}` : ''}
+                        {log.engineState.waitingPhotoIndex ? ` · attend photo ${log.engineState.waitingPhotoIndex} ${log.engineState.waitingPhotoState} (page ${log.engineState.waitingSegmentIndex} ${log.engineState.waitingSegmentKind})` : ''}
                         {` · enregistreur ${log.engineState.recorderState}`}
                         {log.engineState.awaitingAck ? ' · accusé attendu' : ''}
                         {` · film ${Math.round(log.engineState.storyTimeMs / 1000)} / ${Math.round(log.engineState.storyDurationMs / 1000)} s`}
@@ -588,6 +588,7 @@ export default function SettingsScreen() {
                         {event.engineStage ? ` · moteur ${event.engineStage}` : ''}
                         {event.segmentKind ? ` · page ${event.segmentIndex} ${event.segmentKind}` : ''}
                         {event.photoIndex ? ` · photo ${event.photoIndex} ${event.photoState}` : ''}
+                        {event.waitingPhotoIndex ? ` · attend photo ${event.waitingPhotoIndex} ${event.waitingPhotoState} (page ${event.waitingSegmentIndex} ${event.waitingSegmentKind})` : ''}
                         {event.recorderState ? ` · enregistreur ${event.recorderState}` : ''}
                         {event.awaitingAck ? ' · accusé attendu' : ''}
                         {event.storyTimeMs !== undefined && event.storyDurationMs !== undefined
@@ -600,15 +601,15 @@ export default function SettingsScreen() {
             )}
             <Pressable
               onPress={() => { void copyJournalLogs(); }}
-              disabled={!failedJournalLogs.length}
+              disabled={!latestFailedJournalLog}
               style={({ pressed }) => [{
                 minHeight: 48, borderRadius: 12, alignItems: 'center', justifyContent: 'center',
                 flexDirection: 'row', gap: 8, backgroundColor: colors.primary,
-                opacity: pressed ? 0.75 : failedJournalLogs.length ? 1 : 0.5,
-              }, !failedJournalLogs.length && { opacity: 0.5 }]}
+                opacity: pressed ? 0.75 : latestFailedJournalLog ? 1 : 0.5,
+              }, !latestFailedJournalLog && { opacity: 0.5 }]}
             >
               <MaterialCommunityIcons name="content-copy" size={18} color={colors.primaryForeground} />
-              <Text style={[styles.cancelLabel, { color: colors.primaryForeground }]}>Copier les erreurs</Text>
+              <Text style={[styles.cancelLabel, { color: colors.primaryForeground }]}>Copier le dernier échec</Text>
             </Pressable>
             {!!journalLogEntries.length && (
               <Pressable onPress={clearJournalLogs} style={[styles.cancelBtn, { borderColor: colors.destructive, flex: 0 }]}>

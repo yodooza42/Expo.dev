@@ -12,6 +12,11 @@ expo-env.d.ts
 # Native
 ios/
 android/
+# Keep Expo's local Kotlin modules in source control.
+!modules/
+!modules/yoann-journal-native/
+!modules/yoann-journal-native/android/
+!modules/yoann-journal-native/android/**
 *.orig.*
 *.jks
 *.p8

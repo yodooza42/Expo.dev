@@ -742,6 +742,25 @@ test('journal export waits for sequential image chunks before recording and pres
   assert.equal(e.activeImages, 0);
   assert.equal(e.timerCount, 0);
 });
+test('stalled next photo is identified and fails before the general watchdog', async () => {
+  const e = engine();
+  const data = payload({ count: 1, preview: false });
+  data.finalComparisonImages = {
+    projectName: 'Garage',
+    before: [{ id: 'before', img: '', assetKey: 'comparison-before', dateLabel: '5 avril 2026' }],
+    after: [],
+  };
+  e.win.generatePeriodStory(data);
+  await e.advance(70_000);
+  const waiting = e.messages.find(message => message.type === 'story_heartbeat'
+    && message.stage === 'waiting_photo' && message.waitingPhotoIndex);
+  assert.equal(waiting?.waitingPhotoIndex, 2);
+  assert.equal(waiting?.waitingPhotoState, 'waiting');
+  assert.equal(waiting?.waitingSegmentKind, 'comparison');
+  assert.ok(e.messages.some(message => message.type === 'story_error'
+    && message.message.includes('photo 2') && message.message.includes('45 s')));
+  assert.equal(e.messages.some(message => message.type === 'story_done'), false);
+});
 test('cancelling recording releases resources and prevents a late video', async () => {
   const e = engine();
   e.win.generatePeriodStory(payload({ preview: false }));

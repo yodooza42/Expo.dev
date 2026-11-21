@@ -216,6 +216,17 @@ function ready(seg,lt){
   var active=seg.photoStart+photoIndex(seg,lt),current=cache[active];
   return !!current&&current.st==='ok';
 }
+function blockedPhoto(seg,lt){
+  if(!seg||!seg.photoCount)return null;
+  if(seg.k==='comparison'){
+    for(var i=seg.photoStart;i<seg.photoStart+seg.photoCount;i++){
+      var item=cache[i];if(!item||item.st!=='ok')return {index:i+1,state:item&&item.st||'not_loaded'};
+    }
+    return null;
+  }
+  var index=seg.photoStart+photoIndex(seg,lt),item=cache[index];
+  return item&&item.st==='ok'?null:{index:index+1,state:item&&item.st||'not_loaded'};
+}
 
 /* ---------- drawing ---------- */
 function folio(seg){
@@ -434,14 +445,20 @@ function exportStep(seg,dt){
   if(j.currentBlob||j.awaitingAck||j.pendingBlobs.length){
     j.engineStage=j.awaitingAck?'waiting_native_ack':'transferring_blob';return}
   var nextT=Math.min(dur,t+dt),nextSeg=segAt(nextT);
-  if(!ready(nextSeg,nextT-nextSeg.s)){ensure(nextSeg,nextT-nextSeg.s);
+  var blocked=blockedPhoto(nextSeg,nextT-nextSeg.s),blockedSeg=nextSeg;
+  if(!blocked){blocked=blockedPhoto(seg,t-seg.s);blockedSeg=seg}
+  if(blocked){
+    ensure(blockedSeg,blockedSeg===nextSeg?nextT-nextSeg.s:t-seg.s);
     j.engineStage='waiting_photo';
+    j.waitingForPhoto={index:blocked.index,state:blocked.state,segmentKind:blockedSeg.k,segmentIndex:blockedSeg.i+1};
     if(j.rec.state==='recording'){try{j.rec.pause();j.recorderPauses++}catch(e){}}
-    if(!j.waitAt)j.waitAt=performance.now();return}
-  if(!ready(seg,t-seg.s)){if(j.rec.state==='recording'){try{j.rec.pause();j.recorderPauses++}catch(e){}}
-    j.engineStage='waiting_photo';
-    if(!j.waitAt)j.waitAt=performance.now();return}
-  if(j.waitAt){j.waitAt=0;if(j.rec.state==='paused'){try{j.rec.resume()}catch(e){}}j.engineStage='recording';lastTick=performance.now();return}
+    if(!j.waitAt)j.waitAt=performance.now();
+    if(performance.now()-j.waitAt>=45000){
+      fail(j,'La photo '+blocked.index+' de la page '+(blockedSeg.i+1)+' ('+blockedSeg.k+') n’a pas pu être préparée après 45 s. Réessaie le carnet.');
+    }
+    return;
+  }
+  if(j.waitAt){j.waitAt=0;j.waitingForPhoto=null;if(j.rec.state==='paused'){try{j.rec.resume()}catch(e){}}j.engineStage='recording';lastTick=performance.now();return}
   t=Math.min(dur,t+dt);
   j.engineStage='recording';j.lastStoryTimeMs=Math.round(t*1000);
   var now=performance.now();if(now-j.lastP>500){j.lastP=now;post({type:'story_progress',jobId:j.id,p:Math.round(t/dur*100),metrics:getMetrics(j)})}
@@ -491,10 +508,13 @@ function engineSnapshot(j){
   var seg=segAt(t),index=seg&&seg.photoCount
     ?seg.photoStart+photoIndex(seg,Math.max(0,t-seg.s)):-1;
   var photo=index>=0?cache[index]:null;
+  var waiting=j.waitingForPhoto;
   return {type:'story_heartbeat',jobId:j.id,stage:j.engineStage||'starting',
     storyTimeMs:Math.round(t*1000),storyDurationMs:Math.round(dur*1000),
     segmentKind:seg&&seg.k||'unknown',segmentIndex:seg?seg.i+1:0,
     photoIndex:index>=0?index+1:0,photoState:photo&&photo.st||'none',
+    waitingPhotoIndex:waiting&&waiting.index||0,waitingPhotoState:waiting&&waiting.state||'',
+    waitingSegmentKind:waiting&&waiting.segmentKind||'',waitingSegmentIndex:waiting&&waiting.segmentIndex||0,
     recorderState:j.rec&&j.rec.state||'inactive',awaitingAck:!!j.awaitingAck,
     blobRemainingBytes:j.currentBlob?Math.max(0,j.currentBlob.size-j.currentOffset):0,
     pendingBlobs:j.pendingBlobs?j.pendingBlobs.length:0,
