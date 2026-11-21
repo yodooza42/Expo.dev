@@ -6,6 +6,12 @@
 attached_assets/
 screenshots/
 
+# Expo native projects are generated from artifacts/yoann2/app.json during
+# EAS prebuild. The workspace-root .easignore replaces .gitignore for the
+# archive, so exclude the nested generated folders explicitly here.
+artifacts/yoann2/android/
+artifacts/yoann2/ios/
+
 # Other workspace artifacts — not needed for the yoann2 Expo build
 artifacts/api-server/
 artifacts/mockup-sandbox/
