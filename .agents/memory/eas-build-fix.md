@@ -16,3 +16,11 @@ Conserver la même version exacte de pnpm en local et dans les profils de build,
 **Why:** Un lockfile ne fige pas les règles de sécurité du gestionnaire de paquets : les versions majeures de pnpm changent les paramètres d’autorisation des scripts.
 
 **How to apply:** Aligner la version déclarée à la racine et celle des profils cloud ; vérifier les installations avec le lockfile figé avant de modifier les autorisations.
+
+## Archive EAS depuis un monorepo
+
+Quand EAS archive depuis la racine du monorepo, c’est le `.easignore` racine qui gouverne l’archive et remplace les règles de `.gitignore`. Les dossiers natifs Expo générés sous `artifacts/<app>/android` et `ios` doivent donc y être exclus explicitement, même si `.gitignore` et le `.easignore` de l’application les excluent déjà.
+
+**Why:** Des dossiers natifs locaux ignorés par Git peuvent malgré tout être envoyés dans l’archive EAS et empêcher la régénération propre de l’autolinking.
+
+**How to apply:** Vérifier le contexte racine utilisé par le build, puis placer les exclusions des dossiers natifs générés dans le `.easignore` réellement utilisé pour l’archive.
