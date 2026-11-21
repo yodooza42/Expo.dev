@@ -341,6 +341,9 @@ function makeNativeMocks(clock, options = {}) {
     },
     '@/utils/periodStoryTransfer': transfer,
     '@/utils/projectJournalRenderer': { buildProjectJournalHtml: () => '<html data-synthetic-journal />' },
+    '@/utils/photoReferences': {
+      photoCandidates: async uri => options.nativePhotoCandidates?.[uri] ?? [uri],
+    },
     '@/utils/prepareJournal': { prepareJournal: (request, jobId, current) => {
       if (options.mode !== 'journal') throw new Error('Unexpected journal preparation in period test');
       if (options.journalError) throw new Error('Photo de la tâche indisponible');
@@ -380,7 +383,10 @@ function makeNativeMocks(clock, options = {}) {
     '@/utils/nativeJournalPlan': {
       buildNativeJournalPlan: (_payload, assets) => ({
         fps: 15,
-        scenes: assets.map(asset => ({ photoUri: asset.uri })),
+        scenes: assets.map(asset => ({
+          photoUri: asset.nativeCandidates?.[0] ?? asset.uri,
+          photoFallbackUris: asset.nativeCandidates?.slice(1) ?? [],
+        })),
       }),
     },
     '@/utils/projectJournal': { JOURNAL_LIMITS: { photoBytes: 8 * 1024 * 1024 }, journalDuration: () => 20 },
@@ -915,7 +921,11 @@ test('native journal shares the proven bridge but injects journal photos/caption
 });
 
 test('Android journal uses the native encoder and returns its completed MP4', async () => {
-  const harness = makeHarness({ mode: 'journal', nativeJournalAvailable: true });
+  const harness = makeHarness({
+    mode: 'journal',
+    nativeJournalAvailable: true,
+    nativePhotoCandidates: { 'file://source': ['content://resolved/source', 'file://source'] },
+  });
   const id = await prepareStart(harness, journalRequest());
   await settle();
 
@@ -923,7 +933,11 @@ test('Android journal uses the native encoder and returns its completed MP4', as
   assert.equal(harness.api.jobId, null);
   assert.equal(harness.native.nativeJournalGenerations.length, 1);
   assert.equal(harness.native.nativeJournalGenerations[0].jobId, id);
-  assert.equal(harness.native.nativeJournalGenerations[0].plan.scenes[0].photoUri, 'file://source');
+  assert.equal(harness.native.nativeJournalGenerations[0].plan.scenes[0].photoUri, 'content://resolved/source');
+  assert.deepEqual(
+    harness.native.nativeJournalGenerations[0].plan.scenes[0].photoFallbackUris,
+    ['file://source'],
+  );
   assert.equal(harness.native.injections.some(script => script.includes('generatePeriodStory')), false);
   assert.equal(harness.api.result.uri, 'file://native-journal.mp4');
   assert.equal(harness.api.result.mimeType, 'video/mp4');
