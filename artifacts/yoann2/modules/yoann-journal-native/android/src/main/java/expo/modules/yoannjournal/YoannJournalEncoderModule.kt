@@ -52,7 +52,8 @@ private data class NativeScene(
   val subtitle: String,
   val dateLabel: String,
   val caption: String,
-  val photoUri: String?,
+  val photoUris: List<String>,
+  val photoSourceKey: String?,
   val lines: List<String>,
   val durationSec: Double,
 )
@@ -145,13 +146,19 @@ class YoannJournalEncoderModule : Module() {
       if (!duration.isFinite() || duration <= 0.0) {
         throw NativeExportFailure("La durée d’une étape du carnet est invalide.")
       }
+      val photoUri = sceneString("photoUri").takeIf { it.isNotBlank() }
+      val photoFallbackUris = (scene["photoFallbackUris"] as? List<*>)
+        ?.mapNotNull { it as? String }
+        ?.filter { it.isNotBlank() }
+        ?: emptyList()
       NativeScene(
         kind = sceneString("kind"),
         title = sceneString("title"),
         subtitle = sceneString("subtitle"),
         dateLabel = sceneString("dateLabel"),
         caption = sceneString("caption"),
-        photoUri = (scene["photoUri"] as? String)?.takeIf { it.isNotBlank() },
+        photoUris = (listOfNotNull(photoUri) + photoFallbackUris).distinct(),
+        photoSourceKey = sceneString("photoSourceKey").takeIf { it.isNotBlank() },
         lines = lines,
         durationSec = duration,
       )
@@ -177,14 +184,23 @@ class YoannJournalEncoderModule : Module() {
     ) {
       throw NativeExportFailure("La sélection dépasse la capacité du carnet.")
     }
-    if (plan.scenes.count { it.photoUri != null } != plan.photoCount) {
+    val timelinePhotoScenes = plan.scenes.filter { it.kind == "photo" && it.photoUris.isNotEmpty() }
+    val timelinePhotoKeys = timelinePhotoScenes.map {
+      it.photoSourceKey ?: it.photoUris.first()
+    }.toSet()
+    val newComparisonPhotoKeys = plan.scenes
+      .filter { it.kind == "comparison" && it.photoUris.isNotEmpty() }
+      .map { it.photoSourceKey ?: it.photoUris.first() }
+      .filterNot { it in timelinePhotoKeys }
+      .toSet()
+    if (timelinePhotoScenes.size + newComparisonPhotoKeys.size != plan.photoCount) {
       throw NativeExportFailure("Le nombre de photos ne correspond pas au carnet.")
     }
     val duration = plan.scenes.sumOf { it.durationSec }
     if (!duration.isFinite() || duration > MAX_DURATION_SECONDS) {
       throw NativeExportFailure("Ce carnet dépasse 15 minutes.")
     }
-    if (plan.scenes.any { it.photoUri != null && it.photoUri.isNullOrBlank() }) {
+    if (plan.scenes.any { (it.kind == "photo" || it.kind == "comparison") && it.photoUris.isEmpty() }) {
       throw NativeExportFailure("Une photo du carnet est introuvable.")
     }
     return plan
@@ -441,8 +457,8 @@ private class NativeJournalVideoEncoder(
       drawWrapped(canvas, scene.subtitle, subPaint, 100f, 350f, 500f, 2, 1.2f)
     }
 
-    scene.photoUri?.let { uri ->
-      val photo = decodePhoto(uri)
+    scene.photoUris.takeIf { it.isNotEmpty() }?.let { uris ->
+      val photo = decodePhoto(uris)
       try {
       val photoArea = RectF(90f, 390f, 630f, 850f)
         val scale = min(photoArea.width() / photo.width, photoArea.height() / photo.height)
@@ -532,7 +548,20 @@ private class NativeJournalVideoEncoder(
     }
   }
 
-  private fun decodePhoto(uriString: String): Bitmap {
+  private fun decodePhoto(uriCandidates: List<String>): Bitmap {
+    for (uri in uriCandidates.distinct()) {
+      try {
+        return decodePhotoCandidate(uri)
+      } catch (error: Exception) {
+        Log.w(TAG, "Could not read a native journal photo candidate", error)
+      }
+    }
+    throw NativeExportFailure(
+      "Une photo du carnet est illisible ou son accès a expiré. Vérifie son accès puis réessaie.",
+    )
+  }
+
+  private fun decodePhotoCandidate(uriString: String): Bitmap {
     val uri = Uri.parse(uriString)
     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
     openPhoto(uri).use { BitmapFactory.decodeStream(it, null, bounds) }

@@ -15,6 +15,7 @@ import { prepareJournal, type JournalPhotoAsset } from '@/utils/prepareJournal';
 import { JOURNAL_LIMITS, journalDuration } from '@/utils/projectJournal';
 import type { JournalGenerationRequest } from '@/types/projectJournal';
 import { resolvePhotoRef } from '@/utils/library/catalogue';
+import { photoCandidates } from '@/utils/photoReferences';
 import { prepareStoryPhoto } from '@/utils/storyPhoto';
 import {
   addNativeJournalProgressListener,
@@ -802,7 +803,21 @@ export function usePeriodStoryGeneration(mode: 'period' | 'journal' = 'period') 
         runRef.current.journalAssetChunkIndex = 0;
         if (Platform.OS === 'android') {
           if (isNativeJournalEncoderAvailable()) {
-            const plan = buildNativeJournalPlan(payload, assets);
+            const nativeAssets: JournalPhotoAsset[] = [];
+            for (let index = 0; index < assets.length; index++) {
+              const asset = assets[index]!;
+              const candidates = await photoCandidates(asset.uri);
+              if (runRef.current?.id !== id) return;
+              if (!candidates.length) {
+                throw new Error(`${asset.title} · photo ${asset.index + 1} : photo introuvable dans le catalogue.`);
+              }
+              nativeAssets.push({ ...asset, nativeCandidates: candidates });
+              runRef.current.lastActivity = Date.now();
+              if (index === 0 || (index + 1) % 5 === 0 || index === assets.length - 1) {
+                setDetail(`Vérification des photos ${index + 1} / ${assets.length}`);
+              }
+            }
+            const plan = buildNativeJournalPlan(payload, nativeAssets);
             runRef.current.nativeEngine = true;
             runRef.current.exportStarted = true;
             runRef.current.currentPhase = 'recording';

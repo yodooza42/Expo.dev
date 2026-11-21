@@ -1,7 +1,14 @@
 import type { JournalGenerationRequest, JournalVideoPayload } from '@/types/projectJournal';
 import { JOURNAL_LIMITS } from '@/utils/projectJournal';
 
-export type JournalPhotoAsset = { key: string; uri: string; title: string; index: number };
+export type JournalPhotoAsset = {
+  key: string;
+  uri: string;
+  title: string;
+  index: number;
+  /** Resolved file/content URIs tried by the native renderer, including recovery alternatives. */
+  nativeCandidates?: string[];
+};
 export type PreparedJournal = { payload: JournalVideoPayload; assets: JournalPhotoAsset[] };
 
 /**
