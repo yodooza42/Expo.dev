@@ -10,6 +10,7 @@ import android.graphics.RectF
 import android.media.MediaCodec
 import android.media.MediaCodecInfo
 import android.media.MediaCodecList
+import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.media.MediaMuxer
 import android.net.Uri
@@ -219,6 +220,7 @@ private class NativeJournalVideoEncoder(
   private var muxerStarted = false
   private var trackIndex = -1
   private var outputBytes = 0L
+  private var outputSamples = 0
   private val output = File(context.cacheDir, "journal_${jobId}.partial.mp4")
 
   fun encode(): EncoderOutput {
@@ -261,11 +263,11 @@ private class NativeJournalVideoEncoder(
             presentationTimeUs += 1_000_000L / FPS
             frameIndex++
             drainEncoder(endOfStream = false)
-            if (output.length() > plan.maxBytes) {
+            if (max(outputBytes, output.length()) > plan.maxBytes) {
               throw NativeExportFailure("La vidéo dépasserait 96 Mo. Réduis la durée ou le nombre de photos.")
             }
             if (frameIndex % FPS == 0 || frameIndex == estimatedFrames) {
-              emit("encoding", sceneIndex + 1, frameIndex, estimatedFrames, output.length())
+              emit("encoding", sceneIndex + 1, frameIndex, estimatedFrames, outputBytes)
             }
           }
         } finally {
@@ -286,6 +288,10 @@ private class NativeJournalVideoEncoder(
       muxer = null
       muxerStarted = false
 
+      if (outputSamples <= 0 || outputBytes <= 0L) {
+        throw NativeExportFailure("L’encodeur n’a produit aucune image vidéo exploitable. Réessaie la création.")
+      }
+      validateMp4(output)
       if (output.length() > plan.maxBytes) {
         throw NativeExportFailure("La vidéo dépasserait 96 Mo. Réduis la durée ou le nombre de photos.")
       }
@@ -347,7 +353,10 @@ private class NativeJournalVideoEncoder(
       ?: throw NativeExportFailure("L’encodeur Android ne prend pas en charge ce format d’image.")
     try {
       copyYuvToImage(frame, image)
-      activeCodec.queueInputBuffer(inputIndex, 0, 0, presentationTimeUs, 0)
+      // queueInputBuffer's size must describe the populated YUV frame. A zero
+      // size can make MediaCodec accept timestamps while emitting no samples,
+      // leaving MediaMuxer with an MP4 track that Android cannot play.
+      activeCodec.queueInputBuffer(inputIndex, 0, WIDTH * HEIGHT * 3 / 2, presentationTimeUs, 0)
     } finally {
       image.close()
     }
@@ -384,7 +393,8 @@ private class NativeJournalVideoEncoder(
         }
         outputIndex >= 0 -> {
           val buffer = activeCodec.getOutputBuffer(outputIndex)
-          if (buffer != null && info.size > 0) {
+          val isCodecConfig = (info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0
+          if (buffer != null && info.size > 0 && !isCodecConfig) {
             if (!muxerStarted) {
               activeCodec.releaseOutputBuffer(outputIndex, false)
               throw NativeExportFailure("L’encodeur n’a pas fourni les informations du MP4.")
@@ -393,6 +403,7 @@ private class NativeJournalVideoEncoder(
             buffer.limit(info.offset + info.size)
             muxer?.writeSampleData(trackIndex, buffer, info)
             outputBytes += info.size
+            outputSamples++
             if (outputBytes > plan.maxBytes) {
               activeCodec.releaseOutputBuffer(outputIndex, false)
               throw NativeExportFailure("La vidéo dépasserait 96 Mo. Réduis la durée ou le nombre de photos.")
@@ -403,6 +414,29 @@ private class NativeJournalVideoEncoder(
         }
       }
       checkCancelled()
+    }
+  }
+
+  private fun validateMp4(file: File) {
+    val extractor = MediaExtractor()
+    try {
+      extractor.setDataSource(file.absolutePath)
+      val videoTrack = (0 until extractor.trackCount).firstOrNull { index ->
+        extractor.getTrackFormat(index).getString(MediaFormat.KEY_MIME)
+          ?.startsWith("video/") == true
+      } ?: throw NativeExportFailure("Le fichier créé ne contient pas de piste vidéo lisible.")
+
+      extractor.selectTrack(videoTrack)
+      if (extractor.sampleTime < 0L || extractor.sampleSize <= 0L) {
+        throw NativeExportFailure("Le fichier créé ne contient aucune image vidéo lisible.")
+      }
+    } catch (error: NativeExportFailure) {
+      throw error
+    } catch (error: Exception) {
+      Log.e(TAG, "Generated MP4 failed validation", error)
+      throw NativeExportFailure("Le fichier vidéo créé est incomplet ou illisible sur cet appareil. Réessaie la création.")
+    } finally {
+      runCatching { extractor.release() }
     }
   }
 
