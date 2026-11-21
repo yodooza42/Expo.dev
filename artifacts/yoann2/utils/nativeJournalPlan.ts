@@ -10,6 +10,8 @@ export type NativeJournalScene = {
   dateLabel: string;
   caption: string;
   photoUri?: string;
+  photoFallbackUris?: string[];
+  photoSourceKey?: string;
   lines?: string[];
   durationSec: number;
 };
@@ -36,14 +38,25 @@ const recapDuration = (entry: JournalVideoPayload['entries'][number]) =>
   Math.max(8, Math.min(16, 4 + Math.ceil((entry.recapTasks?.length ?? 0) / 6) * 4
     + Math.ceil(entry.caption.length / 60)));
 
-function resolvePhotoUri(
+function resolvePhotoSources(
   photo: { img: string; assetKey?: string },
   assetsByKey: Map<string, JournalPhotoAsset>,
-): string {
-  const uri = photo.assetKey ? assetsByKey.get(photo.assetKey)?.uri : undefined;
-  const resolved = uri ?? photo.img;
-  if (!resolved) throw new Error('Une photo du carnet est introuvable.');
-  return resolved;
+): { uris: string[]; sourceKey: string } {
+  const asset = photo.assetKey ? assetsByKey.get(photo.assetKey) : undefined;
+  const sourceUri = asset?.uri ?? photo.img;
+  if (!sourceUri) throw new Error('Une photo du carnet est introuvable.');
+  const uris = [...new Set((asset?.nativeCandidates?.length ? asset.nativeCandidates : [sourceUri])
+    .filter(uri => typeof uri === 'string' && uri.length > 0))];
+  if (!uris.length) throw new Error('Une photo du carnet est introuvable.');
+  return { uris, sourceKey: asset?.key ?? sourceUri };
+}
+
+function photoSourceFields(
+  photo: { img: string; assetKey?: string },
+  assetsByKey: Map<string, JournalPhotoAsset>,
+) {
+  const { uris, sourceKey } = resolvePhotoSources(photo, assetsByKey);
+  return { photoUri: uris[0], ...(uris.length > 1 ? { photoFallbackUris: uris.slice(1) } : {}), photoSourceKey: sourceKey };
 }
 
 /**
@@ -101,7 +114,7 @@ export function buildNativeJournalPlan(
         subtitle: entry.project,
         dateLabel: entry.dateLabel,
         caption: photo.caption,
-        photoUri: resolvePhotoUri(photo, assetsByKey),
+        ...photoSourceFields(photo, assetsByKey),
         durationSec: journalPhotoDuration(photo.caption, payload.secondsPerPhoto)
           + (index === 0 ? 1 : 0),
       }));
@@ -122,7 +135,7 @@ export function buildNativeJournalPlan(
       subtitle: entry.project,
       dateLabel: entry.dateLabel,
       caption: photo.caption,
-      photoUri: resolvePhotoUri(photo, assetsByKey),
+      ...photoSourceFields(photo, assetsByKey),
       durationSec: journalPhotoDuration(photo.caption, payload.secondsPerPhoto),
     }));
   }
@@ -142,7 +155,7 @@ export function buildNativeJournalPlan(
         subtitle: side,
         dateLabel: photo.dateLabel,
         caption: photo.dateLabel,
-        photoUri: resolvePhotoUri(photo, assetsByKey),
+        ...photoSourceFields(photo, assetsByKey),
         durationSec: perPhotoDuration,
       });
     });
@@ -162,7 +175,13 @@ export function buildNativeJournalPlan(
     throw new Error(`Ce carnet dépasse ${JOURNAL_LIMITS.seconds / 60} minutes.`);
   }
 
-  const seenPhotos = scenes.filter(scene => scene.photoUri).length;
+  const timelinePhotos = scenes.filter(scene => scene.kind === 'photo' && scene.photoUri);
+  const timelinePhotoKeys = new Set(timelinePhotos.map(scene => scene.photoSourceKey ?? scene.photoUri!));
+  const newComparisonPhotos = new Set(scenes
+    .filter(scene => scene.kind === 'comparison' && scene.photoUri)
+    .map(scene => scene.photoSourceKey ?? scene.photoUri!)
+    .filter(key => !timelinePhotoKeys.has(key)));
+  const seenPhotos = timelinePhotos.length + newComparisonPhotos.size;
   if (seenPhotos !== payload.photoCount) {
     throw new Error('Le nombre de photos du carnet ne correspond pas à la sélection.');
   }
