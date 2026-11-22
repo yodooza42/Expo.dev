@@ -1,7 +1,8 @@
 import type { JournalProjectPhoto, JournalProjectPhotoSelection, Project, Task } from '@/types';
-import type { JournalChoices, JournalEntry, JournalGenerationRequest } from '@/types/projectJournal';
+import type { JournalChoices, JournalComparison, JournalEntry, JournalGenerationRequest } from '@/types/projectJournal';
 import { parseCompletionDate } from '@/utils/completionDate';
 import { journalPhotoDuration } from '@/utils/journalPhotoTiming';
+import { formatJournalPhotoDateTime } from '@/utils/journalPhotoTimestamp';
 
 export const JOURNAL_LIMITS = { entries: 400, photos: 500, seconds: 900, photoBytes: 8 * 1024 * 1024 };
 export const JOURNAL_FIRST_PHOTO_DELAY = 1;
@@ -93,18 +94,95 @@ export function journalPhotoId(entryId: string, uri: string): string {
   return `${entryId}:${(hash >>> 0).toString(36)}`;
 }
 export const journalPace = (pace: JournalChoices['pace']) => pace === 'calm' ? 6 : pace === 'quick' ? 3 : 4.5;
-export const journalRecapDuration = (entry: JournalEntry) => Math.max(8, Math.min(16,
-  4 + Math.ceil((entry.recapTasks?.length ?? 0) / 6) * 4 + Math.ceil(entry.caption.trim().length / 60)));
-const journalTitleDuration = (entry: JournalEntry) => Math.max(entry.photos.length ? 3 : 4,
-  Math.min(16, 2 + Math.ceil((entry.title.length + entry.caption.length) / 24)));
-export function journalDuration(entries: JournalEntry[], secondsPerPhoto: number, hasFinalComparison = false): number {
+export const journalEntryDuration = (
+  entry: Pick<JournalEntry, 'title' | 'caption'>,
+  secondsPerPhoto: number,
+) =>
+  journalPhotoDuration([entry.title, entry.caption].filter(Boolean).join(' '), secondsPerPhoto);
+export const journalRecapDuration = (
+  entry: Pick<JournalEntry, 'project' | 'caption' | 'recapTasks'>,
+  page = 0,
+  secondsPerPhoto = 4.5,
+) => {
+  const pageTasks = (entry.recapTasks ?? []).slice(page * 6, page * 6 + 6);
+  const text = [
+    entry.project,
+    ...pageTasks.map(task => `${task.dateLabel} ${task.title}`),
+    entry.caption,
+  ].filter(Boolean).join(' ');
+  return journalPhotoDuration(text, secondsPerPhoto);
+};
+export type JournalTimingFrame = {
+  title: string;
+  periodLabel: string;
+  projectNames: string[];
+  entryCount: number;
+  photoCount: number;
+  finalComparison?: JournalComparison;
+};
+const countPhrase = (count: number, singular: string, plural: string) =>
+  `${count} ${count === 1 ? singular : plural}`;
+export function journalIntroDuration(frame: Pick<JournalTimingFrame,
+  'title' | 'periodLabel' | 'projectNames' | 'entryCount' | 'photoCount'>, secondsPerPhoto: number): number {
+  const projects = frame.projectNames.slice(0, 5);
+  if (frame.projectNames.length > 5) projects.push(`+ ${frame.projectNames.length - 5} autres projets`);
+  const text = [
+    'CARNET DE BORD YOANN2.0',
+    frame.title || 'Carnet de bord',
+    frame.periodLabel,
+    ...projects,
+    countPhrase(frame.entryCount, 'entrée', 'entrées'),
+    countPhrase(frame.photoCount, 'photo', 'photos'),
+  ].join(' ');
+  return Math.max(3, journalPhotoDuration(text, secondsPerPhoto));
+}
+export function journalOutroDuration(frame: Pick<JournalTimingFrame,
+  'title' | 'periodLabel' | 'entryCount' | 'photoCount'>, secondsPerPhoto: number): number {
+  const text = [
+    'DERNIÈRE PAGE',
+    'Fin du carnet.',
+    countPhrase(frame.entryCount, 'travail consigné', 'travaux consignés'),
+    countPhrase(frame.photoCount, 'photo gardée.', 'photos gardées.'),
+    frame.periodLabel,
+  ].join(' ');
+  return Math.max(3, journalPhotoDuration(text, secondsPerPhoto));
+}
+export function journalComparisonPhotoDuration(
+  projectName: string,
+  side: 'Avant' | 'Après',
+  dateLabel: string,
+  secondsPerPhoto: number,
+) {
+  return journalPhotoDuration(`${projectName} ${side} ${dateLabel}`, secondsPerPhoto);
+}
+export function journalDuration(
+  entries: JournalEntry[],
+  secondsPerPhoto: number,
+  hasFinalComparison = false,
+  frame?: JournalTimingFrame,
+): number {
+  const introDuration = frame ? journalIntroDuration(frame, secondsPerPhoto) : 4;
+  const outroDuration = frame ? journalOutroDuration(frame, secondsPerPhoto) : 4;
+  const comparisonDuration = frame?.finalComparison
+    ? [
+      ...frame.finalComparison.before.map(photo =>
+        journalComparisonPhotoDuration(frame.finalComparison!.projectName, 'Avant',
+          formatJournalPhotoDateTime(photo.takenAt) || photo.dateLabel, secondsPerPhoto)),
+      ...frame.finalComparison.after.map(photo =>
+        journalComparisonPhotoDuration(frame.finalComparison!.projectName, 'Après',
+          formatJournalPhotoDateTime(photo.takenAt) || photo.dateLabel, secondsPerPhoto)),
+    ].reduce((sum, duration) => sum + duration, 0)
+    : hasFinalComparison ? 10 : 0;
   const duration = 8 + entries.reduce((sum, entry) => {
     const photoDuration = entry.photos.reduce((total, photo) =>
       total + journalPhotoDuration(photo.caption, secondsPerPhoto), 0);
-    if (entry.recapTasks?.length) return sum + Math.ceil(entry.recapTasks.length / 6) * journalRecapDuration(entry)
+    if (entry.recapTasks?.length) return sum + Array.from(
+      { length: Math.ceil(entry.recapTasks.length / 6) },
+      (_, page) => journalRecapDuration(entry, page, secondsPerPhoto),
+    ).reduce((total, pageDuration) => total + pageDuration, 0)
       + (entry.photos.length ? JOURNAL_FIRST_PHOTO_DELAY + photoDuration : 0);
-    return sum + journalTitleDuration(entry) + photoDuration;
-  }, 0) + (hasFinalComparison ? 10 : 0);
+    return sum + journalEntryDuration(entry, secondsPerPhoto) + photoDuration;
+  }, 0) + (introDuration + outroDuration - 8) + comparisonDuration;
   return Math.round(duration * 1000) / 1000;
 }
 export function initialJournalChoices(projects: Project[], projectId?: string): JournalChoices {
@@ -339,7 +417,16 @@ export function buildProjectJournal(projects: Project[], tasks: Task[], choices:
   const undatedPhotos = undated.reduce((sum, item) => sum + item.photoCount, 0);
   const excludedPhotos = availablePhotos - selectedEntryPhotoCount;
   const secondsPerPhoto = journalPace(choices.pace);
-  const duration = journalDuration(entries, secondsPerPhoto, !!finalComparison);
+  const periodLabel = `${parseJournalDate(choices.from)?.toLocaleDateString('fr-FR') ?? choices.from} — ${parseJournalDate(choices.to)?.toLocaleDateString('fr-FR') ?? choices.to}`;
+  const timingFrame: JournalTimingFrame = {
+    title: choices.title.trim(),
+    periodLabel,
+    projectNames: selectedProjects.map(project => project.name),
+    entryCount: entries.length,
+    photoCount,
+    ...(finalComparison ? { finalComparison } : {}),
+  };
+  const duration = journalDuration(entries, secondsPerPhoto, !!finalComparison, timingFrame);
   let error = '';
   if (!parseJournalDate(choices.from) || !parseJournalDate(choices.to) || choices.from > choices.to)
     error = 'Choisis une période valide : la fin doit suivre le début.';
@@ -350,7 +437,7 @@ export function buildProjectJournal(projects: Project[], tasks: Task[], choices:
     error = `Ce carnet est trop long. Garde au maximum ${JOURNAL_LIMITS.entries} étapes, ${JOURNAL_LIMITS.photos} photos et ${JOURNAL_LIMITS.seconds / 60} minutes ; réduis la période ou la sélection.`;
   const request: JournalGenerationRequest = {
     journal: true, title: choices.title.trim(),
-    periodLabel: `${parseJournalDate(choices.from)?.toLocaleDateString('fr-FR') ?? choices.from} — ${parseJournalDate(choices.to)?.toLocaleDateString('fr-FR') ?? choices.to}`,
+    periodLabel,
     projectNames: selectedProjects.map(p => p.name), entryCount: entries.length,
     photoCount, secondsPerPhoto, entries, ...(finalComparison ? { finalComparison } : {}),
   };

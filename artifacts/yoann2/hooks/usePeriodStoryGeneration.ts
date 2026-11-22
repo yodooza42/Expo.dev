@@ -763,7 +763,7 @@ export function usePeriodStoryGeneration(mode: 'period' | 'journal' = 'period') 
     clearCachedResult();
     const id = `${Date.now()}-${++sequence.current}`;
     const photoCount = journal ? request.photoCount : request.trips.reduce((n, t) => n + (t.photos?.filter(p => p.routeIndex != null).length ?? 0), 0);
-    const duration = journal ? journalDuration(request.entries, request.secondsPerPhoto, !!request.finalComparison)
+    const duration = journal ? journalDuration(request.entries, request.secondsPerPhoto, !!request.finalComparison, request)
       : request.videoDurationSec + photoCount * (request.photoPauseSecPerPhoto ?? 2);
     runRef.current = {
       id, startedAt: Date.now(), ready: false, injected: false, lastActivity: Date.now(), signal: '',

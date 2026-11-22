@@ -33,6 +33,12 @@ Ne plus rythmer les photos par groupes de quatre : chaque photo a sa propre dur�
 
 **How to apply:** tenir compte de la longueur du texte et de la ponctuation, pas seulement du nombre de mots. Garder les photos superposées en grand sans pause ni changement de page toutes les quatre photos ; appliquer les mêmes durées à l’estimation, l’aperçu et l’export. Le comparatif final avant/après reste un montage distinct.
 
+Appliquer le même calcul de temps de lecture à toutes les séquences du carnet, en tenant compte du rythme choisi.
+
+**Why:** l’utilisateur ne veut pas qu’un même rythme accélère uniquement les photos en laissant les autres pages sur une durée fixe.
+
+**How to apply:** calculer chaque séquence à partir de son texte affiché avec les mêmes poids de mots, caractères, ponctuation et rythme ; garder l’estimation, l’aperçu et l’export natif synchronisés, avec une durée plancher suffisante pour les animations d’ouverture et de fin.
+
 Pour un carnet limité à un seul projet, proposer jusqu’à deux photos « avant » et deux « après », avec la date de chaque photo. Sauvegarder ces choix sur le projet et les afficher dans sa fiche, puis terminer la vidéo par un montage des photos sélectionnées sur une seule page.
 
 **Why:** l’utilisateur veut plusieurs angles de vue pour la comparaison avant/après, conservée dans le carnet vidéo et dans le récapitulatif du projet consultable dans l’application.

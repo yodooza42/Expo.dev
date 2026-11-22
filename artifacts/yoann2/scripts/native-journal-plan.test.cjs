@@ -29,6 +29,7 @@ const completionDate = load('utils/completionDate.ts');
 const projectJournal = load('utils/projectJournal.ts', {
   '@/utils/completionDate': completionDate,
   '@/utils/journalPhotoTiming': timing,
+  '@/utils/journalPhotoTimestamp': load('utils/journalPhotoTimestamp.ts'),
 });
 const planBuilder = load('utils/nativeJournalPlan.ts', {
   '@/utils/projectJournal': projectJournal,
@@ -105,7 +106,18 @@ test('native render plan keeps every timeline photo and resolves local URIs', ()
   );
   assert.equal(
     plan.scenes.reduce((duration, scene) => duration + scene.durationSec, 0),
-    projectJournal.journalDuration(makePayload().entries, makePayload().secondsPerPhoto, true),
+    projectJournal.journalDuration(makePayload().entries, makePayload().secondsPerPhoto, true, {
+      title: makePayload().title,
+      periodLabel: makePayload().periodLabel,
+      projectNames: makePayload().projectNames,
+      entryCount: makePayload().entryCount,
+      photoCount: makePayload().photoCount,
+      finalComparison: {
+        projectName: makePayload().finalComparisonImages.projectName,
+        before: makePayload().finalComparisonImages.before,
+        after: makePayload().finalComparisonImages.after,
+      },
+    }),
   );
 });
 

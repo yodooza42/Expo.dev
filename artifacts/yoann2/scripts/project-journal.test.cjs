@@ -18,7 +18,11 @@ function load(file, deps = {}) {
 const dates = load('utils/completionDate.ts');
 const timing = load('utils/journalPhotoTiming.ts');
 const timestamp = load('utils/journalPhotoTimestamp.ts');
-const journal = load('utils/projectJournal.ts', { '@/utils/completionDate': dates, '@/utils/journalPhotoTiming': timing });
+const journal = load('utils/projectJournal.ts', {
+  '@/utils/completionDate': dates,
+  '@/utils/journalPhotoTiming': timing,
+  '@/utils/journalPhotoTimestamp': timestamp,
+});
 const renderer = load('utils/projectJournalRenderer.ts', { '@/utils/journalPhotoTiming': timing });
 const clone = value => JSON.parse(JSON.stringify(value));
 const projects = [
@@ -130,7 +134,9 @@ test('single-project carnet keeps before/after selections and adds a dated final
   assert.equal(output.request.finalComparison.before[0].takenAt, Date.parse('2026-04-05T08:15:00Z'));
   assert.equal(output.request.finalComparison.after[0].dateLabel, '6 avril 2026');
   assert.equal(output.photoCount, 2, 'the photo removed from the montage is counted once for the comparison');
-  assert.equal(output.duration, journal.journalDuration(output.entries, output.request.secondsPerPhoto, true));
+  assert.equal(output.duration, journal.journalDuration(
+    output.entries, output.request.secondsPerPhoto, true, output.request,
+  ));
   assert.equal(journal.buildProjectJournal(projects, comparisonTasks, { ...opts, projectIds: ['p1', 'p2'] }).request.finalComparison, undefined);
   assert.equal(journal.validateJournalChoices(opts), true);
   assert.equal(journal.validateJournalChoices({ ...opts, beforeAfterByProjectId: { p1: { beforePhotoId: 2 } } }), false);
@@ -502,6 +508,21 @@ function payload({ count = 3, preview = true } = {}) {
   return { jobId: 'job', journal: true, preview, title: 'Mon carnet', periodLabel: 'Avril 2026', projectNames: ['Garage'],
     entryCount: count, photoCount: count, secondsPerPhoto: 3, entries };
 }
+function expectedDuration(data, pace = data.secondsPerPhoto) {
+  const comparison = data.finalComparisonImages ? {
+    projectName: data.finalComparisonImages.projectName,
+    before: data.finalComparisonImages.before,
+    after: data.finalComparisonImages.after,
+  } : undefined;
+  return journal.journalDuration(data.entries, pace, !!comparison, {
+    title: data.title,
+    periodLabel: data.periodLabel,
+    projectNames: data.projectNames,
+    entryCount: data.entryCount,
+    photoCount: data.photoCount,
+    ...(comparison ? { finalComparison: comparison } : {}),
+  });
+}
 test('recap renderer includes every task across readable pages with matching preview/export duration', async () => {
   const e = engine(), data = payload({ count: 0 });
   const recap = {
@@ -511,12 +532,14 @@ test('recap renderer includes every task across readable pages with matching pre
   };
   data.entries = [recap]; data.entryCount = 1; data.photoCount = 0;
   e.win.generatePeriodStory(data);
-  assert.equal(e.win.journalDuration, journal.journalDuration([recap], 3));
+  assert.equal(e.win.journalDuration, expectedDuration({ ...data, entries: [recap] }, 3));
   await e.advance(200);
   e.win.journalPause();
+  let pageStart = journal.journalIntroDuration(data, 3);
   for (let page = 0; page < 3; page++) {
-    e.win.journalSeek(6 + page * journal.journalRecapDuration(recap));
+    e.win.journalSeek(pageStart + 0.2);
     await e.advance(200);
+    pageStart += journal.journalRecapDuration(recap, page, 3);
   }
   for (let i = 0; i < 13; i++)
     assert.ok(e.draws.some(draw => draw.text === `Réalisation ${i}`), `missing recap task ${i}`);
@@ -526,10 +549,10 @@ test('recap renderer includes every task across readable pages with matching pre
 test('preview and exporter use exactly the calculated duration, expose controls and load bounded photos', async () => {
   const e = engine(), data = payload({ count: 30 });
   e.win.generatePeriodStory(data);
-  assert.equal(e.win.journalDuration, journal.journalDuration(data.entries, 3));
+  assert.equal(e.win.journalDuration, expectedDuration(data, 3));
   await e.advance(300);
   const entry = data.entries[0];
-  const photoStart = journal.journalDuration([entry], 3) - 4 - timing.journalPhotoDuration(entry.photos[0].caption, 3);
+  const photoStart = journal.journalIntroDuration(data, 3) + journal.journalEntryDuration(entry, 3);
   e.win.journalPause(); e.win.journalSeek(photoStart + 0.5);
   await e.advance(200);
   assert.ok(e.draws.some(draw => draw.text === 'Détail 0'));
@@ -537,6 +560,25 @@ test('preview and exporter use exactly the calculated duration, expose controls 
   assert.ok(e.draws.some(draw => draw.text === 'Fin du carnet.'));
   assert.ok(e.maxImages <= 8, `at most the current and turning pages, not ${e.maxImages} decoded photos`);
   assert.equal(e.messages.some(m => m.type === 'story_chunk'), false);
+});
+test('entry text pages use the same word, character, punctuation and pace reading model as photo captions', () => {
+  const entry = {
+    title: 'Poncer les surfaces',
+    caption: "Ici j'ai du poncer toute la surface puis reboucher un peu et reponcer encore",
+    photos: [],
+  };
+  assert.deepEqual(
+    [3, 4.5, 6].map(pace => journal.journalEntryDuration(entry, pace)),
+    [3.5, 5.3, 7],
+  );
+  for (const pace of [3, 4.5, 6]) {
+    assert.equal(
+      journal.journalEntryDuration(entry, pace),
+      timing.journalPhotoDuration(`${entry.title} ${entry.caption}`, pace),
+    );
+  }
+  assert.ok(journal.journalEntryDuration(entry, 3) < journal.journalEntryDuration(entry, 4.5));
+  assert.ok(journal.journalEntryDuration(entry, 4.5) < journal.journalEntryDuration(entry, 6));
 });
 test('large preview photos arrive as acknowledged chunks and render without embedding them in page metadata', async () => {
   const e = engine();
@@ -554,7 +596,8 @@ test('large preview photos arrive as acknowledged chunks and render without embe
   await e.advance(200);
   assert.ok(e.messages.some(message => message.type === 'story_asset_chunk_received' && message.preview && message.complete === true));
   e.win.journalPause();
-  const photoStart = journal.journalDuration(data.entries, 3) - 4 - timing.journalPhotoDuration(data.entries[0].photos[0].caption, 3);
+  const photoStart = journal.journalIntroDuration(data, 3)
+    + journal.journalEntryDuration(data.entries[0], 3);
   e.win.journalSeek(photoStart + 0.5);
   await e.advance(200);
   assert.ok(e.imageDraws.some(draw => draw.src === `${first}${second}`));
@@ -589,7 +632,7 @@ test('nine uncaptioned photos each last one second with no fourth/eighth-photo h
   e.win.generatePeriodStory(data);
   await e.advance(300);
   e.win.journalPause();
-  const photoStart = journal.journalDuration(data.entries, 3) - 4 - 9;
+  const photoStart = journal.journalIntroDuration(data, 3) + journal.journalEntryDuration(data.entries[0], 3);
   for (let i = 0; i < 9; i++) {
     for (const offset of [0.25, 0.95]) {
       e.win.journalSeek(photoStart + i + offset);
@@ -600,7 +643,7 @@ test('nine uncaptioned photos each last one second with no fourth/eighth-photo h
   assert.ok(e.imageDraws.at(-1).dimensions[2] >= 560, 'full source frame and original aspect ratio');
   assert.equal(e.draws.some(draw => draw.text === 'SUITE DE L’ETAPE'), false);
   assert.ok(e.maxImages <= 3, `only current, next and fading previous, not ${e.maxImages} photos`);
-  assert.equal(e.win.journalDuration, journal.journalDuration(data.entries, 3));
+  assert.equal(e.win.journalDuration, expectedDuration(data, 3));
 });
 test('each caption gets its own duration in the renderer, including the final photo and backward seeking', async () => {
   const e = engine(), data = payload({ count: 1 });
@@ -612,8 +655,9 @@ test('each caption gets its own duration in the renderer, including the final ph
   data.secondsPerPhoto = 4.5;
   const durations = captions.map(caption => timing.journalPhotoDuration(caption));
   const total = durations.reduce((sum, seconds) => sum + seconds, 0);
-  const expected = journal.journalDuration(data.entries, 4.5);
-  const photoStart = expected - 4 - total;
+  const expected = expectedDuration(data, 4.5);
+  const photoStart = journal.journalIntroDuration(data, 4.5)
+    + journal.journalEntryDuration(data.entries[0], 4.5);
   e.win.generatePeriodStory(data);
   await e.advance(300);
   e.win.journalPause();
@@ -641,7 +685,7 @@ test('all paces and recap photo sequences keep estimated and rendered caption du
     });
     data.entries[1].recapTasks = [{ title: 'Projet terminé', dateLabel: '5 avril 2026' }];
     e.win.generatePeriodStory(data);
-    assert.equal(e.win.journalDuration, journal.journalDuration(data.entries, pace));
+    assert.equal(e.win.journalDuration, expectedDuration(data, pace));
   }
 });
 test('final comparison renders four dated photos together after the project entries', async () => {
@@ -658,10 +702,10 @@ test('final comparison renders four dated photos together after the project entr
     ],
   };
   e.win.generatePeriodStory(data);
-  assert.equal(e.win.journalDuration, journal.journalDuration(data.entries, 3, true));
+  assert.equal(e.win.journalDuration, expectedDuration(data, 3));
   await e.advance(300);
   e.win.journalPause();
-  const baseDuration = journal.journalDuration(data.entries, 3);
+  const baseDuration = expectedDuration(data, 3);
   e.win.journalSeek(baseDuration - 3);
   await e.advance(200);
   assert.ok(e.draws.some(draw => draw.text === 'AVANT / APRÈS'));
@@ -681,7 +725,8 @@ test('renderer displays each photo capture date and time in the step date positi
   e.win.generatePeriodStory(data);
   await e.advance(250);
   e.win.journalPause();
-  e.win.journalSeek(8.2);
+  e.win.journalSeek(journal.journalIntroDuration(data, data.secondsPerPhoto)
+    + journal.journalEntryDuration(data.entries[0], data.secondsPerPhoto) + 0.2);
   await e.advance(100);
   assert.ok(e.draws.some(draw => draw.text === '28 OCTOBRE 2026 - 20H54'));
 });
@@ -690,7 +735,8 @@ test('portrait photos use a taller display area without changing their aspect ra
   e.win.generatePeriodStory(data);
   await e.advance(250);
   e.win.journalPause();
-  e.win.journalSeek(8.2);
+  e.win.journalSeek(journal.journalIntroDuration(data, data.secondsPerPhoto)
+    + journal.journalEntryDuration(data.entries[0], data.secondsPerPhoto) + 0.2);
   await e.advance(100);
   const [, , width, height] = e.imageDraws.at(-1).dimensions;
   assert.ok(height > 600, `portrait height should use the expanded layout, got ${height}`);
@@ -707,7 +753,7 @@ test('final comparison requests before/after photos through the on-demand asset 
   e.win.generatePeriodStory(data);
   await e.advance(300);
   e.win.journalPause();
-  e.win.journalSeek(journal.journalDuration(data.entries, 3) - 3);
+  e.win.journalSeek(expectedDuration(data, 3) - 3);
   await e.advance(200);
   const requestedKeys = e.messages.filter(message => message.type === 'story_asset_needed').map(message => message.key);
   assert.ok(requestedKeys.includes('comparison-before'), 'the before photo must retain its transfer key');

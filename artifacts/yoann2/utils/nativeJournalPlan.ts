@@ -1,5 +1,12 @@
 import type { JournalPhotoAsset } from '@/utils/prepareJournal';
-import { JOURNAL_LIMITS } from '@/utils/projectJournal';
+import {
+  JOURNAL_LIMITS,
+  journalComparisonPhotoDuration,
+  journalEntryDuration,
+  journalIntroDuration,
+  journalOutroDuration,
+  journalRecapDuration,
+} from '@/utils/projectJournal';
 import { journalPhotoDuration } from '@/utils/journalPhotoTiming';
 import type { JournalVideoPayload } from '@/types/projectJournal';
 
@@ -29,14 +36,6 @@ export type NativeJournalPlan = {
   maxBytes: number;
   scenes: NativeJournalScene[];
 };
-
-const titleDuration = (entry: JournalVideoPayload['entries'][number]) =>
-  Math.max(entry.photos.length ? 3 : 4,
-    Math.min(16, 2 + Math.ceil((entry.title.length + entry.caption.length) / 24)));
-
-const recapDuration = (entry: JournalVideoPayload['entries'][number]) =>
-  Math.max(8, Math.min(16, 4 + Math.ceil((entry.recapTasks?.length ?? 0) / 6) * 4
-    + Math.ceil(entry.caption.length / 60)));
 
 function resolvePhotoSources(
   photo: { img: string; assetKey?: string },
@@ -89,12 +88,11 @@ export function buildNativeJournalPlan(
     subtitle: payload.periodLabel,
     dateLabel: '',
     caption: '',
-    durationSec: 4,
+    durationSec: journalIntroDuration(payload, payload.secondsPerPhoto),
   });
 
   for (const entry of payload.entries) {
     if (entry.recapTasks?.length) {
-      const duration = recapDuration(entry);
       const pages = Math.ceil(entry.recapTasks.length / 6);
       for (let page = 0; page < pages; page++) {
         add({
@@ -105,7 +103,7 @@ export function buildNativeJournalPlan(
           caption: entry.caption,
           lines: entry.recapTasks.slice(page * 6, page * 6 + 6)
             .map(task => `${task.dateLabel} · ${task.title}`),
-          durationSec: duration,
+          durationSec: journalRecapDuration(entry, page, payload.secondsPerPhoto),
         });
       }
       entry.photos.forEach((photo, index) => add({
@@ -127,7 +125,7 @@ export function buildNativeJournalPlan(
       subtitle: entry.project,
       dateLabel: entry.dateLabel,
       caption: entry.caption,
-      durationSec: titleDuration(entry),
+      durationSec: journalEntryDuration(entry, payload.secondsPerPhoto),
     });
     entry.photos.forEach(photo => add({
       kind: 'photo',
@@ -145,18 +143,18 @@ export function buildNativeJournalPlan(
     ...(payload.finalComparisonImages?.after ?? []),
   ];
   if (comparisonPhotos.length) {
-    const perPhotoDuration = 10 / comparisonPhotos.length;
     const projectName = payload.finalComparisonImages?.projectName ?? '';
     comparisonPhotos.forEach((photo, index) => {
       const side = index < (payload.finalComparisonImages?.before.length ?? 0) ? 'Avant' : 'Après';
+      const dateLabel = photo.dateTimeLabel || photo.dateLabel;
       add({
         kind: 'comparison',
         title: `${projectName} · ${side}`,
         subtitle: side,
-        dateLabel: photo.dateTimeLabel || photo.dateLabel,
-        caption: photo.dateTimeLabel || photo.dateLabel,
+        dateLabel,
+        caption: dateLabel,
         ...photoSourceFields(photo, assetsByKey),
-        durationSec: perPhotoDuration,
+        durationSec: journalComparisonPhotoDuration(projectName, side, dateLabel, payload.secondsPerPhoto),
       });
     });
   }
@@ -167,7 +165,7 @@ export function buildNativeJournalPlan(
     subtitle: payload.periodLabel,
     dateLabel: '',
     caption: `${payload.entryCount} étapes · ${payload.photoCount} photos`,
-    durationSec: 4,
+    durationSec: journalOutroDuration(payload, payload.secondsPerPhoto),
   });
 
   const duration = scenes.reduce((sum, scene) => sum + scene.durationSec, 0);
