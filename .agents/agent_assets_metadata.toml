@@ -581,3 +581,17 @@ mtime_ms = 1795194736672
 storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:afa5c5e0-5de2-424a-8554-0e30d20ab9d3/c82b6279-86ba-4789-8c66-893efacf0f27/47c071f4-2910-43c8-ab0a-6a3206b53575"
 storage_version_token = "1795194737287113"
 content_type = "text/plain"
+
+[[outputs]]
+id = "ntpe8-Fwh11vdK1uowvOs"
+uri = "file://attached_assets/Screenshot_20261122_104258_WhatsApp_1795340584698.jpg"
+type = "image"
+title = "Page actuelle avec photo portrait"
+description = "Capture du rendu Android que tu as envoyé. Elle montre la version installée avant l’agrandissement local de la zone portrait."
+logical_id = "b62ce04f-984b-4349-8800-99a4556b5592"
+content_hash = "sha256:c8c934a1a77d9f6341acca7dbc146d554bef7858053efaa2e23763a4c0d09b91"
+size = 571772
+mtime_ms = 1795340596201
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:afa5c5e0-5de2-424a-8554-0e30d20ab9d3/b62ce04f-984b-4349-8800-99a4556b5592/75193245-2434-473b-9d74-fc83b19baf95"
+storage_version_token = "1795345218602312"
+content_type = "image/jpeg"
