@@ -49,7 +49,10 @@ function makePayload() {
         id: 'task:a', sourceId: 'a', kind: 'task', title: 'Meuble', project: 'Entrée',
         projectId: 'entry', dateLabel: '1 mai 2026', dateKey: '2026-05-01', caption: 'Pose',
         photos: [
-          { id: 'photo:1', img: '', assetKey: 'asset-1', caption: 'Avant' },
+          {
+            id: 'photo:1', img: '', assetKey: 'asset-1', caption: 'Avant',
+            dateTimeLabel: '28 octobre 2026 - 20h54',
+          },
           { id: 'photo:2', img: '', assetKey: 'asset-2', caption: 'Après' },
         ],
       },
@@ -91,6 +94,15 @@ test('native render plan keeps every timeline photo and resolves local URIs', ()
   assert.ok(plan.scenes.some(scene => scene.kind === 'comparison'));
   assert.ok(plan.scenes.some(scene => scene.kind === 'outro'));
   assert.ok(plan.scenes.every(scene => scene.durationSec > 0));
+  assert.equal(
+    plan.scenes.find(scene => scene.photoUri === 'file://before.jpg').dateLabel,
+    '28 octobre 2026 - 20h54',
+  );
+  assert.equal(
+    plan.scenes.find(scene => scene.photoUri === 'content://after.jpg').dateLabel,
+    '1 mai 2026',
+    'photos without capture metadata keep the existing entry date',
+  );
   assert.equal(
     plan.scenes.reduce((duration, scene) => duration + scene.durationSec, 0),
     projectJournal.journalDuration(makePayload().entries, makePayload().secondsPerPhoto, true),

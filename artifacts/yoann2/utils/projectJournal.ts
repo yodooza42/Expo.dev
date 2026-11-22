@@ -16,14 +16,19 @@ export function getProjectBeforeAfterPhotoOptions(project: Project, tasks: Task[
   const byUri = new Map<string, { photo: JournalProjectPhoto; takenAt?: number; order: number }>();
   let order = 0;
   const add = (photo: JournalProjectPhoto, takenAt?: number) => {
+    const captureTime = takenAt ?? photo.takenAt;
     const current = byUri.get(photo.uri);
     if (!current) {
-      byUri.set(photo.uri, { photo, takenAt, order: order++ });
+      byUri.set(photo.uri, { photo, takenAt: captureTime, order: order++ });
       return;
     }
-    if (takenAt && (!current.takenAt || takenAt < current.takenAt)) {
-      current.takenAt = takenAt;
-      current.photo = { ...current.photo, dateLabel: new Date(takenAt).toLocaleDateString('fr-FR') };
+    if (captureTime && (!current.takenAt || captureTime < current.takenAt)) {
+      current.takenAt = captureTime;
+      current.photo = {
+        ...current.photo,
+        dateLabel: new Date(captureTime).toLocaleDateString('fr-FR'),
+        takenAt: captureTime,
+      };
     }
     if (photo.sourceTitle !== 'Projet' && current.photo.sourceTitle === 'Projet') {
       current.photo = { ...current.photo, sourceTitle: photo.sourceTitle };
@@ -52,6 +57,7 @@ export function getProjectBeforeAfterPhotoOptions(project: Project, tasks: Task[
           ? new Date(takenAt).toLocaleDateString('fr-FR')
           : 'Date inconnue',
         sourceTitle: task.title,
+        ...(takenAt !== undefined ? { takenAt } : {}),
       }, takenAt);
     }
   }
@@ -308,9 +314,11 @@ export function buildProjectJournal(projects: Project[], tasks: Task[], choices:
           : stored?.[legacyKey] ? [stored[legacyKey]!] : savedPhotos.map(photo => photo.photoId);
       return [...new Set(ids)].flatMap(id => {
         const candidate = findCandidate(id);
-        if (candidate) return [{ id, uri: candidate.photo.uri, dateLabel: candidate.dateLabel }];
+        if (candidate) return [{
+          id, uri: candidate.photo.uri, dateLabel: candidate.dateLabel, takenAt: candidate.photo.takenAt,
+        }];
         const saved = savedPhotos.find(photo => photo.photoId === id);
-        return saved ? [{ id, uri: saved.uri, dateLabel: saved.dateLabel }] : [];
+        return saved ? [{ id, uri: saved.uri, dateLabel: saved.dateLabel, takenAt: saved.takenAt }] : [];
       });
     };
     const before = resolveSide('before');

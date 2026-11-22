@@ -443,6 +443,7 @@ private class NativeJournalVideoEncoder(
   private fun renderScene(scene: NativeScene): YuvFrame {
     val bitmap = Bitmap.createBitmap(WIDTH, HEIGHT, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bitmap)
+    var portraitPhoto = false
     val ink = Color.rgb(33, 43, 66)
     val muted = Color.rgb(86, 96, 118)
     val accent = Color.rgb(185, 65, 79)
@@ -494,7 +495,12 @@ private class NativeJournalVideoEncoder(
     scene.photoUris.takeIf { it.isNotEmpty() }?.let { uris ->
       val photo = decodePhoto(uris)
       try {
-      val photoArea = RectF(90f, 390f, 630f, 850f)
+        portraitPhoto = photo.height > photo.width
+        val photoArea = if (portraitPhoto) {
+          RectF(70f, 390f, 650f, 1020f)
+        } else {
+          RectF(90f, 390f, 630f, 850f)
+        }
         val scale = min(photoArea.width() / photo.width, photoArea.height() / photo.height)
         val photoWidth = photo.width * scale
         val photoHeight = photo.height * scale
@@ -537,7 +543,12 @@ private class NativeJournalVideoEncoder(
         drawWrapped(canvas, scene.caption, bodyPaint, 100f, 510f, 500f, 12, 1.2f)
       }
       else -> if (scene.caption.isNotBlank()) {
-        drawWrapped(canvas, scene.caption, bodyPaint, 100f, 900f, 500f, 8, 1.2f)
+        if (portraitPhoto) {
+          val photoCaptionPaint = Paint(bodyPaint).apply { textSize = 21f }
+          drawWrapped(canvas, scene.caption, photoCaptionPaint, 100f, 1040f, 500f, 7, 1.1f)
+        } else {
+          drawWrapped(canvas, scene.caption, bodyPaint, 100f, 900f, 500f, 8, 1.2f)
+        }
       }
     }
     val footer = Paint(Paint.ANTI_ALIAS_FLAG).apply {

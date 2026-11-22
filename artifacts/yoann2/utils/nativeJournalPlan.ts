@@ -112,7 +112,7 @@ export function buildNativeJournalPlan(
         kind: 'photo',
         title: entry.title,
         subtitle: entry.project,
-        dateLabel: entry.dateLabel,
+        dateLabel: photo.dateTimeLabel || entry.dateLabel,
         caption: photo.caption,
         ...photoSourceFields(photo, assetsByKey),
         durationSec: journalPhotoDuration(photo.caption, payload.secondsPerPhoto)
@@ -133,7 +133,7 @@ export function buildNativeJournalPlan(
       kind: 'photo',
       title: entry.title,
       subtitle: entry.project,
-      dateLabel: entry.dateLabel,
+      dateLabel: photo.dateTimeLabel || entry.dateLabel,
       caption: photo.caption,
       ...photoSourceFields(photo, assetsByKey),
       durationSec: journalPhotoDuration(photo.caption, payload.secondsPerPhoto),
@@ -153,8 +153,8 @@ export function buildNativeJournalPlan(
         kind: 'comparison',
         title: `${projectName} · ${side}`,
         subtitle: side,
-        dateLabel: photo.dateLabel,
-        caption: photo.dateLabel,
+        dateLabel: photo.dateTimeLabel || photo.dateLabel,
+        caption: photo.dateTimeLabel || photo.dateLabel,
         ...photoSourceFields(photo, assetsByKey),
         durationSec: perPhotoDuration,
       });

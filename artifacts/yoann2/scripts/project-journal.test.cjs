@@ -17,6 +17,7 @@ function load(file, deps = {}) {
 }
 const dates = load('utils/completionDate.ts');
 const timing = load('utils/journalPhotoTiming.ts');
+const timestamp = load('utils/journalPhotoTimestamp.ts');
 const journal = load('utils/projectJournal.ts', { '@/utils/completionDate': dates, '@/utils/journalPhotoTiming': timing });
 const renderer = load('utils/projectJournalRenderer.ts', { '@/utils/journalPhotoTiming': timing });
 const clone = value => JSON.parse(JSON.stringify(value));
@@ -82,6 +83,13 @@ test('task photos use capture hour to order photos from the same day', () => {
   const output = journal.buildProjectJournal(projects, [task], { ...choices(), projectIds: ['p1'] });
   assert.deepEqual(clone(output.entries[0].photos.map(photo => photo.uri)),
     ['file://morning', 'file://afternoon', 'file://next-day', 'file://undated']);
+  assert.equal(output.entries[0].photos[0].takenAt, Date.parse('2026-04-05T08:15:00Z'));
+});
+test('photo capture timestamp formats as a French date and local hour', () => {
+  const takenAt = new Date(2026, 9, 28, 20, 54).getTime();
+  assert.equal(timestamp.formatJournalPhotoDateTime(takenAt), '28 octobre 2026 - 20h54');
+  assert.equal(timestamp.formatJournalPhotoDateTime(undefined), undefined);
+  assert.equal(timestamp.formatJournalPhotoDateTime(Number.NaN), undefined);
 });
 test('undated task photos retain their original order after dated photos', () => {
   const task = {
@@ -113,12 +121,13 @@ test('single-project carnet keeps before/after selections and adds a dated final
     ...choices(), projectIds: ['p1'], excludedEntryIds: ['task:later'],
     beforeAfterByProjectId: { p1: { beforePhotoId: beforeId, afterPhotoId: afterId } },
   };
-  const comparisonTasks = [...tasks, {
+  const comparisonTasks = [{ ...tasks[0], photoTakenAt: { 'file://a': Date.parse('2026-04-05T08:15:00Z') } }, ...tasks.slice(1), {
     id: 'last', projectId: 'p1', title: 'Dernière tâche', status: 'done', completedAt: '06/04/2026', photos: [],
   }];
   const output = journal.buildProjectJournal(projects, comparisonTasks, opts);
   assert.equal(output.request.finalComparison.projectName, 'Garage');
   assert.equal(output.request.finalComparison.before[0].dateLabel, '5 avril 2026');
+  assert.equal(output.request.finalComparison.before[0].takenAt, Date.parse('2026-04-05T08:15:00Z'));
   assert.equal(output.request.finalComparison.after[0].dateLabel, '6 avril 2026');
   assert.equal(output.photoCount, 2, 'the photo removed from the montage is counted once for the comparison');
   assert.equal(output.duration, journal.journalDuration(output.entries, output.request.secondsPerPhoto, true));
@@ -342,24 +351,32 @@ test('four projects with 100 photos each fit the large-carnet selection limit', 
 test('journal preparation builds metadata only and preserves captions and comparison photo keys', () => {
   const prepare = load('utils/prepareJournal.ts', {
     '@/utils/projectJournal': journal,
+    '@/utils/journalPhotoTimestamp': timestamp,
     '@/utils/storyPhoto': { prepareStoryPhoto: () => { throw new Error('Photos must be prepared on demand'); } },
   });
   const request = {
     ...journal.buildProjectJournal(projects, tasks, choices()).request,
     finalComparison: {
       projectName: 'Garage',
-      before: [{ id: 'before', uri: 'file://a', dateLabel: '5 avril 2026' }],
+      before: [{
+        id: 'before', uri: 'file://a', dateLabel: '5 avril 2026',
+        takenAt: new Date(2026, 3, 5, 8, 15).getTime(),
+      }],
       after: [{ id: 'after', uri: 'file://compare', dateLabel: '6 avril 2026' }],
     },
   };
-  request.entries.flatMap(entry => entry.photos)
-    .find(photo => photo.id === journal.journalPhotoId('task:later', 'file://a')).caption = 'Photo légendée';
+  const sourcePhoto = request.entries.flatMap(entry => entry.photos)
+    .find(photo => photo.id === journal.journalPhotoId('task:later', 'file://a'));
+  sourcePhoto.caption = 'Photo légendée';
+  sourcePhoto.takenAt = new Date(2026, 9, 28, 20, 54).getTime();
   const prepared = prepare.prepareJournal(request, 'job', () => true);
   assert.deepEqual(clone(prepared.assets.map(asset => asset.uri)), ['file://a', 'file://b', 'file://p', 'file://compare']);
   const montageBefore = prepared.payload.entries.flatMap(entry => entry.photos).find(photo => photo.id === journal.journalPhotoId('task:later', 'file://a'));
   assert.equal(prepared.payload.finalComparisonImages.before[0].assetKey, montageBefore.assetKey);
   assert.equal(prepared.payload.finalComparisonImages.after[0].dateLabel, '6 avril 2026');
+  assert.equal(prepared.payload.finalComparisonImages.before[0].dateTimeLabel, '5 avril 2026 - 08h15');
   assert.equal(montageBefore.caption, 'Photo légendée');
+  assert.equal(montageBefore.dateTimeLabel, '28 octobre 2026 - 20h54');
   assert.ok(prepared.payload.entries.every(entry => entry.photos.every(photo => photo.img === '')));
   assert.ok(!JSON.stringify(prepared.payload).includes('file://'));
   assert.throws(() => prepare.prepareJournal(request, 'job', () => false), /annulée/);
@@ -367,6 +384,7 @@ test('journal preparation builds metadata only and preserves captions and compar
 test('journal metadata keeps image payloads separate and deduplicates identical source photos', () => {
   const prepare = load('utils/prepareJournal.ts', {
     '@/utils/projectJournal': journal,
+    '@/utils/journalPhotoTimestamp': timestamp,
     '@/utils/storyPhoto': { prepareStoryPhoto: () => { throw new Error('Unexpected eager preparation'); } },
   });
   const request = {
@@ -392,7 +410,7 @@ test('journal metadata keeps image payloads separate and deduplicates identical 
 });
 
 /** A single shared clock drives rAF, all timers and recorder callbacks. */
-function engine({ badPhoto = false, loadDelay = 25 } = {}) {
+function engine({ badPhoto = false, loadDelay = 25, photoWidth = 800, photoHeight = 600 } = {}) {
   let now = 1000, next = 1, activeImages = 0, maxImages = 0, recorder;
   const timers = new Map(), messages = [], draws = [], imageDraws = [];
   const set = (fn, delay, interval = false) => {
@@ -410,7 +428,7 @@ function engine({ badPhoto = false, loadDelay = 25 } = {}) {
     captureStream: () => ({ getTracks: () => [{ stop() {} }] }) });
   const elements = { cv: canvas(), pp: {}, sk: { value: '0' }, tm: {} };
   class Photo {
-    naturalWidth = 800; naturalHeight = 600;
+    naturalWidth = photoWidth; naturalHeight = photoHeight;
     decode() { return Promise.resolve(); }
     set src(value) {
       if (value && !this.value) { activeImages++; maxImages = Math.max(maxImages, activeImages); }
@@ -656,6 +674,27 @@ test('final comparison renders four dated photos together after the project entr
   const source = renderer.buildProjectJournalHtml();
   assert.ok(!source.includes("fillStyle='#F7F6F1'"));
   assert.ok(!source.includes('var bx=MX-48'));
+});
+test('renderer displays each photo capture date and time in the step date position', async () => {
+  const e = engine(), data = payload({ count: 1 });
+  data.entries[0].photos[0].dateTimeLabel = '28 octobre 2026 - 20h54';
+  e.win.generatePeriodStory(data);
+  await e.advance(250);
+  e.win.journalPause();
+  e.win.journalSeek(8.2);
+  await e.advance(100);
+  assert.ok(e.draws.some(draw => draw.text === '28 OCTOBRE 2026 - 20H54'));
+});
+test('portrait photos use a taller display area without changing their aspect ratio', async () => {
+  const e = engine({ photoWidth: 600, photoHeight: 900 }), data = payload({ count: 1 });
+  e.win.generatePeriodStory(data);
+  await e.advance(250);
+  e.win.journalPause();
+  e.win.journalSeek(8.2);
+  await e.advance(100);
+  const [, , width, height] = e.imageDraws.at(-1).dimensions;
+  assert.ok(height > 600, `portrait height should use the expanded layout, got ${height}`);
+  assert.ok(Math.abs(width / height - 2 / 3) < 0.01, 'the complete portrait image keeps its original ratio');
 });
 test('final comparison requests before/after photos through the on-demand asset transfer', async () => {
   const data = payload({ count: 1 });

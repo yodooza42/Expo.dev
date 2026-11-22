@@ -1,5 +1,6 @@
 import type { JournalGenerationRequest, JournalVideoPayload } from '@/types/projectJournal';
 import { JOURNAL_LIMITS } from '@/utils/projectJournal';
+import { formatJournalPhotoDateTime } from '@/utils/journalPhotoTimestamp';
 
 export type JournalPhotoAsset = {
   key: string;
@@ -23,6 +24,7 @@ export function prepareJournal(
   if (!isCurrent()) throw new Error('Préparation annulée.');
   const assets: JournalPhotoAsset[] = [];
   const keysByUri = new Map<string, string>();
+  const dateTimeLabelFor = (takenAt?: number) => formatJournalPhotoDateTime(takenAt);
   const assetKeyFor = (uri: string, title: string, index: number) => {
     const existing = keysByUri.get(uri);
     if (existing) return existing;
@@ -35,6 +37,8 @@ export function prepareJournal(
     ...entry,
     photos: entry.photos.map((photo, index) => ({
       id: photo.id, img: '', assetKey: assetKeyFor(photo.uri, entry.title, index), caption: photo.caption,
+      ...(photo.takenAt !== undefined ? { takenAt: photo.takenAt } : {}),
+      ...(dateTimeLabelFor(photo.takenAt) ? { dateTimeLabel: dateTimeLabelFor(photo.takenAt) } : {}),
     })),
   }));
   const finalComparisonImages = request.finalComparison ? {
@@ -42,10 +46,14 @@ export function prepareJournal(
     before: request.finalComparison.before.map((photo, index) => ({
       id: photo.id, img: '', assetKey: assetKeyFor(photo.uri, `${request.finalComparison!.projectName} · Avant`, index),
       dateLabel: photo.dateLabel,
+      ...(photo.takenAt !== undefined ? { takenAt: photo.takenAt } : {}),
+      ...(dateTimeLabelFor(photo.takenAt) ? { dateTimeLabel: dateTimeLabelFor(photo.takenAt) } : {}),
     })),
     after: request.finalComparison.after.map((photo, index) => ({
       id: photo.id, img: '', assetKey: assetKeyFor(photo.uri, `${request.finalComparison!.projectName} · Après`, index),
       dateLabel: photo.dateLabel,
+      ...(photo.takenAt !== undefined ? { takenAt: photo.takenAt } : {}),
+      ...(dateTimeLabelFor(photo.takenAt) ? { dateTimeLabel: dateTimeLabelFor(photo.takenAt) } : {}),
     })),
   } : undefined;
   const { finalComparison: _comparison, ...payload } = request;

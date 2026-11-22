@@ -19,7 +19,14 @@ export type JournalChoices = {
   }>;
 };
 
-export type JournalPhoto = { id: string; uri: string; caption: string; takenAt?: number };
+export type JournalPhoto = {
+  id: string;
+  uri: string;
+  caption: string;
+  takenAt?: number;
+  /** Prepared local display label, e.g. "28 octobre 2026 - 20h54". */
+  dateTimeLabel?: string;
+};
 export type JournalEntry = {
   id: string;
   sourceId: string;
@@ -39,7 +46,7 @@ export type JournalEntry = {
   recapTasks?: Array<{ id: string; title: string; dateLabel: string }>;
 };
 
-export type JournalComparisonPhoto = { id: string; uri: string; dateLabel: string };
+export type JournalComparisonPhoto = { id: string; uri: string; dateLabel: string; takenAt?: number };
 export type JournalComparison = {
   projectName: string;
   before: JournalComparisonPhoto[];
@@ -61,11 +68,11 @@ export type JournalVideoPayload = {
   secondsPerPhoto: number;
   finalComparisonImages?: {
     projectName: string;
-    before: Array<{ id: string; img: string; assetKey?: string; dateLabel: string }>;
-    after: Array<{ id: string; img: string; assetKey?: string; dateLabel: string }>;
+    before: Array<{ id: string; img: string; assetKey?: string; dateLabel: string; takenAt?: number; dateTimeLabel?: string }>;
+    after: Array<{ id: string; img: string; assetKey?: string; dateLabel: string; takenAt?: number; dateTimeLabel?: string }>;
   };
   entries: Array<Omit<JournalEntry, 'photos'> & {
-    photos: Array<{ id: string; img: string; assetKey?: string; caption: string }>;
+    photos: Array<{ id: string; img: string; assetKey?: string; caption: string; takenAt?: number; dateTimeLabel?: string }>;
   }>;
 };
 

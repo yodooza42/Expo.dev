@@ -2,7 +2,14 @@ export type Priority = 'low' | 'medium' | 'high' | 'critical';
 export type TaskStatus = 'idea' | 'todo' | 'inprogress' | 'waiting' | 'done';
 export type ProjectStatus = 'idea' | 'todo' | 'inprogress' | 'waiting' | 'done' | 'abandoned';
 export type EisenhowerQuadrant = 'do_now' | 'schedule' | 'delegate' | 'eliminate';
-export type JournalProjectPhoto = { photoId: string; uri: string; dateLabel: string; sourceTitle: string };
+export type JournalProjectPhoto = {
+  photoId: string;
+  uri: string;
+  dateLabel: string;
+  sourceTitle: string;
+  /** Capture timestamp, when known from the photo metadata. */
+  takenAt?: number;
+};
 export type JournalProjectPhotoSelection = JournalProjectPhoto | JournalProjectPhoto[];
 
 export interface Project {

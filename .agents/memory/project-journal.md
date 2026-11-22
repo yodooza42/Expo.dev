@@ -17,9 +17,15 @@ La chronologie doit entrelacer les tâches des différents projets selon leur co
 
 Dans le carnet, trier les photos de chaque tâche par date/heure de prise connue, puis les afficher une à une en grand au même emplacement. Garder l’image entière dans son ratio d’origine, sans recadrage, filtre ni contour ; laisser les photos sans date après celles datées, dans leur ordre d’origine.
 
-**Why:** les mosaïques rendent les détails difficiles à voir, et l’utilisateur veut reconnaître les photos telles qu’elles ont été prises.
+**Why:** les mosaïques rendent les détails difficiles à voir, et l’utilisateur indique qu’environ trois quarts de ses photos sont en portrait.
 
-**How to apply:** utiliser les dates photo déjà enregistrées pour chaque tâche, garder un ordre stable quand la date manque, et ne pas décoder les images hors de la photo affichée ou imminente.
+**How to apply:** utiliser les dates photo déjà enregistrées pour chaque tâche, garder un ordre stable quand la date manque, ne pas décoder les images hors de la photo affichée ou imminente, et donner plus de hauteur aux images portrait sans les recadrer ; garder le cadre actuel pour les paysages.
+
+Afficher aussi la date et l’heure de prise sur chaque photo du carnet lorsque les métadonnées sont connues ; sinon garder la date de l’étape.
+
+**Why:** l’utilisateur veut voir l’heure réelle à côté de la date dans le carnet, sans inventer d’heure si la photo n’en fournit pas.
+
+**How to apply:** formatter l’heure locale de capture au format français `28 octobre 2026 - 20h54` dans l’emplacement de date de la photo, y compris dans l’aperçu et l’export natif.
 
 Ne plus rythmer les photos par groupes de quatre : chaque photo a sa propre durée, avec au moins une seconde et davantage selon le temps de lecture estimé de sa légende.
 
