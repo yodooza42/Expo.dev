@@ -148,6 +148,33 @@ test('comparison photos already shown in the timeline do not inflate the selecte
   assert.equal(plan.scenes.filter(scene => scene.kind === 'comparison').length, 2);
 });
 
+test('native photo scenes keep recovery URI candidates for library references', () => {
+  const preparedAssets = [
+    { ...assets[0], nativeCandidates: ['content://resolved/photo.jpg', 'file:///backup/photo.jpg'] },
+    ...assets.slice(1),
+  ];
+  const plan = planBuilder.buildNativeJournalPlan(makePayload(), preparedAssets);
+  const firstPhoto = plan.scenes.find(scene => scene.kind === 'photo');
+
+  assert.equal(firstPhoto.photoUri, 'content://resolved/photo.jpg');
+  assert.deepEqual(Array.from(firstPhoto.photoFallbackUris), ['file:///backup/photo.jpg']);
+});
+
+test('comparison photos already shown in the timeline do not inflate the selected count', () => {
+  const payload = makePayload();
+  payload.photoCount = 2;
+  payload.finalComparisonImages.before = [
+    { id: 'before', img: '', assetKey: 'asset-1', dateLabel: '1 janvier 2025' },
+  ];
+  payload.finalComparisonImages.after = [
+    { id: 'after', img: '', assetKey: 'asset-2', dateLabel: '1 mai 2026' },
+  ];
+  const plan = planBuilder.buildNativeJournalPlan(payload, assets);
+
+  assert.equal(plan.scenes.filter(scene => scene.kind === 'photo').length, 2);
+  assert.equal(plan.scenes.filter(scene => scene.kind === 'comparison').length, 2);
+});
+
 test('native plan fails rather than silently dropping a missing photo', () => {
   assert.throws(
     () => planBuilder.buildNativeJournalPlan(makePayload(), assets.slice(0, 3)),
