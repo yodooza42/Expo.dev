@@ -13,6 +13,8 @@ const dateExports = {};
 vm.runInNewContext(compile(read('utils/completionDate.ts')), { exports: dateExports, Date });
 const projectPhotoLinkExports = {};
 vm.runInNewContext(compile(read('utils/projectPhotoLinks.ts')), { exports: projectPhotoLinkExports });
+const eisenhowerExports = {};
+vm.runInNewContext(compile(read('utils/eisenhower.ts')), { exports: eisenhowerExports });
 const { formatCompletionDate, parseCompletionDate, completionDateError, resolveCompletionDate } = dateExports;
 const cascadeExports = {};
 vm.runInNewContext(compile(read('utils/completionCascade.ts')), {
@@ -191,6 +193,7 @@ function formHarness(kind, existing) {
     '@/components/CompletionDateField': { CompletionDateField: 'CompletionDateField' },
     '@/components/KeyboardAwareScrollViewCompat': { KeyboardAwareScrollViewCompat: 'KeyboardScroll' },
     '@/utils/completionDate': dateExports,
+    '@/utils/eisenhower': eisenhowerExports,
     '@/utils/taskPhotoDates': { sortTaskPhotosChronologically: photos => photos },
     '@/utils/projectPhotoLinks': projectPhotoLinkExports,
   };

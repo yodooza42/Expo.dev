@@ -1,16 +1,29 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import Svg, { Defs, Pattern, Path, Rect } from 'react-native-svg';
-import { JOURNAL_COLORS as c } from '@/constants/journal';
+import Svg, { Circle, Defs, Ellipse, Pattern, Path, Rect } from 'react-native-svg';
+import { JOURNAL_COLORS as c, JOURNAL_PAPER as p } from '@/constants/journal';
 
 export function JournalCover({ title, summary }: { title: string; summary: string }) {
   return <View style={s.cover}>
-    <Svg width="100%" height="100%" style={StyleSheet.absoluteFill}>
-      <Defs><Pattern id="journal-grid" width="16" height="16" patternUnits="userSpaceOnUse">
-        <Path d="M 16 0 L 0 0 0 16" stroke={c.grid} strokeWidth="0.5" fill="none" />
-      </Pattern></Defs>
-      <Rect width="100%" height="100%" fill="url(#journal-grid)" />
-      <Path d="M 26 0 V 500" stroke={c.rule} strokeWidth="1" opacity="0.55" />
+    <Svg width="100%" height="100%" viewBox={`0 0 ${p.width} ${p.height}`} preserveAspectRatio="none" style={StyleSheet.absoluteFill}>
+      <Defs>
+        <Pattern id="journal-grid" width={p.gridSize} height={p.gridSize} patternUnits="userSpaceOnUse">
+          <Path d={`M ${p.gridSize} 0 H 0 V ${p.gridSize}`} stroke={c.grid} strokeWidth="0.7" fill="none" />
+        </Pattern>
+        <Pattern id="journal-binding-lines" width={p.bindingWidth} height={p.gridSize} patternUnits="userSpaceOnUse">
+          <Path d={`M 0 ${p.gridSize / 2} H ${p.bindingWidth}`} stroke={c.divider} strokeWidth="0.65" opacity="0.38" fill="none" />
+        </Pattern>
+      </Defs>
+      <Rect width={p.width} height={p.height} fill={c.paper} />
+      <Rect width={p.bindingWidth} height={p.height} fill={c.binding} />
+      <Rect width={p.bindingWidth} height={p.height} fill="url(#journal-binding-lines)" />
+      <Rect x={p.gridStart} width={p.width - p.gridStart} height={p.height} fill="url(#journal-grid)" />
+      <Path d={`M ${p.bindingWidth} 0 V ${p.height}`} stroke={c.divider} strokeWidth="2" opacity="0.7" />
+      <Path d={`M ${p.gridStart} 0 V ${p.height}`} stroke={c.divider} strokeWidth="1" opacity="0.35" />
+      {p.punchCenters.map(y => <React.Fragment key={y}>
+        <Circle cx={p.punchX} cy={y} r="7" fill={c.punch} />
+        <Ellipse cx={p.punchX} cy={y + 27} rx="8" ry="16" fill={c.punch} />
+      </React.Fragment>)}
     </Svg>
     <Text style={s.eyebrow}>LES PROJETS PRENNENT VIE</Text>
     <Text style={s.title}>{title || 'Carnet de bord'}</Text>
@@ -20,7 +33,7 @@ export function JournalCover({ title, summary }: { title: string; summary: strin
   </View>;
 }
 const s = StyleSheet.create({
-  cover: { backgroundColor: c.paper, borderRadius: 5, overflow: 'hidden', padding: 28, paddingLeft: 42, gap: 13 },
+  cover: { backgroundColor: c.paper, borderRadius: 5, overflow: 'hidden', padding: 28, paddingLeft: 74, gap: 13 },
   eyebrow: { color: c.ink, fontFamily: 'Inter_600SemiBold', letterSpacing: 1.8, fontSize: 9 },
   title: { color: c.ink, fontFamily: 'Inter_700Bold', fontSize: 32, lineHeight: 38, marginTop: 10 },
   rule: { width: 52, height: 2, backgroundColor: c.rule, marginVertical: 4 },

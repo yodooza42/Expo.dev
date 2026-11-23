@@ -16,6 +16,7 @@ const {
   albumAgeAt,
   albumDay,
   buildAlbumTimeline,
+  chronologicalAlbumPhotoIds,
   chronologicalMemories,
   emptyLifeAlbum,
   isAlbumDate,
@@ -46,6 +47,22 @@ test('suggests the earliest known selected photo date and ignores undated photos
   assert.equal(suggestedAlbumDate(['later', 'same-day'], photos), '2025-11-20');
   assert.equal(suggestedAlbumDate(['later', 'same-day', 'older', 'undated'], photos), '2025-11-19');
   assert.equal(suggestedAlbumDate(['undated'], photos), null);
+});
+
+test('orders event photos by capture time, keeps undated choices afterward, and removes duplicates', () => {
+  const photos = [
+    { id: 'late', takenAt: new Date(2026, 8, 3, 20).getTime() },
+    { id: 'unknown-a', addedAt: 5 },
+    { id: 'early', takenAt: new Date(2026, 8, 3, 8).getTime() },
+    { id: 'middle', takenAt: new Date(2026, 8, 3, 14).getTime() },
+    { id: 'unknown-b', addedAt: 6 },
+  ];
+  const selected = ['late', 'unknown-a', 'early', 'middle', 'unknown-b', 'late'];
+  assert.deepEqual(
+    Array.from(chronologicalAlbumPhotoIds(selected, photos)),
+    ['early', 'middle', 'late', 'unknown-a', 'unknown-b'],
+  );
+  assert.deepEqual(selected, ['late', 'unknown-a', 'early', 'middle', 'unknown-b', 'late']);
 });
 
 test('calculates age by anniversary and handles events before birth', () => {
@@ -88,4 +105,14 @@ test('starts with an empty, valid album and rejects corrupted structures', () =>
   assert.equal(isLifeAlbum(album), true);
   assert.equal(isLifeAlbum({ ...album, profile: { ...album.profile, birthDate: '2023-02-29' } }), false);
   assert.equal(isLifeAlbum({ ...album, memories: [{ id: 'x', date: 'not-a-date' }] }), false);
+  const legacyMemory = { id: 'legacy', title: '', date: '2025-04-12', note: '', photoIds: [], createdAt: 1, updatedAt: 1 };
+  assert.equal(isLifeAlbum({ ...album, memories: [legacyMemory] }), true);
+  assert.equal(isLifeAlbum({
+    ...album,
+    memories: [{ ...legacyMemory, photoCaptions: { photo: 'Premier sourire' } }],
+  }), true);
+  assert.equal(isLifeAlbum({
+    ...album,
+    memories: [{ ...legacyMemory, photoCaptions: { photo: 42 } }],
+  }), false);
 });

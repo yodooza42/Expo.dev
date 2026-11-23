@@ -1,4 +1,5 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import type { Asset as MediaLibraryAsset } from 'expo-media-library';
 import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -17,13 +18,16 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
+import { GalleryPhotoPicker } from '@/components/GalleryPhotoPicker';
 import { ProjectPhoto } from '@/components/ProjectPhoto';
 import { useColors } from '@/hooks/useColors';
 import {
   albumAgeAt,
   albumDay,
   buildAlbumTimeline,
+  chronologicalAlbumPhotoIds,
   chronologicalMemories,
+  importAlbumPhotoItems,
   importAlbumPhotos,
   isAlbumDate,
   loadLifeAlbum,
@@ -36,9 +40,10 @@ import {
   type AlbumTimelineRow,
   type LifeAlbum,
 } from '@/utils/lifeAlbum';
+import type { ImportItem } from '@/utils/library/importPhoto';
 import { lifeAlbumTheme as ink } from '@/constants/lifeAlbumTheme';
 
-type MemoryDraft = { id: string; title: string; date: string; note: string; photoIds: string[]; createdAt: number; dateEdited: boolean };
+type MemoryDraft = { id: string; title: string; date: string; note: string; photoIds: string[]; photoCaptions: Record<string, string>; createdAt: number; dateEdited: boolean };
 
 const dateFormatter = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
 const shortDateFormatter = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -64,6 +69,7 @@ export default function LifeAlbumScreen() {
   const [editor, setEditor] = useState<'profile' | 'memory' | null>(null);
   const [profileDraft, setProfileDraft] = useState({ name: '', birthDate: '', coverPhotoId: '' });
   const [memoryDraft, setMemoryDraft] = useState<MemoryDraft | null>(null);
+  const [galleryPickerOpen, setGalleryPickerOpen] = useState(false);
   const [selectedInbox, setSelectedInbox] = useState<string[]>([]);
   const [viewerPhoto, setViewerPhoto] = useState<AlbumPhoto | null>(null);
   const [inboxLimit, setInboxLimit] = useState(30);
@@ -118,10 +124,10 @@ export default function LifeAlbumScreen() {
     const now = Date.now();
     const preferredPhotoDate = suggestedAlbumDate(photoIds, album.photos);
     const draft: MemoryDraft = memory
-      ? { ...memory, photoIds: [...memory.photoIds], dateEdited: true }
+      ? { ...memory, photoIds: [...memory.photoIds], photoCaptions: { ...memory.photoCaptions }, dateEdited: true }
       : {
           id: makeAlbumId(), title: '', date: preferredPhotoDate ?? albumDay(now),
-          note: '', photoIds: [...photoIds], createdAt: now, dateEdited: false,
+          note: '', photoIds: [...photoIds], photoCaptions: {}, createdAt: now, dateEdited: false,
         };
     setMemoryDraft(draft);
     setEditorPhotoLimit(60);
@@ -133,6 +139,7 @@ export default function LifeAlbumScreen() {
     const draft = editor === 'profile' ? profileDraft : memoryDraft;
     const changed = !!draft && JSON.stringify(draft) !== editorBaseline.current;
     const finish = () => {
+      setGalleryPickerOpen(false);
       setEditor(null);
       setMemoryDraft(null);
     };
@@ -152,12 +159,15 @@ export default function LifeAlbumScreen() {
     return () => subscription.remove();
   }, [closeEditor, editor]);
 
-  async function addPhotos() {
+  async function runPhotoImport(
+    attachToEvent: boolean,
+    loadPhotos: () => Promise<{ photos: AlbumPhoto[]; failed: string[] }>,
+  ) {
     if (!album || importing || saving) return;
     setImporting(true);
     setMessage('');
     try {
-      const result = await importAlbumPhotos();
+      const result = await loadPhotos();
       if (!result.photos.length && !result.failed.length) return;
       const photos = [...album.photos];
       const known = new Set(photos.map(photo => photo.id));
@@ -168,22 +178,52 @@ export default function LifeAlbumScreen() {
         photos.push(photo);
         addedCount++;
       }
-      const saved = await persist({ ...album, photos });
+      const saved = addedCount === 0 || await persist({ ...album, photos });
       if (!saved) return;
-      if (result.failed.length) {
-        setMessage(addedCount > 0
-          ? `${result.failed.length} photo(s) n’ont pas pu être ajoutées. Les photos copiées sont disponibles dans les photos à classer.`
-          : `${result.failed.length} photo(s) n’ont pas pu être ajoutées.`);
-      } else if (addedCount > 0) {
-        setMessage(`${addedCount} photo(s) ajoutée(s) aux photos à classer.`);
-      } else {
-        setMessage('Ces photos sont déjà dans l’album.');
+
+      let attachedCount = 0;
+      if (attachToEvent && memoryDraft) {
+        const importedIds = [...new Set(result.photos.map(photo => photo.id))];
+        const currentIds = new Set(memoryDraft.photoIds);
+        attachedCount = importedIds.filter(id => !currentIds.has(id)).length;
+        setMemoryDraft(current => {
+          if (!current) return current;
+          return {
+            ...current,
+            photoIds: chronologicalAlbumPhotoIds([...current.photoIds, ...importedIds], photos),
+          };
+        });
       }
+      const count = attachToEvent ? attachedCount : addedCount;
+      const target = attachToEvent ? 'à cet événement' : 'aux photos à classer';
+      const success = count > 0
+        ? `${count} photo(s) ajoutée(s) ${target}${attachToEvent ? ' dans l’ordre chronologique' : ''}.`
+        : attachToEvent ? 'Ces photos sont déjà associées à cet événement.' : 'Ces photos sont déjà dans l’album.';
+      setMessage(result.failed.length
+        ? `${result.failed.length} photo(s) n’ont pas pu être ajoutées. ${success}`
+        : success);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Ajout des photos impossible.');
     } finally {
       setImporting(false);
     }
+  }
+
+  function addPhotos() {
+    return runPhotoImport(false, importAlbumPhotos);
+  }
+
+  function addPhotosToMemory() {
+    return runPhotoImport(true, importAlbumPhotos);
+  }
+
+  function addGalleryPhotosToMemory(assets: MediaLibraryAsset[]) {
+    const items: ImportItem[] = assets.map(asset => ({
+      uri: asset.uri,
+      takenAt: asset.creationTime || undefined,
+      originalName: asset.filename,
+    }));
+    return runPhotoImport(true, () => importAlbumPhotoItems(items));
   }
 
   async function saveProfile() {
@@ -222,7 +262,15 @@ export default function LifeAlbumScreen() {
       setMessage('Un souvenir ne peut pas être daté dans le futur.');
       return;
     }
-    const photoIds = [...new Set(memoryDraft.photoIds)].filter(id => album.photos.some(photo => photo.id === id));
+    const photoIds = chronologicalAlbumPhotoIds(
+      memoryDraft.photoIds.filter(id => album.photos.some(photo => photo.id === id)),
+      album.photos,
+    );
+    const photoCaptions = Object.fromEntries(
+      photoIds
+        .map(id => [id, memoryDraft.photoCaptions[id]?.trim() ?? ''] as const)
+        .filter(([, caption]) => caption.length > 0),
+    );
     const title = memoryDraft.title.trim();
     if (!title && photoIds.length === 0) {
       setMessage('Ajoute un titre à cet événement ou choisis au moins une photo.');
@@ -235,6 +283,7 @@ export default function LifeAlbumScreen() {
       date: memoryDraft.date,
       note: memoryDraft.note.trim(),
       photoIds,
+      photoCaptions,
       createdAt: memoryDraft.createdAt,
       updatedAt: now,
     };
@@ -255,13 +304,23 @@ export default function LifeAlbumScreen() {
       const photoIds = current.photoIds.includes(id)
         ? current.photoIds.filter(item => item !== id)
         : [...current.photoIds, id];
+      const photoCaptions = { ...current.photoCaptions };
+      if (!photoIds.includes(id)) delete photoCaptions[id];
       const suggestedDate = suggestedAlbumDate(photoIds, album?.photos ?? []);
       return {
         ...current,
-        photoIds,
+        photoIds: chronologicalAlbumPhotoIds(photoIds, album?.photos ?? []),
+        photoCaptions,
         date: current.dateEdited ? current.date : suggestedDate ?? albumDay(Date.now()),
       };
     });
+  }
+
+  function updateDraftPhotoCaption(id: string, caption: string) {
+    setMemoryDraft(current => current ? {
+      ...current,
+      photoCaptions: { ...current.photoCaptions, [id]: caption },
+    } : current);
   }
 
   function deleteMemory(memory: AlbumMemory) {
@@ -294,13 +353,24 @@ export default function LifeAlbumScreen() {
   const suggestedMemoryDate = memoryDraft && album
     ? suggestedAlbumDate(memoryDraft.photoIds, album.photos)
     : null;
+  const memoryGalleryDate = memoryDraft && isAlbumDate(memoryDraft.date)
+    ? dateFromKey(memoryDraft.date)
+    : null;
+  const draftPhotos = memoryDraft && album
+    ? chronologicalAlbumPhotoIds(memoryDraft.photoIds, album.photos)
+      .map(id => album.photos.find(photo => photo.id === id))
+      .filter((photo): photo is AlbumPhoto => !!photo)
+    : [];
   const cover = album?.photos.find(photo => photo.id === album.profile.coverPhotoId);
   const currentAge = album?.profile.birthDate ? albumAgeAt(album.profile.birthDate, albumDay(Date.now())) : null;
   const viewerIndex = viewerPhoto && album ? album.photos.findIndex(photo => photo.id === viewerPhoto.id) : -1;
   const webInsets = Platform.OS === 'web' ? { paddingTop: Math.max(insets.top, 67), paddingBottom: Math.max(insets.bottom, 34) } : {};
 
   function renderMemory(memory: AlbumMemory) {
-    const photos = memory.photoIds.map(id => album?.photos.find(photo => photo.id === id)).filter((photo): photo is AlbumPhoto => !!photo);
+    const photos = chronologicalAlbumPhotoIds(memory.photoIds, album?.photos ?? [])
+      .map(id => album?.photos.find(photo => photo.id === id))
+      .filter((photo): photo is AlbumPhoto => !!photo);
+    const extraPhotoCaptions = photos.slice(6).filter(photo => memory.photoCaptions?.[photo.id]?.trim());
     const age = album ? albumAgeAt(album.profile.birthDate, memory.date) : null;
     return (
       <View style={styles.memoryRow}>
@@ -318,18 +388,35 @@ export default function LifeAlbumScreen() {
               <Pressable onPress={() => setViewerPhoto(photos[0]!)} accessibilityRole="imagebutton" accessibilityLabel={`Voir la photo du ${formattedDate(memory.date)}`}>
                 <ProjectPhoto uri={photos[0]!.uri} style={styles.memoryHeroPhoto} contentFit="cover" />
               </Pressable>
+              {memory.photoCaptions?.[photos[0]!.id]?.trim()
+                ? <Text style={[styles.memoryPhotoCaption, { color: ink.text }]}>{memory.photoCaptions[photos[0]!.id]}</Text>
+                : null}
               {photos.length > 1 ? (
                 <View style={styles.memoryPhotoStrip}>
                   {photos.slice(1, 6).map(photo => (
-                    <Pressable key={photo.id} onPress={() => setViewerPhoto(photo)} accessibilityRole="imagebutton" accessibilityLabel="Afficher cette photo">
-                      <ProjectPhoto uri={photo.uri} style={styles.memoryStripPhoto} contentFit="cover" />
-                    </Pressable>
+                    <View key={photo.id} style={styles.memoryPhotoCell}>
+                      <Pressable onPress={() => setViewerPhoto(photo)} accessibilityRole="imagebutton" accessibilityLabel="Afficher cette photo">
+                        <ProjectPhoto uri={photo.uri} style={styles.memoryStripPhoto} contentFit="cover" />
+                      </Pressable>
+                      {memory.photoCaptions?.[photo.id]?.trim()
+                        ? <Text numberOfLines={3} style={[styles.memoryStripCaption, { color: ink.text }]}>{memory.photoCaptions[photo.id]}</Text>
+                        : null}
+                    </View>
                   ))}
                   {photos.length > 6 ? (
                     <Pressable onPress={() => setViewerPhoto(photos[6]!)} accessibilityRole="button" accessibilityLabel={`Afficher les ${photos.length - 6} autres photos`} style={[styles.moreMemoryPhotos, { backgroundColor: ink.surfaceRaised }]}>
                       <Text style={[styles.moreMemoryPhotosText, { color: ink.ink }]}>+{photos.length - 6}</Text>
                     </Pressable>
                   ) : null}
+                </View>
+              ) : null}
+              {extraPhotoCaptions.length > 0 ? (
+                <View style={styles.extraPhotoCaptions}>
+                  {extraPhotoCaptions.map(photo => (
+                    <Text key={photo.id} style={[styles.memoryPhotoCaption, { color: ink.text }]}>
+                      {photo.takenAt ? `${shortDateFormatter.format(new Date(photo.takenAt))} · ` : ''}{memory.photoCaptions?.[photo.id]}
+                    </Text>
+                  ))}
                 </View>
               ) : null}
             </View>
@@ -564,7 +651,7 @@ export default function LifeAlbumScreen() {
             <Pressable testID="close-life-editor" accessibilityRole="button" accessibilityLabel="Fermer sans enregistrer" onPress={closeEditor} style={styles.iconButton}>
               <MaterialCommunityIcons name="close" size={23} color={ink.ink} />
             </Pressable>
-            <Text style={[styles.editorHeaderTitle, { color: ink.ink }]}>{editor === 'profile' ? 'L’album' : memoryDraft && album.memories.some(item => item.id === memoryDraft.id) ? 'Modifier le souvenir' : 'Nouveau souvenir'}</Text>
+            <Text style={[styles.editorHeaderTitle, { color: ink.ink }]}>{editor === 'profile' ? 'L’album' : memoryDraft && album.memories.some(item => item.id === memoryDraft.id) ? 'Modifier l’événement' : 'Nouvel événement'}</Text>
             <Pressable
               testID="save-life-editor"
               accessibilityRole="button"
@@ -629,7 +716,7 @@ export default function LifeAlbumScreen() {
                 <Text style={[styles.formLabel, { color: ink.quiet }]}>DATE</Text>
                 <TextInput
                   testID="life-memory-date-input"
-                  accessibilityLabel="Date du souvenir"
+                  accessibilityLabel="Date de l’événement"
                   value={memoryDraft.date}
                   onChangeText={date => setMemoryDraft(current => current ? { ...current, date, dateEdited: true } : current)}
                   placeholder="AAAA-MM-JJ"
@@ -647,6 +734,30 @@ export default function LifeAlbumScreen() {
                         ? 'Aucune date connue dans les photos choisies : la date du jour est proposée.'
                       : 'La date d’une photo sera proposée dès que tu en sélectionnes une.'}
                 </Text>
+              <Pressable
+                testID="browse-life-memory-date-photos"
+                accessibilityRole="button"
+                disabled={!memoryGalleryDate || importing || saving}
+                onPress={() => {
+                  setMessage('');
+                  setGalleryPickerOpen(true);
+                }}
+                style={[
+                  styles.galleryDateButton,
+                  { borderColor: ink.accentSoft, opacity: !memoryGalleryDate || importing || saving ? 0.45 : 1 },
+                ]}
+              >
+                <MaterialCommunityIcons name="image-multiple-outline" size={20} color={ink.accent} />
+                <View style={styles.galleryDateButtonCopy}>
+                  <Text style={[styles.galleryDateButtonTitle, { color: ink.accent }]}>
+                    {memoryGalleryDate ? `Choisir les photos du ${formattedDate(memoryDraft.date)}` : 'Choisir les photos dans la galerie'}
+                  </Text>
+                  <Text style={[styles.galleryDateButtonHint, { color: ink.quiet }]}>
+                    {memoryGalleryDate ? 'La galerie sera filtrée sur cette journée.' : 'Saisis une date valide pour filtrer la galerie.'}
+                  </Text>
+                </View>
+                <MaterialCommunityIcons name="chevron-right" size={19} color={ink.quiet} />
+              </Pressable>
                 <Text style={[styles.formLabel, { color: ink.quiet, marginTop: 20 }]}>TITRE (FACULTATIF AVEC PHOTO)</Text>
                 <TextInput
                   testID="life-memory-title-input"
@@ -677,9 +788,9 @@ export default function LifeAlbumScreen() {
                   <Text style={[styles.formHelp, { color: ink.quiet }]}>{memoryDraft.photoIds.length} choisie(s)</Text>
                 </View>
                 {album.photos.length === 0 ? (
-                  <Pressable testID="import-from-life-memory-editor" onPress={() => void addPhotos()} style={[styles.importInline, { borderColor: ink.accentSoft }]}>
+                  <Pressable testID="import-from-life-memory-editor" onPress={() => void addPhotosToMemory()} style={[styles.importInline, { borderColor: ink.accentSoft }]}>
                     <MaterialCommunityIcons name="image-plus-outline" size={18} color={ink.accent} />
-                    <Text style={[styles.importText, { color: ink.accent }]}>Ajouter des photos d’abord</Text>
+                    <Text style={[styles.importText, { color: ink.accent }]}>Ajouter des photos à cet événement</Text>
                   </Pressable>
                 ) : (
                   <View style={styles.photoGrid}>
@@ -699,6 +810,38 @@ export default function LifeAlbumScreen() {
                   <Pressable testID="show-more-memory-photos" onPress={() => setEditorPhotoLimit(value => value + 60)} style={styles.showMoreButton}>
                     <Text style={[styles.showMoreText, { color: ink.accent }]}>Afficher 60 photos de plus</Text>
                   </Pressable>
+                ) : null}
+                {draftPhotos.length > 0 ? (
+                  <View style={styles.photoCaptionSection}>
+                    <View style={styles.sectionTitleRow}>
+                      <View>
+                        <Text style={[styles.formLabel, { color: ink.quiet, marginBottom: 0 }]}>ORDRE CHRONOLOGIQUE</Text>
+                        <Text style={[styles.formHelp, { color: ink.quiet }]}>Description courte, facultative, pour chaque photo.</Text>
+                      </View>
+                      <Text style={[styles.formHelp, { color: ink.quiet }]}>{draftPhotos.length}</Text>
+                    </View>
+                    {draftPhotos.map((photo, index) => (
+                      <View key={photo.id} style={[styles.photoCaptionRow, { borderBottomColor: ink.rule }]}>
+                        <ProjectPhoto uri={photo.uri} style={styles.photoCaptionThumb} contentFit="cover" />
+                        <View style={styles.photoCaptionFields}>
+                          <Text style={[styles.photoCaptionDate, { color: ink.quiet }]}>
+                            {String(index + 1).padStart(2, '0')} · {photo.takenAt ? shortDateFormatter.format(new Date(photo.takenAt)) : 'Date inconnue'}
+                          </Text>
+                          <TextInput
+                            testID={`life-memory-photo-caption-${photo.id}`}
+                            accessibilityLabel={`Description de la photo ${index + 1}`}
+                            value={memoryDraft.photoCaptions[photo.id] ?? ''}
+                            onChangeText={caption => updateDraftPhotoCaption(photo.id, caption)}
+                            placeholder="Ajouter une mini-description…"
+                            placeholderTextColor={ink.quiet}
+                            style={[styles.photoCaptionInput, { color: ink.ink, borderColor: ink.rule, backgroundColor: ink.surface }]}
+                            maxLength={140}
+                            returnKeyType="done"
+                          />
+                        </View>
+                      </View>
+                    ))}
+                  </View>
                 ) : null}
                 {album.memories.some(item => item.id === memoryDraft.id) ? (
                   <Pressable testID="delete-life-memory" onPress={() => {
@@ -721,6 +864,17 @@ export default function LifeAlbumScreen() {
           </KeyboardAwareScrollViewCompat>
         </View>
       </Modal>
+
+      <GalleryPhotoPicker
+        visible={galleryPickerOpen && editor === 'memory'}
+        title={memoryDraft && isAlbumDate(memoryDraft.date)
+          ? `Photos du ${formattedDate(memoryDraft.date)}`
+          : 'Photos de l’événement'}
+        referenceDate={memoryGalleryDate}
+        onClose={() => setGalleryPickerOpen(false)}
+        onAddAssets={addGalleryPhotosToMemory}
+        onBrowseAll={() => { void addPhotosToMemory(); }}
+      />
 
       <Modal visible={!!viewerPhoto} transparent animationType="fade" onRequestClose={() => setViewerPhoto(null)}>
         <View style={[styles.viewer, { backgroundColor: ink.black }]}>
@@ -803,7 +957,11 @@ const styles = StyleSheet.create({
   memoryPhotoLayout: { gap: 6, marginTop: 9 },
   memoryHeroPhoto: { width: '100%', height: 244, backgroundColor: ink.surfaceRaised },
   memoryPhotoStrip: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  memoryPhotoCell: { width: 76 },
   memoryStripPhoto: { width: 76, height: 76, backgroundColor: ink.surfaceRaised },
+  memoryPhotoCaption: { fontSize: 11, lineHeight: 17, marginTop: 5 },
+  memoryStripCaption: { fontSize: 9, lineHeight: 13, marginTop: 4 },
+  extraPhotoCaptions: { gap: 2, marginTop: 4 },
   moreMemoryPhotos: { width: 76, height: 76, alignItems: 'center', justifyContent: 'center' },
   moreMemoryPhotosText: { fontSize: 16, fontWeight: '600' },
   memoryEdit: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', paddingTop: 10, paddingRight: 8 },
@@ -823,6 +981,10 @@ const styles = StyleSheet.create({
   formLabel: { fontSize: 10, fontWeight: '700', letterSpacing: 1.4, marginBottom: 9 },
   input: { minHeight: 48, borderWidth: 1, paddingHorizontal: 13, fontSize: 15 },
   formHelp: { fontSize: 11, lineHeight: 17, marginTop: 7 },
+  galleryDateButton: { minHeight: 62, borderWidth: 1, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, marginTop: 14 },
+  galleryDateButtonCopy: { flex: 1, paddingVertical: 10 },
+  galleryDateButtonTitle: { fontSize: 12, fontWeight: '700' },
+  galleryDateButtonHint: { fontSize: 10, lineHeight: 15, marginTop: 3 },
   noteInput: { minHeight: 104, paddingTop: 12 },
   coverChoiceGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
   coverChoice: { width: 76, height: 76, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
@@ -830,6 +992,12 @@ const styles = StyleSheet.create({
   coverChoicePhoto: { width: 70, height: 70 },
   formPhotoTitle: { marginTop: 23, marginBottom: 10, flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
   importInline: { height: 46, borderWidth: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 4 },
+  photoCaptionSection: { marginTop: 26 },
+  photoCaptionRow: { minHeight: 74, flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 9, borderBottomWidth: StyleSheet.hairlineWidth },
+  photoCaptionThumb: { width: 54, height: 54, backgroundColor: ink.surfaceRaised },
+  photoCaptionFields: { flex: 1 },
+  photoCaptionDate: { fontSize: 10, marginBottom: 5, letterSpacing: 0.2 },
+  photoCaptionInput: { minHeight: 38, borderWidth: 1, paddingHorizontal: 9, paddingVertical: 6, fontSize: 12 },
   deleteMemoryButton: { marginTop: 30, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 9 },
   deleteMemoryText: { fontSize: 13 },
   saveButton: { height: 50, alignItems: 'center', justifyContent: 'center', marginTop: 28 },

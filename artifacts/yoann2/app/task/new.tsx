@@ -28,6 +28,7 @@ import { SubPageHeader } from '@/components/SubPageHeader';
 import { CompletionDateField } from '@/components/CompletionDateField';
 import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
 import { completionDateError, formatCompletionDate } from '@/utils/completionDate';
+import { eisenhowerFromLevels, eisenhowerScoreFromLevel, type EisenhowerQuadrant } from '@/utils/eisenhower';
 import { attachProjectPhotoReferences, collectProjectPhotoUris, getUnlinkedProjectPhotos } from '@/utils/projectPhotoLinks';
 import { photoTakenAt } from '@/utils/tripPhotoPlacement';
 import { sortTaskPhotosChronologically } from '@/utils/taskPhotoDates';
@@ -49,6 +50,18 @@ const EISEN_LEVELS = [
   { value: 2, label: 'Moyen' },
   { value: 3, label: 'Élevé' },
 ];
+const EISENHOWER_LABELS: Record<EisenhowerQuadrant, string> = {
+  do_now: 'À faire maintenant',
+  schedule: 'Planifier',
+  delegate: 'Déléguer',
+  eliminate: 'Supprimer',
+};
+const EISENHOWER_COLORS: Record<EisenhowerQuadrant, string> = {
+  do_now: '#F44336',
+  schedule: '#2196F3',
+  delegate: '#FF9800',
+  eliminate: '#9E9E9E',
+};
 
 export default function NewTaskScreen() {
   const colors = useColors();
@@ -113,12 +126,8 @@ export default function NewTaskScreen() {
   const topPad = Platform.OS === 'web' ? 67 : insets.top;
 
   const eisenhower = useMemo(() => {
-    const isUrgent = urgency >= 2;
-    const isImportant = importance >= 2;
-    if (isUrgent && isImportant) return { label: 'À faire maintenant', color: '#F44336' };
-    if (!isUrgent && isImportant) return { label: 'Planifier', color: '#2196F3' };
-    if (isUrgent && !isImportant) return { label: 'Déléguer', color: '#FF9800' };
-    return { label: 'Supprimer', color: '#9E9E9E' };
+    const quadrant = eisenhowerFromLevels(urgency, importance);
+    return { label: EISENHOWER_LABELS[quadrant], color: EISENHOWER_COLORS[quadrant] };
   }, [urgency, importance]);
 
   function parseFrDate(s: string): Date {
@@ -139,8 +148,8 @@ export default function NewTaskScreen() {
 
   function handleSave() {
     if (!validate()) return;
-    const scaledImportance = Math.round((importance / 3) * 5);
-    const scaledUrgency = Math.round((urgency / 3) * 5);
+    const scaledImportance = eisenhowerScoreFromLevel(importance);
+    const scaledUrgency = eisenhowerScoreFromLevel(urgency);
     const data = {
       projectId,
       title: title.trim(),

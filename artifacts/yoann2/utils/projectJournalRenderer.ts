@@ -1,4 +1,5 @@
 import { JOURNAL_PHOTO_TIMING } from '@/utils/journalPhotoTiming';
+import { JOURNAL_COLORS, JOURNAL_PAPER } from '@/constants/journal';
 
 /**
  * "Carnet de bord" — portrait 720x1280 journal film renderer.
@@ -12,7 +13,7 @@ export function buildProjectJournalHtml(): string {
 <style>
 html,body{margin:0;height:100%;background:#2B3346;overflow:hidden;font-family:'Courier New',monospace}
 #wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:10px}
-#cv{display:block;height:calc(100% - 64px);max-width:100%;aspect-ratio:9/16;object-fit:contain;box-shadow:0 10px 30px rgba(10,14,24,.45);border-radius:4px;background:#EDF0EA}
+#cv{display:block;height:calc(100% - 64px);max-width:100%;aspect-ratio:9/16;object-fit:contain;box-shadow:0 10px 30px rgba(10,14,24,.45);border-radius:4px;background:#FBFBF8}
 body.export #cv{height:100%}
 #ctl{display:none;align-items:center;gap:10px;width:min(92vw,560px);color:#E9ECE4;font-size:13px}
 body.preview #ctl{display:flex}
@@ -20,11 +21,12 @@ body.preview #ctl{display:flex}
 #sk{flex:1;accent-color:#E3B341}
 #tm{min-width:92px;text-align:right;font-variant-numeric:tabular-nums}
 </style></head><body>
-<div id="wrap"><canvas id="cv" width="720" height="1280"></canvas>
+<div id="wrap"><canvas id="cv" width="${JOURNAL_PAPER.width}" height="${JOURNAL_PAPER.height}"></canvas>
 <div id="ctl"><button id="pp" aria-label="Lecture">&#9654;</button><input id="sk" type="range" min="0" max="1000" value="0" aria-label="Position"><span id="tm">0:00 / 0:00</span></div></div>
 <script>
 (function(){
-var W=720,H=1280,G=24,MX=72,CX=104,CR=672,FIRST_PHOTO_DELAY=1;
+var W=${JOURNAL_PAPER.width},H=${JOURNAL_PAPER.height},G=24,PAPER_GRID=${JOURNAL_PAPER.gridSize},
+    MX=${JOURNAL_PAPER.bindingWidth + 2},CX=${JOURNAL_PAPER.textLeft},CR=${JOURNAL_PAPER.contentRight},FIRST_PHOTO_DELAY=1;
 var photoTiming=${JSON.stringify(JOURNAL_PHOTO_TIMING)};
 function photoDuration(caption,secondsPerPhoto){
   var text=(caption||'').trim(),w=photoTiming;
@@ -68,7 +70,7 @@ function comparisonDuration(comparison,secondsPerPhoto){
   });
   return total;
 }
-var INK='#1E2A47',INK2='#4A5675',RED='#B8414F',OCHRE='#E3B341',PAPER='#EDF0EA';
+var INK='#1E2A47',INK2='#4A5675',RED='#B8414F',OCHRE='#E3B341',PAPER='${JOURNAL_COLORS.paper}';
 var SERIF="'Iowan Old Style','Palatino Linotype',Palatino,'Book Antiqua','Noto Serif',Georgia,serif";
 var MONO="'Courier New','Courier Prime',Courier,monospace";
 var cv=document.getElementById('cv'),ctx=cv.getContext('2d');
@@ -89,21 +91,23 @@ function str(v){return v==null?'':String(v).trim()}
 function buildPaper(){
   var c=document.createElement('canvas');c.width=W;c.height=H;var g=c.getContext('2d');
   g.fillStyle=PAPER;g.fillRect(0,0,W,H);
-  var seed=7;function rnd(){seed=(seed*16807)%2147483647;return seed/2147483647}
-  for(var i=0;i<5200;i++){g.fillStyle='rgba(60,70,90,'+(rnd()*0.05)+')';g.fillRect(rnd()*W,rnd()*H,1.2,1.2)}
-  g.strokeStyle='rgba(78,118,166,0.26)';g.lineWidth=1;g.beginPath();
-  for(var x=G/2;x<W;x+=G){g.moveTo(Math.round(x)+.5,0);g.lineTo(Math.round(x)+.5,H)}
-  for(var y=G/2;y<H;y+=G){g.moveTo(0,Math.round(y)+.5);g.lineTo(W,Math.round(y)+.5)}
+  g.fillStyle='${JOURNAL_COLORS.binding}';g.fillRect(0,0,${JOURNAL_PAPER.bindingWidth},H);
+  g.strokeStyle='rgba(73,101,128,0.20)';g.lineWidth=1;g.beginPath();
+  for(var x=${JOURNAL_PAPER.gridStart};x<=W;x+=PAPER_GRID){g.moveTo(Math.round(x)+.5,0);g.lineTo(Math.round(x)+.5,H)}
+  for(var y=0;y<=H;y+=PAPER_GRID){g.moveTo(${JOURNAL_PAPER.gridStart},y+.5);g.lineTo(W,y+.5)}
   g.stroke();
-  g.strokeStyle='rgba(184,65,79,0.55)';g.lineWidth=1.5;g.beginPath();g.moveTo(MX,58);g.lineTo(MX,H);g.stroke();
-  var gr=g.createLinearGradient(0,0,0,60);gr.addColorStop(0,'rgba(30,42,71,0.16)');gr.addColorStop(1,'rgba(30,42,71,0)');
-  g.fillStyle=gr;g.fillRect(0,0,W,60);
-  for(var hx=30;hx<W;hx+=36){
-    g.fillStyle='#3A4258';g.beginPath();g.arc(hx,30,6,0,7);g.fill();
-    g.strokeStyle='#8C93A3';g.lineWidth=3;g.beginPath();g.arc(hx,22,10,Math.PI*0.95,Math.PI*2.05);g.stroke();
-  }
-  var vg=g.createRadialGradient(W/2,H/2,H*0.35,W/2,H/2,H*0.8);vg.addColorStop(0,'rgba(0,0,0,0)');vg.addColorStop(1,'rgba(30,42,71,0.10)');
-  g.fillStyle=vg;g.fillRect(0,0,W,H);
+  g.strokeStyle='rgba(73,101,128,0.15)';g.lineWidth=1;g.beginPath();
+  for(var by=PAPER_GRID/2;by<H;by+=PAPER_GRID){g.moveTo(0,by+.5);g.lineTo(${JOURNAL_PAPER.bindingWidth},by+.5)}
+  g.stroke();
+  g.strokeStyle='rgba(83,111,137,0.55)';g.lineWidth=1.5;g.beginPath();
+  g.moveTo(${JOURNAL_PAPER.bindingWidth + 0.5},0);g.lineTo(${JOURNAL_PAPER.bindingWidth + 0.5},H);g.stroke();
+  g.strokeStyle='rgba(83,111,137,0.25)';g.lineWidth=1;g.beginPath();
+  g.moveTo(${JOURNAL_PAPER.gridStart + 0.5},0);g.lineTo(${JOURNAL_PAPER.gridStart + 0.5},H);g.stroke();
+  g.fillStyle='${JOURNAL_COLORS.punch}';
+  [${JOURNAL_PAPER.punchCenters.join(',')}].forEach(function(hy){
+    g.beginPath();g.arc(44,hy,7,0,Math.PI*2);g.fill();
+    g.beginPath();g.ellipse(44,hy+27,8,16,0,0,Math.PI*2);g.fill();
+  });
   return c;
 }
 

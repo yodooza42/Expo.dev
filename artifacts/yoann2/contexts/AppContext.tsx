@@ -5,6 +5,7 @@ import React, { createContext, useCallback, useContext, useEffect, useRef, useSt
 import { AppState } from 'react-native';
 
 import type { Appointment, AppStats, CalendarPeriod, Category, Priority, Project, Task, TaskStatus } from '@/types';
+import { eisenhowerFromScores, normalizeTaskEisenhower } from '@/utils/eisenhower';
 import { saveBackup } from '@/utils/backup';
 import { genId } from '@/utils/ids';
 import { loadCatalogue } from '@/utils/library/catalogue';
@@ -65,12 +66,7 @@ const DEFAULT_CATEGORIES: Category[] = [
 
 
 function computeEisenhower(urgency: number, importance: number): Task['eisenhower'] {
-  const isUrgent = urgency >= 2;
-  const isImportant = importance >= 2;
-  if (isUrgent && isImportant) return 'do_now';
-  if (!isUrgent && isImportant) return 'schedule';
-  if (isUrgent && !isImportant) return 'delegate';
-  return 'eliminate';
+  return eisenhowerFromScores(urgency, importance);
 }
 
 function makeTask(
@@ -296,13 +292,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const needsSeed = !initialized;
       if (needsSeed) {
         setProjects(SEED_PROJECTS);
-        setTasks(SEED_TASKS);
+        const seededTasks = SEED_TASKS.map(normalizeTaskEisenhower);
+        setTasks(seededTasks);
         setCategories(SEED_CATEGORIES);
         setAppointments(SEED_APPOINTMENTS);
         setCalendarPeriods([]);
         await AsyncStorage.multiSet([
           [STORAGE_KEYS.PROJECTS, JSON.stringify(SEED_PROJECTS)],
-          [STORAGE_KEYS.TASKS, JSON.stringify(SEED_TASKS)],
+          [STORAGE_KEYS.TASKS, JSON.stringify(seededTasks)],
           [STORAGE_KEYS.EXPENSES, JSON.stringify(SEED_EXPENSES)],
           [STORAGE_KEYS.CATEGORIES, JSON.stringify(SEED_CATEGORIES)],
           [STORAGE_KEYS.EXPENSE_CATEGORIES, JSON.stringify(SEED_EXPENSE_CATEGORIES)],
@@ -327,7 +324,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           STORAGE_KEYS.CALENDAR_PERIODS,
         ]);
         if (pRaw[1]) setProjects(JSON.parse(pRaw[1]));
-        if (tRaw[1]) setTasks(JSON.parse(tRaw[1]));
+        if (tRaw[1]) {
+          const storedTasks = JSON.parse(tRaw[1]) as Task[];
+          const normalizedTasks = storedTasks.map(normalizeTaskEisenhower);
+          setTasks(normalizedTasks);
+          if (normalizedTasks.some((task, index) => task.eisenhower !== storedTasks[index]?.eisenhower)) {
+            void AsyncStorage.setItem(STORAGE_KEYS.TASKS, JSON.stringify(normalizedTasks))
+              .catch(error => console.warn('Could not update stored Eisenhower quadrants', error));
+          }
+        }
         if (cRaw[1]) setCategories(JSON.parse(cRaw[1]));
         if (aRaw[1]) setAppointments(JSON.parse(aRaw[1]));
         if (cpRaw[1]) setCalendarPeriods(JSON.parse(cpRaw[1]));

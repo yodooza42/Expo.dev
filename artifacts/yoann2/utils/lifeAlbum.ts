@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
 
-import { importPhotos } from '@/utils/library/importPhoto';
+import { importPhotos, type ImportItem } from '@/utils/library/importPhoto';
 import { isLibraryRef, refId } from '@/utils/library/paths';
 import { isLifeAlbum, type AlbumPhoto, emptyLifeAlbum, type LifeAlbum } from '@/utils/lifeAlbumCore';
 
@@ -33,12 +33,15 @@ export async function importAlbumPhotos(): Promise<{ photos: AlbumPhoto[]; faile
     quality: 1,
   });
   if (selection.canceled) return { photos: [], failed: [] };
-  const imported = await importPhotos(selection.assets.map(asset => ({
+  return importAlbumPhotoItems(selection.assets.map(asset => ({
     uri: asset.uri,
     takenAt: asset.exif?.DateTimeOriginal ? Date.parse(String(asset.exif.DateTimeOriginal)) || undefined : undefined,
     originalName: asset.fileName,
-  })), ALBUM_PHOTOS_FOLDER);
+  })));
+}
 
+export async function importAlbumPhotoItems(items: ImportItem[]): Promise<{ photos: AlbumPhoto[]; failed: string[] }> {
+  const imported = await importPhotos(items, ALBUM_PHOTOS_FOLDER);
   const unique = new Map<string, AlbumPhoto>();
   for (const item of imported.imported) {
     if (!isLibraryRef(item.ref)) continue;

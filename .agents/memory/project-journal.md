@@ -56,3 +56,9 @@ Les tâches terminées le même jour peuvent être réordonnées pour le montage
 **Why:** une date de fin au jour près ne prouve pas l’ordre réel des réalisations ; un départage déterministe n’est qu’un ordre par défaut.
 
 **How to apply:** conserver le choix à la réouverture du brouillon et lors des changements de sélection. Replacer chaque récapitulatif après la dernière tâche de ce projet réellement retenue au montage ; ne pas le laisser lié au départage initial.
+
+Le fond du carnet reprend la feuille quadrillée blanche avec une marge de reliure perforée montrée par l’utilisateur, sans les commandes ni bordures de sa capture d’écran.
+
+**Why:** l’utilisateur a choisi cette feuille comme référence pour remplacer le papier crème actuel.
+
+**How to apply:** garder un quadrillage fin, une marge réglée à gauche et quatre paires de perforations ; appliquer le même motif dans l’aperçu, la couverture et l’export natif.

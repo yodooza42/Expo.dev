@@ -11,6 +11,7 @@ export type AlbumMemory = {
   date: string;
   note: string;
   photoIds: string[];
+  photoCaptions?: Record<string, string>;
   createdAt: number;
   updatedAt: number;
 };
@@ -61,6 +62,26 @@ export function suggestedAlbumDate(photoIds: string[], photos: AlbumPhoto[]): st
   return timestamps.length
     ? albumDay(timestamps.reduce((earliest, timestamp) => Math.min(earliest, timestamp), Number.POSITIVE_INFINITY))
     : null;
+}
+
+export function chronologicalAlbumPhotoIds(photoIds: string[], photos: AlbumPhoto[]): string[] {
+  const photoById = new Map(photos.map(photo => [photo.id, photo]));
+  const uniqueIds = [...new Set(photoIds)];
+  const originalOrder = new Map(uniqueIds.map((id, index) => [id, index]));
+  return uniqueIds.sort((leftId, rightId) => {
+    const left = photoById.get(leftId);
+    const right = photoById.get(rightId);
+    const leftTime = left?.takenAt;
+    const rightTime = right?.takenAt;
+    if (typeof leftTime === 'number' && Number.isFinite(leftTime)) {
+      if (typeof rightTime === 'number' && Number.isFinite(rightTime)) {
+        return leftTime - rightTime || originalOrder.get(leftId)! - originalOrder.get(rightId)!;
+      }
+      return -1;
+    }
+    if (typeof rightTime === 'number' && Number.isFinite(rightTime)) return 1;
+    return originalOrder.get(leftId)! - originalOrder.get(rightId)!;
+  });
 }
 
 export function albumAgeAt(birthDate: string | null, date: string): string | null {
@@ -143,6 +164,10 @@ export function isLifeAlbum(value: unknown): value is LifeAlbum {
   const memoriesValid = album.memories.every(memory => memory && typeof memory.id === 'string'
     && typeof memory.title === 'string' && isAlbumDate(memory.date) && typeof memory.note === 'string'
     && Array.isArray(memory.photoIds) && memory.photoIds.every(id => typeof id === 'string')
+    && (memory.photoCaptions === undefined || (memory.photoCaptions !== null
+      && typeof memory.photoCaptions === 'object' && !Array.isArray(memory.photoCaptions)
+      && Object.entries(memory.photoCaptions).every(([id, caption]) =>
+        typeof id === 'string' && typeof caption === 'string')))
     && typeof memory.createdAt === 'number' && typeof memory.updatedAt === 'number');
   return photosValid && memoriesValid;
 }

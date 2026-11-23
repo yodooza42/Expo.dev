@@ -18,6 +18,7 @@
 - [Ressources des stories](story-resource-budgets.md) — borner les pixels décodés sur toute la période ; tester minuteries et animation avec une horloge commune.
 - [Pauses dans les stories de trajet](story-playback-idle.md) — compresser les longues immobilités uniquement dans l’animation, sans modifier durée ou distance réelles.
 - [Souvenirs mensuels familiaux](monthly-memory-semantics.md) — priorité aux événements saisis ; chronologie par chapitre, choix de montage sans modification des originaux.
+- [Légendes des photos de l’album](life-album-photo-captions.md) — les mini-légendes appartiennent au lien photo-événement, jamais au fichier photo lui-même.
 - [Push GitHub via connecteur](github-push-via-connector.md) — la connexion OAuth et `git push` sont séparés ; pour un dépôt vide, initialiser puis créer l’arbre via l’API avec débit limité.
 - [Virements épargne centralisés](savings-transfer-consistency.md) — les virements manuels et automatiques doivent partager la même écriture solde épargne + transaction courant.
 - [Sources de tuiles cartographiques](map-tile-sources.md) — CARTO renvoie « API KEY REQUIRED » ; les fonds ArcGIS testés fonctionnent sans clé et exigent une attribution visible.
@@ -25,7 +26,7 @@
 - [Stockage durable Yoann2.0](photo-protection.md) — dossier Yoann2.0 = source de vérité ; aucune suppression sans confirmation ; limites Android à rappeler.
 - [Dates EXIF des photos sélectionnées](task-photo-metadata.md) — lire uniquement les photos de tâche ou de projet choisies ; avec Hermes, utiliser l’entrée ESM lite d’exifr.
 - [Dates de fin](project-task-completion.md) — projets et tâches : date du jour à la clôture, correction manuelle possible sans changer l’échéance.
-- [Carnet vidéo des projets](project-journal.md) — stories chronologiques par complétion, période/projets/photos/légendes au choix, style carnet à carreaux de 5 mm.
+- [Carnet vidéo des projets](project-journal.md) — stories chronologiques et fond blanc quadrillé avec marge de reliure perforée choisie par l’utilisateur.
 - [Photos du carnet natif](native-journal-photos.md) — résoudre les références de la photothèque en URI lisibles et compter les comparatifs réutilisés comme sélections uniques.
 - [Diagnostic du moteur de carnet](journal-render-diagnostics.md) — conserver l’état WebView avant l’échec et séparer les délais d’opération du watchdog natif.
 - [Appareil de test du carnet vidéo](journal-video-test-device.md) — l’appareil de l’utilisateur pour valider les exports vidéo est un Samsung Galaxy S25 Ultra.

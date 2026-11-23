@@ -36,6 +36,12 @@ private const val TAG = "YoannJournalEncoder"
 private const val MIME_TYPE = "video/avc"
 private const val WIDTH = 720
 private const val HEIGHT = 1280
+private const val PAPER_GRID = 16f
+private const val BINDING_WIDTH = 144f
+private const val GRID_START = 148f
+private const val TEXT_LEFT = 166f
+private const val TEXT_WIDTH = 500f
+private const val CONTENT_RIGHT = 680f
 private const val FPS = 15
 private const val MAX_DURATION_SECONDS = 900
 private const val MAX_PHOTOS = 500
@@ -447,18 +453,46 @@ private class NativeJournalVideoEncoder(
     val ink = Color.rgb(33, 43, 66)
     val muted = Color.rgb(86, 96, 118)
     val accent = Color.rgb(185, 65, 79)
-    val paper = Color.rgb(242, 239, 229)
+    val paper = Color.rgb(251, 251, 248)
     canvas.drawColor(paper)
+    val binding = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(245, 247, 247) }
+    canvas.drawRect(0f, 0f, BINDING_WIDTH, HEIGHT.toFloat(), binding)
     val grid = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-      color = Color.argb(30, 86, 124, 165)
+      color = Color.argb(51, 73, 101, 128)
       strokeWidth = 1f
     }
-    var x = 24f
-    while (x < WIDTH) { canvas.drawLine(x, 0f, x, HEIGHT.toFloat(), grid); x += 32f }
-    var y = 24f
-    while (y < HEIGHT) { canvas.drawLine(0f, y, WIDTH.toFloat(), y, grid); y += 32f }
-    val margin = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.argb(115, 185, 65, 79); strokeWidth = 2f }
-    canvas.drawLine(70f, 0f, 70f, HEIGHT.toFloat(), margin)
+    var x = GRID_START
+    while (x <= WIDTH) {
+      canvas.drawLine(x, 0f, x, HEIGHT.toFloat(), grid)
+      x += PAPER_GRID
+    }
+    var y = 0f
+    while (y <= HEIGHT) {
+      canvas.drawLine(GRID_START, y, WIDTH.toFloat(), y, grid)
+      y += PAPER_GRID
+    }
+    val bindingLines = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+      color = Color.argb(38, 73, 101, 128)
+      strokeWidth = 1f
+    }
+    y = PAPER_GRID / 2f
+    while (y < HEIGHT) {
+      canvas.drawLine(0f, y, BINDING_WIDTH, y, bindingLines)
+      y += PAPER_GRID
+    }
+    val divider = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+      color = Color.argb(140, 83, 111, 137)
+      strokeWidth = 1.5f
+    }
+    canvas.drawLine(BINDING_WIDTH, 0f, BINDING_WIDTH, HEIGHT.toFloat(), divider)
+    divider.color = Color.argb(64, 83, 111, 137)
+    divider.strokeWidth = 1f
+    canvas.drawLine(GRID_START, 0f, GRID_START, HEIGHT.toFloat(), divider)
+    val punch = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(51, 67, 87) }
+    listOf(155f, 425f, 795f, 1080f).forEach { holeY ->
+      canvas.drawCircle(44f, holeY, 7f, punch)
+      canvas.drawOval(RectF(36f, holeY + 11f, 52f, holeY + 43f), punch)
+    }
 
     val kicker = Paint(Paint.ANTI_ALIAS_FLAG).apply {
       color = accent
@@ -473,7 +507,7 @@ private class NativeJournalVideoEncoder(
         "outro" -> "SOUVENIRS ET RÉALISATIONS"
         else -> scene.dateLabel.uppercase()
       },
-      100f, 112f, kicker,
+      TEXT_LEFT, 112f, kicker,
     )
 
     val titlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -481,7 +515,7 @@ private class NativeJournalVideoEncoder(
       textSize = if (scene.kind == "intro") 36f else 32f
       typeface = android.graphics.Typeface.create("serif", android.graphics.Typeface.BOLD)
     }
-    drawWrapped(canvas, scene.title.ifBlank { "Carnet de bord" }, titlePaint, 100f, 190f, 500f, 4, 1.16f)
+    drawWrapped(canvas, scene.title.ifBlank { "Carnet de bord" }, titlePaint, TEXT_LEFT, 190f, TEXT_WIDTH, 4, 1.16f)
 
     if (scene.subtitle.isNotBlank()) {
       val subPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -489,7 +523,7 @@ private class NativeJournalVideoEncoder(
         textSize = 22f
         typeface = android.graphics.Typeface.create("serif", android.graphics.Typeface.ITALIC)
       }
-      drawWrapped(canvas, scene.subtitle, subPaint, 100f, 350f, 500f, 2, 1.2f)
+      drawWrapped(canvas, scene.subtitle, subPaint, TEXT_LEFT, 350f, TEXT_WIDTH, 2, 1.2f)
     }
 
     scene.photoUris.takeIf { it.isNotEmpty() }?.let { uris ->
@@ -497,9 +531,9 @@ private class NativeJournalVideoEncoder(
       try {
         portraitPhoto = photo.height > photo.width
         val photoArea = if (portraitPhoto) {
-          RectF(70f, 390f, 650f, 1020f)
+          RectF(GRID_START, 390f, CONTENT_RIGHT, 1020f)
         } else {
-          RectF(90f, 390f, 630f, 850f)
+          RectF(TEXT_LEFT, 390f, CONTENT_RIGHT - 18f, 850f)
         }
         val scale = min(photoArea.width() / photo.width, photoArea.height() / photo.height)
         val photoWidth = photo.width * scale
@@ -531,23 +565,23 @@ private class NativeJournalVideoEncoder(
         val recapPaint = Paint(bodyPaint).apply { textSize = 20f }
         var lineY = 490f
         scene.lines.forEach { text ->
-          drawWrapped(canvas, "• $text", recapPaint, 100f, lineY, 500f, 2, 1.2f)
+          drawWrapped(canvas, "• $text", recapPaint, TEXT_LEFT, lineY, TEXT_WIDTH, 2, 1.2f)
           lineY += 95f
         }
       }
       "intro" -> {
-        drawWrapped(canvas, scene.caption, bodyPaint, 100f, 510f, 500f, 8, 1.25f)
+        drawWrapped(canvas, scene.caption, bodyPaint, TEXT_LEFT, 510f, TEXT_WIDTH, 8, 1.25f)
       }
-      "outro" -> drawWrapped(canvas, scene.caption, bodyPaint, 100f, 510f, 500f, 8, 1.25f)
+      "outro" -> drawWrapped(canvas, scene.caption, bodyPaint, TEXT_LEFT, 510f, TEXT_WIDTH, 8, 1.25f)
       "entry" -> if (scene.caption.isNotBlank()) {
-        drawWrapped(canvas, scene.caption, bodyPaint, 100f, 510f, 500f, 12, 1.2f)
+        drawWrapped(canvas, scene.caption, bodyPaint, TEXT_LEFT, 510f, TEXT_WIDTH, 12, 1.2f)
       }
       else -> if (scene.caption.isNotBlank()) {
         if (portraitPhoto) {
           val photoCaptionPaint = Paint(bodyPaint).apply { textSize = 21f }
-          drawWrapped(canvas, scene.caption, photoCaptionPaint, 100f, 1040f, 500f, 7, 1.1f)
+          drawWrapped(canvas, scene.caption, photoCaptionPaint, TEXT_LEFT, 1040f, TEXT_WIDTH, 7, 1.1f)
         } else {
-          drawWrapped(canvas, scene.caption, bodyPaint, 100f, 900f, 500f, 8, 1.2f)
+          drawWrapped(canvas, scene.caption, bodyPaint, TEXT_LEFT, 900f, TEXT_WIDTH, 8, 1.2f)
         }
       }
     }
@@ -556,7 +590,7 @@ private class NativeJournalVideoEncoder(
       textSize = 18f
       typeface = android.graphics.Typeface.create("monospace", android.graphics.Typeface.NORMAL)
     }
-    canvas.drawText("CARNET DE BORD", 100f, 1210f, footer)
+    canvas.drawText("CARNET DE BORD", TEXT_LEFT, 1210f, footer)
     val frame = bitmapToYuv(bitmap)
     bitmap.recycle()
     return frame

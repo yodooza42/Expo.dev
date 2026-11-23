@@ -18,12 +18,16 @@ function load(file, deps = {}) {
 const dates = load('utils/completionDate.ts');
 const timing = load('utils/journalPhotoTiming.ts');
 const timestamp = load('utils/journalPhotoTimestamp.ts');
+const journalStyle = load('constants/journal.ts');
 const journal = load('utils/projectJournal.ts', {
   '@/utils/completionDate': dates,
   '@/utils/journalPhotoTiming': timing,
   '@/utils/journalPhotoTimestamp': timestamp,
 });
-const renderer = load('utils/projectJournalRenderer.ts', { '@/utils/journalPhotoTiming': timing });
+const renderer = load('utils/projectJournalRenderer.ts', {
+  '@/utils/journalPhotoTiming': timing,
+  '@/constants/journal': journalStyle,
+});
 const clone = value => JSON.parse(JSON.stringify(value));
 const projects = [
   { id: 'p1', name: 'Garage', status: 'done', completedAt: '06/04/2026', photos: ['file://p'], description: 'Projet achevé' },
@@ -36,6 +40,22 @@ const tasks = [
   { id: 'todo', projectId: 'p2', title: 'À venir', status: 'todo', completedAt: '01/04/2026', photos: [] },
 ];
 const choices = () => ({ ...journal.initialJournalChoices(projects), from: '2026-04-01', to: '2026-04-30', projectIds: ['p1', 'p2'] });
+
+test('paper background follows the clean grid-and-binding reference in every renderer', () => {
+  const html = renderer.buildProjectJournalHtml();
+  const native = fs.readFileSync(path.join(ROOT,
+    'modules/yoann-journal-native/android/src/main/java/expo/modules/yoannjournal/YoannJournalEncoderModule.kt'), 'utf8');
+  const cover = fs.readFileSync(path.join(ROOT, 'components/project-journal/JournalCover.tsx'), 'utf8');
+  assert.equal(journalStyle.JOURNAL_PAPER.gridSize, 16);
+  assert.equal(journalStyle.JOURNAL_PAPER.bindingWidth, 144);
+  assert.match(html, /PAPER_GRID=16/);
+  assert.match(html, /MX=146,CX=166,CR=680/);
+  assert.match(html, /ellipse\(44,hy\+27,8,16/);
+  assert.match(native, /PAPER_GRID = 16f/);
+  assert.match(native, /canvas\.drawCircle\(44f, holeY, 7f, punch\)/);
+  assert.match(cover, /viewBox=\{`0 0 \$\{p\.width\} \$\{p\.height\}`\}/);
+  assert.deepEqual(Array.from(journalStyle.JOURNAL_PAPER.punchCenters), [155, 425, 795, 1080]);
+});
 
 test('multiple projects and inclusive local completion dates produce chronological tasks and project milestones', () => {
   const before = JSON.stringify({ projects, tasks });
@@ -640,7 +660,9 @@ test('nine uncaptioned photos each last one second with no fourth/eighth-photo h
       assert.ok(e.imageDraws.at(-1).src.endsWith(`cGhvdG8${i}`), `photo ${i + 1} at +${offset}s`);
     }
   }
-  assert.ok(e.imageDraws.at(-1).dimensions[2] >= 560, 'full source frame and original aspect ratio');
+  const lastPhoto = e.imageDraws.at(-1).dimensions;
+  assert.ok(lastPhoto[2] >= 500, 'photo remains large after reserving the binding margin');
+  assert.ok(Math.abs(lastPhoto[2] / lastPhoto[3] - 4 / 3) < 0.001, 'photo keeps its full source aspect ratio');
   assert.equal(e.draws.some(draw => draw.text === 'SUITE DE L’ETAPE'), false);
   assert.ok(e.maxImages <= 3, `only current, next and fading previous, not ${e.maxImages} photos`);
   assert.equal(e.win.journalDuration, expectedDuration(data, 3));
